@@ -12,8 +12,8 @@ export interface GeminiProviderConfig {
 }
 
 export function createGeminiProvider(config: GeminiProviderConfig): LLMProvider {
-  const model = config.model ?? 'gemini-2.0-flash';
-  const baseUrl = config.baseUrl ?? 'https://generativelanguage.googleapis.com';
+  const model = config.model || 'gemini-2.0-flash';
+  const baseUrl = config.baseUrl || 'https://generativelanguage.googleapis.com';
   const key = config.apiKey;
 
   return new LLMProvider(

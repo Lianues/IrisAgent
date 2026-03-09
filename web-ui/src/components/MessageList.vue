@@ -33,7 +33,7 @@
           type="button"
           @click="toggleToolCollapse(i)"
         >
-          <span class="collapse-icon">▶</span>
+          <AppIcon :name="ICONS.common.chevronRight" class="collapse-icon" />
           {{ collapsedTools.has(i) ? `${countToolParts(msg)} 个工具调用（点击展开）` : '折叠工具调用' }}
         </button>
 
@@ -53,7 +53,7 @@
             type="button"
             @click="toggleToolCollapse(i)"
           >
-            <span class="collapse-icon">▶</span>
+            <AppIcon :name="ICONS.common.chevronRight" class="collapse-icon" />
             {{ collapsedTools.has(i) ? `${countToolParts(msg)} 个工具调用（点击展开）` : '折叠工具调用' }}
           </button>
 
@@ -89,6 +89,8 @@ import { ref, reactive, watch, nextTick } from 'vue'
 import type { Message } from '../api/types'
 import MessageBubble from './MessageBubble.vue'
 import ToolBlock from './ToolBlock.vue'
+import AppIcon from './AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 const props = defineProps<{
   messages: Message[]

@@ -8,7 +8,7 @@
  */
 
 import { PlatformAdapter } from '../platforms/base';
-import { LLMProvider } from '../llm/providers/base';
+import { LLMRouter, LLMTier } from '../llm/router';
 import { StorageProvider } from '../storage/base';
 import { ToolRegistry } from '../tools/registry';
 import { PromptAssembler } from '../prompt/assembler';
@@ -31,7 +31,7 @@ export interface OrchestratorConfig {
 
 export class Orchestrator {
   private platform: PlatformAdapter;
-  private llm: LLMProvider;
+  private router: LLMRouter;
   private storage: StorageProvider;
   private tools: ToolRegistry;
   private prompt: PromptAssembler;
@@ -41,7 +41,7 @@ export class Orchestrator {
 
   constructor(
     platform: PlatformAdapter,
-    llm: LLMProvider,
+    router: LLMRouter,
     storage: StorageProvider,
     tools: ToolRegistry,
     prompt: PromptAssembler,
@@ -49,7 +49,7 @@ export class Orchestrator {
     memory?: MemoryProvider,
   ) {
     this.platform = platform;
-    this.llm = llm;
+    this.router = router;
     this.storage = storage;
     this.tools = tools;
     this.prompt = prompt;
@@ -80,13 +80,44 @@ export class Orchestrator {
 
     await this.platform.start();
     const mode = this.stream ? '流式' : '非流式';
-    logger.info(`已启动 | 平台=${this.platform.name} LLM=${this.llm.name} 模式=${mode} 工具数=${this.tools.size}`);
+    const tierInfo = this.router.getTierInfo();
+    const tierDesc = [
+      `primary=${tierInfo.primary}`,
+      tierInfo.secondary ? `secondary=${tierInfo.secondary}` : null,
+      tierInfo.light ? `light=${tierInfo.light}` : null,
+    ].filter(Boolean).join(' ');
+    logger.info(`已启动 | 平台=${this.platform.name} LLM=[${tierDesc}] 模式=${mode} 工具数=${this.tools.size}`);
   }
 
   /** 停止 */
   async stop(): Promise<void> {
     await this.platform.stop();
     logger.info('已停止');
+  }
+
+  /** 热重载：替换 LLM 路由器 */
+  reloadLLM(newRouter: LLMRouter): void {
+    this.router = newRouter;
+    const tierInfo = newRouter.getTierInfo();
+    const tierDesc = [
+      `primary=${tierInfo.primary}`,
+      tierInfo.secondary ? `secondary=${tierInfo.secondary}` : null,
+      tierInfo.light ? `light=${tierInfo.light}` : null,
+    ].filter(Boolean).join(' ');
+    logger.info(`LLM 已热重载: [${tierDesc}]`);
+  }
+
+  /** 热重载：更新运行时参数 */
+  reloadConfig(opts: { stream?: boolean; maxToolRounds?: number; systemPrompt?: string }): void {
+    if (opts.stream !== undefined) this.stream = opts.stream;
+    if (opts.maxToolRounds !== undefined) this.maxToolRounds = opts.maxToolRounds;
+    if (opts.systemPrompt !== undefined) this.prompt.setSystemPrompt(opts.systemPrompt);
+    logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.maxToolRounds}`);
+  }
+
+  /** 获取路由器引用 */
+  getRouter(): LLMRouter {
+    return this.router;
   }
 
   // ============ 核心流程 ============
@@ -114,6 +145,9 @@ export class Orchestrator {
     while (rounds < this.maxToolRounds) {
       rounds++;
 
+      // 决定本轮使用的 LLM 层级：第 1 轮用 primary，后续用 secondary
+      const tier: LLMTier = rounds === 1 ? 'primary' : 'secondary';
+
       // 2a. 获取历史并组装请求
       const history = await this.storage.getHistory(sessionId);
       const request = this.prompt.assemble(history, this.tools.getDeclarations(), undefined, extraParts);
@@ -123,11 +157,11 @@ export class Orchestrator {
       let textAlreadySent = false;
 
       if (this.stream) {
-        const result = await this.callLLMStream(sessionId, request);
+        const result = await this.callLLMStream(sessionId, request, tier);
         modelContent = result.content;
         textAlreadySent = true;
       } else {
-        const response = await this.llm.chat(request);
+        const response = await this.router.chat(request, tier);
     modelContent = response.content;
         if (response.usageMetadata) {
           modelContent.usageMetadata = response.usageMetadata;
@@ -170,13 +204,14 @@ export class Orchestrator {
   private async callLLMStream(
     sessionId: string,
     request: LLMRequest,
+    tier: LLMTier = 'primary',
   ): Promise<{ content: Content }> {
     let fullText = '';
     const collectedCalls: FunctionCallPart[] = [];
     let usageMetadata: UsageMetadata | undefined;
     let thoughtSignature: string | undefined;
 
-    const llmStream = this.llm.chatStream!(request);
+    const llmStream = this.router.chatStream(request, tier);
 
     //包装为纯文本流，交给平台输出
     const textStream = (async function* () {
@@ -212,33 +247,34 @@ export class Orchestrator {
   // ============ 工具执行 ============
 
   private async executeTools(sessionId: string, functionCalls: FunctionCallPart[]): Promise<void> {
-    const responseParts: FunctionResponsePart[] = [];
+    // 并行执行所有工具，每个独立 try/catch，失败不影响其他工具
+    const responseParts = await Promise.all(
+      functionCalls.map(async (call): Promise<FunctionResponsePart> => {
+        logger.info(`执行工具: ${call.functionCall.name}`);
+        try {
+          const result = await this.tools.execute(
+            call.functionCall.name,
+            call.functionCall.args as Record<string, unknown>,
+          );
+          return {
+            functionResponse: {
+              name: call.functionCall.name,
+              response: { result } as Record<string, unknown>,
+            },
+          };
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
+          return {
+            functionResponse: {
+              name: call.functionCall.name,
+              response: { error: errorMsg },
+            },
+          };
+        }
+      })
+    );
 
-    for (const call of functionCalls) {
-      logger.info(`执行工具: ${call.functionCall.name}`);
-      try {
-        const result = await this.tools.execute(
-          call.functionCall.name,
-          call.functionCall.args as Record<string, unknown>,
-        );
-        responseParts.push({
-          functionResponse: {
-            name: call.functionCall.name,
-            response: { result } as Record<string, unknown>,
-          },
-        });
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
-        responseParts.push({
-          functionResponse: {
-            name: call.functionCall.name,
-            response: { error: errorMsg },
-          },
-        });
-      }
-    }
-
-    await this.storage.addMessage(sessionId, { role: 'user',parts: responseParts });
+    await this.storage.addMessage(sessionId, { role: 'user', parts: responseParts });
   }
 }

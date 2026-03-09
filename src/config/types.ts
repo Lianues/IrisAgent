@@ -9,11 +9,18 @@ export interface LLMConfig {
   baseUrl: string;
 }
 
+/** 三层 LLM 配置：primary 必填，secondary/light 可选（未配置时自动向上回退） */
+export interface TieredLLMConfig {
+  primary: LLMConfig;
+  secondary?: LLMConfig;
+  light?: LLMConfig;
+}
+
 export interface PlatformConfig {
   type: 'console' | 'discord' | 'telegram' | 'web';
   discord: { token: string };
   telegram: { token: string };
-  web: { port: number; host: string };
+  web: { port: number; host: string; authToken?: string };
 }
 
 export interface StorageConfig {
@@ -41,7 +48,7 @@ export interface CloudflareConfig {
 }
 
 export interface AppConfig {
-  llm: LLMConfig;
+  llm: TieredLLMConfig;
   platform: PlatformConfig;
   storage: StorageConfig;
   system: SystemConfig;

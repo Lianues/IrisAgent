@@ -14,13 +14,21 @@ export interface EndpointConfig {
   headers: Record<string, string>;
 }
 
+/** 非流式请求默认超时（毫秒） */
+const DEFAULT_TIMEOUT = 60_000;
+
+/** 流式请求默认超时（毫秒）—— thinking 模型可能长时间无输出，需要更长超时 */
+const DEFAULT_STREAM_TIMEOUT = 600_000;
+
 /** 发送 HTTP 请求，返回原始 Response */
 export async function sendRequest(
   endpoint: EndpointConfig,
   body: unknown,
   stream: boolean,
+  timeout?: number,
 ): Promise<Response> {
   const url = stream ? (endpoint.streamUrl ?? endpoint.url) : endpoint.url;
+  const effectiveTimeout = timeout ?? (stream ? DEFAULT_STREAM_TIMEOUT : DEFAULT_TIMEOUT);
 
   return fetch(url, {
     method: 'POST',
@@ -29,5 +37,6 @@ export async function sendRequest(
       ...endpoint.headers,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(effectiveTimeout),
   });
 }

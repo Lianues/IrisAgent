@@ -14,27 +14,27 @@
       <div class="deploy-detect" v-if="detectLoaded">
         <h3 class="detect-title">环境检测</h3>
         <div class="detect-item" :class="detect.isLinux ? 'detect-ok' : 'detect-fail'">
-          <span class="detect-icon">{{ detect.isLinux ? '✓' : '✗' }}</span>
+          <AppIcon :name="detect.isLinux ? ICONS.status.ok : ICONS.status.fail" class="detect-icon" />
           <span>Linux 系统{{ detect.isLinux ? '' : '（当前非 Linux）' }}</span>
         </div>
         <div class="detect-item" :class="detect.isLocal ? 'detect-ok' : 'detect-warn'">
-          <span class="detect-icon">{{ detect.isLocal ? '✓' : '!' }}</span>
+          <AppIcon :name="detect.isLocal ? ICONS.status.ok : ICONS.status.warn" class="detect-icon" />
           <span>本地访问{{ detect.isLocal ? '' : '（当前为远程访问）' }}</span>
         </div>
         <div class="detect-item" :class="detect.nginx.installed ? 'detect-ok' : 'detect-fail'">
-          <span class="detect-icon">{{ detect.nginx.installed ? '✓' : '✗' }}</span>
+          <AppIcon :name="detect.nginx.installed ? ICONS.status.ok : ICONS.status.fail" class="detect-icon" />
           <span>Nginx {{ detect.nginx.installed ? `v${detect.nginx.version}` : '未安装' }}</span>
           <span v-if="detect.nginx.existingConfig" class="detect-extra">（已有配置）</span>
         </div>
         <div class="detect-item" :class="detect.systemd.available ? 'detect-ok' : 'detect-fail'">
-          <span class="detect-icon">{{ detect.systemd.available ? '✓' : '✗' }}</span>
+          <AppIcon :name="detect.systemd.available ? ICONS.status.ok : ICONS.status.fail" class="detect-icon" />
           <span>Systemd {{ detect.systemd.available ? '可用' : '不可用' }}</span>
           <span v-if="detect.systemd.existingService" class="detect-extra">
             （服务状态: {{ detect.systemd.serviceStatus }}）
           </span>
         </div>
         <div class="detect-item" :class="sudoClass">
-          <span class="detect-icon">{{ detect.sudo.available ? (detect.sudo.noPassword ? '✓' : '!') : '✗' }}</span>
+          <AppIcon :name="detect.sudo.available ? (detect.sudo.noPassword ? ICONS.status.ok : ICONS.status.warn) : ICONS.status.fail" class="detect-icon" />
           <span>
             sudo {{ !detect.sudo.available ? '未安装' : (detect.sudo.noPassword ? '免密可用' : '需要密码') }}
           </span>
@@ -43,14 +43,14 @@
       <div class="deploy-detect" v-else-if="detectError">
         <h3 class="detect-title">环境检测</h3>
         <div class="detect-item detect-fail">
-          <span class="detect-icon">✗</span>
+          <AppIcon :name="ICONS.status.fail" class="detect-icon" />
           <span>检测失败: {{ detectError }}</span>
         </div>
       </div>
       <div class="deploy-detect" v-else>
         <h3 class="detect-title">环境检测</h3>
         <div class="detect-item detect-warn">
-          <span class="detect-icon">…</span>
+          <AppIcon :name="ICONS.status.loading" class="detect-icon" />
           <span>正在检测...</span>
         </div>
       </div>
@@ -190,12 +190,12 @@
           class="deploy-step"
           :class="step.success ? 'step-ok' : 'step-fail'"
         >
-          <span class="step-icon">{{ step.success ? '✓' : '✗' }}</span>
+          <AppIcon :name="step.success ? ICONS.status.ok : ICONS.status.fail" class="step-icon" />
           <span class="step-name">{{ step.name }}</span>
           <span class="step-output">{{ step.output }}</span>
         </div>
         <div v-if="deployResult.error" class="deploy-step step-fail">
-          <span class="step-icon">!</span>
+          <AppIcon :name="ICONS.status.warn" class="step-icon" />
           <span class="step-name">错误</span>
           <span class="step-output">{{ deployResult.error }}</span>
         </div>
@@ -238,6 +238,8 @@
 import { reactive, computed, ref, onMounted } from 'vue'
 import { detectDeploy, deployNginx, deployService } from '../api/client'
 import type { DetectResponse, DeployResponse } from '../api/types'
+import AppIcon from '../components/AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 const form = reactive({
   domain: '',

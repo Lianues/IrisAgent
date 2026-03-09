@@ -12,8 +12,8 @@ export interface ClaudeProviderConfig {
 }
 
 export function createClaudeProvider(config: ClaudeProviderConfig): LLMProvider {
-  const model = config.model ?? 'claude-sonnet-4-6';
-  const baseUrl = config.baseUrl ?? 'https://api.anthropic.com';
+  const model = config.model || 'claude-sonnet-4-6';
+  const baseUrl = config.baseUrl || 'https://api.anthropic.com';
 
   return new LLMProvider(
     new ClaudeFormat(model),

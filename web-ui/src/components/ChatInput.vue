@@ -23,7 +23,7 @@
           @click="handleSend"
         >
           <span class="btn-send-label">{{ disabled ? '生成中...' : '发送' }}</span>
-          <span class="btn-send-icon">↗</span>
+          <AppIcon :name="ICONS.common.send" class="btn-send-icon" />
         </button>
       </div>
     </div>
@@ -32,6 +32,8 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import AppIcon from './AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 defineProps<{ disabled: boolean }>()
 const emit = defineEmits<{ send: [text: string] }>()

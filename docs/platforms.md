@@ -72,6 +72,9 @@ interface IncomingMessage {
 - 同 session 拒绝并发请求（409 Conflict）
 - 静态文件路径运行时动态解析，dev（tsx）和 prod（dist）都兼容
 - 构造需要额外依赖（`storage`、`tools`、`configPath`），因此 `src/index.ts` 中存储和工具在平台之前创建
+- 可选 `authToken` 认证：配置后 `/api/*` 请求需携带 `Authorization: Bearer <token>` 或 `X-Authorization: Bearer <token>` 头
+- 配置 API 脱敏：`GET /api/config` 对 apiKey 等敏感字段返回 `****` + 后4位；`PUT /api/config` 的 `deepMerge` 自动跳过 `****` 开头的值
+- 部署 API 使用一次性 deploy token（启动时日志输出），仅限 Linux 环境
 
 **SSE 事件类型：**
 
@@ -91,9 +94,20 @@ interface IncomingMessage {
 | GET | `/api/sessions` | 列出会话 |
 | GET | `/api/sessions/:id/messages` | 获取会话消息 |
 | DELETE | `/api/sessions/:id` | 删除会话 |
+| DELETE | `/api/sessions/:id/messages?keepCount=N` | 截断历史，保留最近 N 条 |
 | GET | `/api/config` | 获取配置（敏感字段脱敏） |
-| PUT | `/api/config` | 更新配置 |
+| PUT | `/api/config` | 更新配置（脱敏值自动跳过） |
 | GET | `/api/status` | 服务器状态 |
+| GET | `/api/deploy/detect` | 检测部署环境（nginx/systemd/sudo） |
+| POST | `/api/deploy/nginx` | 部署 Nginx 反代配置 |
+| POST | `/api/deploy/service` | 部署 systemd 服务 |
+| GET | `/api/cloudflare/status` | Cloudflare 连接状态 |
+| POST | `/api/cloudflare/setup` | 验证并保存 CF API Token |
+| GET | `/api/cloudflare/dns` | 列出 DNS 记录 |
+| POST | `/api/cloudflare/dns` | 添加 DNS 记录 |
+| DELETE | `/api/cloudflare/dns/:id` | 删除 DNS 记录 |
+| GET | `/api/cloudflare/ssl` | 获取 SSL 模式 |
+| PUT | `/api/cloudflare/ssl` | 设置 SSL 模式 |
 
 ## 工具函数
 

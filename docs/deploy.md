@@ -7,7 +7,7 @@
 ```
 浏览器 → https://chat.example.com (Nginx 443)
        → Nginx 反代 + HTTPS + 可选密码保护
-       → http://127.0.0.1:3000 (IrisClaw，仅本机监听)
+       → http://127.0.0.1:8192 (IrisClaw，仅本机监听)
 ```
 
 ---
@@ -66,11 +66,11 @@ sudo -u irisclaw nano config.yaml
 platform:
   type: web
   web:
-    port: 3000
+    port: 8192
     host: 127.0.0.1  # 重要：仅监听本机，通过 Nginx 反代对外暴露
 ```
 
-> **安全提示**：`host` 必须设为 `127.0.0.1`，不要用 `0.0.0.0`。否则应用会直接暴露在公网 3000 端口，绕过 Nginx 的 HTTPS 和认证保护。
+> **安全提示**：`host` 必须设为 `127.0.0.1`，不要用 `0.0.0.0`。否则应用会直接暴露在公网 8192 端口，绕过 Nginx 的 HTTPS 和认证保护。
 
 ## 4. 配置 systemd 服务
 
@@ -96,7 +96,7 @@ sudo systemctl status irisclaw
 验证应用已启动：
 
 ```bash
-curl http://127.0.0.1:3000/api/status
+curl http://127.0.0.1:8192/api/status
 # 应返回正常响应
 ```
 
@@ -196,7 +196,7 @@ sudo ufw allow 443/tcp   # HTTPS
 sudo ufw enable
 ```
 
-> 不要开放 3000 端口 —— 应用只监听 127.0.0.1，外部无法直连。
+> 不要开放 8192 端口 —— 应用只监听 127.0.0.1，外部无法直连。
 
 ## 10. 验证部署
 

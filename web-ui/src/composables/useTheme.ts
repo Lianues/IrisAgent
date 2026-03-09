@@ -34,7 +34,7 @@ const resolvedTheme = computed<'dark' | 'light'>(() => {
 function loadTheme(): ThemeMode {
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved === 'dark' || saved === 'light' || saved === 'system') return saved
-  return 'dark'
+  return 'light'
 }
 
 function applyTheme() {

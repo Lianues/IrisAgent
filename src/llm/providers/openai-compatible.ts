@@ -14,8 +14,8 @@ export interface OpenAICompatibleProviderConfig {
 }
 
 export function createOpenAICompatibleProvider(config: OpenAICompatibleProviderConfig): LLMProvider {
-  const model = config.model ?? 'gpt-4o';
-  const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+  const model = config.model || 'gpt-4o';
+  const baseUrl = config.baseUrl || 'https://api.openai.com';
 
   return new LLMProvider(
     new OpenAICompatibleFormat(model),

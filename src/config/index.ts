@@ -9,13 +9,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse as parseYAML } from 'yaml';
 import { AppConfig } from './types';
-import { parseLLMConfig } from './llm';
+import { parseTieredLLMConfig } from './llm';
 import { parsePlatformConfig } from './platform';
 import { parseStorageConfig } from './storage';
 import { parseSystemConfig } from './system';
 import { parseMemoryConfig } from './memory';
 
-export type { AppConfig, LLMConfig, PlatformConfig, StorageConfig, SystemConfig, MemoryConfig, CloudflareConfig } from './types';
+export type { AppConfig, LLMConfig, TieredLLMConfig, PlatformConfig, StorageConfig, SystemConfig, MemoryConfig, CloudflareConfig } from './types';
 
 /** 配置文件搜索顺序 */
 const CONFIG_PATHS = [
@@ -51,7 +51,7 @@ export function loadConfig(): AppConfig {
   const data = parseYAML(raw) ?? {};
 
   return {
-    llm: parseLLMConfig(data.llm),
+    llm: parseTieredLLMConfig(data.llm),
     platform: parsePlatformConfig(data.platform),
     storage: parseStorageConfig(data.storage),
     system: parseSystemConfig(data.system),

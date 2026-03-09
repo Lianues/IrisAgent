@@ -13,11 +13,14 @@ import { Router } from './router';
 import { createChatHandler } from './handlers/chat';
 import { createSessionsHandlers } from './handlers/sessions';
 import { createConfigHandlers } from './handlers/config';
-import { createStatusHandler, StatusInfo } from './handlers/status';
 import { createDeployHandlers } from './handlers/deploy';
 import { createCloudflareHandlers } from './handlers/cloudflare';
 import { StorageProvider } from '../../storage/base';
 import { ToolRegistry } from '../../tools/registry';
+import { Orchestrator } from '../../core/orchestrator';
+import { createLLMRouter } from '../../llm/factory';
+import { parseTieredLLMConfig } from '../../config/llm';
+import { DEFAULT_SYSTEM_PROMPT } from '../../prompt/templates/default';
 import { createLogger } from '../../logger';
 import { sendJSON } from './router';
 
@@ -26,6 +29,7 @@ const logger = createLogger('WebPlatform');
 export interface WebPlatformConfig {
   port: number;
   host: string;
+  authToken?: string;
   storage: StorageProvider;
   tools: ToolRegistry;
   configPath: string;
@@ -61,6 +65,9 @@ export class WebPlatform extends PlatformAdapter {
   /** sessionId → 正在处理的 SSE 响应 */
   private pendingResponses = new Map<string, http.ServerResponse>();
 
+  /** 协调器引用，供热重载使用 */
+  private orchestrator?: Orchestrator;
+
   constructor(config: WebPlatformConfig) {
     super();
     this.config = config;
@@ -82,12 +89,23 @@ export class WebPlatform extends PlatformAdapter {
         // CORS 支持
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
           return;
+        }
+
+        // API 路由认证：配置了 authToken 时校验 Bearer Token
+        const url = req.url ?? '/';
+        if (this.config.authToken && url.startsWith('/api/')) {
+          const auth = req.headers['authorization'] ?? '';
+          const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+          if (token !== this.config.authToken) {
+            sendJSON(res, 401, { error: '未授权：缺少或无效的认证令牌' });
+            return;
+          }
         }
 
         try {
@@ -175,10 +193,15 @@ export class WebPlatform extends PlatformAdapter {
     });
   }
 
+  /** 注入 Orchestrator 引用（启动后调用） */
+  setOrchestrator(orch: Orchestrator): void {
+    this.orchestrator = orch;
+  }
+
   // ============ 内部方法 ============
 
   private setupRoutes(): void {
-    const { storage, tools, configPath, llmName, modelName, streamEnabled } = this.config;
+    const { storage, tools, configPath } = this.config;
 
     // 聊天 API
     this.router.post('/api/chat', createChatHandler(this));
@@ -190,20 +213,37 @@ export class WebPlatform extends PlatformAdapter {
     this.router.delete('/api/sessions/:id/messages', sessions.truncateMessages);
     this.router.delete('/api/sessions/:id', sessions.remove);
 
-    // 配置管理 API
-    const config = createConfigHandlers(configPath);
+    // 配置管理 API（带热重载回调）
+    const config = createConfigHandlers(configPath, (mergedConfig) => {
+      if (!this.orchestrator) throw new Error('Orchestrator 未注入');
+      // 重建 LLM 路由器（三层）
+      const tieredConfig = parseTieredLLMConfig(mergedConfig.llm);
+      const newRouter = createLLMRouter(tieredConfig);
+      this.orchestrator.reloadLLM(newRouter);
+      // 更新运行时参数
+      this.orchestrator.reloadConfig({
+        stream: mergedConfig.system?.stream,
+        maxToolRounds: mergedConfig.system?.maxToolRounds,
+        systemPrompt: mergedConfig.system?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      });
+      // 更新本地状态信息（供 /api/status 使用）
+      this.config.llmName = tieredConfig.primary.provider ?? this.config.llmName;
+      this.config.modelName = tieredConfig.primary.model ?? this.config.modelName;
+      this.config.streamEnabled = mergedConfig.system?.stream ?? this.config.streamEnabled;
+    });
     this.router.get('/api/config', config.get);
     this.router.put('/api/config', config.update);
 
-    // 状态 API
-    const statusInfo: StatusInfo = {
-      provider: llmName,
-      model: modelName,
-      tools: tools.getDeclarations().map(d => d.name),
-      stream: streamEnabled,
-      platform: 'web',
-    };
-    this.router.get('/api/status', createStatusHandler(statusInfo));
+    // 状态 API（动态读取，热重载后返回最新值）
+    this.router.get('/api/status', async (_req, res) => {
+      sendJSON(res, 200, {
+        provider: this.config.llmName,
+        model: this.config.modelName,
+        tools: tools.getDeclarations().map(d => d.name),
+        stream: this.config.streamEnabled,
+        platform: 'web',
+      });
+    });
 
     // 部署管理 API
     const deploy = createDeployHandlers({ host: this.config.host, port: this.config.port });
@@ -239,7 +279,7 @@ export class WebPlatform extends PlatformAdapter {
     }
 
     try {
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath);
       if (!stat.isFile()) throw new Error('非文件');
 
       const ext = path.extname(filePath).toLowerCase();
@@ -251,7 +291,7 @@ export class WebPlatform extends PlatformAdapter {
       // SPA 回退：非静态资源路由一律返回 index.html（支持 Vue Router history 模式）
       const indexPath = path.join(this.publicDir, 'index.html');
       try {
-        const indexStat = fs.statSync(indexPath);
+        const indexStat = await fs.promises.stat(indexPath);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': indexStat.size });
         fs.createReadStream(indexPath).pipe(res);
       } catch {

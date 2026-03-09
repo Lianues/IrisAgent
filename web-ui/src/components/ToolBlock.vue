@@ -1,7 +1,7 @@
 <template>
   <div v-if="collapsed" class="tool-block collapsed" :class="type">
     <span class="tool-compact">
-      <span class="tool-compact-icon">{{ type === 'call' ? '⚡' : '✓' }}</span>
+      <AppIcon :name="compactIconName" class="tool-compact-icon" />
       {{ name }}
     </span>
   </div>
@@ -12,7 +12,7 @@
       :aria-expanded="open"
       @click="open = !open"
     >
-      <span class="tool-icon">▶</span>
+      <AppIcon :name="ICONS.common.chevronRight" class="tool-icon" />
       <div class="tool-header-main">
         <span class="tool-label">{{ type === 'call' ? '工具调用' : '工具结果' }}</span>
         <strong class="tool-name">{{ name }}</strong>
@@ -25,6 +25,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import AppIcon from './AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 const props = defineProps<{
   type: 'call' | 'response'
@@ -34,5 +36,6 @@ const props = defineProps<{
 }>()
 
 const open = ref(false)
+const compactIconName = computed(() => (props.type === 'call' ? ICONS.tool.call : ICONS.tool.response))
 const formatted = computed(() => JSON.stringify(props.data ?? null, null, 2))
 </script>

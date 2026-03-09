@@ -8,32 +8,36 @@ call "%~dp0env.bat"
 REM 切换到项目根目录
 pushd "%PROJECT_ROOT%"
 
-REM 检查 node_modules 是否已存在
+REM 检查根目录 node_modules
 if exist "node_modules" (
-    echo [依赖] 已检测到 node_modules，跳过安装。
-    goto :check_build
+    echo [依赖] 已检测到根目录 node_modules，跳过安装。
+) else (
+    echo [依赖] 正在安装根目录依赖...
+    call npm install
+    if %errorlevel% neq 0 (
+        echo [依赖] 错误: 根目录 npm install 失败。
+        popd
+        exit /b 1
+    )
 )
 
-echo [依赖] 正在安装根目录依赖...
-call npm install
-if %errorlevel% neq 0 (
-    echo [依赖] 错误: 根目录 npm install 失败。
+REM 检查 web-ui node_modules（单独检测，避免根目录已装但 web-ui 未装的情况）
+if exist "web-ui\node_modules" (
+    echo [依赖] 已检测到 web-ui node_modules，跳过安装。
+) else (
+    echo [依赖] 正在安装 web-ui 依赖...
+    pushd web-ui
+    call npm install
+    if %errorlevel% neq 0 (
+        echo [依赖] 错误: web-ui npm install 失败。
+        popd
+        popd
+        exit /b 1
+    )
     popd
-    exit /b 1
 )
 
-echo [依赖] 正在安装 web-ui 依赖...
-pushd web-ui
-call npm install
-if %errorlevel% neq 0 (
-    echo [依赖] 错误: web-ui npm install 失败。
-    popd
-    popd
-    exit /b 1
-)
-popd
-
-echo [依赖] 依赖安装完成。
+echo [依赖] 依赖检查完成。
 
 :check_build
 REM 检查是否已构建

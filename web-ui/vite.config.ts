@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     // 开发时代理 API 请求到后端
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': 'http://localhost:8192',
     },
   },
   build: {

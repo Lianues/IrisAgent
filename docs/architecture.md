@@ -92,6 +92,7 @@ npm run dev      # 开发模式
 | [tools.md](./tools.md) | 工具注册层 |
 | [prompt.md](./prompt.md) | 提示词组装层 |
 | [logger.md](./logger.md) | 日志模块 |
+| [config.md](./config.md) | 配置模块 |
 | [deploy.md](./deploy.md) | VPS 部署指南 |
 
 ## 自我升级指南（供 AI 阅读）

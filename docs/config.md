@@ -21,7 +21,8 @@ src/config/
 ├── llm.ts            LLM 配置解析 + 默认值
 ├── platform.ts       平台配置解析
 ├── storage.ts        存储配置解析
-└── system.ts         系统级配置解析
+├── system.ts         系统级配置解析
+└── memory.ts         记忆配置解析
 ```
 
 ## config.yaml 完整结构
@@ -40,8 +41,9 @@ platform:
   telegram:
     token: your-telegram-bot-token
   web:
-    port: 3000
+    port: 8192
     host: 127.0.0.1             # 0.0.0.0 允许外部访问
+    # authToken: your-secret    # 可选，配置后 /api/* 需携带 Authorization: Bearer <token>
 
 storage:
   type: json-file               # json-file | sqlite
@@ -76,7 +78,7 @@ cloudflare:
 | llm.model (claude) | `claude-sonnet-4-6` |
 | llm.baseUrl (claude) | `https://api.anthropic.com` |
 | platform.type | `console` |
-| platform.web.port | `3000` |
+| platform.web.port | `8192` |
 | platform.web.host | `127.0.0.1` |
 | storage.type | `json-file` |
 | storage.dir | `./data/sessions` |

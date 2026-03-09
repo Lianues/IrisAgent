@@ -2,20 +2,20 @@
   <aside class="sidebar" :class="{ open: mobileOpen }">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <span class="sidebar-badge">Workspace</span>
+        <span class="sidebar-badge">Control Center</span>
         <h1 class="logo">IrisClaw</h1>
-        <p class="sidebar-subtitle">以更自然的方式与 AI、工具和上下文协作</p>
+        <p class="sidebar-subtitle">AI Agent Registry · 对话与部署一体化控制台</p>
       </div>
 
       <button class="btn-new-chat" type="button" @click="handleNewChat">
-        <span class="btn-new-icon">＋</span>
+        <AppIcon :name="ICONS.common.add" class="btn-new-icon" />
         <span>新建对话</span>
       </button>
     </div>
 
     <nav class="sidebar-nav" aria-label="主导航">
       <RouterLink class="sidebar-nav-link" to="/" @click="emit('toggle')">
-        <span class="sidebar-nav-icon">💬</span>
+        <AppIcon :name="ICONS.sidebar.chat" class="sidebar-nav-icon" />
         <div class="sidebar-nav-copy">
           <span class="sidebar-nav-label">对话工作台</span>
           <strong>Chat Workspace</strong>
@@ -23,7 +23,7 @@
       </RouterLink>
 
       <RouterLink class="sidebar-nav-link" to="/deploy" @click="emit('toggle')">
-        <span class="sidebar-nav-icon">🚀</span>
+        <AppIcon :name="ICONS.sidebar.deploy" class="sidebar-nav-icon" />
         <div class="sidebar-nav-copy">
           <span class="sidebar-nav-label">部署生成器</span>
           <strong>Deploy Studio</strong>
@@ -36,7 +36,7 @@
 
       <div class="session-list">
         <div v-if="sessions.length === 0" class="sidebar-empty">
-          <div class="sidebar-empty-icon">✦</div>
+          <AppIcon :name="ICONS.sidebar.empty" class="sidebar-empty-icon" />
           <p>还没有历史对话</p>
           <span>点击“新建对话”开始一个全新的工作流。</span>
         </div>
@@ -65,7 +65,7 @@
               aria-label="删除会话"
               @click.stop="handleDelete(id)"
             >
-              ×
+              <AppIcon :name="ICONS.common.close" />
             </button>
           </div>
         </div>
@@ -99,7 +99,7 @@
       </div>
 
       <button class="btn-settings" type="button" @click="emit('open-settings')">
-        <span>⚙</span>
+        <AppIcon :name="ICONS.common.settings" />
         <span>设置中心</span>
       </button>
     </div>
@@ -111,6 +111,8 @@ import { computed, ref, onMounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useSessions } from '../composables/useSessions'
 import { getStatus } from '../api/client'
+import AppIcon from './AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 defineProps<{ mobileOpen: boolean }>()
 const emit = defineEmits<{

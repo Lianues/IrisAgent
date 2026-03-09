@@ -8,7 +8,7 @@
           <p>配置模型连接、系统策略与工具能力，打造你的 AI 工作台。</p>
         </div>
         <button class="btn-close" type="button" aria-label="关闭设置" @click="emit('close')">
-          ×
+          <AppIcon :name="ICONS.common.close" />
         </button>
       </div>
 
@@ -17,35 +17,118 @@
           <div class="settings-section-head">
             <div>
               <h3>模型与凭证</h3>
-              <p>选择提供商并维护访问凭证。</p>
+              <p>配置三层 LLM 路由：Primary 处理首轮对话，Secondary 处理工具后续轮次，Light 预留辅助任务。</p>
             </div>
             <span class="settings-pill">LLM</span>
           </div>
 
-          <div class="settings-grid two-columns">
-            <div class="form-group">
-              <label>LLM 提供商</label>
-              <select v-model="config.provider">
-                <option value="gemini">Gemini</option>
-                <option value="openai-compatible">OpenAI 兼容</option>
-                <option value="claude">Claude</option>
-              </select>
+          <!-- Primary（必填） -->
+          <div class="tier-block">
+            <div class="tier-header" @click="tierOpen.primary = !tierOpen.primary">
+              <span class="tier-arrow" :class="{ open: tierOpen.primary }">▶</span>
+              <span class="tier-label">Primary</span>
+              <span class="tier-desc">主对话 · 首轮</span>
             </div>
-
-            <div class="form-group">
-              <label>模型</label>
-              <input type="text" v-model="config.model" placeholder="例如：gemini-2.0-flash" />
+            <div v-show="tierOpen.primary" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>LLM 提供商</label>
+                  <select v-model="tiers.primary.provider">
+                    <option value="gemini">Gemini</option>
+                    <option value="openai-compatible">OpenAI 兼容</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>模型</label>
+                  <input type="text" v-model="tiers.primary.model" placeholder="例如：gemini-2.0-flash" />
+                </div>
+                <div class="form-group full-width">
+                  <label>API Key</label>
+                  <input type="password" v-model="tiers.primary.apiKey" placeholder="输入或保留已有密钥" />
+                  <p class="field-hint">{{ tierKeyHint(tiers.primary.apiKey) }}</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>API 地址</label>
+                  <input type="text" v-model="tiers.primary.baseUrl" placeholder="模型服务请求地址" />
+                </div>
+              </div>
             </div>
+          </div>
 
-            <div class="form-group full-width">
-              <label>API Key</label>
-              <input type="password" v-model="config.apiKey" placeholder="输入或保留已有密钥" />
-              <p class="field-hint">{{ apiKeyHint }}</p>
+          <!-- Secondary（可选） -->
+          <div class="tier-block">
+            <div class="tier-header" @click="tierOpen.secondary = !tierOpen.secondary">
+              <span class="tier-arrow" :class="{ open: tierOpen.secondary }">▶</span>
+              <span class="tier-label">Secondary</span>
+              <span class="tier-desc">工具后续轮次</span>
+              <label class="toggle-switch tier-toggle" @click.stop>
+                <input type="checkbox" v-model="tierEnabled.secondary" />
+                <span class="toggle-switch-ui"></span>
+              </label>
             </div>
+            <div v-show="tierOpen.secondary && tierEnabled.secondary" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>LLM 提供商</label>
+                  <select v-model="tiers.secondary.provider">
+                    <option value="gemini">Gemini</option>
+                    <option value="openai-compatible">OpenAI 兼容</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>模型</label>
+                  <input type="text" v-model="tiers.secondary.model" placeholder="例如：gpt-4o" />
+                </div>
+                <div class="form-group full-width">
+                  <label>API Key</label>
+                  <input type="password" v-model="tiers.secondary.apiKey" placeholder="输入或保留已有密钥" />
+                  <p class="field-hint">{{ tierKeyHint(tiers.secondary.apiKey) }}</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>API 地址</label>
+                  <input type="text" v-model="tiers.secondary.baseUrl" placeholder="模型服务请求地址" />
+                </div>
+              </div>
+            </div>
+          </div>
 
-            <div class="form-group full-width">
-              <label>API 地址</label>
-              <input type="text" v-model="config.baseUrl" placeholder="模型服务请求地址" />
+          <!-- Light（可选） -->
+          <div class="tier-block">
+            <div class="tier-header" @click="tierOpen.light = !tierOpen.light">
+              <span class="tier-arrow" :class="{ open: tierOpen.light }">▶</span>
+              <span class="tier-label">Light</span>
+              <span class="tier-desc">辅助任务（预留）</span>
+              <label class="toggle-switch tier-toggle" @click.stop>
+                <input type="checkbox" v-model="tierEnabled.light" />
+                <span class="toggle-switch-ui"></span>
+              </label>
+            </div>
+            <div v-show="tierOpen.light && tierEnabled.light" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>LLM 提供商</label>
+                  <select v-model="tiers.light.provider">
+                    <option value="gemini">Gemini</option>
+                    <option value="openai-compatible">OpenAI 兼容</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>模型</label>
+                  <input type="text" v-model="tiers.light.model" placeholder="例如：gemini-2.0-flash" />
+                </div>
+                <div class="form-group full-width">
+                  <label>API Key</label>
+                  <input type="password" v-model="tiers.light.apiKey" placeholder="输入或保留已有密钥" />
+                  <p class="field-hint">{{ tierKeyHint(tiers.light.apiKey) }}</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>API 地址</label>
+                  <input type="text" v-model="tiers.light.baseUrl" placeholder="模型服务请求地址" />
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -219,7 +302,9 @@
                   <span class="cf-dns-name" :title="rec.name">{{ rec.name }}</span>
                   <span class="cf-dns-content" :title="rec.content">{{ rec.content }}</span>
                   <span>{{ rec.proxied ? 'ON' : 'OFF' }}</span>
-                  <button class="btn-dns-delete" type="button" @click="confirmDnsDelete(rec)" title="删除">×</button>
+                  <button class="btn-dns-delete" type="button" @click="confirmDnsDelete(rec)" title="删除" aria-label="删除 DNS 记录">
+                    <AppIcon :name="ICONS.common.close" />
+                  </button>
                 </div>
               </div>
 
@@ -262,10 +347,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { getConfig, updateConfig, getStatus, cfGetStatus, cfSetup, cfListDns, cfAddDns, cfRemoveDns, cfGetSsl, cfSetSsl } from '../api/client'
 import type { CfDnsRecord } from '../api/types'
 import { useTheme, type ThemeMode } from '../composables/useTheme'
+import AppIcon from './AppIcon.vue'
+import { ICONS } from '../constants/icons'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -288,14 +375,62 @@ const themeHint = computed(() => {
 })
 
 const config = reactive({
-  provider: 'gemini',
-  apiKey: '',
-  model: '',
-  baseUrl: '',
   systemPrompt: '',
   maxToolRounds: 10,
   stream: true,
 })
+
+interface TierConfig {
+  provider: string
+  apiKey: string
+  model: string
+  baseUrl: string
+}
+
+function createEmptyTier(provider = 'gemini'): TierConfig {
+  return { provider, apiKey: '', model: '', baseUrl: '' }
+}
+
+const tiers = reactive({
+  primary: createEmptyTier(),
+  secondary: createEmptyTier(),
+  light: createEmptyTier(),
+})
+
+const tierEnabled = reactive({ secondary: false, light: false })
+const tierOpen = reactive({ primary: true, secondary: false, light: false })
+
+/** 初始加载完成前抑制 provider watcher 的副作用 */
+let configLoaded = false
+
+/** Provider 默认值，与 src/config/llm.ts DEFAULTS 保持一致 */
+const PROVIDER_DEFAULTS: Record<string, { model: string; baseUrl: string }> = {
+  'gemini': { model: 'gemini-2.0-flash', baseUrl: 'https://generativelanguage.googleapis.com' },
+  'openai-compatible': { model: 'gpt-4o', baseUrl: 'https://api.openai.com' },
+  'claude': { model: 'claude-sonnet-4-6', baseUrl: 'https://api.anthropic.com' },
+}
+
+/** 切换 Provider 时自动填充默认值（仅在用户手动操作时生效） */
+function watchTierProvider(tier: TierConfig) {
+  watch(() => tier.provider, (newProvider, oldProvider) => {
+    if (!configLoaded) return
+    if (newProvider === oldProvider) return
+    const oldDefaults = PROVIDER_DEFAULTS[oldProvider] ?? { model: '', baseUrl: '' }
+    const newDefaults = PROVIDER_DEFAULTS[newProvider] ?? { model: '', baseUrl: '' }
+    if (!tier.model || tier.model === oldDefaults.model) tier.model = newDefaults.model
+    if (!tier.baseUrl || tier.baseUrl === oldDefaults.baseUrl) tier.baseUrl = newDefaults.baseUrl
+    if (tier.apiKey.startsWith('****')) tier.apiKey = ''
+  })
+}
+watchTierProvider(tiers.primary)
+watchTierProvider(tiers.secondary)
+watchTierProvider(tiers.light)
+
+function tierKeyHint(apiKey: string): string {
+  if (!apiKey) return '未配置 API Key。'
+  if (apiKey.startsWith('****')) return '已读取已保存密钥，保持不变则不会覆盖。'
+  return '将使用当前输入的密钥保存配置。'
+}
 
 const tools = ref<string[]>([])
 const statusText = ref('')
@@ -323,11 +458,6 @@ const cf = reactive({
   newDns: { type: 'A', name: '', content: '', proxied: true },
 })
 
-const apiKeyHint = computed(() => {
-  if (!config.apiKey) return '未配置 API Key。'
-  if (config.apiKey.startsWith('****')) return '已读取已保存密钥，保持不变则不会覆盖。'
-  return '将使用当前输入的密钥保存配置。'
-})
 
 const streamHint = computed(() => {
   return config.stream
@@ -342,17 +472,48 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
+/** 从服务端数据加载单个层级配置 */
+function loadTierFromData(tier: TierConfig, data: any) {
+  if (!data) return
+  // 先设 apiKey/model/baseUrl，最后设 provider —— 因为 provider 的 watcher 会检查这些字段
+  tier.apiKey = data.apiKey || ''
+  tier.model = data.model || ''
+  tier.baseUrl = data.baseUrl || ''
+  tier.provider = data.provider || 'gemini'
+}
+
 onMounted(async () => {
   try {
     const data = await getConfig()
-    config.provider = data.llm?.provider || 'gemini'
-    config.apiKey = data.llm?.apiKey || ''
-    config.model = data.llm?.model || ''
-    config.baseUrl = data.llm?.baseUrl || ''
+    const llm = data.llm || {}
+
+    // 支持三层格式和旧扁平格式
+    if (llm.primary) {
+      loadTierFromData(tiers.primary, llm.primary)
+      if (llm.secondary) {
+        loadTierFromData(tiers.secondary, llm.secondary)
+        tierEnabled.secondary = true
+        tierOpen.secondary = true
+      }
+      if (llm.light) {
+        loadTierFromData(tiers.light, llm.light)
+        tierEnabled.light = true
+        tierOpen.light = true
+      }
+    } else if (llm.provider) {
+      // 旧扁平格式兼容
+      loadTierFromData(tiers.primary, llm)
+    }
+
     config.systemPrompt = data.system?.systemPrompt || ''
-    config.maxToolRounds = data.system?.maxToolRounds || 10
+    config.maxToolRounds = data.system?.maxToolRounds ?? 10
     config.stream = data.system?.stream ?? true
+
+    // 等待 provider watcher 的异步回调执行完毕后再启用副作用
+    await nextTick()
+    configLoaded = true
   } catch {
+    configLoaded = true
     statusText.value = '加载配置失败'
     statusError.value = true
   }
@@ -365,6 +526,19 @@ onMounted(async () => {
   }
 })
 
+/** 构建单个层级的保存 payload（跳过脱敏 apiKey） */
+function buildTierPayload(tier: TierConfig): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    provider: tier.provider,
+    model: tier.model,
+    baseUrl: tier.baseUrl,
+  }
+  if (tier.apiKey && !tier.apiKey.startsWith('****')) {
+    payload.apiKey = tier.apiKey
+  }
+  return payload
+}
+
 async function handleSave() {
   if (saving.value) return
 
@@ -373,13 +547,15 @@ async function handleSave() {
   statusError.value = false
 
   try {
+    const llmPayload: Record<string, unknown> = {
+      primary: buildTierPayload(tiers.primary),
+      // 禁用时显式发送 null，让 deepMerge 删除旧值
+      secondary: tierEnabled.secondary ? buildTierPayload(tiers.secondary) : null,
+      light: tierEnabled.light ? buildTierPayload(tiers.light) : null,
+    }
+
     const result = await updateConfig({
-      llm: {
-        provider: config.provider,
-        apiKey: config.apiKey,
-        model: config.model,
-        baseUrl: config.baseUrl,
-      },
+      llm: llmPayload,
       system: {
         systemPrompt: config.systemPrompt,
         maxToolRounds: config.maxToolRounds,
@@ -388,7 +564,7 @@ async function handleSave() {
     })
 
     if (result.ok) {
-      statusText.value = result.restartRequired ? '已保存，需要重启生效' : '已保存'
+      statusText.value = result.restartRequired ? '已保存，需要重启生效' : '已保存并生效'
       statusError.value = false
     } else {
       statusText.value = '保存失败: ' + (result.error || '未知错误')

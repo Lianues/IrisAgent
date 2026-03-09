@@ -20,7 +20,7 @@
         aria-label="切换会话侧边栏"
         @click="sidebarOpen = !sidebarOpen"
       >
-        <span class="toggle-sidebar-icon">☰</span>
+        <AppIcon :name="ICONS.common.menu" class="toggle-sidebar-icon" />
         <span class="toggle-sidebar-text">会话</span>
       </button>
 
@@ -51,6 +51,8 @@
 import { ref } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import AppIcon from './components/AppIcon.vue'
+import { ICONS } from './constants/icons'
 
 const sidebarOpen = ref(false)
 const settingsOpen = ref(false)

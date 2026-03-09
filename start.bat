@@ -45,13 +45,13 @@ pushd "%PROJECT_ROOT%"
 echo.
 echo ============================================
 echo   IrisClaw 已启动！
-echo   访问地址: http://localhost:3000
+echo   访问地址: http://localhost:8192
 echo   关闭此窗口即可停止服务
 echo ============================================
 echo.
 
 REM 延迟 2 秒后打开浏览器（后台执行，不阻塞 node 启动）
-start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:3000"
+start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8192"
 
 REM 前台运行 node，关闭窗口即终止进程
 node dist/index.js

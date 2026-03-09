@@ -78,6 +78,7 @@ LLMRequest (Gemini 格式)
 1. 在 `formats/` 下新建文件，实现 `FormatAdapter` 接口
 2. 在 `providers/` 下新建文件，写工厂函数（配置 URL + headers + 选哪个 format）
 3. 在 `src/config/types.ts` 和 `src/index.ts` 中加一个 case
+4. 在 `src/config/llm.ts` 的 `DEFAULTS` 和 `web-ui/src/components/SettingsPanel.vue` 的 `PROVIDER_DEFAULTS` 中添加默认 model/baseUrl（前端切换 provider 时自动填充）
 
 不需要碰 transport.ts 和 response.ts。
 

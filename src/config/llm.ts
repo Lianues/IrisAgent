@@ -2,9 +2,9 @@
  * LLM 配置解析
  */
 
-import { LLMConfig } from './types';
+import { LLMConfig, TieredLLMConfig } from './types';
 
-const DEFAULTS: Record<string, Partial<LLMConfig>> = {
+export const DEFAULTS: Record<string, Partial<LLMConfig>> = {
   'gemini': {
     model: 'gemini-2.0-flash',
     baseUrl: 'https://generativelanguage.googleapis.com',
@@ -19,14 +19,39 @@ const DEFAULTS: Record<string, Partial<LLMConfig>> = {
   },
 };
 
-export function parseLLMConfig(raw: any = {}): LLMConfig {
+/** 解析单个 LLM 提供商配置 */
+export function parseSingleLLMConfig(raw: any = {}): LLMConfig {
   const provider = (raw.provider ?? 'gemini') as LLMConfig['provider'];
   const defaults = DEFAULTS[provider] ?? {};
 
   return {
     provider,
     apiKey: raw.apiKey ?? '',
-    model: raw.model ?? defaults.model ?? '',
-    baseUrl: raw.baseUrl ?? defaults.baseUrl ?? '',
+    model: raw.model || defaults.model || '',
+    baseUrl: raw.baseUrl || defaults.baseUrl || '',
   };
+}
+
+/** 解析三层 LLM 配置 */
+export function parseTieredLLMConfig(raw: any = {}): TieredLLMConfig {
+  // 新格式优先（有 primary 字段），再兼容旧扁平格式
+  if (raw.primary) {
+    // 迁移兼容：旧格式的 apiKey 在顶层，deepMerge 后残留；若 primary 内无 apiKey 则继承
+    const primaryRaw = !raw.primary.apiKey && raw.apiKey
+      ? { ...raw.primary, apiKey: raw.apiKey }
+      : raw.primary;
+    const result: TieredLLMConfig = {
+      primary: parseSingleLLMConfig(primaryRaw),
+    };
+    if (raw.secondary) {
+      result.secondary = parseSingleLLMConfig(raw.secondary);
+    }
+    if (raw.light) {
+      result.light = parseSingleLLMConfig(raw.light);
+    }
+    return result;
+  }
+
+  // 旧扁平格式（直接有 provider 字段）
+  return { primary: parseSingleLLMConfig(raw) };
 }

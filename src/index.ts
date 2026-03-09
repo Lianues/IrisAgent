@@ -14,10 +14,7 @@ import { TelegramPlatform } from './platforms/telegram';
 import { WebPlatform } from './platforms/web';
 
 // LLM
-import { LLMProvider } from './llm/providers/base';
-import { createGeminiProvider } from './llm/providers/gemini';
-import { createOpenAICompatibleProvider } from './llm/providers/openai-compatible';
-import { createClaudeProvider } from './llm/providers/claude';
+import { createLLMRouter } from './llm/factory';
 
 // 存储
 import { JsonFileStorage } from './storage/json-file';
@@ -44,32 +41,8 @@ import { Orchestrator } from './core/orchestrator';
 async function main() {
   const config = loadConfig();
 
-  // ---- 1. 创建 LLM 提供商 ----
-  let llm: LLMProvider;
-  switch (config.llm.provider) {
-    case 'openai-compatible':
-      llm = createOpenAICompatibleProvider({
-        apiKey: config.llm.apiKey,
-        model: config.llm.model,
-        baseUrl: config.llm.baseUrl,
-      });
-      break;
-    case 'claude':
-      llm = createClaudeProvider({
-        apiKey: config.llm.apiKey,
-        model: config.llm.model,
-        baseUrl: config.llm.baseUrl,
-      });
-      break;
-    case 'gemini':
-    default:
-      llm = createGeminiProvider({
-        apiKey: config.llm.apiKey,
-        model: config.llm.model,
-        baseUrl: config.llm.baseUrl,
-      });
-      break;
-  }
+  // ---- 1. 创建 LLM 路由器（三层） ----
+  const router = createLLMRouter(config.llm);
 
   // ---- 2. 创建存储 ----
   let storage;
@@ -109,11 +82,12 @@ async function main() {
       platform = new WebPlatform({
         port: config.platform.web.port,
         host: config.platform.web.host,
+        authToken: config.platform.web.authToken,
         storage,
         tools,
         configPath: findConfigFile(),
-        llmName: config.llm.provider,
-        modelName: config.llm.model,
+        llmName: config.llm.primary.provider,
+        modelName: config.llm.primary.model,
         streamEnabled: config.system.stream,
       });
       break;
@@ -128,10 +102,15 @@ async function main() {
   prompt.setSystemPrompt(config.system.systemPrompt || DEFAULT_SYSTEM_PROMPT);
 
   // ---- 6. 创建并启动协调器 ----
-  const orchestrator = new Orchestrator(platform, llm, storage, tools, prompt, {
+  const orchestrator = new Orchestrator(platform, router, storage, tools, prompt, {
     maxToolRounds: config.system.maxToolRounds,
     stream: config.system.stream,
   }, memory);
+
+  // 注入 Orchestrator 到 WebPlatform（支持配置热重载）
+  if (platform instanceof WebPlatform) {
+    platform.setOrchestrator(orchestrator);
+  }
 
   await orchestrator.start();
 }

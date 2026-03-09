@@ -3,19 +3,29 @@
 #  复制此文件为 config.yaml 并填入实际值
 # ==========================================
 
-# LLM 配置
+# LLM 配置（三层路由）
+# primary: 用户主对话（必填）
+# secondary: 工具循环后续轮次（可选，未配置回退到 primary）
+# light: 辅助任务（可选，未配置回退到 secondary → primary）
 llm:
-  # 提供商: gemini | openai-compatible
-  provider: gemini
+  primary:
+    # 提供商: gemini | openai-compatible | claude
+    provider: gemini
+    apiKey: your-api-key-here
+    model: gemini-2.0-flash
+    baseUrl: https://generativelanguage.googleapis.com
 
-  # API 密钥
-  apiKey: your-api-key-here
+  # secondary:
+  #   provider: openai-compatible
+  #   apiKey: your-api-key-here
+  #   model: gpt-4o
+  #   baseUrl: https://api.openai.com
 
-  # 模型名称
-  model: gemini-2.0-flash
-
-  # API 地址
-  baseUrl: https://generativelanguage.googleapis.com
+  # light:
+  #   provider: gemini
+  #   apiKey: your-api-key-here
+  #   model: gemini-2.0-flash
+  #   baseUrl: https://generativelanguage.googleapis.com
 
 # 平台配置
 platform:
@@ -29,10 +39,13 @@ platform:
     token: your-telegram-bot-token
 
   web:
-    port: 3000
+    port: 8192
     # 127.0.0.1 = 仅本机访问（配合 Nginx 反代使用，推荐）
     # 0.0.0.0   = 允许所有网络接口访问（本地开发/无反代时使用）
     host: 127.0.0.1
+    # API 认证令牌（可选，未配置时不启用认证）
+    # 配置后请求 /api/* 需携带 Authorization: Bearer <token>
+    # authToken: your-secret-token-here
 
 # 存储配置
 storage:
