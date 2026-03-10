@@ -1,13 +1,11 @@
 node_modules/
 dist/
-data/
+data/*
+!data/configs.example/
 src/platforms/web/web-ui/dist/
 src/platforms/web/web-ui/node_modules/
 *.log
 
-# 配置文件（含密钥）
-config.yaml
-config.yml
 .env
 
 # 便携版 Node.js（启动脚本自动下载）

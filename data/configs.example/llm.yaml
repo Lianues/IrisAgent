@@ -1,0 +1,23 @@
+# LLM配置（三层路由）
+# primary: 用户主对话（必填）
+# secondary: 工具循环后续轮次（可选，未配置回退到 primary）
+# light: 辅助任务（可选，未配置回退到 secondary → primary）
+
+primary:
+  # 提供商: gemini | openai-compatible | claude
+  provider: gemini
+  apiKey: your-api-key-here
+  model: gemini-2.0-flash
+  baseUrl: https://generativelanguage.googleapis.com
+
+# secondary:
+#   provider: openai-compatible
+#   apiKey: your-api-key-here
+#   model: gpt-4o
+#   baseUrl: https://api.openai.com
+
+# light:
+#   provider: gemini
+#   apiKey: your-api-key-here
+#   model: gemini-2.0-flash
+#   baseUrl: https://generativelanguage.googleapis.com

@@ -1,0 +1,20 @@
+# 平台配置
+
+# 类型: console | discord | telegram | web
+type: console
+
+discord:
+  token: your-discord-bot-token
+
+telegram:
+  token: your-telegram-bot-token
+
+web:
+  port: 8192
+  # 127.0.0.1 = 仅本机访问（配合 Nginx 反代使用，推荐）
+  # 0.0.0.0   = 允许所有网络接口访问（本地开发/无反代时使用）
+  host: 127.0.0.1
+  # API 全局认证令牌（可选，未配置时不启用）
+  # authToken: your-secret-token-here
+  #管理接口认证令牌（推荐）
+  # managementToken: your-management-token-here

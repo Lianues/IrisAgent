@@ -1,0 +1,16 @@
+# 系统配置
+
+# 系统提示词（留空则使用默认）
+systemPrompt: ""
+
+# 工具执行最大轮次
+maxToolRounds: 10
+
+# 流式输出
+stream: true
+
+# 子代理最大嵌套深度（默认 3）
+# maxAgentDepth: 3
+
+# 默认模式（需与 modes.yaml 中定义的名称对应）
+# defaultMode: code

@@ -1,0 +1,10 @@
+# 存储配置
+
+# 类型: json-file | sqlite
+type: json-file
+
+# 会话数据目录
+dir: ./data/sessions
+
+# SQLite 数据库路径（type 为 sqlite 时使用）
+# dbPath: ./data/storage.db

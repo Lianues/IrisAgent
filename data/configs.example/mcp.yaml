@@ -1,0 +1,14 @@
+# MCP 服务器配置
+# 连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表
+
+# servers:
+#   # stdio 传输示例（本地进程）
+#   filesystem:
+#     transport: stdio
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+#
+#   # HTTP 传输示例（远程服务器）
+#   remote_tools:
+#     transport: streamable-http
+#     url: https://mcp.example.com/sse
