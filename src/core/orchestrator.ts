@@ -2,9 +2,10 @@
  * 核心协调器
  *
  * 串联所有模块，管理完整的消息处理流程：
- *   用户消息 → 存储 → 提示词组装 → LLM 调用 → 工具执行循环 → 回复用户
+ *   用户消息→ 存储 → ToolLoop（LLM + 工具循环） → 存储 → 回复用户
  *
- * 协调器不包含任何业务逻辑，仅负责流程编排。
+ * 协调器本身只负责 I/O 编排（平台、存储、流式输出、记忆），
+ * 核心计算循环委托给 ToolLoop。
  */
 
 import { PlatformAdapter } from '../platforms/base';
@@ -12,15 +13,15 @@ import { LLMRouter, LLMTier } from '../llm/router';
 import { StorageProvider } from '../storage/base';
 import { ToolRegistry } from '../tools/registry';
 import { ToolStateManager } from '../tools/state';
-import { buildExecutionPlan, executePlan } from '../tools/scheduler';
 import { PromptAssembler } from '../prompt/assembler';
-import { MemoryProvider } from '../memory/base';
+import {MemoryProvider } from '../memory/base';
 import { ModeRegistry, ModeDefinition, applyToolFilter } from '../modes';
+import { ToolLoop, ToolLoopConfig, LLMCaller } from './tool-loop';
 import { createLogger } from '../logger';
 import {
   Content, Part, LLMRequest, UsageMetadata,
   isFunctionCallPart, isTextPart,
-  FunctionCallPart, FunctionResponsePart,
+  FunctionCallPart,
 } from '../types';
 
 const logger = createLogger('Orchestrator');
@@ -43,15 +44,18 @@ export class Orchestrator {
   private router: LLMRouter;
   private storage: StorageProvider;
   private tools: ToolRegistry;
-  private toolState: ToolStateManager;
   private prompt: PromptAssembler;
-  private maxToolRounds: number;
   private stream: boolean;
   private autoRecall: boolean;
   private agentGuidance?: string;
   private memory?: MemoryProvider;
   private modeRegistry?: ModeRegistry;
   private defaultMode?: string;
+
+  /** 核心工具循环实例 */
+  private toolLoop: ToolLoop;
+  /** ToolLoop 配置（可变引用，支持热重载） */
+  private toolLoopConfig: ToolLoopConfig;
 
   constructor(
     platform: PlatformAdapter,
@@ -68,15 +72,17 @@ export class Orchestrator {
     this.router = router;
     this.storage = storage;
     this.tools = tools;
-    this.toolState = toolState;
     this.prompt = prompt;
-    this.maxToolRounds = config?.maxToolRounds ?? 10;
     this.stream = config?.stream ?? false;
     this.autoRecall = config?.autoRecall ?? true;
     this.agentGuidance = config?.agentGuidance;
     this.memory = memory;
     this.modeRegistry = modeRegistry;
     this.defaultMode = config?.defaultMode;
+
+    // 创建 ToolLoop（配置对象保留引用，热重载时可直接修改）
+    this.toolLoopConfig = { maxRounds: config?.maxToolRounds ?? 10 };
+    this.toolLoop = new ToolLoop(tools, prompt, this.toolLoopConfig, toolState);
   }
 
   /** 启动：注册消息回调并启动平台 */
@@ -95,8 +101,7 @@ export class Orchestrator {
       }
     });
 
-    // 将工具状态管理器传递给平台（平台可选择监听以实时显示状态）
-    this.platform.setToolStateManager(this.toolState);
+    this.platform.setToolStateManager(this.toolLoop['toolState']!);
 
     this.platform.onClear(async (sessionId) => {
       await this.storage.clearHistory(sessionId);
@@ -134,9 +139,9 @@ export class Orchestrator {
   /** 热重载：更新运行时参数 */
   reloadConfig(opts: { stream?: boolean; maxToolRounds?: number; systemPrompt?: string }): void {
     if (opts.stream !== undefined) this.stream = opts.stream;
-    if (opts.maxToolRounds !== undefined) this.maxToolRounds = opts.maxToolRounds;
+    if (opts.maxToolRounds !== undefined) this.toolLoopConfig.maxRounds = opts.maxToolRounds;
     if (opts.systemPrompt !== undefined) this.prompt.setSystemPrompt(opts.systemPrompt);
-    logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.maxToolRounds}`);
+    logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.toolLoopConfig.maxRounds}`);
   }
 
   /** 获取路由器引用 */
@@ -147,13 +152,15 @@ export class Orchestrator {
   // ============ 核心流程 ============
 
   private async handleMessage(sessionId: string, userParts: Part[]): Promise<void> {
-    // 1. 存储用户消息
-    await this.storage.addMessage(sessionId, { role: 'user', parts: userParts });
+    // 1. 加载历史并追加用户消息
+    const history = await this.storage.getHistory(sessionId);
+    const historyLenBefore = history.length;
+    history.push({ role: 'user', parts: userParts });
 
-    // 1.5 构建 per-request 额外上下文
+    // 2. 构建 per-request 额外上下文
     let extraParts: Part[] | undefined;
 
-    // 记忆自动召回（autoRecall=false 时跳过，由 recall agent 代替）
+    // 记忆自动召回
     if (this.memory && this.autoRecall) {
       try {
         const userText = userParts.filter(isTextPart).map(p => p.text).join('');
@@ -166,74 +173,53 @@ export class Orchestrator {
       }
     }
 
-    // Agent 协调指导（作为 extraParts 注入，不受 setSystemPrompt 热重载影响）
+    // Agent 协调指导
     if (this.agentGuidance) {
       if (!extraParts) extraParts = [];
       extraParts.push({ text: this.agentGuidance });
     }
 
-    // 1.6 解析当前模式（决定工具集和提示词覆盖）
+    // 模式提示词覆盖
     const mode = this.resolveMode();
-    const effectiveTools = mode ? applyToolFilter(mode, this.tools) : this.tools;
     if (mode?.systemPrompt) {
       if (!extraParts) extraParts = [];
       extraParts.unshift({ text: mode.systemPrompt });
     }
 
-    // 2. LLM 对话 + 工具执行循环
-    let rounds = 0;
-    while (rounds < this.maxToolRounds) {
-      rounds++;
-
-      // 决定本轮使用的 LLM 层级：第 1 轮用 primary，后续用 secondary
-      const tier: LLMTier = rounds === 1 ? 'primary' : 'secondary';
-
-      // 2a. 获取历史并组装请求
-      const history = await this.storage.getHistory(sessionId);
-      const request = this.prompt.assemble(history, effectiveTools.getDeclarations(), undefined, extraParts);
-
-      // 2b. 调用 LLM（流式或非流式）
-      let modelContent: Content;
-      let textAlreadySent = false;
-
+    // 3. 构建 LLM 调用函数（注入流式/非流式行为）
+    const callLLM: LLMCaller = async (request, tier) => {
       if (this.stream) {
         const result = await this.callLLMStream(sessionId, request, tier);
-        modelContent = result.content;
-        textAlreadySent = true;
+        return result.content;
       } else {
         const response = await this.router.chat(request, tier);
-    modelContent = response.content;
+        const content = response.content;
         if (response.usageMetadata) {
-          modelContent.usageMetadata = response.usageMetadata;
+          content.usageMetadata = response.usageMetadata;
         }
+        return content;
       }
+    };
 
-      // 2c. 存储模型回复
-      await this.storage.addMessage(sessionId, modelContent);
-
-      // 2d. 检查工具调用
-      const functionCalls = modelContent.parts.filter(isFunctionCallPart);
-
-      if (functionCalls.length === 0) {
-        if (!textAlreadySent) {
-          const text = modelContent.parts.filter(isTextPart).map(p => p.text).join('');
-          if (text) await this.platform.sendMessage(sessionId, text);
-        }
-        return;
-      }
-
-      // 2e. 发送伴随工具调用的文本（流式模式已在 callLLMStream 中处理）
-      if (!textAlreadySent) {
-        const text = modelContent.parts.filter(isTextPart).map(p => p.text).join('');
-        if (text) await this.platform.sendMessage(sessionId, text);
-      }
-
-      // 2f. 执行工具
-      await this.executeTools(sessionId, functionCalls);
+    // 4. 解析模式工具过滤（创建临时 ToolLoop 或使用默认）
+    let loop = this.toolLoop;
+    if (mode?.tools) {
+      const filteredTools = applyToolFilter(mode, this.tools);
+      loop = new ToolLoop(filteredTools, this.prompt, this.toolLoopConfig, this.toolLoop['toolState']);
     }
 
-    logger.warn(`工具执行轮次超过上限 (${this.maxToolRounds})`);
-    await this.platform.sendMessage(sessionId, '工具执行轮次超过上限，已中断。');
+    // 5. 执行工具循环
+    const result = await loop.run(history, callLLM, { extraParts });
+
+    // 6. 持久化新增消息
+    for (let i = historyLenBefore; i < result.history.length; i++) {
+      await this.storage.addMessage(sessionId, result.history[i]);
+    }
+
+    // 7. 发送最终文本（非流式模式）
+    if (!this.stream && result.text) {
+      await this.platform.sendMessage(sessionId, result.text);
+    }
   }
 
   // ============ 流式调用 ============
@@ -253,7 +239,6 @@ export class Orchestrator {
 
     const llmStream = this.router.chatStream(request, tier);
 
-    //包装为纯文本流，交给平台输出
     const textStream = (async function* () {
       for await (const chunk of llmStream) {
         if (chunk.textDelta) {
@@ -268,7 +253,6 @@ export class Orchestrator {
 
     await this.platform.sendMessageStream(sessionId, textStream);
 
-    // 累积为完整 Content
     const parts: Part[] = [];
     if (fullText) {
       const textPart: any = { text: fullText };
@@ -284,32 +268,10 @@ export class Orchestrator {
     return { content };
   }
 
-  // ============ 工具执行 ============
-
-  private async executeTools(sessionId: string, functionCalls: FunctionCallPart[]): Promise<void> {
-    // 1. 创建所有 invocation（状态 queued，UI 可立即展示）
-    const invocations = functionCalls.map(call =>
-      this.toolState.create(
-        call.functionCall.name,
-        call.functionCall.args as Record<string, unknown>,
-        'queued',
-      ),
-    );
-    const invocationIds = invocations.map(inv => inv.id);
-
-    // 2. 分批调度执行（连续只读工具并行，其余串行）
-    const plan = buildExecutionPlan(functionCalls, this.tools);
-    const responseParts = await executePlan(functionCalls, plan, invocationIds, this.tools, this.toolState);
-
-    await this.storage.addMessage(sessionId, { role: 'user', parts: responseParts });
-  }
-
   // ============ 模式解析 ============
 
-  /** 解析当前生效的模式定义 */
   private resolveMode(): ModeDefinition | undefined {
     if (!this.defaultMode || !this.modeRegistry) return undefined;
     return this.modeRegistry.get(this.defaultMode);
   }
 }
-

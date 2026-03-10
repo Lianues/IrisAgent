@@ -26,7 +26,7 @@ const logger = createLogger('ToolScheduler');
 export interface ExecutionBatch {
   /** 此批次包含的调用索引（对应原始 functionCalls 数组） */
   indices: number[];
-  /** 此批次是否并行执行 */
+ /** 此批次是否并行执行 */
   parallel: boolean;
 }
 
@@ -52,11 +52,9 @@ export function buildExecutionPlan(
     const canParallel = tool?.parallel === true;
 
     if (!canParallel) {
-      // 串行工具：独占一批
       batches.push({ indices: [i], parallel: false });
       i++;
     } else {
-      // 并行工具：累积连续的 parallel=true
       const batch: number[] = [];
       while (i < calls.length) {
         const t = registry.get(calls[i].functionCall.name);
@@ -74,23 +72,27 @@ export function buildExecutionPlan(
 // ============ 执行 ============
 
 /**
- * 执行单个工具调用，管理 ToolStateManager 状态转换。
+ * 执行单个工具调用，可选管理 ToolStateManager 状态转换。
  */
 async function executeSingle(
   call: FunctionCallPart,
-  invocationId: string,
   registry: ToolRegistry,
-  toolState: ToolStateManager,
+  toolState?: ToolStateManager,
+  invocationId?: string,
 ): Promise<FunctionResponsePart> {
-  toolState.transition(invocationId, 'executing');
-  logger.info(`执行工具: ${call.functionCall.name} (${invocationId})`);
+  if (toolState && invocationId) {
+    toolState.transition(invocationId, 'executing');
+  }
+  logger.info(`执行工具: ${call.functionCall.name}${invocationId ? ` (${invocationId})` : ''}`);
 
   try {
     const result = await registry.execute(
       call.functionCall.name,
       call.functionCall.args as Record<string, unknown>,
     );
-    toolState.transition(invocationId, 'success', { result });
+    if (toolState && invocationId) {
+      toolState.transition(invocationId, 'success', { result });
+    }
     return {
       functionResponse: {
         name: call.functionCall.name,
@@ -99,8 +101,10 @@ async function executeSingle(
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    toolState.transition(invocationId, 'error', { error: errorMsg });
-    logger.error(`工具执行失败: ${call.functionCall.name} (${invocationId}):`, errorMsg);
+    if (toolState && invocationId) {
+      toolState.transition(invocationId, 'error', { error: errorMsg });
+    }
+    logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
     return {
       functionResponse: {
         name: call.functionCall.name,
@@ -111,41 +115,39 @@ async function executeSingle(
 }
 
 /**
- * 按执行计划执行所有工具调用。
+ *按执行计划执行所有工具调用。
  *
- * 调用方先通过 ToolStateManager.create() 创建所有 invocation（状态 queued），
- * 然后将 invocation ID 数组和执行计划一起传入。
+ * ToolStateManager 和 invocationIds 均可选：
+ *   - 提供时：维护工具状态生命周期（queued → executing → success/error）
+ *   - 省略时：纯执行，无状态追踪（适用于子代理、CLI 等场景）
  *
  * 返回的 responseParts 保持与原始 calls 相同的顺序。
  */
 export async function executePlan(
   calls: FunctionCallPart[],
   plan: ExecutionBatch[],
-  invocationIds: string[],
   registry: ToolRegistry,
-  toolState: ToolStateManager,
+  toolState?: ToolStateManager,
+  invocationIds?: string[],
 ): Promise<FunctionResponsePart[]> {
-  // 预分配结果数组，保证顺序与原始 calls 一致
   const responseParts: FunctionResponsePart[] = new Array(calls.length);
 
   for (const batch of plan) {
     if (batch.parallel && batch.indices.length > 1) {
-      // 并行执行
       const names = batch.indices.map(i => calls[i].functionCall.name).join(', ');
       logger.info(`并行执行 ${batch.indices.length} 个工具: [${names}]`);
 
       const results = await Promise.all(
         batch.indices.map(i =>
-          executeSingle(calls[i], invocationIds[i], registry, toolState)
+          executeSingle(calls[i], registry, toolState, invocationIds?.[i])
         ),
       );
       for (let j = 0; j < batch.indices.length; j++) {
         responseParts[batch.indices[j]] = results[j];
       }
     } else {
-      // 串行执行
       for (const i of batch.indices) {
-        responseParts[i] = await executeSingle(calls[i], invocationIds[i], registry, toolState);
+        responseParts[i] = await executeSingle(calls[i],registry, toolState, invocationIds?.[i]);
       }
     }
   }

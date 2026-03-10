@@ -3,14 +3,18 @@
  *
  * 主 LLM 通过此工具创建独立的子 Agent，
  * 每个子 Agent 拥有独立上下文、独立工具集、独立工具循环。
+ *
+ * 子代理直接复用 ToolLoop（与 Orchestrator/CLI 相同的核心引擎），
+ * 支持真正的嵌套自我调用。
  */
 
 import { ToolDefinition } from '../../types';
 import { LLMRouter } from '../../llm/router';
 import { ToolRegistry } from '../registry';
 import { AgentTypeRegistry } from '../../core/agent-types';
-import { AgentExecutor } from '../../core/agent-executor';
-import { ModeRegistry, ModeDefinition, applyToolFilter } from '../../modes';
+import { ToolLoop, LLMCaller } from '../../core/tool-loop';
+import { PromptAssembler } from '../../prompt/assembler';
+import { ModeRegistry, applyToolFilter } from '../../modes';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('AgentTool');
@@ -21,18 +25,17 @@ export interface AgentToolDeps {
   tools: ToolRegistry;
   agentTypes: AgentTypeRegistry;
   maxDepth: number;
-  /** 模式注册表（可选，支持子代理指定模式） */
+  /** 模式注册表（可选） */
   modeRegistry?: ModeRegistry;
 }
 
 /**
  * 创建 agent 工具
  *
- * @param deps        依赖注入
- * @param currentDepth 当前嵌套深度（0 = 顶层，由主 Orchestrator 调用）
+ * @param deps         依赖注入
+ * @param currentDepth 当前嵌套深度（0 = 顶层）
  */
 export function createAgentTool(deps: AgentToolDeps, currentDepth: number = 0): ToolDefinition {
-  // 构建包含各类型说明的详细描述
   const typeDescriptions = deps.agentTypes.getAll()
     .map(t => `  - ${t.name}: ${t.description}`)
     .join('\n');
@@ -53,7 +56,7 @@ export function createAgentTool(deps: AgentToolDeps, currentDepth: number = 0): 
           agent_type: {
             type: 'string',
             description: '子代理类型（默认 general-purpose）',
-          },
+       },
           mode: {
             type: 'string',
             description: '子代理运行模式（可选，影响提示词和可用工具集）',
@@ -79,46 +82,61 @@ export function createAgentTool(deps: AgentToolDeps, currentDepth: number = 0): 
         return { error: `未知的子代理类型: ${typeName}。可用类型: ${deps.agentTypes.list().join(', ')}` };
       }
 
-      // 构建子工具集
+      // 构建子工具集（根据 AgentType 配置过滤）
       let subTools: ToolRegistry;
       if (typeConfig.allowedTools) {
         subTools = deps.tools.createSubset(typeConfig.allowedTools);
       } else if (typeConfig.excludedTools) {
         subTools = deps.tools.createFiltered(typeConfig.excludedTools);
       } else {
-        subTools = deps.tools.createFiltered(['agent']);
+        subTools = deps.tools.createFiltered([]);
       }
 
-      // 如果指定了模式，在 AgentType 过滤后再叠加模式过滤
+      // 叠加模式过滤
       let subSystemPrompt = typeConfig.systemPrompt;
       if (modeName && deps.modeRegistry) {
-        const mode = deps.modeRegistry.get(modeName);
-   if (mode) {
-          subTools = applyToolFilter(mode, subTools);
-          if (mode.systemPrompt) {
-            subSystemPrompt = mode.systemPrompt + '\n\n' + subSystemPrompt;
+        const modeConfig = deps.modeRegistry.get(modeName);
+        if (modeConfig) {
+          subTools = applyToolFilter(modeConfig, subTools);
+          if (modeConfig.systemPrompt) {
+            subSystemPrompt = modeConfig.systemPrompt + '\n\n' + subSystemPrompt;
           }
         } else {
           logger.warn(`子代理指定的模式 "${modeName}" 未找到，忽略`);
         }
       }
 
+      // 注入深度递增的 agent 工具（实现真正的嵌套自我调用）
+      if (currentDepth + 1 < deps.maxDepth) {
+        subTools.unregister('agent');
+        subTools.register(createAgentTool(deps, currentDepth + 1));
+      }else {
+        subTools.unregister('agent');
+      }
+
       logger.info(`创建子代理: type=${typeName} mode=${modeName ?? 'none'} depth=${currentDepth + 1}/${deps.maxDepth} 工具数=${subTools.size}`);
 
+      // 创建 ToolLoop（与 Orchestrator 复用同一引擎）
+      const subPrompt = new PromptAssembler();
+      subPrompt.setSystemPrompt(subSystemPrompt);
 
-      // 创建并执行子 Agent
-      const executor = new AgentExecutor(
-        deps.getRouter(),
-        subTools,
-        subSystemPrompt,
-        typeConfig.tier,
-        typeConfig.maxToolRounds,
-      );
+      const loop = new ToolLoop(subTools, subPrompt, {
+        maxRounds: typeConfig.maxToolRounds,
+      });
+
+      const callLLM: LLMCaller = async (request, tier) => {
+        const response = await deps.getRouter().chat(request, tier);
+        return response.content;
+      };
 
       try {
-        const result = await executor.execute(prompt);
+        const result = await loop.run(
+          [{ role: 'user', parts: [{ text: prompt }] }],
+          callLLM,
+          { primaryTier: typeConfig.tier, secondaryTier: typeConfig.tier },
+        );
         logger.info(`子代理完成: type=${typeName}`);
-        return { result };
+        return { result: result.text };
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         logger.error(`子代理执行失败: ${errorMsg}`);
