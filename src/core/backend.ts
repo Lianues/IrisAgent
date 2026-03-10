@@ -54,11 +54,13 @@ export interface BackendEvents {
   /** 流式文本块 */
   'stream:chunk': (sessionId: string, chunk: string) => void;
   /** 流式段结束 */
-  'stream:end': (sessionId: string) => void;
+  'stream:end': (sessionId: string, usage?: UsageMetadata) => void;
   /** 工具状态变更 */
   'tool:update': (sessionId: string, invocations: ToolInvocation[]) => void;
   /** 处理出错 */
   'error': (sessionId: string, error: string) => void;
+  /** Token 用量（每轮 LLM 调用后发出） */
+  'usage': (sessionId: string, usage: UsageMetadata) => void;
 }
 
 // ============ Backend 类 ============
@@ -310,6 +312,7 @@ export class Backend extends EventEmitter {
         const content = response.content;
         if (response.usageMetadata) {
           content.usageMetadata = response.usageMetadata;
+          this.emit('usage', sessionId, response.usageMetadata);
         }
         return content;
       }
@@ -366,7 +369,10 @@ export class Backend extends EventEmitter {
       if (chunk.thoughtSignature) thoughtSignature = chunk.thoughtSignature;
     }
 
-    this.emit('stream:end', sessionId);
+    this.emit('stream:end', sessionId, usageMetadata);
+    if (usageMetadata) {
+      this.emit('usage', sessionId, usageMetadata);
+    }
 
     const parts: Part[] = [];
     if (fullText) {

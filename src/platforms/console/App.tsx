@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, Static, useInput, useStdout } from 'ink';
+import { UsageMetadata } from '../../types';
 import Gradient from 'ink-gradient';
 import { ToolInvocation } from '../../types';
 import { SessionMeta } from '../../storage/base';
@@ -26,6 +27,7 @@ export interface AppHandle {
   setGenerating(generating: boolean): void;
   clearMessages(): void;
   commitTools(): void;
+  setUsage(usage: UsageMetadata): void;
 }
 
 interface AppProps {
@@ -48,6 +50,8 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
   const [isStreaming, setIsStreaming] = useState(false);
   const [toolInvocations, setToolInvocations] = useState<ToolInvocation[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [lastUsage, setLastUsage] = useState<UsageMetadata | null>(null);
+  const [contextTokens, setContextTokens] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [sessionList, setSessionList] = useState<SessionMeta[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -161,6 +165,11 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
         toolInvocationsRef.current = [];
         setToolInvocations([]);
       },
+
+      setUsage(usage: UsageMetadata) {
+        setLastUsage(usage);
+        setContextTokens(usage.totalTokenCount ?? 0);
+    },
     };
     onReady(handle);
   }, [onReady]);
@@ -332,7 +341,13 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
         <Text wrap="truncate-end">
           <Text dimColor>{'\u2500'.repeat(Math.max(3, termWidth - 6))}</Text>
         </Text>
-        <Text dimColor>MODE: {(modeName ?? 'normal').toUpperCase()}</Text>
+        <Box>
+          <Text dimColor>MODE: {(modeName ?? 'normal').toUpperCase()}</Text>
+          <Text dimColor>  CTX: {contextTokens > 0 ? contextTokens.toLocaleString() : '-'}</Text>
+          {lastUsage && (
+            <Text dimColor>  IN: {lastUsage.promptTokenCount?.toLocaleString() ?? '-'} OUT: {lastUsage.candidatesTokenCount?.toLocaleString() ?? '-'}</Text>
+          )}
+        </Box>
         <Text dimColor>{process.cwd()}</Text>
         <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
       </Box>

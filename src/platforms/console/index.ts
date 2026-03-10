@@ -9,7 +9,7 @@ import { render, Instance } from 'ink';
 import { PlatformAdapter } from '../base';
 import { Backend } from '../../core/backend';
 import { SessionMeta } from '../../storage/base';
-import { ToolInvocation } from '../../types';
+import { ToolInvocation, UsageMetadata } from '../../types';
 import { setGlobalLogLevel, LogLevel } from '../../logger/index';
 import { App, AppHandle } from './App';
 
@@ -81,6 +81,12 @@ export class ConsolePlatform extends PlatformAdapter {
     this.backend.on('error', (sid: string, error: string) => {
       if (sid === this.sessionId) {
         this.appHandle?.addMessage('assistant', `!! CRITICAL_ERROR: ${error}`);
+      }
+    });
+
+    this.backend.on('usage', (sid: string, usage: UsageMetadata) => {
+      if (sid === this.sessionId) {
+        this.appHandle?.setUsage(usage);
       }
     });
 
