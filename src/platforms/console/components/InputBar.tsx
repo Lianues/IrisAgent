@@ -18,6 +18,7 @@ export interface Command {
 export const COMMANDS: Command[] = [
   { name: '/new',  description: '新建对话' },
   { name: '/load', description: '加载历史对话' },
+  { name: '/sh',   description: '执行命令（如 cd、dir、git 等）' },
   { name: '/exit', description: '退出应用' },
 ];
 
@@ -56,12 +57,16 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
       </Box>
       {filtered.length > 0 && (
         <Box flexDirection="column" paddingLeft={2}>
-          {filtered.map(cmd => (
+          {filtered.map(cmd => {
+            const maxLen = Math.max(...filtered.map(c => c.name.length));
+            const padded = cmd.name.padEnd(maxLen);
+            return (
             <Text key={cmd.name}>
-              <Text color="cyan">{cmd.name}</Text>
+              <Text color="cyan">{padded}</Text>
               <Text dimColor>  {cmd.description}</Text>
             </Text>
-          ))}
+            );
+          })}
         </Box>
       )}
     </Box>

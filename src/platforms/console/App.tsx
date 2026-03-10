@@ -34,6 +34,7 @@ interface AppProps {
   onNewSession: () => void;
   onLoadSession: (id: string) => Promise<void>;
   onListSessions: () => Promise<SessionMeta[]>;
+  onRunCommand: (cmd: string) => { output: string; cwd: string };
   onExit: () => void;
   modeName?: string;
 }
@@ -41,7 +42,7 @@ interface AppProps {
 /** 视图模式 */
 type ViewMode = 'chat' | 'session-list';
 
-export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSessions, onExit, modeName }: AppProps) {
+export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSessions, onRunCommand, onExit, modeName }: AppProps) {
   const [messages, setMessages] =useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -185,8 +186,20 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
       });
       return;
     }
+    if (text.startsWith('/sh ') || text === '/sh') {
+      const cmd = text.slice(4).trim();
+      if (!cmd) return;
+      try {
+        const result = onRunCommand(cmd);
+        const display = result.output || '(无输出)';
+        setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant' as const, parts: [{ type: 'text' as const, text: display }] }]);
+      } catch (err: any) {
+        setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant' as const, parts: [{ type: 'text' as const, text: `执行失败: ${err.message}` }] }]);
+      }
+      return;
+    }
     onSubmit(text);
-  }, [onSubmit, onNewSession, onListSessions, onExit]);
+  }, [onSubmit, onNewSession, onListSessions, onRunCommand, onExit]);
 
   // ============ 键盘输入 ============
 

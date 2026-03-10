@@ -30,10 +30,16 @@ import { createMCPManager, MCPManager } from './mcp';
 import { ToolRegistry } from './tools/registry';
 import { ToolStateManager } from './tools/state';
 import { getCurrentTime, calculator } from './tools/internal/example';
-import { readFile } from './tools/internal/read-file';
-import { searchReplace } from './tools/internal/search-replace';
+import { readFile } from './tools/internal/read_file';
+import { searchReplace } from './tools/internal/search_replace';
 import { terminal } from './tools/internal/terminal';
-import { applyDiff } from './tools/internal/apply-diff';
+import { applyDiff } from './tools/internal/apply_diff';
+import { writeFile } from './tools/internal/write_file';
+import { listFiles } from './tools/internal/list_files';
+import { deleteFile } from './tools/internal/delete_file';
+import { createDirectory } from './tools/internal/create_directory';
+import { insertCode } from './tools/internal/insert_code';
+import { deleteCode } from './tools/internal/delete_code';
 
 // 子代理
 import { SubAgentTypeRegistry, createDefaultSubAgentTypes, buildSubAgentGuidance, createSubAgentTool } from './tools/internal/sub-agent';
@@ -74,7 +80,7 @@ async function main() {
 
   // ---- 3. 注册工具 ----
   const tools = new ToolRegistry();
-  tools.registerAll([getCurrentTime, calculator, readFile, searchReplace, terminal, applyDiff]);
+  tools.registerAll([getCurrentTime, calculator, readFile, writeFile, applyDiff, searchReplace, terminal, listFiles, deleteFile, createDirectory, insertCode, deleteCode]);
   if (memory) {
     tools.registerAll(createMemoryTools(memory));
   }

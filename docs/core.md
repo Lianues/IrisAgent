@@ -78,6 +78,14 @@ new Backend(
 | `listSessions` | `() => Promise<string[]>` | 列出所有会话 ID |
 | `truncateHistory` | `(sessionId: string, keepCount: number) => Promise<void>` | 截断历史，只保留前 N 条 |
 
+### 工作目录
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `setCwd` | `(dirPath: string) => void` | 切换工作目录（支持相对/绝对路径，含 Windows 盘符，目录不存在时抛错） |
+| `getCwd` | `() => string` | 获取当前工作目录 |
+| `runCommand` | `(cmd: string) => { output, cwd }` | 执行命令。自动拦截 `cd` 改为 `process.chdir()`，其余命令通过子进程执行。超时 30 秒。 |
+
 ### 内部引用
 
 供特殊场景使用（如 Web 平台的热重载、状态查询）。

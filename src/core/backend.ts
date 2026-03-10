@@ -11,6 +11,9 @@
  */
 
 import { EventEmitter } from 'events';
+import * as path from 'path';
+import * as fs from 'fs';
+import { execSync } from 'child_process';
 import { LLMRouter, LLMTier } from '../llm/router';
 import { StorageProvider, SessionMeta } from '../storage/base';
 import { ToolRegistry } from '../tools/registry';
@@ -151,6 +154,60 @@ export class Backend extends EventEmitter {
   async truncateHistory(sessionId: string, keepCount: number): Promise<void> {
     await this.storage.truncateHistory(sessionId, keepCount);
   }
+
+  /** 切换工作目录 */
+  setCwd(dirPath: string): void {
+    const resolved = path.resolve(process.cwd(), dirPath);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`目录不存在: ${resolved}`);
+    }
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) {
+      throw new Error(`不是目录: ${resolved}`);
+    }
+    process.chdir(resolved);
+    logger.info(`工作目录已切换: ${resolved}`);
+  }
+
+  /** 获取当前工作目录 */
+  getCwd(): string {
+    return process.cwd();
+  }
+
+  /**
+   * 执行命令
+   *
+   * 自动拦截 cd 命令，改为 process.chdir()。
+   * 其余命令通过子进程执行，返回输出。
+   */
+  runCommand(cmd: string): { output: string; cwd: string } {
+    const trimmed = cmd.trim();
+
+    // 拦截 cd 命令
+    const cdMatch = trimmed.match(/^cd\s+(.+)$/i);
+    if (cdMatch) {
+      const target = cdMatch[1].trim().replace(/^["']|["']$/g, '');
+      this.setCwd(target);
+      return { output: `已切换到: ${process.cwd()}`, cwd:process.cwd() };
+    }
+
+    // 执行其余命令
+    try {
+      const output = execSync(trimmed, {
+        cwd: process.cwd(),
+        encoding: 'utf-8',
+        timeout: 30000,
+        windowsHide: true,
+      });
+      return { output: output.trimEnd(), cwd: process.cwd() };
+    } catch (err: any) {
+      const stderr = err.stderr?.toString().trimEnd() || '';
+      const stdout = err.stdout?.toString().trimEnd() || '';
+      const combined = [stdout, stderr].filter(Boolean).join('\n');
+      throw new Error(combined || `命令执行失败 (exit code: ${err.status})`);
+    }
+  }
+
 
   /** 获取工具声明列表（供 Web API 等使用） */
   getToolNames(): string[] {

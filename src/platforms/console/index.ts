@@ -95,6 +95,7 @@ export class ConsolePlatform extends PlatformAdapter {
         onNewSession: () => this.handleNewSession(),
         onLoadSession: (id: string) => this.handleLoadSession(id),
         onListSessions: () => this.handleListSessions(),
+        onRunCommand: (cmd: string) => this.handleRunCommand(cmd),
         onExit: () => this.stop(),
         modeName: this.modeName,
       });
@@ -121,6 +122,10 @@ export class ConsolePlatform extends PlatformAdapter {
   private handleNewSession(): void {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
+  }
+
+  private handleRunCommand(cmd: string): { output: string; cwd: string } {
+    return this.backend.runCommand(cmd);
   }
 
   private async handleLoadSession(id: string): Promise<void> {

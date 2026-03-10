@@ -94,7 +94,7 @@ class XxxPlatform extends PlatformAdapter {
 | sessionId | 启动时生成时间戳 ID，如 `20250715_143052_a7x2` |
 | 流式支持 | 支持，通过 `stream:chunk` 事件逐块显示 |
 | 工具状态 | 通过 `tool:update` 事件实时显示 |
-| 指令 | `/new` 新建对话、`/load` 加载历史、`/exit` 退出 |
+| 指令 | `/new` 新建对话、`/load` 加载历史、`/sh <命令>` 执行命令、`/exit` 退出 |
 | 会话管理 | `/load` 通过 `backend.listSessionMetas()` 获取列表，选择后通过 `backend.getHistory()` 加载 |
 
 ### Discord
