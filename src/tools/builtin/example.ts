@@ -23,6 +23,59 @@ export const getCurrentTime: ToolDefinition = {
   },
 };
 
+/** 安全数学表达式求值器（递归下降解析） */
+function safeEvaluate(expr: string): number {
+  let pos = 0;
+  const str = expr.replace(/\s+/g, '');
+
+  function parseExpr(): number {
+    let result = parseTerm();
+    while (pos < str.length && (str[pos] === '+' || str[pos] === '-')) {
+      const op = str[pos++];
+      const right = parseTerm();
+      result = op === '+' ? result + right : result - right;
+    }
+    return result;
+  }
+
+  function parseTerm(): number {
+    let result = parseFactor();
+    while (pos < str.length && (str[pos] === '*' || str[pos] === '/')) {
+      const op = str[pos++];
+      const right = parseFactor();
+      if (op === '/' && right === 0) throw new Error('除以零');
+      result = op === '*' ? result * right : result / right;
+    }
+    return result;
+  }
+
+  function parseFactor(): number {
+    if (str[pos] === '(') {
+      pos++; // skip '('
+      const result = parseExpr();
+      if (str[pos] !== ')') throw new Error('括号不匹配');
+      pos++; // skip ')'
+      return result;
+    }
+    // handle unary minus
+    if (str[pos] === '-') {
+      pos++;
+      return -parseFactor();
+    }
+    // parse number
+    const start = pos;
+    while (pos < str.length && (str[pos] >= '0' && str[pos] <= '9' || str[pos] === '.')) {
+      pos++;
+    }
+    if (pos === start) throw new Error(`意外的字符: ${str[pos] ?? 'EOF'}`);
+    return parseFloat(str.slice(start, pos));
+  }
+
+  const result = parseExpr();
+  if (pos < str.length) throw new Error(`意外的字符: ${str[pos]}`);
+  return result;
+}
+
 /** 简单计算器 */
 export const calculator: ToolDefinition = {
   declaration: {
@@ -41,12 +94,7 @@ export const calculator: ToolDefinition = {
   },
   handler: async (args) => {
     const expr = args.expression as string;
-    // 简单安全检查：只允许数字和基本运算符
-    if(!/^[\d\s+\-*/().]+$/.test(expr)) {
-      throw new Error(`不安全的表达式: ${expr}`);
-    }
-    // eslint-disable-next-line no-eval
-    const result = Function(`"use strict"; return (${expr})`)();
+    const result = safeEvaluate(expr);
     return { expression: expr, result };
   },
 };

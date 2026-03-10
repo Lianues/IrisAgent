@@ -6,8 +6,8 @@
  */
 
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { ToolDefinition } from '../../types';
+import { resolveProjectPath } from '../utils';
 
 export const searchReplace: ToolDefinition = {
   declaration: {
@@ -48,11 +48,7 @@ export const searchReplace: ToolDefinition = {
     const isRegex = (args.isRegex as boolean) ?? false;
 
     // 安全检查
-    const resolved = path.resolve(filePath);
-    const cwd = process.cwd();
-    if (!resolved.startsWith(cwd)) {
-      throw new Error(`路径超出项目目录: ${filePath}`);
-    }
+    const resolved = resolveProjectPath(filePath);
 
     const content = await fs.readFile(resolved, 'utf-8');
     const lines = content.split('\n');

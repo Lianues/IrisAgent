@@ -9,10 +9,12 @@
  */
 
 import { Bot, Context } from 'grammy';
-import { PlatformAdapter } from '../base';
+import { PlatformAdapter, splitText } from '../base';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('Telegram');
+
+const MESSAGE_MAX_LENGTH = 4096;
 
 export interface TelegramConfig {
   token: string;
@@ -46,7 +48,10 @@ export class TelegramPlatform extends PlatformAdapter {
 
   async sendMessage(sessionId: string, text: string): Promise<void> {
     const chatId = sessionId.replace('telegram-', '');
-    await this.bot.api.sendMessage(chatId, text);
+    const chunks = splitText(text, MESSAGE_MAX_LENGTH);
+    for (const chunk of chunks) {
+      await this.bot.api.sendMessage(chatId, chunk);
+    }
   }
 
   // ============ 内部方法 ============

@@ -20,11 +20,33 @@ export abstract class StorageProvider {
   /** 清空指定会话的历史 */
   abstract clearHistory(sessionId: string): Promise<void>;
 
+  /** 截断历史：只保留前 keepCount 条消息，删除之后的所有消息 */
+  abstract truncateHistory(sessionId: string, keepCount: number): Promise<void>;
+
   /** 列出所有会话 ID */
   abstract listSessions(): Promise<string[]>;
 
   /** 存储提供商名称 */
   get name(): string {
     return this.constructor.name;
+  }
+
+  /** 统一 Content 的字段顺序：role → parts → usageMetadata → 其余 */
+  protected normalize(content: Content): Content {
+    const known = new Set(['role', 'parts', 'usageMetadata']);
+    const normalized: Content = {
+      role: content.role,
+      parts: content.parts,
+    };
+    if (content.usageMetadata) {
+      normalized.usageMetadata = content.usageMetadata;
+    }
+    // 保留 Gemini API 可能附加的其他未知字段
+    for (const [k, v] of Object.entries(content)) {
+      if (!known.has(k)) {
+        (normalized as unknown as Record<string, unknown>)[k] = v;
+      }
+    }
+    return normalized;
   }
 }

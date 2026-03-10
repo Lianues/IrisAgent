@@ -21,6 +21,12 @@ export class PromptAssembler {
     this.systemParts.push(part);
   }
 
+  /** 移除指定的系统提示词片段（按引用匹配） */
+  removeSystemPart(part: Part): void {
+    const idx = this.systemParts.indexOf(part);
+    if (idx !== -1) this.systemParts.splice(idx, 1);
+  }
+
   /** 清空系统提示词 */
   clearSystemParts(): void {
     this.systemParts = [];
@@ -36,21 +42,26 @@ export class PromptAssembler {
    *
    * @param history    聊天历史（Content[]）
    * @param toolDecls  工具声明列表（可选）
-   * @param overrides生成配置覆盖（可选）
+   * @param overrides  生成配置覆盖（可选）
+   * @param extraParts 额外系统提示词片段（per-request，不修改共享状态）
    */
   assemble(
     history: Content[],
     toolDecls?: FunctionDeclaration[],
     overrides?: LLMRequest['generationConfig'],
+    extraParts?: Part[],
   ): LLMRequest {
     const request: LLMRequest = {
       // 剥离 usageMetadata（仅存储用，不发送给 LLM）
       contents: history.map(({ role, parts }) => ({ role, parts })),
     };
 
-    // 系统提示词
-    if (this.systemParts.length > 0) {
-      request.systemInstruction = { parts: [...this.systemParts] };
+    // 系统提示词（含可选的额外片段）
+    const allParts = extraParts
+      ? [...this.systemParts, ...extraParts]
+      : this.systemParts;
+    if (allParts.length > 0) {
+      request.systemInstruction = { parts: [...allParts] };
     }
 
     // 工具声明

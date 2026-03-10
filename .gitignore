@@ -1,10 +1,15 @@
 node_modules/
 dist/
 data/
+web-ui/dist/
+web-ui/node_modules/
 *.log
 
 # 配置文件（含密钥）
 config.yaml
 config.yml
 .env
-scripts
+
+# 便携版 Node.js（启动脚本自动下载）
+node/
+node-download.zip

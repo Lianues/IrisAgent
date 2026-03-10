@@ -13,8 +13,8 @@
  */
 
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { ToolDefinition } from '../../types';
+import { resolveProjectPath } from '../utils';
 
 // ============ 类型 ============
 
@@ -187,11 +187,7 @@ export const applyDiff: ToolDefinition = {
     const patch = args.patch as string;
 
     // 安全检查
-    const resolved = path.resolve(filePath);
-    const cwd = process.cwd();
-    if (!resolved.startsWith(cwd)) {
-      throw new Error(`路径超出项目目录: ${filePath}`);
-    }
+    const resolved = resolveProjectPath(filePath);
 
     // 读取文件
     const content = await fs.readFile(resolved, 'utf-8');

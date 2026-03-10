@@ -61,4 +61,24 @@ export class ToolRegistry {
   get size(): number {
     return this.tools.size;
   }
+
+  /** 创建仅包含指定工具的子注册表 */
+  createSubset(names: string[]): ToolRegistry {
+    const sub = new ToolRegistry();
+    for (const name of names) {
+      const tool = this.tools.get(name);
+      if (tool) sub.register(tool);
+    }
+    return sub;
+  }
+
+  /** 创建排除指定工具的子注册表 */
+  createFiltered(excludeNames: string[]): ToolRegistry {
+    const exclude = new Set(excludeNames);
+    const sub = new ToolRegistry();
+    for (const [name, tool] of this.tools) {
+      if (!exclude.has(name)) sub.register(tool);
+    }
+    return sub;
+  }
 }

@@ -10,12 +10,39 @@
 import { MessageHandler } from '../types';
 import { ToolStateManager } from '../tools/state';
 
+/** 将文本按最大长度分段，优先在换行处切分 */
+export function splitText(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf('\n', maxLen);
+    if (splitAt <= 0) splitAt = maxLen;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt).replace(/^\n/, '');
+  }
+  return chunks;
+}
+
+export type ClearHandler = (sessionId: string) => Promise<void>;
+
 export abstract class PlatformAdapter {
   protected messageHandler?: MessageHandler;
+  protected clearHandler?: ClearHandler;
 
   /** 注册消息处理回调（由 Orchestrator 调用） */
   onMessage(handler: MessageHandler): void {
     this.messageHandler = handler;
+  }
+
+  /** 注册清空会话回调（由 Orchestrator 调用） */
+  onClear(handler: ClearHandler): void {
+    this.clearHandler = handler;
   }
 
   /** 启动平台（连接服务、开始监听） */

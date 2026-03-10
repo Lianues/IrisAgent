@@ -9,5 +9,6 @@ export function parseSystemConfig(raw: any = {}): SystemConfig {
     systemPrompt: raw.systemPrompt ?? '',
     maxToolRounds: raw.maxToolRounds ?? 10,
     stream: raw.stream ?? true,
+    maxAgentDepth: raw.maxAgentDepth ?? 3,
   };
 }

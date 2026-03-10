@@ -6,8 +6,8 @@
  */
 
 import { exec } from 'child_process';
-import * as path from 'path';
 import { ToolDefinition } from '../../types';
+import { resolveProjectPath } from '../utils';
 
 /** 默认超时 30 秒 */
 const DEFAULT_TIMEOUT = 30_000;
@@ -53,14 +53,9 @@ export const terminal: ToolDefinition = {
     const cwd = args.cwd as string | undefined;
     const timeout = (args.timeout as number | undefined) ?? DEFAULT_TIMEOUT;
 
-    // 解析工作目录
+    // 解析工作目录（安全检查：禁止超出项目范围）
     const projectRoot = process.cwd();
-    const workDir = cwd ? path.resolve(projectRoot, cwd) : projectRoot;
-
-    // 安全检查
-    if (!workDir.startsWith(projectRoot)) {
-      throw new Error(`工作目录超出项目范围: ${cwd}`);
-    }
+    const workDir = cwd ? resolveProjectPath(cwd) : projectRoot;
 
     return new Promise<unknown>((resolve) => {
       const child = exec(command, {

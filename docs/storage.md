@@ -10,38 +10,48 @@
 ```
 src/storage/
 ├── base.ts              StorageProvider 抽象基类
-└── json-file/index.ts   JSON 文件存储实现
+├── json-file/index.ts   JSON 文件存储实现
+└── sqlite/index.ts      SQLite 存储实现
 ```
 
 ## 基类接口：StorageProvider
 
 ```typescript
 abstract class StorageProvider {
-  // 获取全部历史
   abstract getHistory(sessionId: string): Promise<Content[]>;
-
-  // 追加一条消息
   abstract addMessage(sessionId: string, content: Content): Promise<void>;
-
-  // 清空历史
   abstract clearHistory(sessionId: string): Promise<void>;
-
-  // 列出所有会话
   abstract listSessions(): Promise<string[]>;
+  abstract truncateHistory(sessionId: string, keepCount: number): Promise<void>;
+
+  get name(): string;   // 提供商名称
+
+  // 统一 Content 字段顺序：role → parts → usageMetadata → 其余
+  // 保留 Gemini API 可能附加的未知字段
+  protected normalize(content: Content): Content;
 }
 ```
 
+## 实现对比
+
+| 特性 | JSON 文件 | SQLite |
+|------|-----------|--------|
+| 存储路径 | `./data/sessions/` 每会话一个 `.json` 文件 | `./data/irisclaw.db` 单文件 |
+| 并发控制 | per-session 写锁（Promise 链串行化） | WAL 模式，天然支持 |
+| 可读性 | 可直接阅读/编辑 JSON 文件 | 需要 SQLite 工具 |
+| 性能 | 小规模适用 | 大量会话更优 |
+| sessionId 安全 | 正则过滤非法字符防路径穿越 | 参数化查询，无注入风险 |
+
 ## 存储的数据结构
 
-每个 session 存储为一个 `Content[]` 数组，例如：
+每个 session 存储为一个 `Content[]` 数组：
 
 ```json
 [
   { "role": "user",  "parts": [{ "text": "你好" }] },
   { "role": "model", "parts": [{ "text": "你好！有什么可以帮你的？" }] },
-  { "role": "user",  "parts": [{ "text": "2+3等于多少？" }] },
   { "role": "model", "parts": [{ "functionCall": { "name": "calculator", "args": { "expression": "2+3" } } }] },
-  { "role": "user",  "parts": [{ "functionResponse": { "name": "calculator", "response": { "result": { "expression": "2+3", "result": 5 } } } }] },
+  { "role": "user",  "parts": [{ "functionResponse": { "name": "calculator", "response": { "result": 5 } } }] },
   { "role": "model", "parts": [{ "text": "2+3 等于 5。" }] }
 ]
 ```
@@ -50,11 +60,5 @@ abstract class StorageProvider {
 
 1. 创建 `src/storage/实现名/index.ts`
 2. 继承 `StorageProvider`
-3. 实现四个抽象方法
-4. 在 `src/index.ts` 中添加对应的 import 和初始化
-
-## 可考虑的其他实现
-
-- `memory/` — 内存存储，重启后清空，适合测试
-- `sqlite/` — SQLite 数据库存储
-- `redis/` — Redis 存储，适合分布式部署
+3. 实现抽象方法，在 `addMessage` 中调用 `this.normalize(content)` 统一字段顺序
+4. 在 `src/config/types.ts` 和 `src/index.ts` 中注册

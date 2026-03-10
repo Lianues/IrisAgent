@@ -12,6 +12,8 @@ import { Content } from '../../types';
 
 export class JsonFileStorage extends StorageProvider {
   private dir: string;
+  /** per-session 写锁，防止并发 read-modify-write 竞争 */
+  private locks = new Map<string, Promise<void>>();
 
   constructor(dir: string = './data/sessions') {
     super();
@@ -22,43 +24,54 @@ export class JsonFileStorage extends StorageProvider {
     try {
       const data = await fs.readFile(this.filePath(sessionId), 'utf-8');
       return JSON.parse(data) as Content[];
-    } catch {
-      return [];
+    } catch (err: unknown) {
+      // 文件不存在时返回空数组，其他错误（JSON 损坏、权限问题等）向上抛出
+      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw err;
     }
   }
 
   async addMessage(sessionId: string, content: Content): Promise<void> {
-    const history = await this.getHistory(sessionId);
-    history.push(this.normalize(content));
-    await this.ensureDir();
-    await fs.writeFile(this.filePath(sessionId), JSON.stringify(history, null, 2), 'utf-8');
+    await this.withLock(sessionId, async () => {
+      const history = await this.getHistory(sessionId);
+      history.push(this.normalize(content));
+      await this.ensureDir();
+      await fs.writeFile(this.filePath(sessionId), JSON.stringify(history, null, 2), 'utf-8');
+    });
   }
 
-  /** 统一 Content 的字段顺序：role → parts → usageMetadata → 其余 */
-  private normalize(content: Content): Content {
-    const known = new Set(['role', 'parts', 'usageMetadata']);
-    const normalized: Content = {
-      role: content.role,
-      parts: content.parts,
-    };
-    if (content.usageMetadata) {
-      normalized.usageMetadata = content.usageMetadata;
+  /** 对同一 sessionId 的写操作串行化，完成后清理锁避免内存泄漏 */
+  private async withLock(sessionId: string, fn: () => Promise<void>): Promise<void> {
+    const prev = this.locks.get(sessionId) ?? Promise.resolve();
+    const current = prev.then(fn, fn);
+    this.locks.set(sessionId, current);
+    await current;
+    // 如果当前 promise 仍是最新的，说明没有后续排队，可以清理
+    if (this.locks.get(sessionId) === current) {
+      this.locks.delete(sessionId);
     }
-    // 保留 Gemini API 可能附加的其他未知字段
-    for (const [k, v] of Object.entries(content)) {
-      if (!known.has(k)) {
-        (normalized as unknown as Record<string, unknown>)[k] = v;
-      }
-    }
-    return normalized;
+  }
+
+  async truncateHistory(sessionId: string, keepCount: number): Promise<void> {
+    await this.withLock(sessionId, async () => {
+      const history = await this.getHistory(sessionId);
+      if (history.length <= keepCount) return;
+      const truncated = history.slice(0, keepCount);
+      await this.ensureDir();
+      await fs.writeFile(this.filePath(sessionId), JSON.stringify(truncated, null, 2), 'utf-8');
+    });
   }
 
   async clearHistory(sessionId: string): Promise<void> {
-    try {
-      await fs.unlink(this.filePath(sessionId));
-    } catch {
-      // 文件不存在则忽略
-    }
+    await this.withLock(sessionId, async () => {
+      try {
+        await fs.unlink(this.filePath(sessionId));
+      } catch {
+        // 文件不存在则忽略
+      }
+    });
   }
 
   async listSessions(): Promise<string[]> {

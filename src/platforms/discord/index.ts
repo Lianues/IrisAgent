@@ -10,7 +10,7 @@
  */
 
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
-import { PlatformAdapter } from '../base';
+import { PlatformAdapter, splitText } from '../base';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('Discord');
@@ -72,12 +72,24 @@ export class DiscordPlatform extends PlatformAdapter {
     if (msg.author.bot) return;
     if (!msg.content) return;
 
+    const isDM = !msg.guild;
+    const isMentioned = msg.mentions.has(this.client.user!);
+
+    if (!isDM && !isMentioned) return;
+
+    // Strip bot mention from content
+    let content = msg.content;
+    if (isMentioned && this.client.user) {
+      content = content.replace(new RegExp(`<@!?${this.client.user.id}>`, 'g'), '').trim();
+    }
+    if (!content) return;
+
     const sessionId = `discord-${msg.channelId}`;
     if (this.messageHandler) {
       try {
         await this.messageHandler({
           sessionId,
-          parts: [{ text: msg.content }],
+          parts: [{ text: content }],
           platformContext: msg,
         });
       } catch (err) {
@@ -87,22 +99,3 @@ export class DiscordPlatform extends PlatformAdapter {
   }
 }
 
-// ============ 工具函数 ============
-
-function splitText(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf('\n', maxLen);
-    if (splitAt <= 0) splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, '');
-  }
-  return chunks;
-}

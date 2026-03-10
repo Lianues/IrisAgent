@@ -5,14 +5,19 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:ui && tsc",
+    "build:ui": "cd web-ui && npm run build",
+    "dev:ui": "cd web-ui && npm run dev",
     "start": "node dist/index.js",
-    "dev": "tsx --experimental-specifier-resolution=node src/index.ts"
+    "dev": "tsx --experimental-specifier-resolution=node src/index.ts",
+    "setup": "npm install && cd web-ui && npm install"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.6.2",
     "discord.js": "^14.25.1",
     "grammy": "^1.41.1",
     "ink": "^5.0.1",
@@ -21,9 +26,11 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^18.2.0",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.15",
     "@types/react": "^18.3.28",
     "tsx": "^4.19.0",
