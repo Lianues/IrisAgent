@@ -1,6 +1,23 @@
-# VPS 部署指南（Nginx + 域名 + HTTPS）
+# 部署指南
 
-本指南将 IrisClaw 部署到 VPS，通过域名 + HTTPS 安全访问。
+## Windows 一键部署
+
+双击 `start.bat` 即可启动，无需预装 Node.js：
+
+1. 首次运行自动下载 Node.js 便携版 → 安装依赖 → 构建 → 生成默认配置
+2. 启动后自动打开浏览器访问 `http://localhost:8192`
+3. 关闭 cmd 窗口即停止服务
+4. 再次启动会自动清理残留端口占用，跳过已完成的安装步骤
+
+**异常处理**：启动失败时窗口会暂停并显示错误信息，不会闪退。
+
+---
+
+## Linux VPS 部署（Nginx + 域名 + HTTPS）
+
+本节将 IrisClaw 部署到 VPS，通过域名 + HTTPS 安全访问。
+
+> 若启用了 `platform.web.managementToken`，Web GUI 中的配置/部署/Cloudflare 管理接口会要求 `X-Management-Token`。请先在侧边栏“管理令牌”中录入。
 
 ## 部署架构
 
@@ -172,6 +189,19 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 8. 可选：Cloudflare 接入
 
+### 8.1 SSL 联动建议
+
+- Cloudflare `Flexible` → 源站建议 HTTP-only（不要做 80→443 强制跳转）
+- Cloudflare `Full/Strict` → 源站必须启用 HTTPS（443 + 证书）
+
+部署生成器会根据当前 Cloudflare 状态给出联动建议和组合校验。
+
+当你在部署页成功部署 Nginx 后，可直接点击“Cloudflare SSL 同步”将模式一键切换到：
+
+- 源站 HTTPS：`Full (Strict)`（推荐）或 `Full`
+- 源站 HTTP-only：`Flexible`
+
+
 如果域名托管在 Cloudflare，可以通过 Web GUI 内置的管理面板完成配置：
 
 1. 打开 Web GUI → **设置中心**（左下角 ⚙ 按钮）→ 滚动到 **Cloudflare 管理**
@@ -184,6 +214,16 @@ sudo nginx -t && sudo systemctl reload nginx
 > **注意**：使用 CF 代理时，Nginx 配置中已附带注释掉的 `set_real_ip_from` 块，取消注释即可还原真实用户 IP。
 
 DNS 记录通过 CF 代理通常 1-5 分钟生效。
+
+### 8.2 Token 存储建议
+
+Cloudflare Token 推荐通过环境变量或文件提供，避免明文写入 `config.yaml`：
+
+```yaml
+cloudflare:
+  apiTokenEnv: IRISCLAW_CF_API_TOKEN
+  zoneId: auto
+```
 
 ## 9. 防火墙
 

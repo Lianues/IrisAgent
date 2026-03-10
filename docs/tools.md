@@ -15,7 +15,8 @@ src/tools/
     ├── read-file.ts     读取文件内容（带行号）
     ├── search-replace.ts搜索替换（支持正则）
     ├── apply-diff.ts    应用 unified diff 补丁
-    └── terminal.ts      执行 Shell 命令
+    ├── terminal.ts      执行 Shell 命令
+    └── agent.ts         子 Agent 委派工具
 ```
 
 ## ToolRegistry 接口
@@ -67,6 +68,39 @@ type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 | `memory_search` | 由 `memory/tools.ts` 动态创建 | 搜索长期记忆 |
 | `memory_add` | 同上 | 保存记忆 |
 | `memory_delete` | 同上 | 删除记忆 |
+| `agent` | `agent.ts`（工厂函数动态创建） | 委派子任务给独立 Agent |
+| `mcp__*` | 由 `MCPManager` 动态创建 | MCP 外部服务器提供的工具 |
+
+## Agent 工具
+
+`agent` 工具由 `createAgentTool()` 工厂函数创建，允许 LLM 将子任务委派给独立的 `AgentExecutor`。
+
+**参数：**
+- `prompt`（必填）：子任务描述
+- `type`（可选）：Agent 类型名，默认 `general-purpose`
+
+**行为：**
+- 创建独立编排循环（无持久化、无流式、独立历史）
+- 子 Agent 使用 `secondary` 或 `light` LLM 层级（不消耗 primary 配额）
+- 深度限制由 `maxAgentDepth` 配置控制（默认 3），子 Agent 的工具列表默认排除 `agent` 工具防止递归
+- 工具过滤：白名单模式（`allowedTools`）或黑名单模式（`excludedTools`）
+
+详见 [core.md](./core.md) 中的子 Agent 系统说明。
+
+## MCP 工具
+
+MCP（Model Context Protocol）服务器提供的工具由 `MCPManager` 自动转换为 `ToolDefinition` 并注册到 `ToolRegistry`。
+
+**命名规则：** `mcp__<服务器名>__<工具名>`（非 `[a-zA-Z0-9_]` 字符替换为下划线）
+
+**转换逻辑：** MCP 的 JSON Schema `inputSchema` 递归转换为 IrisClaw `ParameterSchema`，保留 type、description、enum、items、properties、required 字段。
+
+**生命周期：**
+- 启动时后台异步连接，不阻塞应用启动
+- 热重载时先完成新连接再卸载旧工具，确保 reload 失败不丢失已有工具
+- 通过 `tools.unregister()` 移除旧工具，`tools.registerAll()` 注册新工具
+
+详见 [config.md](./config.md) 中的 MCP 配置说明。
 
 ## 路径安全
 

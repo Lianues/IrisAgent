@@ -10,6 +10,7 @@
       :mobile-open="sidebarOpen"
       @toggle="sidebarOpen = false"
       @open-settings="handleOpenSettings"
+      @open-management-token="handleOpenManagementToken"
     />
 
     <div class="app-main">
@@ -44,6 +45,12 @@
     <Transition name="panel-modal">
       <SettingsPanel v-if="settingsOpen" @close="settingsOpen = false" />
     </Transition>
+
+    <ManagementTokenDialog
+      v-if="managementTokenOpen"
+      @close="managementTokenOpen = false"
+      @updated="handleManagementTokenUpdated"
+    />
   </div>
 </template>
 
@@ -51,14 +58,25 @@
 import { ref } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import ManagementTokenDialog from './components/ManagementTokenDialog.vue'
 import AppIcon from './components/AppIcon.vue'
 import { ICONS } from './constants/icons'
 
 const sidebarOpen = ref(false)
 const settingsOpen = ref(false)
+const managementTokenOpen = ref(false)
 
 function handleOpenSettings() {
   settingsOpen.value = true
   sidebarOpen.value = false
+}
+
+function handleOpenManagementToken() {
+  managementTokenOpen.value = true
+  sidebarOpen.value = false
+}
+
+function handleManagementTokenUpdated() {
+  // 当前无需额外处理，保留钩子便于后续统一刷新管理态
 }
 </script>

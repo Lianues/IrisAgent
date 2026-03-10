@@ -3,93 +3,177 @@
 ## 职责
 
 从项目根目录的 `config.yaml` 加载配置，提供给各模块使用。
-各子配置独立解析，新增配置项只需修改对应的子文件。
 
-## 配置文件
+- 支持 `config.yaml` / `config.yml`（按顺序查找）
+- 配置结构由 `src/config/types.ts` 定义
+- 各子模块独立解析（LLM / Platform / Storage / System / Memory）
 
-- `config.yaml` — 实际配置（含密钥，已加入 .gitignore）
-- `config.example.yaml` — 示例模板（提交到 Git）
+## 配置文件与安全
 
-搜索顺序：`config.yaml` → `config.yml`
+- `config.yaml`：实际运行配置（包含敏感信息）
+- `config.example.yaml`：示例模板（可提交到 Git）
 
-## 文件结构
+建议：
 
-```
-src/config/
-├── index.ts          loadConfig() 读取 YAML 并组合各子配置
-├── types.ts          AppConfig 总类型定义
-├── llm.ts            LLM 配置解析 + 默认值
-├── platform.ts       平台配置解析
-├── storage.ts        存储配置解析
-├── system.ts         系统级配置解析
-└── memory.ts         记忆配置解析
+```bash
+chmod 600 config.yaml
 ```
 
-## config.yaml 完整结构
+---
+
+## 结构总览（关键字段）
 
 ```yaml
 llm:
-  provider: gemini              # gemini | openai-compatible | claude
-  apiKey: your-api-key-here
-  model: gemini-2.0-flash
-  baseUrl: https://generativelanguage.googleapis.com
+  primary:
+    provider: gemini
+    apiKey: your-api-key
+    model: gemini-2.0-flash
+    baseUrl: https://generativelanguage.googleapis.com
 
 platform:
-  type: console                 # console | discord | telegram | web
-  discord:
-    token: your-discord-bot-token
-  telegram:
-    token: your-telegram-bot-token
+  type: web
   web:
     port: 8192
-    host: 127.0.0.1             # 0.0.0.0 允许外部访问
-    # authToken: your-secret    # 可选，配置后 /api/* 需携带 Authorization: Bearer <token>
+    host: 127.0.0.1
+    # authToken: your-global-api-token
+    # managementToken: your-management-token
 
 storage:
-  type: json-file               # json-file | sqlite
-  dir: ./data/sessions          # json-file 的数据目录
-  dbPath: ./data/irisclaw.db    # sqlite 的数据库路径
+  type: json-file
+  dir: ./data/sessions
 
 system:
   systemPrompt: ""
   maxToolRounds: 10
   stream: true
+  # maxAgentDepth: 3
 
-# 可选：长期记忆
-memory:
-  enabled: false
-  dbPath: ./data/memory.db
+# memory:
+#   enabled: true
+#   dbPath: ./data/memory.db
 
-# 可选：Cloudflare 集成（通过 Web GUI 配置）
-cloudflare:
-  apiToken: your-cloudflare-api-token
-  zoneId: auto
+# cloudflare:
+#   apiToken: your-cloudflare-api-token
+#   # apiTokenEnv: IRISCLAW_CF_API_TOKEN
+#   # apiTokenFile: ./data/secrets/cloudflare.token
+#   zoneId: auto
 ```
 
-## 默认值
+---
+
+## 平台 Web 认证字段
+
+`platform.web` 下有两套令牌：
+
+### 1) `authToken`（全局 API）
+
+启用后，所有 `/api/*` 需要：
+
+```http
+Authorization: Bearer <authToken>
+```
+
+### 2) `managementToken`（管理面，推荐）
+
+启用后，以下接口需要：
+
+- `/api/config`
+- `/api/deploy/*`
+- `/api/cloudflare/*`
+
+请求头：
+
+```http
+X-Management-Token: <managementToken>
+```
+
+Web UI 已支持在“管理令牌”面板中保存本地令牌，并自动附加到管理接口请求头。
+
+---
+
+## Cloudflare Token 来源优先级
+
+Cloudflare 模块支持 3 种 token 来源，优先级如下：
+
+1. `cloudflare.apiTokenEnv`（环境变量）
+2. `cloudflare.apiTokenFile`（文件）
+3. `cloudflare.apiToken`（明文，兼容旧配置）
+
+推荐优先使用 `apiTokenEnv`，避免明文落盘。
+
+---
+
+## 默认值（节选）
 
 | 配置项 | 默认值 |
 |---|---|
-| llm.provider | `gemini` |
-| llm.model (gemini) | `gemini-2.0-flash` |
-| llm.baseUrl (gemini) | `https://generativelanguage.googleapis.com` |
-| llm.model (openai-compatible) | `gpt-4o` |
-| llm.baseUrl (openai-compatible) | `https://api.openai.com` |
-| llm.model (claude) | `claude-sonnet-4-6` |
-| llm.baseUrl (claude) | `https://api.anthropic.com` |
-| platform.type | `console` |
-| platform.web.port | `8192` |
-| platform.web.host | `127.0.0.1` |
-| storage.type | `json-file` |
-| storage.dir | `./data/sessions` |
-| system.systemPrompt | 空（使用代码内默认提示词） |
-| system.maxToolRounds | `10` |
-| system.stream | `true` |
-| memory.enabled | `false` |
-| memory.dbPath | `./data/memory.db` |
+| `platform.web.port` | `8192` |
+| `platform.web.host` | `127.0.0.1` |
+| `system.maxToolRounds` | `10` |
+| `system.stream` | `true` |
+| `system.maxAgentDepth` | `3` |
+| `memory.enabled` | `false` |
+| `memory.dbPath` | `./data/memory.db` |
+| `mcp.servers.*.timeout` | `30000` |
+| `mcp.servers.*.enabled` | `true` |
 
-## 新增配置项步骤
+---
 
-1. 在 `types.ts` 对应接口加字段
-2. 在对应子配置文件的 parse 函数中解析并设置默认值
-3. 在 `config.example.yaml` 中加上说明
+---
+
+## MCP 配置
+
+`mcp.servers` 定义要连接的外部 MCP 服务器，启动时后台异步连接（不阻塞启动）。
+
+```yaml
+mcp:
+  servers:
+    filesystem:
+      transport: stdio
+      command: npx
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-filesystem"
+        - "/path/to/dir"
+      timeout: 30000    # 连接超时（毫秒），默认 30000
+      enabled: true     # 默认 true，设为 false 禁用
+
+    remote_tools:
+      transport: http
+      url: https://mcp.example.com/mcp
+      headers:
+        Authorization: Bearer your-token
+      timeout: 30000
+```
+
+| 字段 | stdio | http | 说明 |
+|------|-------|------|------|
+| `transport` | 必填 | 必填 | `stdio` 或 `http` |
+| `command` | 必填 | — | 要执行的命令 |
+| `args` | 可选 | — | 命令参数数组 |
+| `env` | 可选 | — | 额外环境变量 |
+| `cwd` | 可选 | — | 工作目录 |
+| `url` | — | 必填 | MCP 服务器 URL |
+| `headers` | — | 可选 | HTTP 请求头（如 Authorization） |
+| `timeout` | 通用 | 通用 | 连接和 listTools 超时，默认 30000ms |
+| `enabled` | 通用 | 通用 | 是否启用，默认 true |
+
+MCP 工具注册到 `ToolRegistry` 后，名称格式为 `mcp__<服务器名>__<工具名>`（非 `[a-zA-Z0-9_]` 字符替换为下划线）。
+
+通过 Web GUI 设置中心可在线添加/删除/开关 MCP 服务器，保存后自动热重载。
+
+---
+
+## 子 Agent 配置
+
+`system.maxAgentDepth`（默认 3）控制子 Agent 最大嵌套深度。
+
+---
+
+## 修改配置后生效方式
+
+- Web GUI 设置中心的变更会自动保存并热重载（1 秒去抖），无需手动操作
+- 通过 `/api/config` API 更新后也会自动尝试热重载
+- 热重载范围：LLM 路由器、运行时参数（stream/maxToolRounds/systemPrompt）、MCP 连接
+- 若返回 `restartRequired: true`，需手动重启服务

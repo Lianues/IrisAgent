@@ -6,8 +6,8 @@
 
 ```bash
 npm install
-cp .env.example .env
-# 编辑 .env 填入 API Key
+cp config.example.yaml config.yaml
+# 编辑 config.yaml 填入 LLM 与平台配置
 npm run dev
 ```
 
@@ -24,3 +24,6 @@ npm run dev
 | [tools.md](./docs/tools.md) | 工具注册层 |
 | [prompt.md](./docs/prompt.md) | 提示词组装层 |
 | [core.md](./docs/core.md) | 核心协调器 |
+
+| [deploy.md](./docs/deploy.md) | VPS 部署与 Nginx/Cloudflare 联动指南 |
+| [config.md](./docs/config.md) | 配置项说明（含管理令牌与 Cloudflare token 来源） |

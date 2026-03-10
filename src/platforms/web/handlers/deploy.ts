@@ -1,11 +1,14 @@
 /**
  * 部署管理 API 处理器
  *
+ * GET  /api/deploy/state   — 获取部署页默认值（来自当前运行配置 + Cloudflare 联动上下文）
  * GET  /api/deploy/detect  — 检测服务器环境（nginx、systemd、sudo）
- * POST /api/deploy/nginx   — 一键部署 nginx 配置
- * POST /api/deploy/service — 一键部署 systemd 服务
+ * POST /api/deploy/preview         — 统一生成 Nginx / systemd 预览配置
+ * POST /api/deploy/sync-cloudflare — 一键同步 Cloudflare SSL 模式
+ * POST /api/deploy/nginx           — 一键部署 nginx 配置
+ * POST /api/deploy/service         — 一键部署 systemd 服务
  *
- * 安全限制：仅 Linux + localhost 访问
+ * 安全限制：部署执行接口仅支持 Linux + 部署令牌验证
  */
 
 import * as http from 'http';
@@ -13,8 +16,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { exec } from 'child_process';
+import * as crypto from 'crypto';
 import { readBody, sendJSON } from '../router';
 import { createLogger } from '../../../logger';
+import { createDeployPreview } from '../deploy/planner';
+import { createDeployState, DeployRuntimeConfig } from '../deploy/defaults';
+import { DeployInput, DeployPreviewResult } from '../deploy/types';
+import { CloudflareDeployContext, CloudflareSslMode } from '../cloudflare/types';
 
 const logger = createLogger('Deploy');
 
@@ -30,6 +38,13 @@ interface DeployResponse {
   ok: boolean;
   steps: DeployStep[];
   error?: string;
+}
+
+interface DeployHandlersOptions {
+  host: string;
+  port: number;
+  getCloudflareDeployContext?: (domain?: string | null) => Promise<CloudflareDeployContext>;
+  setCloudflareSslMode?: (mode: Exclude<CloudflareSslMode, 'unknown'>, zoneId?: string | null) => Promise<CloudflareSslMode>;
 }
 
 // ============ 工具函数 ============
@@ -48,7 +63,6 @@ function execCommand(cmd: string, timeout = 30000): Promise<{ stdout: string; st
 }
 
 /** 启动时生成的一次性部署令牌 */
-import * as crypto from 'crypto';
 const DEPLOY_TOKEN = crypto.randomBytes(16).toString('hex');
 
 /** 检查部署请求的安全条件：Linux + 令牌验证 */
@@ -67,12 +81,6 @@ function assertDeployAuth(req: http.IncomingMessage, res: http.ServerResponse): 
   return true;
 }
 
-/** 获取部署令牌（供 detect 接口返回给前端） */
-function checkDeployAccess(req: http.IncomingMessage): boolean {
-  const token = req.headers['x-deploy-token'] as string | undefined;
-  return !!token && token === DEPLOY_TOKEN;
-}
-
 /** 生成临时文件路径 */
 function tmpFilePath(prefix: string, ext: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
@@ -84,11 +92,88 @@ function cleanupTmp(filePath: string): void {
   try { fs.unlinkSync(filePath); } catch { /* 忽略 */ }
 }
 
+/** 从请求体提取结构化部署输入 */
+function extractDeployInput(body: any): DeployInput {
+  if (body?.options && typeof body.options === 'object' && !Array.isArray(body.options)) {
+    return body.options;
+  }
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    return body;
+  }
+  return {};
+}
+
+/** 从部署输入中提取域名 */
+function extractDomain(input: DeployInput): string | null {
+  return typeof input.domain === 'string' && input.domain.trim() ? input.domain.trim() : null;
+}
+
+/** 生成部署预览（附带 Cloudflare 联动上下文） */
+async function buildPreview(
+  body: any,
+  runtime: DeployRuntimeConfig,
+  getCloudflareDeployContext?: (domain?: string | null) => Promise<CloudflareDeployContext>,
+): Promise<DeployPreviewResult> {
+  const input = extractDeployInput(body);
+  const cloudflare = getCloudflareDeployContext
+    ? await getCloudflareDeployContext(extractDomain(input))
+    : null;
+  return createDeployPreview(input, runtime, cloudflare);
+}
+
+/** 根据请求体获取要部署的配置内容（兼容旧 config 文本模式） */
+async function resolveConfigContent(
+  body: any,
+  runtime: DeployRuntimeConfig,
+  target: 'nginx' | 'service',
+  getCloudflareDeployContext?: (domain?: string | null) => Promise<CloudflareDeployContext>,
+): Promise<{ config: string; preview?: DeployPreviewResult } | { error: string; preview?: DeployPreviewResult }> {
+  if (typeof body?.config === 'string' && body.config.trim()) {
+    return { config: body.config };
+  }
+
+  const preview = await buildPreview(body, runtime, getCloudflareDeployContext);
+  if (preview.errors.length > 0) {
+    return { error: preview.errors.join('；'), preview };
+  }
+
+  return {
+    config: target === 'nginx' ? preview.nginxConfig : preview.serviceConfig,
+    preview,
+  };
+}
+
+/** 根据 Cloudflare 同步错误推断 HTTP 状态码 */
+function statusCodeFromCloudflareSyncError(message: string): number {
+  if (
+    message.startsWith('未启用 Cloudflare 联动')
+    || message.startsWith('mode 必须是')
+    || message.startsWith('未配置 Cloudflare')
+    || message.includes('多个 zone')
+    || message.startsWith('无效的 SSL 模式')
+  ) {
+    return 400;
+  }
+  return 500;
+}
+
+
 // ============ 处理器工厂 ============
 
-export function createDeployHandlers(_opts: { host: string; port: number }) {
+export function createDeployHandlers(opts: DeployHandlersOptions) {
+  const runtimeConfig: DeployRuntimeConfig = { host: opts.host, port: opts.port };
+
   logger.info(`部署令牌（一键部署需要）: ${DEPLOY_TOKEN}`);
+
   return {
+    /** GET /api/deploy/state — 获取部署页默认值 */
+    async state(_req: http.IncomingMessage, res: http.ServerResponse) {
+      const cloudflare = opts.getCloudflareDeployContext
+        ? await opts.getCloudflareDeployContext(null)
+        : null;
+      sendJSON(res, 200, createDeployState(runtimeConfig, cloudflare));
+    },
+
     /** GET /api/deploy/detect — 检测服务器环境 */
     async detect(req: http.IncomingMessage, res: http.ServerResponse) {
       const isLinux = process.platform === 'linux';
@@ -116,7 +201,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
       let existingConfig = false;
 
       try {
-        // nginx -v 输出到 stderr，且正常返回 exit code 0
         const { stderr } = await execCommand('nginx -v');
         const versionMatch = (stderr || '').match(/nginx\/([\d.]+)/);
         if (versionMatch) {
@@ -124,10 +208,9 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           nginxVersion = versionMatch[1];
         }
       } catch {
-        // nginx 未安装（command not found）
+        // nginx 未安装
       }
 
-      // 检测 nginx 配置目录
       if (fs.existsSync('/etc/nginx/sites-available')) {
         configDir = 'sites-available';
         existingConfig = fs.existsSync('/etc/nginx/sites-available/irisclaw');
@@ -180,30 +263,67 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
       });
     },
 
+    /** POST /api/deploy/preview — 统一生成配置预览 */
+    async preview(req: http.IncomingMessage, res: http.ServerResponse) {
+      const body = await readBody(req);
+      const preview = await buildPreview(body, runtimeConfig, opts.getCloudflareDeployContext);
+      sendJSON(res, 200, preview);
+    },
+
+    /** POST /api/deploy/sync-cloudflare — 同步 Cloudflare SSL 模式 */
+    async syncCloudflare(req: http.IncomingMessage, res: http.ServerResponse) {
+      if (!opts.setCloudflareSslMode) {
+        sendJSON(res, 400, { ok: false, error: '未启用 Cloudflare 联动' });
+        return;
+      }
+
+      try {
+        const body = await readBody(req);
+        const mode = typeof body?.mode === 'string' ? body.mode.trim().toLowerCase() : '';
+        const zoneId = typeof body?.zoneId === 'string' && body.zoneId.trim()
+          ? body.zoneId.trim()
+          : null;
+
+        const validModes: Array<Exclude<CloudflareSslMode, 'unknown'>> = ['flexible', 'full', 'strict'];
+        if (!validModes.includes(mode as Exclude<CloudflareSslMode, 'unknown'>)) {
+          sendJSON(res, 400, { ok: false, error: `mode 必须是: ${validModes.join(', ')}` });
+          return;
+        }
+
+        const updatedMode = await opts.setCloudflareSslMode(mode as Exclude<CloudflareSslMode, 'unknown'>, zoneId);
+        sendJSON(res, 200, { ok: true, mode: updatedMode });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        sendJSON(res, statusCodeFromCloudflareSyncError(msg), { ok: false, error: msg });
+      }
+    },
+
     /** POST /api/deploy/nginx — 部署 nginx 配置 */
     async nginx(req: http.IncomingMessage, res: http.ServerResponse) {
       if (!assertDeployAuth(req, res)) return;
 
       const steps: DeployStep[] = [];
       const body = await readBody(req);
-      const config = body?.config;
+      const resolved = await resolveConfigContent(body, runtimeConfig, 'nginx', opts.getCloudflareDeployContext);
 
-      if (!config || typeof config !== 'string') {
-        sendJSON(res, 400, { error: '缺少 config 字段' });
+      if ('error' in resolved) {
+        sendJSON(res, 400, {
+          error: resolved.error,
+          warnings: resolved.preview?.warnings || [],
+          errors: resolved.preview?.errors || [resolved.error],
+          recommendations: resolved.preview?.recommendations || [],
+          cloudflare: resolved.preview?.cloudflare || null,
+        });
         return;
       }
 
-      // 检测配置目录布局
+      const config = resolved.config;
       const useSitesAvailable = fs.existsSync('/etc/nginx/sites-available');
       const targetDir = useSitesAvailable ? '/etc/nginx/sites-available' : '/etc/nginx/conf.d';
-      const targetFile = useSitesAvailable
-        ? `${targetDir}/irisclaw`
-        : `${targetDir}/irisclaw.conf`;
-
+      const targetFile = useSitesAvailable ? `${targetDir}/irisclaw` : `${targetDir}/irisclaw.conf`;
       const tmpFile = tmpFilePath('irisclaw-nginx', '.conf');
 
       try {
-        // 步骤1：写入临时文件
         try {
           fs.writeFileSync(tmpFile, config, 'utf-8');
           steps.push({ name: '写入临时配置文件', success: true, output: tmpFile });
@@ -213,7 +333,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤2：复制到 nginx 配置目录
         try {
           const { stdout } = await execCommand(`sudo cp "${tmpFile}" "${targetFile}"`);
           steps.push({ name: `复制到 ${targetFile}`, success: true, output: stdout || '完成' });
@@ -223,7 +342,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤3：创建软链接（仅 sites-available 布局）
         if (useSitesAvailable) {
           try {
             const linkTarget = '/etc/nginx/sites-enabled/irisclaw';
@@ -231,21 +349,18 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
             steps.push({ name: '创建 sites-enabled 软链接', success: true, output: stdout || '完成' });
           } catch (e: any) {
             steps.push({ name: '创建 sites-enabled 软链接', success: false, output: e.stderr || e.message });
-            // 回滚：删除已复制的配置
             await execCommand(`sudo rm -f "${targetFile}"`).catch(() => {});
             sendJSON(res, 200, { ok: false, steps, error: '创建软链接失败' } as DeployResponse);
             return;
           }
         }
 
-        // 步骤4：测试 nginx 配置
         try {
           const { stdout, stderr } = await execCommand('sudo nginx -t 2>&1');
           steps.push({ name: 'nginx 配置测试', success: true, output: stdout || stderr || '语法正确' });
         } catch (e: any) {
           const output = e.stderr || e.stdout || e.message;
           steps.push({ name: 'nginx 配置测试', success: false, output });
-          // 回滚：删除配置文件和软链接
           logger.warn('nginx -t 失败，回滚配置');
           await execCommand(`sudo rm -f "${targetFile}"`).catch(() => {});
           if (useSitesAvailable) {
@@ -255,7 +370,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤5：重载 nginx
         try {
           const { stdout } = await execCommand('sudo systemctl reload nginx');
           steps.push({ name: '重载 nginx', success: true, output: stdout || '完成' });
@@ -277,18 +391,24 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
 
       const steps: DeployStep[] = [];
       const body = await readBody(req);
-      const config = body?.config;
+      const resolved = await resolveConfigContent(body, runtimeConfig, 'service', opts.getCloudflareDeployContext);
 
-      if (!config || typeof config !== 'string') {
-        sendJSON(res, 400, { error: '缺少 config 字段' });
+      if ('error' in resolved) {
+        sendJSON(res, 400, {
+          error: resolved.error,
+          warnings: resolved.preview?.warnings || [],
+          errors: resolved.preview?.errors || [resolved.error],
+          recommendations: resolved.preview?.recommendations || [],
+          cloudflare: resolved.preview?.cloudflare || null,
+        });
         return;
       }
 
+      const config = resolved.config;
       const tmpFile = tmpFilePath('irisclaw-service', '.service');
       const targetFile = '/etc/systemd/system/irisclaw.service';
 
       try {
-        // 步骤1：写入临时文件
         try {
           fs.writeFileSync(tmpFile, config, 'utf-8');
           steps.push({ name: '写入临时服务文件', success: true, output: tmpFile });
@@ -298,7 +418,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤2：复制到 systemd 目录
         try {
           const { stdout } = await execCommand(`sudo cp "${tmpFile}" "${targetFile}"`);
           steps.push({ name: `复制到 ${targetFile}`, success: true, output: stdout || '完成' });
@@ -308,7 +427,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤3：daemon-reload
         try {
           const { stdout } = await execCommand('sudo systemctl daemon-reload');
           steps.push({ name: 'systemctl daemon-reload', success: true, output: stdout || '完成' });
@@ -318,7 +436,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 步骤4：enable 服务
         try {
           const { stdout } = await execCommand('sudo systemctl enable irisclaw');
           steps.push({ name: 'systemctl enable irisclaw', success: true, output: stdout || '完成' });
@@ -328,7 +445,6 @@ export function createDeployHandlers(_opts: { host: string; port: number }) {
           return;
         }
 
-        // 不自动 start/restart，避免杀掉当前进程
         steps.push({
           name: '提示',
           success: true,

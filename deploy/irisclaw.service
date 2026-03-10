@@ -1,6 +1,10 @@
 # ==========================================
 #  IrisClaw systemd 服务文件
 #
+#  此文件与 Web 部署生成器的默认输出保持一致：
+#  - 部署路径: /opt/irisclaw
+#  - 运行用户: irisclaw
+#
 #  使用方法：
 #  1. 将此文件复制到 /etc/systemd/system/irisclaw.service
 #  2. 根据实际情况修改 WorkingDirectory 和 User

@@ -42,6 +42,12 @@ call "%SCRIPT_DIR%scripts\env.bat"
 
 pushd "%PROJECT_ROOT%"
 
+REM 清理残留进程：如果 8192 端口被占用，杀掉旧进程
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":8192 "') do (
+    echo 检测到端口 8192 被占用（PID: %%a），正在清理...
+    taskkill /PID %%a /F >nul 2>&1
+)
+
 echo.
 echo ============================================
 echo   IrisClaw 已启动！
@@ -55,5 +61,15 @@ start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8192"
 
 REM 前台运行 node，关闭窗口即终止进程
 node dist/index.js
+
+REM 如果 node 异常退出，暂停让用户看到错误信息
+if %errorlevel% neq 0 (
+    echo.
+    echo ================================================================
+    echo   IrisClaw 异常退出（错误码: %errorlevel%）
+    echo   请检查上方的错误信息
+    echo ================================================================
+    pause
+)
 
 popd

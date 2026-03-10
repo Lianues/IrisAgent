@@ -20,9 +20,13 @@ import { ToolRegistry } from '../../tools/registry';
 import { Orchestrator } from '../../core/orchestrator';
 import { createLLMRouter } from '../../llm/factory';
 import { parseTieredLLMConfig } from '../../config/llm';
+import { parseMCPConfig } from '../../config/mcp';
 import { DEFAULT_SYSTEM_PROMPT } from '../../prompt/templates/default';
 import { createLogger } from '../../logger';
+import { MCPManager, createMCPManager } from '../../mcp';
 import { sendJSON } from './router';
+import { CloudflareService } from './cloudflare/service';
+import { assertManagementAccess, isManagementRoute } from './security/management';
 
 const logger = createLogger('WebPlatform');
 
@@ -30,6 +34,7 @@ export interface WebPlatformConfig {
   port: number;
   host: string;
   authToken?: string;
+  managementToken?: string;
   storage: StorageProvider;
   tools: ToolRegistry;
   configPath: string;
@@ -68,6 +73,9 @@ export class WebPlatform extends PlatformAdapter {
   /** 协调器引用，供热重载使用 */
   private orchestrator?: Orchestrator;
 
+  /** MCP 管理器引用，供热重载使用 */
+  private mcpManager?: MCPManager;
+
   constructor(config: WebPlatformConfig) {
     super();
     this.config = config;
@@ -89,7 +97,7 @@ export class WebPlatform extends PlatformAdapter {
         // CORS 支持
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Management-Token, X-Deploy-Token');
 
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
@@ -97,13 +105,22 @@ export class WebPlatform extends PlatformAdapter {
           return;
         }
 
-        // API 路由认证：配置了 authToken 时校验 Bearer Token
         const url = req.url ?? '/';
+
+        // 全局 API 路由认证：配置了 authToken 时校验 Bearer Token
         if (this.config.authToken && url.startsWith('/api/')) {
-          const auth = req.headers['authorization'] ?? '';
+          const auth = req.headers.authorization ?? '';
           const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
           if (token !== this.config.authToken) {
             sendJSON(res, 401, { error: '未授权：缺少或无效的认证令牌' });
+            return;
+          }
+        }
+
+        // 管理面认证：仅对管理接口生效
+        const pathname = new URL(url, `http://${req.headers.host ?? 'localhost'}`).pathname;
+        if (isManagementRoute(pathname)) {
+          if (!assertManagementAccess(req, res, this.config.managementToken)) {
             return;
           }
         }
@@ -198,10 +215,21 @@ export class WebPlatform extends PlatformAdapter {
     this.orchestrator = orch;
   }
 
+  /** 注入 MCP 管理器引用（供热重载和退出清理使用） */
+  setMCPManager(mgr: MCPManager): void {
+    this.mcpManager = mgr;
+  }
+
+  /** 获取当前 MCP 管理器（热重载后可能已替换） */
+  getMCPManager(): MCPManager | undefined {
+    return this.mcpManager;
+  }
+
   // ============ 内部方法 ============
 
   private setupRoutes(): void {
     const { storage, tools, configPath } = this.config;
+    const cloudflareService = new CloudflareService(configPath);
 
     // 聊天 API
     this.router.post('/api/chat', createChatHandler(this));
@@ -214,7 +242,7 @@ export class WebPlatform extends PlatformAdapter {
     this.router.delete('/api/sessions/:id', sessions.remove);
 
     // 配置管理 API（带热重载回调）
-    const config = createConfigHandlers(configPath, (mergedConfig) => {
+    const config = createConfigHandlers(configPath, async (mergedConfig) => {
       if (!this.orchestrator) throw new Error('Orchestrator 未注入');
       // 重建 LLM 路由器（三层）
       const tieredConfig = parseTieredLLMConfig(mergedConfig.llm);
@@ -230,6 +258,30 @@ export class WebPlatform extends PlatformAdapter {
       this.config.llmName = tieredConfig.primary.provider ?? this.config.llmName;
       this.config.modelName = tieredConfig.primary.model ?? this.config.modelName;
       this.config.streamEnabled = mergedConfig.system?.stream ?? this.config.streamEnabled;
+
+      // MCP 热重载（先完成 reload，再卸载旧工具，防止 reload 失败导致工具丢失）
+      const newMcpConfig = parseMCPConfig(mergedConfig.mcp);
+      const unregisterOldMcpTools = () => {
+        for (const name of tools.listTools()) {
+          if (name.startsWith('mcp__')) tools.unregister(name);
+        }
+      };
+      if (this.mcpManager) {
+        if (newMcpConfig) {
+          await this.mcpManager.reload(newMcpConfig);
+          unregisterOldMcpTools();
+          tools.registerAll(this.mcpManager.getTools());
+        } else {
+          await this.mcpManager.disconnectAll();
+          unregisterOldMcpTools();
+          this.mcpManager = undefined;
+        }
+      } else if (newMcpConfig) {
+        this.mcpManager = createMCPManager(newMcpConfig);
+        await this.mcpManager.connectAll();
+        unregisterOldMcpTools();
+        tools.registerAll(this.mcpManager.getTools());
+      }
     });
     this.router.get('/api/config', config.get);
     this.router.put('/api/config', config.update);
@@ -246,13 +298,21 @@ export class WebPlatform extends PlatformAdapter {
     });
 
     // 部署管理 API
-    const deploy = createDeployHandlers({ host: this.config.host, port: this.config.port });
+    const deploy = createDeployHandlers({
+      host: this.config.host,
+      port: this.config.port,
+      getCloudflareDeployContext: (domain?: string | null) => cloudflareService.getDeployContext(domain),
+      setCloudflareSslMode: (mode, zoneId) => cloudflareService.setSsl(mode, zoneId),
+    });
+    this.router.get('/api/deploy/state', deploy.state);
     this.router.get('/api/deploy/detect', deploy.detect);
+    this.router.post('/api/deploy/preview', deploy.preview);
+    this.router.post('/api/deploy/sync-cloudflare', deploy.syncCloudflare);
     this.router.post('/api/deploy/nginx', deploy.nginx);
     this.router.post('/api/deploy/service', deploy.service);
 
     // Cloudflare 管理 API
-    const cf = createCloudflareHandlers(configPath);
+    const cf = createCloudflareHandlers(cloudflareService);
     this.router.get('/api/cloudflare/status', cf.status);
     this.router.get('/api/cloudflare/dns', cf.listDns);
     this.router.post('/api/cloudflare/dns', cf.addDns);

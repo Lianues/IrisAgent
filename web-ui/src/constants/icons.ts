@@ -11,6 +11,7 @@ export const ICONS = {
     chat: 'chat',
     deploy: 'rocket_launch',
     empty: 'auto_awesome',
+    key: 'key',
   },
   tool: {
     call: 'bolt',

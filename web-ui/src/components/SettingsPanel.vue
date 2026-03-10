@@ -6,6 +6,10 @@
           <span class="settings-kicker">Control Center</span>
           <h2>设置中心</h2>
           <p>配置模型连接、系统策略与工具能力，打造你的 AI 工作台。</p>
+          <p v-if="managementEnabled" class="field-hint" style="margin-top:6px">
+            管理接口已启用令牌保护。当前状态：
+            <strong :style="{ color: managementReady ? 'var(--success)' : 'var(--error)' }">{{ managementReady ? '已解锁' : '未解锁' }}</strong>
+          </p>
         </div>
         <button class="btn-close" type="button" aria-label="关闭设置" @click="emit('close')">
           <AppIcon :name="ICONS.common.close" />
@@ -192,6 +196,82 @@
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
+              <h3>MCP 服务器</h3>
+              <p>连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表。</p>
+            </div>
+            <span class="settings-pill">{{ mcpServers.length }} 个服务器</span>
+          </div>
+
+          <div v-for="(server, idx) in mcpServers" :key="idx" class="tier-block">
+            <div class="tier-header" @click="server.open = !server.open">
+              <span class="tier-arrow" :class="{ open: server.open }">▶</span>
+              <span class="tier-label">{{ server.name || '未命名' }}</span>
+              <span class="tier-desc">{{ server.transport === 'stdio' ? '本地进程' : 'HTTP' }}</span>
+              <label class="toggle-switch tier-toggle" @click.stop>
+                <input type="checkbox" v-model="server.enabled" />
+                <span class="toggle-switch-ui"></span>
+              </label>
+              <button class="btn-mcp-remove" type="button" @click.stop="removeMcpServer(idx)" title="删除服务器">
+                <AppIcon :name="ICONS.common.close" />
+              </button>
+            </div>
+            <div v-show="server.open" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>服务器名称</label>
+                  <input type="text" v-model="server.name" placeholder="仅字母、数字、下划线"
+                         @input="sanitizeMcpName(server)" />
+                </div>
+                <div class="form-group">
+                  <label>传输方式</label>
+                  <select v-model="server.transport">
+                    <option value="stdio">stdio（本地进程）</option>
+                    <option value="http">HTTP（远程服务器）</option>
+                  </select>
+                </div>
+
+                <template v-if="server.transport === 'stdio'">
+                  <div class="form-group">
+                    <label>命令</label>
+                    <input type="text" v-model="server.command" placeholder="例如：npx" />
+                  </div>
+                  <div class="form-group">
+                    <label>工作目录</label>
+                    <input type="text" v-model="server.cwd" placeholder="可选" />
+                  </div>
+                  <div class="form-group full-width">
+                    <label>参数（每行一个）</label>
+                    <textarea v-model="server.args" rows="3"
+                              placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/path/to/dir"></textarea>
+                  </div>
+                </template>
+
+                <template v-if="server.transport === 'http'">
+                  <div class="form-group full-width">
+                    <label>URL</label>
+                    <input type="text" v-model="server.url" placeholder="https://mcp.example.com/mcp" />
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Authorization</label>
+                    <input type="password" v-model="server.authHeader" placeholder="Bearer your-token（可选）" />
+                    <p v-if="server.authHeader.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
+                  </div>
+                </template>
+
+                <div class="form-group">
+                  <label>超时（毫秒）</label>
+                  <input type="number" v-model.number="server.timeout" min="1000" max="120000" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-mcp-add" type="button" @click="addMcpServer">+ 添加 MCP 服务器</button>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head">
+            <div>
               <h3>工具状态</h3>
               <p>当前挂载到模型上下文中的可用能力。</p>
             </div>
@@ -210,6 +290,9 @@
             <div>
               <h3>Cloudflare 管理</h3>
               <p>{{ cf.connected ? '管理 DNS 记录与 SSL 配置。' : '连接 Cloudflare 以管理域名和安全策略。请先在「部署生成器」页完成 Nginx 配置。' }}</p>
+              <p v-if="cf.tokenSource" class="field-hint" style="margin-top:6px">
+                Token 来源：{{ cf.tokenSource === 'env' ? '环境变量' : (cf.tokenSource === 'file' ? '文件' : '配置文件明文') }}
+              </p>
             </div>
             <span class="settings-pill" :style="{ background: cf.connected ? 'var(--success)' : undefined }">
               {{ cf.connected ? '已连接' : '未连接' }}
@@ -334,10 +417,8 @@
         </section>
 
         <div class="form-actions">
-          <button class="btn-save" type="button" :disabled="saving" @click="handleSave">
-            {{ saving ? '保存中...' : '保存配置' }}
-          </button>
-          <span v-if="statusText" class="settings-status" :class="{ error: statusError }">
+          <span v-if="saving" class="settings-status">自动保存中...</span>
+          <span v-else-if="statusText" class="settings-status" :class="{ error: statusError }">
             {{ statusText }}
           </span>
         </div>
@@ -353,8 +434,19 @@ import type { CfDnsRecord } from '../api/types'
 import { useTheme, type ThemeMode } from '../composables/useTheme'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import { loadManagementToken, subscribeManagementTokenChange } from '../utils/managementToken'
 
 const emit = defineEmits<{ close: [] }>()
+
+const managementEnabled = ref(false)
+const managementReady = ref(false)
+
+let unsubscribeManagementToken: (() => void) | null = null
+
+function refreshManagementState() {
+  const token = loadManagementToken().trim()
+  managementReady.value = !!token
+}
 
 // ============ 主题 ============
 const { theme: currentTheme, setTheme } = useTheme()
@@ -437,6 +529,73 @@ const statusText = ref('')
 const statusError = ref(false)
 const saving = ref(false)
 
+// ============ MCP ============
+interface MCPServerEntry {
+  name: string
+  transport: 'stdio' | 'http'
+  command: string
+  args: string       // 每行一个参数，保存时转为 string[]
+  cwd: string
+  url: string
+  authHeader: string  // Authorization header 值
+  timeout: number
+  enabled: boolean
+  open: boolean       // UI 展开状态
+}
+
+const mcpServers = reactive<MCPServerEntry[]>([])
+/** 加载时记录的原始服务器名，用于保存时识别被删除的服务器 */
+const mcpOriginalNames = ref<string[]>([])
+
+function addMcpServer() {
+  mcpServers.push({
+    name: '', transport: 'stdio', command: '', args: '', cwd: '',
+    url: '', authHeader: '', timeout: 30000, enabled: true, open: true,
+  })
+}
+
+function removeMcpServer(idx: number) {
+  mcpServers.splice(idx, 1)
+}
+
+function sanitizeMcpName(server: MCPServerEntry) {
+  server.name = server.name.replace(/[^a-zA-Z0-9_]/g, '_')
+}
+
+function buildMCPPayload(): any {
+  const servers: Record<string, any> = {}
+  // 被删除的服务器发送 null（deepMerge 会删除该键）
+  for (const name of mcpOriginalNames.value) {
+    if (!mcpServers.some(s => s.name === name)) {
+      servers[name] = null
+    }
+  }
+  const currentNames: string[] = []
+  for (const s of mcpServers) {
+    if (!s.name.trim()) continue
+    currentNames.push(s.name)
+    const entry: any = {
+      transport: s.transport,
+      enabled: s.enabled,
+      timeout: s.timeout || 30000,
+    }
+    if (s.transport === 'stdio') {
+      entry.command = s.command
+      entry.args = s.args.split('\n').map((a: string) => a.trim()).filter(Boolean)
+      entry.cwd = s.cwd || null  // 空值发 null 让 deepMerge 删除旧值
+    } else {
+      entry.url = s.url
+      if (s.authHeader && !s.authHeader.startsWith('****')) {
+        entry.headers = { Authorization: s.authHeader }
+      }
+    }
+    servers[s.name] = entry
+  }
+  // 更新原始名称，防止多次保存时中间名残留
+  mcpOriginalNames.value = currentNames
+  return Object.keys(servers).length > 0 ? { servers } : null
+}
+
 // ============ Cloudflare ============
 const cf = reactive({
   connected: false,
@@ -446,6 +605,7 @@ const cf = reactive({
   error: '',
   zones: [] as { id: string; name: string; status: string }[],
   activeZoneId: null as string | null,
+  tokenSource: null as 'inline' | 'env' | 'file' | null,
   // SSL
   sslMode: 'full',
   sslMsg: '',
@@ -469,8 +629,45 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  managementEnabled.value = true
+  refreshManagementState()
+  unsubscribeManagementToken = subscribeManagementTokenChange(refreshManagementState)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  unsubscribeManagementToken?.()
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+})
+
+// ============ 自动保存 ============
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAutoSave() {
+  if (!configLoaded) return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => {
+    if (saving.value) {
+      scheduleAutoSave()
+      return
+    }
+    handleSave()
+  }, 1000)
+}
+
+watch(
+  [
+    () => config.systemPrompt,
+    () => config.maxToolRounds,
+    () => config.stream,
+    () => JSON.stringify(tiers),
+    () => JSON.stringify(tierEnabled),
+    // 排除 open（纯 UI 状态）
+    () => JSON.stringify(mcpServers, (key, value) => key === 'open' ? undefined : value),
+  ],
+  scheduleAutoSave,
+)
 
 /** 从服务端数据加载单个层级配置 */
 function loadTierFromData(tier: TierConfig, data: any) {
@@ -484,6 +681,7 @@ function loadTierFromData(tier: TierConfig, data: any) {
 
 onMounted(async () => {
   try {
+    refreshManagementState()
     const data = await getConfig()
     const llm = data.llm || {}
 
@@ -508,6 +706,25 @@ onMounted(async () => {
     config.systemPrompt = data.system?.systemPrompt || ''
     config.maxToolRounds = data.system?.maxToolRounds ?? 10
     config.stream = data.system?.stream ?? true
+
+    // MCP
+    if (data.mcp?.servers && typeof data.mcp.servers === 'object') {
+      mcpOriginalNames.value = Object.keys(data.mcp.servers)
+      for (const [name, cfg] of Object.entries(data.mcp.servers) as [string, any][]) {
+        mcpServers.push({
+          name,
+          transport: cfg.transport || 'stdio',
+          command: cfg.command || '',
+          args: Array.isArray(cfg.args) ? cfg.args.join('\n') : '',
+          cwd: cfg.cwd || '',
+          url: cfg.url || '',
+          authHeader: cfg.headers?.Authorization || '',
+          timeout: cfg.timeout ?? 30000,
+          enabled: cfg.enabled !== false,
+          open: false,
+        })
+      }
+    }
 
     // 等待 provider watcher 的异步回调执行完毕后再启用副作用
     await nextTick()
@@ -554,18 +771,28 @@ async function handleSave() {
       light: tierEnabled.light ? buildTierPayload(tiers.light) : null,
     }
 
-    const result = await updateConfig({
+    const mcpPayload = buildMCPPayload()
+    const payload: Record<string, any> = {
       llm: llmPayload,
       system: {
         systemPrompt: config.systemPrompt,
         maxToolRounds: config.maxToolRounds,
         stream: config.stream,
       },
-    })
+    }
+    if (mcpPayload !== null) {
+      payload.mcp = mcpPayload
+    }
+    const result = await updateConfig(payload)
 
     if (result.ok) {
       statusText.value = result.restartRequired ? '已保存，需要重启生效' : '已保存并生效'
       statusError.value = false
+      // 热重载后刷新工具列表（MCP 开关会影响工具数量）
+      try {
+        const st = await getStatus()
+        tools.value = st.tools || []
+      } catch { /* 静默 */ }
     } else {
       statusText.value = '保存失败: ' + (result.error || '未知错误')
       statusError.value = true
@@ -618,6 +845,7 @@ async function loadCfStatus() {
     cf.connected = status.connected
     cf.zones = status.zones || []
     cf.activeZoneId = status.activeZoneId
+    cf.tokenSource = status.tokenSource || null
     // 多 zone 且未指定时，自动选第一个
     if (!cf.activeZoneId && cf.zones.length > 0) {
       cf.activeZoneId = cf.zones[0].id

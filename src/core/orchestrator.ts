@@ -27,6 +27,10 @@ export interface OrchestratorConfig {
   maxToolRounds?: number;
   /** 是否启用流式输出 */
   stream?: boolean;
+  /** 是否自动召回记忆（默认 true） */
+  autoRecall?: boolean;
+  /** Agent 协调指导文本 */
+  agentGuidance?: string;
 }
 
 export class Orchestrator {
@@ -37,6 +41,8 @@ export class Orchestrator {
   private prompt: PromptAssembler;
   private maxToolRounds: number;
   private stream: boolean;
+  private autoRecall: boolean;
+  private agentGuidance?: string;
   private memory?: MemoryProvider;
 
   constructor(
@@ -55,6 +61,8 @@ export class Orchestrator {
     this.prompt = prompt;
     this.maxToolRounds = config?.maxToolRounds ?? 10;
     this.stream = config?.stream ?? false;
+    this.autoRecall = config?.autoRecall ?? true;
+    this.agentGuidance = config?.agentGuidance;
     this.memory = memory;
   }
 
@@ -126,9 +134,11 @@ export class Orchestrator {
     // 1. 存储用户消息
     await this.storage.addMessage(sessionId, { role: 'user', parts: userParts });
 
-    // 1.5 查询相关记忆（per-request，不修改共享状态）
+    // 1.5 构建 per-request 额外上下文
     let extraParts: Part[] | undefined;
-    if (this.memory) {
+
+    // 记忆自动召回（autoRecall=false 时跳过，由 recall agent 代替）
+    if (this.memory && this.autoRecall) {
       try {
         const userText = userParts.filter(isTextPart).map(p => p.text).join('');
         const context = await this.memory.buildContext(userText);
@@ -138,6 +148,12 @@ export class Orchestrator {
       } catch (err) {
         logger.warn('查询记忆失败:', err);
       }
+    }
+
+    // Agent 协调指导（作为 extraParts 注入，不受 setSystemPrompt 热重载影响）
+    if (this.agentGuidance) {
+      if (!extraParts) extraParts = [];
+      extraParts.push({ text: this.agentGuidance });
     }
 
     // 2. LLM 对话 + 工具执行循环

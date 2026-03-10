@@ -14,8 +14,9 @@ import { parsePlatformConfig } from './platform';
 import { parseStorageConfig } from './storage';
 import { parseSystemConfig } from './system';
 import { parseMemoryConfig } from './memory';
+import { parseMCPConfig } from './mcp';
 
-export type { AppConfig, LLMConfig, TieredLLMConfig, PlatformConfig, StorageConfig, SystemConfig, MemoryConfig, CloudflareConfig } from './types';
+export type { AppConfig, LLMConfig, TieredLLMConfig, PlatformConfig, StorageConfig, SystemConfig, MemoryConfig, CloudflareConfig, MCPConfig, MCPServerConfig } from './types';
 
 /** 配置文件搜索顺序 */
 const CONFIG_PATHS = [
@@ -39,7 +40,9 @@ export function findConfigFile(): string {
 function parseCloudflareConfig(data: any) {
   if (!data) return undefined;
   return {
-    apiToken: data.apiToken || '',
+    apiToken: typeof data.apiToken === 'string' ? data.apiToken : undefined,
+    apiTokenEnv: typeof data.apiTokenEnv === 'string' ? data.apiTokenEnv : undefined,
+    apiTokenFile: typeof data.apiTokenFile === 'string' ? data.apiTokenFile : undefined,
     zoneId: data.zoneId || '',
   };
 }
@@ -57,5 +60,6 @@ export function loadConfig(): AppConfig {
     system: parseSystemConfig(data.system),
     memory: parseMemoryConfig(data.memory),
     cloudflare: parseCloudflareConfig(data.cloudflare),
+    mcp: parseMCPConfig(data.mcp),
   };
 }

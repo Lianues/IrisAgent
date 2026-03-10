@@ -43,9 +43,12 @@ platform:
     # 127.0.0.1 = 仅本机访问（配合 Nginx 反代使用，推荐）
     # 0.0.0.0   = 允许所有网络接口访问（本地开发/无反代时使用）
     host: 127.0.0.1
-    # API 认证令牌（可选，未配置时不启用认证）
+    # API 全局认证令牌（可选，未配置时不启用）
     # 配置后请求 /api/* 需携带 Authorization: Bearer <token>
     # authToken: your-secret-token-here
+    # 管理接口认证令牌（推荐）
+    # 配置后 /api/config、/api/deploy/*、/api/cloudflare/* 需携带 X-Management-Token
+    # managementToken: your-management-token-here
 
 # 存储配置
 storage:
@@ -66,12 +69,44 @@ system:
   # 流式输出
   stream: true
 
+  # 子代理最大嵌套深度（默认 3）
+  # maxAgentDepth: 3
+
 # 记忆配置（可选）
 # memory:
 #   enabled: true
 #   dbPath: ./data/memory.db
 
+# MCP 服务器配置（可选）
+# 连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表
+# mcp:
+#   servers:
+#     # stdio 传输示例（本地进程）
+#     filesystem:
+#       transport: stdio
+#       command: npx
+#       args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+#       # env:
+#       #   SOME_VAR: value
+#       # cwd: /optional/working/dir
+#       # timeout: 30000
+#       # enabled: true
+#
+#     # HTTP 传输示例（远程服务器）
+#     remote_tools:
+#       transport: http
+#       url: https://mcp.example.com/sse
+#       # headers:
+#       #   Authorization: Bearer your-token
+#       # timeout: 30000
+#       # enabled: true
+
 # Cloudflare 管理（可选，通过 Web GUI 配置）
 # cloudflare:
+#   # 方式 1（兼容旧版）：直接写明文 token（有泄露风险）
 #   apiToken: your-cloudflare-api-token
+#   # 方式 2（推荐）：从环境变量读取 token（优先）
+#   # apiTokenEnv: IRISCLAW_CF_API_TOKEN
+#   # 方式 3：从文件读取 token（次优先）
+#   # apiTokenFile: ./data/secrets/cloudflare.token
 #   zoneId: auto  # 自动检测，或填具体 zone ID

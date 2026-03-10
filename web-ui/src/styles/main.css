@@ -1449,6 +1449,10 @@ select:focus-visible {
   line-height: 1.6;
 }
 
+.settings-header p.field-hint {
+  color: var(--text-muted);
+}
+
 .btn-close {
   width: 42px;
   height: 42px;
@@ -2219,6 +2223,48 @@ select:focus-visible {
 .tier-body {
   padding: 4px 16px 16px;
   border-top: 1px solid var(--border);
+}
+
+/* ---- MCP 按钮 ---- */
+.btn-mcp-remove {
+  background: none;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+  line-height: 1;
+  transition: color 0.15s;
+  border-radius: 6px;
+}
+
+.btn-mcp-remove .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.btn-mcp-remove:hover {
+  color: var(--error);
+}
+
+.btn-mcp-add {
+  width: 100%;
+  padding: 12px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  margin-top: 8px;
+}
+
+.btn-mcp-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ---- 部署引导提示 ---- */

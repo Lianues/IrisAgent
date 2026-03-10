@@ -4,10 +4,15 @@
     <div class="deploy-form">
       <span class="deploy-kicker">Delivery Studio</span>
       <h2 class="deploy-title">部署配置生成器</h2>
-      <p class="deploy-desc">填写参数，实时生成 nginx 和 systemd 配置文件</p>
+      <p class="deploy-desc">填写参数，由后端统一生成 nginx 和 systemd 配置文件</p>
       <div class="deploy-badges">
         <span class="deploy-badge">{{ detectLoaded ? (canDeploy ? '环境就绪' : '环境待处理') : '环境检测中' }}</span>
         <span class="deploy-badge subtle">{{ activeTab === 'nginx' ? 'Nginx 配置' : 'Service 配置' }}</span>
+      </div>
+
+      <div v-if="managementNotice" class="deploy-guide" style="margin-top:12px">
+        <h4>管理接口认证</h4>
+        <p>{{ managementNotice }}</p>
       </div>
 
       <!-- 环境检测面板 -->
@@ -66,13 +71,13 @@
       <div class="form-group">
         <label>域名 *</label>
         <input type="text" v-model="form.domain" placeholder="chat.example.com" />
-        <p class="field-hint">已解析到服务器 IP 的域名。Cloudflare 用户填代理后的域名即可。</p>
+        <p class="field-hint">已解析到服务器 IP 的域名。留空时会使用示例域名生成预览，但不会允许部署。</p>
       </div>
 
       <div class="form-group">
         <label>后端端口</label>
-        <input type="number" v-model.number="form.port" placeholder="3000" />
-        <p class="field-hint">IrisClaw 后端监听的端口，对应 config.yaml 中 web.port 的值。</p>
+        <input type="number" v-model.number="form.port" placeholder="8192" />
+        <p class="field-hint">IrisClaw 后端监听的端口，对应 config.yaml 中 web.port 的值。{{ runtimeHint }}</p>
       </div>
 
       <div class="form-group">
@@ -97,7 +102,7 @@
       <p v-if="form.enableHttps" class="field-hint" style="margin-top:-8px;margin-bottom:12px">
         需要先用 Certbot 申请证书：
         <code style="background:var(--code-bg);padding:1px 5px;border-radius:4px">
-          sudo certbot certonly --webroot -w /var/www/certbot -d {{ domain }}
+          sudo certbot certonly --webroot -w /var/www/certbot -d {{ previewDomain }}
         </code>
         <br/>如使用 Cloudflare 代理，可在 CF 侧开启 SSL 而这里关闭 HTTPS。
       </p>
@@ -139,7 +144,7 @@
     <div class="deploy-output">
       <div class="deploy-output-head">
         <div>
-          <span class="deploy-output-label">实时预览</span>
+          <span class="deploy-output-label">统一预览</span>
           <h3 class="deploy-output-title">{{ activeTab === 'nginx' ? 'nginx.conf' : 'irisclaw.service' }}</h3>
         </div>
         <span class="deploy-output-status" :class="{ disabled: !canDeploy }">
@@ -163,7 +168,7 @@
       </div>
 
       <div class="deploy-code-wrapper">
-        <pre class="deploy-code">{{ activeTab === 'nginx' ? nginxConfig : serviceConfig }}</pre>
+        <pre class="deploy-code">{{ currentPreviewContent }}</pre>
         <div class="deploy-actions">
           <button class="btn-copy" type="button" @click="handleCopy">{{ copyText }}</button>
           <button class="btn-download" type="button" @click="handleDownload">下载</button>
@@ -176,6 +181,43 @@
           >
             {{ activeTab === 'nginx' ? '部署 Nginx' : '部署 Service' }}
           </button>
+        </div>
+      </div>
+
+      <!-- 联动建议 -->
+      <div class="deploy-steps" v-if="preview.recommendations.length">
+        <h3 class="deploy-steps-title">联动建议</h3>
+        <div
+          v-for="(message, i) in preview.recommendations"
+          :key="`rec-${i}`"
+          class="deploy-step"
+        >
+          <AppIcon :name="ICONS.status.ok" class="step-icon" />
+          <span class="step-name">建议</span>
+          <span class="step-output">{{ message }}</span>
+        </div>
+      </div>
+
+      <!-- 预览校验 -->
+      <div class="deploy-steps" v-if="preview.errors.length || preview.warnings.length">
+        <h3 class="deploy-steps-title">预览校验</h3>
+        <div
+          v-for="(message, i) in preview.errors"
+          :key="`error-${i}`"
+          class="deploy-step step-fail"
+        >
+          <AppIcon :name="ICONS.status.fail" class="step-icon" />
+          <span class="step-name">错误</span>
+          <span class="step-output">{{ message }}</span>
+        </div>
+        <div
+          v-for="(message, i) in preview.warnings"
+          :key="`warning-${i}`"
+          class="deploy-step"
+        >
+          <AppIcon :name="ICONS.status.warn" class="step-icon" />
+          <span class="step-name">提示</span>
+          <span class="step-output">{{ message }}</span>
         </div>
       </div>
 
@@ -198,6 +240,46 @@
           <AppIcon :name="ICONS.status.warn" class="step-icon" />
           <span class="step-name">错误</span>
           <span class="step-output">{{ deployResult.error }}</span>
+        </div>
+      </div>
+
+      <!-- 部署后：Cloudflare SSL 一键同步 -->
+      <div class="deploy-steps" v-if="showCloudflareSync">
+        <h3 class="deploy-steps-title">Cloudflare SSL 同步</h3>
+        <div class="deploy-step">
+          <AppIcon :name="ICONS.status.warn" class="step-icon" />
+          <span class="step-name">当前模式</span>
+          <span class="step-output">{{ cloudflareModeLabel(preview.cloudflare?.sslMode || null) }}</span>
+        </div>
+        <div class="deploy-step" style="grid-template-columns: 20px minmax(0,1fr)">
+          <AppIcon :name="ICONS.status.ok" class="step-icon" />
+          <div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button
+                class="btn-save"
+                type="button"
+                :disabled="cfSyncing"
+                @click="handleSyncCloudflare(form.enableHttps ? 'strict' : 'flexible')"
+              >
+                {{ cfSyncing ? '同步中...' : (form.enableHttps ? '同步为 Full (Strict)' : '同步为 Flexible') }}
+              </button>
+              <button
+                v-if="form.enableHttps"
+                class="btn-download"
+                type="button"
+                :disabled="cfSyncing"
+                @click="handleSyncCloudflare('full')"
+              >
+                同步为 Full
+              </button>
+            </div>
+            <p class="field-hint" style="margin-top:8px">
+              建议：{{ form.enableHttps ? '源站已启用 HTTPS，优先使用 Full (Strict)。' : '源站为 HTTP-only，建议保持 Flexible。' }}
+            </p>
+            <span v-if="cfSyncMsg" class="settings-status" :class="{ error: cfSyncError }" style="margin-top:8px;display:inline-flex">
+              {{ cfSyncMsg }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -224,7 +306,7 @@
           </div>
           <div class="confirm-actions">
             <button class="btn-cancel" type="button" @click="showConfirm = false">取消</button>
-            <button class="btn-deploy" type="button" @click="executeDeploy" :disabled="deploying || !deployToken.trim()">
+            <button class="btn-deploy" type="button" @click="executeDeploy" :disabled="deploying || !deployToken.trim() || !canDeploy">
               {{ deploying ? '部署中...' : '确认部署' }}
             </button>
           </div>
@@ -235,19 +317,25 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, ref, onMounted } from 'vue'
-import { detectDeploy, deployNginx, deployService } from '../api/client'
-import type { DetectResponse, DeployResponse } from '../api/types'
+import { reactive, computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { getDeployState, detectDeploy, previewDeploy, deployNginx, deployService, syncDeployCloudflare } from '../api/client'
+import type { DetectResponse, DeployResponse, DeployFormOptions, DeployPreviewResponse, CloudflareSslMode } from '../api/types'
 import AppIcon from '../components/AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import { loadManagementToken, subscribeManagementTokenChange } from '../utils/managementToken'
 
-const form = reactive({
+const form = reactive<DeployFormOptions>({
   domain: '',
-  port: 3000,
+  port: 8192,
   deployPath: '/opt/irisclaw',
   user: 'irisclaw',
   enableHttps: true,
   enableAuth: false,
+})
+
+const runtimeWeb = reactive({
+  host: '127.0.0.1',
+  port: 8192,
 })
 
 const activeTab = ref<'nginx' | 'service'>('nginx')
@@ -264,6 +352,30 @@ const detect = reactive<DetectResponse>({
   sudo: { available: false, noPassword: false },
 })
 
+// 部署默认值加载
+const formReady = ref(false)
+const stateError = ref('')
+
+// 统一预览
+const previewLoaded = ref(false)
+const previewLoading = ref(false)
+const preview = reactive<DeployPreviewResponse>({
+  options: {
+    domain: 'chat.example.com',
+    port: 8192,
+    deployPath: '/opt/irisclaw',
+    user: 'irisclaw',
+    enableHttps: true,
+    enableAuth: false,
+  },
+  nginxConfig: '',
+  serviceConfig: '',
+  warnings: [],
+  errors: [],
+  recommendations: [],
+  cloudflare: null,
+})
+
 // 部署令牌
 const deployToken = ref('')
 
@@ -271,23 +383,173 @@ const deployToken = ref('')
 const showConfirm = ref(false)
 const deploying = ref(false)
 const deployResult = ref<DeployResponse | null>(null)
+const lastDeployTarget = ref<'nginx' | 'service' | null>(null)
+
+// Cloudflare 一键同步
+const cfSyncing = ref(false)
+const cfSyncMsg = ref('')
+const cfSyncError = ref(false)
+
+const runtimeHint = computed(() => {
+  const base = `当前运行配置：${runtimeWeb.host}:${runtimeWeb.port}`
+  return stateError.value ? `${base}（读取部署默认值失败，已回退到本地默认值）` : base
+})
+
+const previewDomain = computed(() => form.domain.trim() || preview.options.domain || 'chat.example.com')
+
+const managementTokenReady = ref(false)
+let unsubscribeManagementToken: (() => void) | null = null
+
+function refreshManagementTokenReady() {
+  managementTokenReady.value = !!loadManagementToken().trim()
+}
+
+const managementNotice = computed(() => {
+  if (managementTokenReady.value) return ''
+  return '如果后端配置了 platform.web.managementToken，请先在浏览器中保存管理令牌，否则部署预览与执行会返回 401。'
+})
+
+const showCloudflareSync = computed(() => {
+  return activeTab.value === 'nginx'
+    && lastDeployTarget.value === 'nginx'
+    && !!deployResult.value?.ok
+    && !!preview.cloudflare?.connected
+})
+
+function getRecommendedAutoSyncMode(): 'flexible' | 'strict' | null {
+  if (!preview.cloudflare?.connected) return null
+  const expected = form.enableHttps ? 'strict' : 'flexible'
+  return preview.cloudflare.sslMode === expected ? null : expected
+}
+
+async function promptAndSyncCloudflare(mode: 'flexible' | 'strict') {
+  const current = cloudflareModeLabel(preview.cloudflare?.sslMode || null)
+  const target = cloudflareModeLabel(mode)
+  const hint = mode === 'strict'
+    ? '源站已启用 HTTPS，建议 Cloudflare 使用 Full (Strict)。'
+    : '源站为 HTTP-only，建议 Cloudflare 使用 Flexible。'
+
+  const confirmed = window.confirm(
+    `Nginx 部署成功。\n\n当前 Cloudflare SSL：${current}\n建议同步为：${target}\n\n${hint}\n\n是否立即同步？`,
+  )
+
+  if (!confirmed) return
+  await handleSyncCloudflare(mode)
+}
+
+function cloudflareModeLabel(mode: CloudflareSslMode | null): string {
+  if (!mode) return '未知'
+  const map: Record<CloudflareSslMode, string> = {
+    off: 'Off',
+    flexible: 'Flexible',
+    full: 'Full',
+    strict: 'Full (Strict)',
+    unknown: 'Unknown',
+  }
+  return map[mode] || mode
+}
+
+
+function buildDeployOptions(): DeployFormOptions {
+  return {
+    domain: form.domain,
+    port: form.port,
+    deployPath: form.deployPath,
+    user: form.user,
+    enableHttps: form.enableHttps,
+    enableAuth: form.enableAuth,
+  }
+}
+
+let previewRequestId = 0
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+async function refreshPreview() {
+  const requestId = ++previewRequestId
+  previewLoading.value = true
+
+  try {
+    const result = await previewDeploy(buildDeployOptions())
+    if (requestId !== previewRequestId) return
+    Object.assign(preview, result)
+  } catch (e: any) {
+    if (requestId !== previewRequestId) return
+    Object.assign(preview, {
+      options: {
+        domain: form.domain.trim() || 'chat.example.com',
+        port: Number.isFinite(form.port) ? form.port : runtimeWeb.port,
+        deployPath: form.deployPath.trim() || '/opt/irisclaw',
+        user: form.user.trim() || 'irisclaw',
+        enableHttps: form.enableHttps,
+        enableAuth: form.enableAuth,
+      },
+      nginxConfig: '',
+      serviceConfig: '',
+      warnings: [],
+      errors: [`生成预览失败: ${e.message || '未知错误'}`],
+      recommendations: [],
+      cloudflare: null,
+    })
+  } finally {
+    if (requestId === previewRequestId) {
+      previewLoaded.value = true
+      previewLoading.value = false
+    }
+  }
+}
+
+function schedulePreview() {
+  if (!formReady.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    void refreshPreview()
+  }, 150)
+}
+
+watch(form, schedulePreview, { deep: true })
+
+onUnmounted(() => {
+  if (previewTimer) clearTimeout(previewTimer)
+  unsubscribeManagementToken?.()
+})
 
 onMounted(async () => {
+  refreshManagementTokenReady()
+  unsubscribeManagementToken = subscribeManagementTokenChange(refreshManagementTokenReady)
+
+  await Promise.all([loadDetect(), loadDeployState()])
+  formReady.value = true
+  await refreshPreview()
+})
+
+async function loadDetect() {
   try {
     const result = await detectDeploy()
     Object.assign(detect, result)
     detectLoaded.value = true
   } catch (e: any) {
     detectError.value = e.message || '未知错误'
+    detectLoaded.value = true
   }
-})
+}
+
+async function loadDeployState() {
+  try {
+    const result = await getDeployState()
+    runtimeWeb.host = result.web.host
+    runtimeWeb.port = result.web.port
+    Object.assign(form, result.defaults)
+  } catch (e: any) {
+    stateError.value = e.message || '未知错误'
+  }
+}
 
 const sudoClass = computed(() => {
   if (!detect.sudo.available) return 'detect-fail'
   return detect.sudo.noPassword ? 'detect-ok' : 'detect-warn'
 })
 
-const canDeploy = computed(() => {
+const environmentReady = computed(() => {
   if (!detectLoaded.value) return false
   if (!detect.isLinux || !detect.isLocal) return false
   if (!detect.sudo.available || !detect.sudo.noPassword) return false
@@ -296,8 +558,9 @@ const canDeploy = computed(() => {
   return true
 })
 
-const deployDisabledReason = computed(() => {
+const environmentDisabledReason = computed(() => {
   if (!detectLoaded.value) return '环境检测中...'
+  if (detectError.value) return `环境检测失败: ${detectError.value}`
   if (!detect.isLinux) return '仅支持 Linux 系统'
   if (!detect.isLocal) return '仅允许本地访问'
   if (!detect.sudo.available) return 'sudo 未安装'
@@ -307,20 +570,62 @@ const deployDisabledReason = computed(() => {
   return ''
 })
 
+const previewDisabledReason = computed(() => {
+  if (!previewLoaded.value || previewLoading.value) return '预览生成中...'
+  if (preview.errors.length > 0) return preview.errors[0]
+  return ''
+})
+
+const canDeploy = computed(() => {
+  return environmentReady.value && !previewLoading.value && preview.errors.length === 0
+})
+
+const deployDisabledReason = computed(() => {
+  return environmentDisabledReason.value || previewDisabledReason.value
+})
+
+const currentPreviewContent = computed(() => {
+  if (previewLoading.value && !previewLoaded.value) return '正在生成预览...'
+  return activeTab.value === 'nginx'
+    ? (preview.nginxConfig || '暂无预览')
+    : (preview.serviceConfig || '暂无预览')
+})
+
+function currentFilename() {
+  return activeTab.value === 'nginx' ? 'nginx.conf' : 'irisclaw.service'
+}
+
 async function executeDeploy() {
   if (!deployToken.value.trim()) {
     deployResult.value = { ok: false, steps: [], error: '请输入部署令牌' }
     showConfirm.value = false
     return
   }
+
+  if (!canDeploy.value) {
+    deployResult.value = { ok: false, steps: [], error: deployDisabledReason.value || '当前配置不可部署' }
+    showConfirm.value = false
+    return
+  }
+
   deploying.value = true
   deployResult.value = null
+  lastDeployTarget.value = activeTab.value
+  cfSyncMsg.value = ''
+  cfSyncError.value = false
+
+  let autoSyncMode: 'flexible' | 'strict' | null = null
+
   try {
     const token = deployToken.value.trim()
+    const options = buildDeployOptions()
     if (activeTab.value === 'nginx') {
-      deployResult.value = await deployNginx(nginxConfig.value, token)
+      deployResult.value = await deployNginx(options, token)
+      if (deployResult.value?.ok) {
+        autoSyncMode = getRecommendedAutoSyncMode()
+      }
     } else {
-      deployResult.value = await deployService(serviceConfig.value, token)
+      deployResult.value = await deployService(options, token)
     }
   } catch (e: any) {
     deployResult.value = {
@@ -332,202 +637,52 @@ async function executeDeploy() {
     deploying.value = false
     showConfirm.value = false
   }
+
+  if (autoSyncMode) {
+    await promptAndSyncCloudflare(autoSyncMode)
+  }
 }
 
-const domain = computed(() => form.domain || 'chat.example.com')
-const port = computed(() => form.port || 3000)
 
-const nginxConfig = computed(() => {
-  const d = domain.value
-  const p = port.value
-
-  const authBlock = form.enableAuth
-    ? `    auth_basic "IrisClaw";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-
-`
-    : ''
-
-  const sseLocation = `    # SSE 专用：/api/chat
-    location /api/chat {
-        proxy_pass http://127.0.0.1:${p};
-
-        proxy_buffering off;
-        proxy_cache off;
-        chunked_transfer_encoding off;
-
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-
-        proxy_set_header Connection '';
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }`
-
-  const generalLocation = `    location / {
-        proxy_pass http://127.0.0.1:${p};
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }`
-
-  if (!form.enableHttps) {
-    // 仅 HTTP
-    return `server {
-    listen 80;
-    listen [::]:80;
-    server_name ${d};
-
-    # 安全头
-    add_header X-Frame-Options DENY always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    # Cloudflare 真实 IP 还原（如使用 CF 代理请取消注释）
-    # set_real_ip_from 173.245.48.0/20;
-    # set_real_ip_from 103.21.244.0/22;
-    # set_real_ip_from 103.22.200.0/22;
-    # set_real_ip_from 103.31.4.0/22;
-    # set_real_ip_from 141.101.64.0/18;
-    # set_real_ip_from 108.162.192.0/18;
-    # set_real_ip_from 190.93.240.0/20;
-    # set_real_ip_from 188.114.96.0/20;
-    # set_real_ip_from 197.234.240.0/22;
-    # set_real_ip_from 198.41.128.0/17;
-    # set_real_ip_from 162.158.0.0/15;
-    # set_real_ip_from 104.16.0.0/13;
-    # set_real_ip_from 104.24.0.0/14;
-    # set_real_ip_from 172.64.0.0/13;
-    # set_real_ip_from 131.0.72.0/22;
-    # real_ip_header CF-Connecting-IP;
-
-${authBlock}${sseLocation}
-
-${generalLocation}
-}`
+async function handleSyncCloudflare(mode: 'flexible' | 'full' | 'strict') {
+  if (!preview.cloudflare?.connected) {
+    cfSyncMsg.value = 'Cloudflare 未连接，无法同步'
+    cfSyncError.value = true
+    return
   }
 
-  // HTTPS + HTTP 重定向
-  return `# HTTP → HTTPS 重定向
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${d};
+  cfSyncing.value = true
+  cfSyncMsg.value = ''
+  cfSyncError.value = false
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
+  try {
+    const result = await syncDeployCloudflare(mode, preview.cloudflare.zoneId)
+    if (!result.ok) {
+      cfSyncMsg.value = result.error || '同步失败'
+      cfSyncError.value = true
+      return
     }
 
-    location / {
-        return 301 https://$host$request_uri;
+    const syncedMode = result.mode || mode
+    if (preview.cloudflare) {
+      preview.cloudflare.sslMode = syncedMode
     }
-}
+    cfSyncMsg.value = `已同步 Cloudflare SSL 模式为 ${cloudflareModeLabel(syncedMode)}`
+    cfSyncError.value = false
 
-# HTTPS 主站
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${d};
-
-    # SSL 证书（Let's Encrypt）
-    ssl_certificate     /etc/letsencrypt/live/${d}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${d}/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    # 安全头
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
-    add_header X-Frame-Options DENY always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    # Cloudflare 真实 IP 还原（如使用 CF 代理请取消注释）
-    # set_real_ip_from 173.245.48.0/20;
-    # set_real_ip_from 103.21.244.0/22;
-    # set_real_ip_from 103.22.200.0/22;
-    # set_real_ip_from 103.31.4.0/22;
-    # set_real_ip_from 141.101.64.0/18;
-    # set_real_ip_from 108.162.192.0/18;
-    # set_real_ip_from 190.93.240.0/20;
-    # set_real_ip_from 188.114.96.0/20;
-    # set_real_ip_from 197.234.240.0/22;
-    # set_real_ip_from 198.41.128.0/17;
-    # set_real_ip_from 162.158.0.0/15;
-    # set_real_ip_from 104.16.0.0/13;
-    # set_real_ip_from 104.24.0.0/14;
-    # set_real_ip_from 172.64.0.0/13;
-    # set_real_ip_from 131.0.72.0/22;
-    # real_ip_header CF-Connecting-IP;
-
-${authBlock}${sseLocation}
-
-${generalLocation}
-}`
-})
-
-const serviceConfig = computed(() => {
-  const p = form.deployPath || '/opt/irisclaw'
-  const u = form.user || 'irisclaw'
-
-  return `[Unit]
-Description=IrisClaw AI Chat Service
-After=network.target
-
-[Service]
-Type=simple
-
-WorkingDirectory=${p}
-
-ExecStart=/usr/bin/node dist/index.js
-
-User=${u}
-Group=${u}
-
-Environment=NODE_ENV=production
-
-Restart=on-failure
-RestartSec=5
-
-StandardOutput=journal
-StandardError=journal
-
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=${p}/data
-
-[Install]
-WantedBy=multi-user.target
-`
-})
-
-function currentContent() {
-  return activeTab.value === 'nginx' ? nginxConfig.value : serviceConfig.value
-}
-
-function currentFilename() {
-  return activeTab.value === 'nginx' ? 'nginx.conf' : 'irisclaw.service'
+    // 同步后刷新预览，让联动建议和校验结果即时更新
+    await refreshPreview()
+  } catch (e: any) {
+    cfSyncMsg.value = e.message || '同步失败'
+    cfSyncError.value = true
+  } finally {
+    cfSyncing.value = false
+  }
 }
 
 async function handleCopy() {
   try {
-    await navigator.clipboard.writeText(currentContent())
+    await navigator.clipboard.writeText(currentPreviewContent.value)
     copyText.value = '已复制'
     setTimeout(() => { copyText.value = '复制' }, 2000)
   } catch {
@@ -537,7 +692,7 @@ async function handleCopy() {
 }
 
 function handleDownload() {
-  const blob = new Blob([currentContent()], { type: 'text/plain' })
+  const blob = new Blob([currentPreviewContent.value], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

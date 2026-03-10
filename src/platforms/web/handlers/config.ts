@@ -37,9 +37,21 @@ function sanitizeConfig(data: any): any {
   if (result.platform?.telegram?.token) {
     result.platform.telegram.token = maskSensitive(result.platform.telegram.token);
   }
-  // Cloudflare API Token
+  // Cloudflare API Token（仅明文字段可脱敏）
   if (result.cloudflare?.apiToken) {
     result.cloudflare.apiToken = maskSensitive(result.cloudflare.apiToken);
+  }
+  // MCP 服务器敏感 headers（如 Authorization）
+  if (result.mcp?.servers && typeof result.mcp.servers === 'object') {
+    for (const server of Object.values(result.mcp.servers) as any[]) {
+      if (server?.headers) {
+        for (const key of Object.keys(server.headers)) {
+          if (key.toLowerCase() === 'authorization') {
+            server.headers[key] = maskSensitive(server.headers[key]);
+          }
+        }
+      }
+    }
   }
   return result;
 }
@@ -70,7 +82,7 @@ function deepMerge(target: any, source: any): any {
   return result;
 }
 
-export function createConfigHandlers(configPath: string, onReload?: (mergedConfig: any) => void) {
+export function createConfigHandlers(configPath: string, onReload?: (mergedConfig: any) => void | Promise<void>) {
   return {
     /** GET /api/config */
     async get(_req: http.IncomingMessage, res: http.ServerResponse) {
@@ -109,7 +121,7 @@ export function createConfigHandlers(configPath: string, onReload?: (mergedConfi
         let reloaded = false;
         if (onReload) {
           try {
-            onReload(merged);
+            await onReload(merged);
             reloaded = true;
           } catch {
             // 热重载失败时回退为需要重启

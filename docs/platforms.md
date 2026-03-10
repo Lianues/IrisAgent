@@ -14,15 +14,25 @@ src/platforms/
 ├── discord/index.ts     Discord Bot
 ├── telegram/index.ts    Telegram Bot
 └── web/                 Web GUI 平台
-    ├── index.ts         WebPlatform（HTTP 服务器 + SSE）
+    ├── index.ts         WebPlatform（HTTP 服务器 + SSE + 热重载）
     ├── router.ts        轻量路由（路径参数、JSON 解析）
-    └── handlers/        API 处理器
-        ├── chat.ts      POST /api/chat（SSE 流式响应）
-        ├── sessions.ts  GET/DELETE /api/sessions
-        ├── config.ts    GET/PUT /api/config
-        ├── status.ts    GET /api/status
-        ├── deploy.ts    部署检测相关
-        └── cloudflare.ts Cloudflare DNS/SSL 管理
+    ├── handlers/        API 处理器
+    │   ├── chat.ts      POST /api/chat（SSE 流式响应）
+    │   ├── sessions.ts  GET/DELETE /api/sessions
+    │   ├── config.ts    GET/PUT /api/config（含热重载回调）
+    │   ├── deploy.ts    部署配置生成
+    │   └── cloudflare.ts Cloudflare DNS/SSL 管理
+    ├── security/        安全模块
+    │   └── management.ts 管理接口令牌校验（timing-safe）
+    ├── deploy/          部署配置生成器
+    │   ├── planner.ts   Nginx/systemd 配置统一生成
+    │   ├── types.ts     部署相关类型定义
+    │   └── templates/   配置文件模板
+    └── cloudflare/      Cloudflare 集成
+        ├── client.ts    Cloudflare API 客户端
+        ├── config-store.ts Token 来源管理（inline/env/file）
+        ├── service.ts   DNS/SSL/Zone 业务逻辑
+        └── types.ts     Cloudflare 相关类型
 ```
 
 ## 基类接口：PlatformAdapter
@@ -72,9 +82,12 @@ interface IncomingMessage {
 - 同 session 拒绝并发请求（409 Conflict）
 - 静态文件路径运行时动态解析，dev（tsx）和 prod（dist）都兼容
 - 构造需要额外依赖（`storage`、`tools`、`configPath`），因此 `src/index.ts` 中存储和工具在平台之前创建
-- 可选 `authToken` 认证：配置后 `/api/*` 请求需携带 `Authorization: Bearer <token>` 或 `X-Authorization: Bearer <token>` 头
-- 配置 API 脱敏：`GET /api/config` 对 apiKey 等敏感字段返回 `****` + 后4位；`PUT /api/config` 的 `deepMerge` 自动跳过 `****` 开头的值
+- **双 Token 认证**：`authToken` 保护全部 `/api/*`（Bearer 头），`managementToken` 仅保护管理接口（`X-Management-Token` 头，timing-safe 比较）
+- 配置 API 脱敏：`GET /api/config` 对 apiKey、platform token、Cloudflare apiToken、MCP Authorization 等敏感字段返回 `****` + 后4位；`PUT /api/config` 的 `deepMerge` 自动跳过 `****` 开头的值
 - 部署 API 使用一次性 deploy token（启动时日志输出），仅限 Linux 环境
+- **配置热重载**：`PUT /api/config` 保存后触发异步 `onReload` 回调，依次重建 LLM Router、更新运行时参数、重载 MCP 连接。回调完成后才返回响应
+- **MCP 集成**：`WebPlatform` 持有 `MCPManager` 引用，支持热重载时替换。`setMCPManager()` / `getMCPManager()` 管理生命周期
+- **前端自动保存**：设置面板对所有配置状态设置 deep watch，变动后 1 秒去抖自动保存，无需手动点击按钮
 
 **SSE 事件类型：**
 
@@ -99,6 +112,9 @@ interface IncomingMessage {
 | PUT | `/api/config` | 更新配置（脱敏值自动跳过） |
 | GET | `/api/status` | 服务器状态 |
 | GET | `/api/deploy/detect` | 检测部署环境（nginx/systemd/sudo） |
+| GET | `/api/deploy/state` | 获取部署状态 |
+| POST | `/api/deploy/preview` | 预览 Nginx/systemd 配置（不实际写入） |
+| POST | `/api/deploy/sync-cloudflare` | 同步 Cloudflare SSL 模式 |
 | POST | `/api/deploy/nginx` | 部署 Nginx 反代配置 |
 | POST | `/api/deploy/service` | 部署 systemd 服务 |
 | GET | `/api/cloudflare/status` | Cloudflare 连接状态 |

@@ -5,19 +5,72 @@
  */
 
 import type {
-  Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse,
+  Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
+  DeployFormOptions, DeployStateResponse, DeployPreviewResponse,
   CfStatusResponse, CfDnsRecord, CfDnsInput, CfSetupResponse,
 } from './types'
+import { clearManagementToken, loadManagementToken } from '../utils/managementToken'
 
 // ============ 通用 ============
 
+/** 是否为管理接口 */
+function isManagementRequest(url: string): boolean {
+  return url === '/api/config'
+    || url.startsWith('/api/deploy/')
+    || url.startsWith('/api/cloudflare/')
+}
+
+/** 合并请求头 */
+function mergeHeaders(...headers: Array<HeadersInit | undefined>): Record<string, string> {
+  const merged: Record<string, string> = {}
+
+  for (const item of headers) {
+    if (!item) continue
+
+    if (item instanceof Headers) {
+      item.forEach((value, key) => {
+        merged[key] = value
+      })
+      continue
+    }
+
+    if (Array.isArray(item)) {
+      for (const [key, value] of item) {
+        merged[key] = value
+      }
+      continue
+    }
+
+    for (const [key, value] of Object.entries(item)) {
+      if (value !== undefined) merged[key] = String(value)
+    }
+  }
+
+  return merged
+}
+
 /** 发送请求并检查响应状态 */
 async function request(url: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(url, init)
+  const headers = mergeHeaders(init?.headers)
+
+  if (isManagementRequest(url)) {
+    const token = loadManagementToken().trim()
+    if (token) headers['X-Management-Token'] = token
+  }
+
+  const res = await fetch(url, {
+    ...init,
+    headers,
+  })
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
+    if (res.status === 401 && isManagementRequest(url)) {
+      clearManagementToken()
+    }
     throw new Error(body.error || `HTTP ${res.status}`)
   }
+
   return res
 }
 
@@ -65,25 +118,48 @@ export async function updateConfig(data: any): Promise<{ ok: boolean; restartReq
 
 // ============ 部署 ============
 
+export async function getDeployState(): Promise<DeployStateResponse> {
+  const res = await request('/api/deploy/state')
+  return res.json()
+}
+
 export async function detectDeploy(): Promise<DetectResponse> {
   const res = await request('/api/deploy/detect')
   return res.json()
 }
 
-export async function deployNginx(config: string, token: string): Promise<DeployResponse> {
-  const res = await request('/api/deploy/nginx', {
+export async function previewDeploy(options: DeployFormOptions): Promise<DeployPreviewResponse> {
+  const res = await request('/api/deploy/preview', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Deploy-Token': token },
-    body: JSON.stringify({ config }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options }),
   })
   return res.json()
 }
 
-export async function deployService(config: string, token: string): Promise<DeployResponse> {
+export async function deployNginx(options: DeployFormOptions, token: string): Promise<DeployResponse> {
+  const res = await request('/api/deploy/nginx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Deploy-Token': token },
+    body: JSON.stringify({ options }),
+  })
+  return res.json()
+}
+
+export async function syncDeployCloudflare(mode: 'flexible' | 'full' | 'strict', zoneId?: string | null): Promise<DeploySyncCloudflareResponse> {
+  const res = await request('/api/deploy/sync-cloudflare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, zoneId }),
+  })
+  return res.json()
+}
+
+export async function deployService(options: DeployFormOptions, token: string): Promise<DeployResponse> {
   const res = await request('/api/deploy/service', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Deploy-Token': token },
-    body: JSON.stringify({ config }),
+    body: JSON.stringify({ options }),
   })
   return res.json()
 }

@@ -2,103 +2,95 @@
   <aside class="sidebar" :class="{ open: mobileOpen }">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <span class="sidebar-badge">Control Center</span>
-        <h1 class="logo">IrisClaw</h1>
-        <p class="sidebar-subtitle">AI Agent Registry · 对话与部署一体化控制台</p>
+        <span class="sidebar-badge">Control Hub</span>
+        <div class="logo">IrisClaw</div>
+        <p class="sidebar-subtitle">集中管理会话、部署与系统配置。</p>
       </div>
 
       <button class="btn-new-chat" type="button" @click="handleNewChat">
-        <AppIcon :name="ICONS.common.add" class="btn-new-icon" />
-        <span>新建对话</span>
+        <span class="btn-new-icon"><AppIcon :name="ICONS.common.add" /></span>
+        <span>新建会话</span>
       </button>
     </div>
 
-    <nav class="sidebar-nav" aria-label="主导航">
+    <nav class="sidebar-nav">
       <RouterLink class="sidebar-nav-link" to="/" @click="emit('toggle')">
-        <AppIcon :name="ICONS.sidebar.chat" class="sidebar-nav-icon" />
-        <div class="sidebar-nav-copy">
-          <span class="sidebar-nav-label">对话工作台</span>
-          <strong>Chat Workspace</strong>
-        </div>
+        <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.chat" /></span>
+        <span class="sidebar-nav-copy">
+          <span class="sidebar-nav-label">Workspace</span>
+          <strong>聊天控制台</strong>
+        </span>
       </RouterLink>
 
       <RouterLink class="sidebar-nav-link" to="/deploy" @click="emit('toggle')">
-        <AppIcon :name="ICONS.sidebar.deploy" class="sidebar-nav-icon" />
-        <div class="sidebar-nav-copy">
-          <span class="sidebar-nav-label">部署生成器</span>
-          <strong>Deploy Studio</strong>
-        </div>
+        <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.deploy" /></span>
+        <span class="sidebar-nav-copy">
+          <span class="sidebar-nav-label">Delivery</span>
+          <strong>部署生成器</strong>
+        </span>
       </RouterLink>
     </nav>
 
-    <template v-if="isChatRoute">
-      <div class="sidebar-section-label">最近会话</div>
+    <div class="sidebar-route-context">
+      <div class="session-list" v-if="route.path === '/'">
+        <div class="sidebar-section-label">会话列表</div>
 
-      <div class="session-list">
-        <div v-if="sessions.length === 0" class="sidebar-empty">
-          <AppIcon :name="ICONS.sidebar.empty" class="sidebar-empty-icon" />
-          <p>还没有历史对话</p>
-          <span>点击“新建对话”开始一个全新的工作流。</span>
+        <div class="sidebar-empty" v-if="sessions.length === 0">
+          <span class="sidebar-empty-icon"><AppIcon :name="ICONS.sidebar.empty" /></span>
+          <p>暂无会话</p>
+          <span>点击“新建会话”开始第一次对话。</span>
         </div>
 
-        <div v-else class="session-items">
+        <div class="session-items" v-else>
           <div
-            v-for="(id, index) in sessions"
-            :key="id"
             class="session-item"
             :class="{ active: id === currentSessionId }"
+            v-for="id in sessions"
+            :key="id"
           >
-            <button
-              class="session-button"
-              type="button"
-              :title="id"
-              @click="handleSwitch(id)"
-            >
-              <span class="session-caption">
-                {{ id === currentSessionId ? '当前会话' : `对话 ${index + 1}` }}
-              </span>
-              <span class="session-name">{{ displayName(id) }}</span>
+            <button class="session-button" type="button" @click="handleSwitchSession(id)">
+              <span class="session-caption">Session</span>
+              <span class="session-name">{{ id }}</span>
             </button>
             <button
               class="btn-delete-session"
               type="button"
-              aria-label="删除会话"
-              @click.stop="handleDelete(id)"
+              title="删除会话"
+              :disabled="deletingSessionId === id"
+              @click.stop="handleDeleteSession(id)"
             >
               <AppIcon :name="ICONS.common.close" />
             </button>
           </div>
         </div>
       </div>
-    </template>
 
-    <template v-else>
-      <div class="sidebar-section-label">部署向导</div>
-      <div class="sidebar-route-context">
-        <div class="sidebar-context-card">
-          <span class="sidebar-context-kicker">Checklist</span>
-          <h3>本机部署建议流程</h3>
-          <ol class="sidebar-context-list">
-            <li>确认当前机器是 Linux 且支持 sudo。</li>
-            <li>填写域名、端口、部署路径与运行用户。</li>
-            <li>下载配置或执行一键部署。</li>
-            <li>开放防火墙 80/443 端口。</li>
-            <li>在「设置中心」连接 Cloudflare 并添加 DNS 记录。</li>
-          </ol>
-        </div>
+      <div class="sidebar-context-card" v-else>
+        <span class="sidebar-context-kicker">Deploy Focus</span>
+        <h3>发布前检查</h3>
+        <ul class="sidebar-context-list">
+          <li>确认域名解析到当前服务器</li>
+          <li>检查 Nginx 与 systemd 环境检测状态</li>
+          <li>按需配置 Cloudflare DNS 与 SSL 模式</li>
+        </ul>
       </div>
-    </template>
+    </div>
 
     <div class="sidebar-footer">
       <div class="status-card">
-        <span class="status-dot"></span>
+        <span class="status-dot" :style="{ background: managementReady ? 'var(--success)' : 'var(--error)' }"></span>
         <div class="status-copy">
-          <span class="status-label">当前模型</span>
-          <strong class="status-value">{{ statusText || '正在读取系统状态...' }}</strong>
+          <span class="status-label">管理令牌</span>
+          <span class="status-value">{{ managementReady ? '已解锁管理接口' : '未设置，管理接口可能返回 401' }}</span>
         </div>
       </div>
 
-      <button class="btn-settings" type="button" @click="emit('open-settings')">
+      <button class="btn-settings" type="button" @click="handleOpenManagementToken">
+        <AppIcon :name="ICONS.sidebar.key" />
+        <span>管理令牌</span>
+      </button>
+
+      <button class="btn-settings" type="button" @click="handleOpenSettings">
         <AppIcon :name="ICONS.common.settings" />
         <span>设置中心</span>
       </button>
@@ -107,57 +99,84 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { useSessions } from '../composables/useSessions'
-import { getStatus } from '../api/client'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import { useSessions } from '../composables/useSessions'
+import { loadManagementToken, subscribeManagementTokenChange } from '../utils/managementToken'
 
-defineProps<{ mobileOpen: boolean }>()
+const props = defineProps<{
+  mobileOpen: boolean
+}>()
+
 const emit = defineEmits<{
-  toggle: []
-  'open-settings': []
+  (e: 'toggle'): void
+  (e: 'open-settings'): void
+  (e: 'open-management-token'): void
 }>()
 
 const route = useRoute()
 const router = useRouter()
 const { sessions, currentSessionId, loadSessions, newChat, switchSession, removeSession } = useSessions()
-const statusText = ref('')
 
-const isChatRoute = computed(() => route.path === '/')
+const deletingSessionId = ref<string | null>(null)
+const managementReady = ref(false)
 
-function displayName(id: string) {
-  return id.length > 30 ? id.slice(0, 30) + '...' : id
+let unsubscribeManagementToken: (() => void) | null = null
+
+function refreshManagementState() {
+  managementReady.value = !!loadManagementToken().trim()
 }
 
 async function handleNewChat() {
+  if (route.path !== '/') await router.push('/')
   newChat()
-  if (!isChatRoute.value) {
-    await router.push('/')
-  }
   emit('toggle')
 }
 
-async function handleSwitch(id: string) {
+async function handleSwitchSession(id: string) {
+  if (route.path !== '/') await router.push('/')
   switchSession(id)
-  if (!isChatRoute.value) {
-    await router.push('/')
-  }
   emit('toggle')
 }
 
-async function handleDelete(id: string) {
-  await removeSession(id)
+async function handleDeleteSession(id: string) {
+  if (deletingSessionId.value) return
+  deletingSessionId.value = id
+  try {
+    await removeSession(id)
+  } finally {
+    deletingSessionId.value = null
+  }
+}
+
+function handleOpenSettings() {
+  emit('open-settings')
+  emit('toggle')
+}
+
+function handleOpenManagementToken() {
+  emit('open-management-token')
+  emit('toggle')
 }
 
 onMounted(async () => {
   await loadSessions()
-  try {
-    const status = await getStatus()
-    statusText.value = `${status.provider} / ${status.model}`
-  } catch {
-    statusText.value = ''
-  }
+  refreshManagementState()
+  unsubscribeManagementToken = subscribeManagementTokenChange(refreshManagementState)
+})
+
+onUnmounted(() => {
+  unsubscribeManagementToken?.()
+})
+
+watch(() => route.fullPath, async () => {
+  await loadSessions()
+  refreshManagementState()
+})
+
+watch(() => props.mobileOpen, () => {
+  refreshManagementState()
 })
 </script>
