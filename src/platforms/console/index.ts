@@ -30,6 +30,7 @@ function generateSessionId(): string {
 export class ConsolePlatform extends PlatformAdapter {
   private sessionId: string;
   private modeName?: string;
+  private contextWindow?: number;
   private backend: Backend;
   private inkInstance?: Instance;
   private appHandle?: AppHandle;
@@ -37,11 +38,12 @@ export class ConsolePlatform extends PlatformAdapter {
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
 
-  constructor(backend: Backend, modeName?: string) {
+  constructor(backend: Backend, modeName?: string, contextWindow?: number) {
     super();
     this.backend = backend;
     this.sessionId = generateSessionId();
     this.modeName = modeName;
+    this.contextWindow = contextWindow;
   }
 
   override async start(): Promise<void> {
@@ -104,6 +106,7 @@ export class ConsolePlatform extends PlatformAdapter {
         onRunCommand: (cmd: string) => this.handleRunCommand(cmd),
         onExit: () => this.stop(),
         modeName: this.modeName,
+        contextWindow: this.contextWindow,
       });
       try {
         this.inkInstance = render(element);

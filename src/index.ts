@@ -162,7 +162,7 @@ async function main() {
     }
     case 'console':
     default:
-      platform = new ConsolePlatform(backend, defaultMode);
+      platform = new ConsolePlatform(backend, defaultMode, config.llm.primary.contextWindow);
       break;
   }
 

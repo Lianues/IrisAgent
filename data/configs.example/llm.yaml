@@ -9,6 +9,9 @@ primary:
   apiKey: your-api-key-here
   model: gemini-2.0-flash
   baseUrl: https://generativelanguage.googleapis.com
+  # 模型上下文窗口大小（token 数，用于 TUI 显示占用比例）
+  # 常见模型已有内置默认值，通常无需手动设置
+  # contextWindow: 1048576
 
 # secondary:
 #   provider: openai-compatible

@@ -7,6 +7,8 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   baseUrl: string;
+  /** 模型上下文窗口大小（token 数），用于 TUI 显示占用比例 */
+  contextWindow?: number;
 }
 
 /** 三层 LLM 配置：primary 必填，secondary/light 可选（未配置时自动向上回退） */

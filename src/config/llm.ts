@@ -4,18 +4,21 @@
 
 import { LLMConfig, TieredLLMConfig } from './types';
 
-export const DEFAULTS: Record<string, Partial<LLMConfig>> = {
+export const DEFAULTS: Record<string, Partial<LLMConfig> & { contextWindow?: number }> = {
   'gemini': {
     model: 'gemini-2.0-flash',
     baseUrl: 'https://generativelanguage.googleapis.com',
+    contextWindow: 1048576,
   },
   'openai-compatible': {
     model: 'gpt-4o',
     baseUrl: 'https://api.openai.com',
+    contextWindow: 128000,
   },
   'claude': {
     model: 'claude-sonnet-4-6',
     baseUrl: 'https://api.anthropic.com',
+    contextWindow: 200000,
   },
 };
 
@@ -29,6 +32,7 @@ export function parseSingleLLMConfig(raw: any = {}): LLMConfig {
     apiKey: raw.apiKey ?? '',
     model: raw.model || defaults.model || '',
     baseUrl: raw.baseUrl || defaults.baseUrl || '',
+    contextWindow: typeof raw.contextWindow === 'number' ? raw.contextWindow : defaults.contextWindow,
   };
 }
 

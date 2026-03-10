@@ -40,12 +40,13 @@ interface AppProps {
   onRunCommand: (cmd: string) => { output: string; cwd: string };
   onExit: () => void;
   modeName?: string;
+  contextWindow?: number;
 }
 
 /** 视图模式 */
 type ViewMode = 'chat' | 'session-list';
 
-export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSessions, onRunCommand, onExit, modeName }: AppProps) {
+export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSessions, onRunCommand, onExit, modeName, contextWindow }: AppProps) {
   const [messages, setMessages] =useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -361,7 +362,14 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
           <Text dimColor>{'\u2500'.repeat(Math.max(3, termWidth - 6))}</Text>
         </Text>
         <Text dimColor>
-          MODE: {(modeName ?? 'normal').toUpperCase()}  CTX: {contextTokens > 0 ? contextTokens.toLocaleString() : '-'}
+          {'MODE: '}{(modeName ?? 'normal').toUpperCase()}
+          {'  CTX: '}
+          {contextTokens > 0 ? contextTokens.toLocaleString() : '-'}
+          {contextWindow ? `/${contextWindow.toLocaleString()}` : ''}
+          {contextTokens > 0 && contextWindow
+            ? ` (${Math.round(contextTokens / contextWindow * 100)}%)`
+            : ''
+          }
         </Text>
         <Text dimColor>{process.cwd()}</Text>
         <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
