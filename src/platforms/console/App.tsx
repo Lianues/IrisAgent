@@ -238,14 +238,9 @@ export function App({ onReady, onSubmit, onExit }: AppProps) {
         <Text wrap="truncate-end">
           <Text dimColor>{'\u2500'.repeat(Math.max(3, termWidth - 6))}</Text>
         </Text>
-        <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
-        <Box justifyContent="space-between" width="100%">
-          <Text dimColor>MODE: RUNTIME_SECURE</Text>
-          <Text color={isGenerating ? 'yellow' : 'green'} bold>
-            {isGenerating ? '[BUSY]' : '[IDLE]'}
-          </Text>
-        </Box>
+        <Text dimColor>MODE: RUNTIME_SECURE</Text>
         <Text dimColor>{process.cwd()}</Text>
+        <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
       </Box>
     </Box>
   );

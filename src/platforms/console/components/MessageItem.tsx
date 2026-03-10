@@ -53,7 +53,7 @@ export const MessageItem = React.memo(function MessageItem(
   const isUser = msg.role === 'user';
   const themeColor = isUser ? 'cyan' : 'green';
   const labelText = isUser ? 'USER' : 'IRIS';
-  const textColor = isUser ? 'white' : 'green';
+  const textColor = 'white';
 
   const displayParts: MessagePart[] = [...msg.parts];
   if (liveTools && liveTools.length > 0) {

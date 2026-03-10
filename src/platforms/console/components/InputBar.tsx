@@ -23,16 +23,14 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
   };
 
   return (
-    <Box flexDirection="row" width="100%">
+    <Box flexDirection="row" alignSelf="flex-start">
       <Text color={disabled ? 'gray' : 'cyan'} bold>{"\u276F"} </Text>
-      <Box flexGrow={1}>
-        <TextInput
-          value={value}
-          onChange={setValue}
-          onSubmit={handleSubmit}
-          placeholder=""
-        />
-      </Box>
+      <TextInput
+        value={value}
+        onChange={setValue}
+        onSubmit={handleSubmit}
+        placeholder=""
+      />
     </Box>
   );
 }
