@@ -1,7 +1,7 @@
 /**
  * MCP 管理器
  *
- * 管理多个 MCP 服务器连接，将 MCP 工具转换为 IrisClaw ToolDefinition 格式。
+ * 管理多个 MCP 服务器连接，将 MCP 工具转换为 Iris ToolDefinition 格式。
  */
 
 import { MCPConfig } from '../config/types';
@@ -97,7 +97,7 @@ export class MCPManager {
 }
 
 /**
- * 将 MCP inputSchema（JSON Schema）转换为 IrisClaw ParameterSchema 格式
+ * 将 MCP inputSchema（JSON Schema）转换为 Iris ParameterSchema 格式
  */
 function convertInputSchema(schema: Record<string, unknown>): {
   type: 'object';

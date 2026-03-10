@@ -3,7 +3,7 @@
     <section class="chat-frame">
       <header class="chat-topbar">
         <div class="chat-topbar-main">
-          <span class="chat-kicker">IrisClaw Control Center</span>
+          <span class="chat-kicker">Iris Control Center</span>
           <h2>AI Agent 对话控制台</h2>
         </div>
         <p class="chat-topbar-note">支持流式推理、工具执行与多会话编排</p>

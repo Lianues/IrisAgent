@@ -4,8 +4,8 @@
  * 仅保存在当前浏览器 localStorage，用于访问受保护的管理接口。
  */
 
-const STORAGE_KEY = 'irisclaw.managementToken'
-const CHANGE_EVENT = 'irisclaw:management-token-changed'
+const STORAGE_KEY = 'iris.managementToken'
+const CHANGE_EVENT = 'iris:management-token-changed'
 
 /** 触发本页管理令牌变更事件 */
 function emitTokenChanged(): void {

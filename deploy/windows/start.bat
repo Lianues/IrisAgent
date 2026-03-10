@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
-title IrisClaw
+title Iris
 
 echo ============================================
-echo          IrisClaw AI 聊天框架
+echo          Iris AI 聊天框架
 echo ============================================
 echo.
 
@@ -50,7 +50,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":8192
 
 echo.
 echo ============================================
-echo   IrisClaw 已启动！
+echo   Iris 已启动！
 echo   访问地址: http://localhost:8192
 echo   关闭此窗口即可停止服务
 echo ============================================
@@ -66,7 +66,7 @@ REM 如果 node 异常退出，暂停让用户看到错误信息
 if %errorlevel% neq 0 (
     echo.
     echo ================================================================
-    echo   IrisClaw 异常退出（错误码: %errorlevel%）
+    echo   Iris 异常退出（错误码: %errorlevel%）
     echo   请检查上方的错误信息
     echo ================================================================
     pause

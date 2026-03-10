@@ -14,7 +14,7 @@ import { Content } from '../../types';
 export class SqliteStorage extends StorageProvider {
   private db: Database.Database;
 
-  constructor(dbPath: string = './data/irisclaw.db') {
+  constructor(dbPath: string = './data/iris.db') {
     super();
 
     // 确保父目录存在

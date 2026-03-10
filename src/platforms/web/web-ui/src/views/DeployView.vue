@@ -77,21 +77,21 @@
       <div class="form-group">
         <label>后端端口</label>
         <input type="number" v-model.number="form.port" placeholder="8192" />
-        <p class="field-hint">IrisClaw 后端监听的端口，对应 config.yaml 中 web.port 的值。{{ runtimeHint }}</p>
+        <p class="field-hint">Iris 后端监听的端口，对应 config.yaml 中 web.port 的值。{{ runtimeHint }}</p>
       </div>
 
       <div class="form-group">
         <label>部署路径</label>
-        <input type="text" v-model="form.deployPath" placeholder="/opt/irisclaw" />
+        <input type="text" v-model="form.deployPath" placeholder="/opt/iris" />
         <p class="field-hint">项目文件在服务器上的绝对路径，systemd 服务将从此目录启动。</p>
       </div>
 
       <div class="form-group">
         <label>运行用户</label>
-        <input type="text" v-model="form.user" placeholder="irisclaw" />
+        <input type="text" v-model="form.user" placeholder="iris" />
         <p class="field-hint">
           systemd 服务运行的 Linux 用户。
-          如未创建，可运行 <code style="background:var(--code-bg);padding:1px 5px;border-radius:4px">sudo useradd -r -s /bin/false irisclaw</code>
+          如未创建，可运行 <code style="background:var(--code-bg);padding:1px 5px;border-radius:4px">sudo useradd -r -s /bin/false iris</code>
         </p>
       </div>
 
@@ -145,7 +145,7 @@
       <div class="deploy-output-head">
         <div>
           <span class="deploy-output-label">统一预览</span>
-          <h3 class="deploy-output-title">{{ activeTab === 'nginx' ? 'nginx.conf' : 'irisclaw.service' }}</h3>
+          <h3 class="deploy-output-title">{{ activeTab === 'nginx' ? 'nginx.conf' : 'iris.service' }}</h3>
         </div>
         <span class="deploy-output-status" :class="{ disabled: !canDeploy }">
           {{ canDeploy ? '可直接部署' : (deployDisabledReason || '仅生成配置') }}
@@ -164,7 +164,7 @@
           type="button"
           :class="{ active: activeTab === 'service' }"
           @click="activeTab = 'service'"
-        >irisclaw.service</button>
+        >iris.service</button>
       </div>
 
       <div class="deploy-code-wrapper">
@@ -294,10 +294,10 @@
             此操作需要 sudo 权限。
           </p>
           <p v-if="activeTab === 'nginx' && detect.nginx.existingConfig" class="text-warn">
-            注意：已存在 IrisClaw 的 nginx 配置，将被覆盖。
+            注意：已存在 Iris 的 nginx 配置，将被覆盖。
           </p>
           <p v-if="activeTab === 'service' && detect.systemd.existingService" class="text-warn">
-            注意：已存在 IrisClaw 的 systemd 服务文件，将被覆盖。
+            注意：已存在 Iris 的 systemd 服务文件，将被覆盖。
           </p>
           <div class="form-group" style="margin-top:12px">
             <label>部署令牌</label>
@@ -327,8 +327,8 @@ import { loadManagementToken, subscribeManagementTokenChange } from '../utils/ma
 const form = reactive<DeployFormOptions>({
   domain: '',
   port: 8192,
-  deployPath: '/opt/irisclaw',
-  user: 'irisclaw',
+  deployPath: '/opt/iris',
+  user: 'iris',
   enableHttps: true,
   enableAuth: false,
 })
@@ -363,8 +363,8 @@ const preview = reactive<DeployPreviewResponse>({
   options: {
     domain: 'chat.example.com',
     port: 8192,
-    deployPath: '/opt/irisclaw',
-    user: 'irisclaw',
+    deployPath: '/opt/iris',
+    user: 'iris',
     enableHttps: true,
     enableAuth: false,
   },
@@ -478,8 +478,8 @@ async function refreshPreview() {
       options: {
         domain: form.domain.trim() || 'chat.example.com',
         port: Number.isFinite(form.port) ? form.port : runtimeWeb.port,
-        deployPath: form.deployPath.trim() || '/opt/irisclaw',
-        user: form.user.trim() || 'irisclaw',
+        deployPath: form.deployPath.trim() || '/opt/iris',
+        user: form.user.trim() || 'iris',
         enableHttps: form.enableHttps,
         enableAuth: form.enableAuth,
       },
@@ -592,7 +592,7 @@ const currentPreviewContent = computed(() => {
 })
 
 function currentFilename() {
-  return activeTab.value === 'nginx' ? 'nginx.conf' : 'irisclaw.service'
+  return activeTab.value === 'nginx' ? 'nginx.conf' : 'iris.service'
 }
 
 async function executeDeploy() {

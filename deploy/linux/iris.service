@@ -1,35 +1,35 @@
 # ==========================================
-#  IrisClaw systemd 服务文件
+#  Iris systemd 服务文件
 #
 #  此文件与 Web 部署生成器的默认输出保持一致：
-#  - 部署路径: /opt/irisclaw
-#  - 运行用户: irisclaw
+#  - 部署路径: /opt/iris
+#  - 运行用户: iris
 #
 #  使用方法：
-#  1. 将此文件复制到 /etc/systemd/system/irisclaw.service
+#  1. 将此文件复制到 /etc/systemd/system/iris.service
 #  2. 根据实际情况修改 WorkingDirectory 和 User
 #  3. systemctl daemon-reload
-#  4. systemctl enable --now irisclaw
+#  4. systemctl enable --now iris
 #
 #  如果将来打包成 exe，只需将 ExecStart 改为 exe 路径即可
 # ==========================================
 
 [Unit]
-Description=IrisClaw AI Chat Service
+Description=Iris AI Chat Service
 After=network.target
 
 [Service]
 Type=simple
 
 # ← 替换为实际部署路径
-WorkingDirectory=/opt/irisclaw
+WorkingDirectory=/opt/iris
 
-# Node.js 启动命令（打包 exe 后改为：ExecStart=/opt/irisclaw/irisclaw）
+# Node.js 启动命令（打包 exe 后改为：ExecStart=/opt/iris/iris）
 ExecStart=/usr/bin/node dist/index.js
 
-# 运行用户（建议创建专用用户：useradd -r -s /bin/false irisclaw）
-User=irisclaw
-Group=irisclaw
+# 运行用户（建议创建专用用户：useradd -r -s /bin/false iris）
+User=iris
+Group=iris
 
 # 环境变量
 Environment=NODE_ENV=production
@@ -38,7 +38,7 @@ Environment=NODE_ENV=production
 Restart=on-failure
 RestartSec=5
 
-# 日志输出到 journald（通过 journalctl -u irisclaw 查看）
+# 日志输出到 journald（通过 journalctl -u iris 查看）
 StandardOutput=journal
 StandardError=journal
 
@@ -46,7 +46,7 @@ StandardError=journal
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/irisclaw/data
+ReadWritePaths=/opt/iris/data
 
 [Install]
 WantedBy=multi-user.target

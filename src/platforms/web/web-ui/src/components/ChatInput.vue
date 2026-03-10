@@ -10,7 +10,7 @@
         <textarea
           ref="inputEl"
           v-model="text"
-          placeholder="给 IrisClaw 发送消息..."
+          placeholder="给 Iris 发送消息..."
           rows="1"
           :disabled="disabled"
           @keydown.enter.exact.prevent="handleSend"

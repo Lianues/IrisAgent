@@ -3,7 +3,7 @@
     <div class="sidebar-header">
       <div class="sidebar-brand">
         <span class="sidebar-badge">Control Hub</span>
-        <div class="logo">IrisClaw</div>
+        <div class="logo">Iris</div>
         <p class="sidebar-subtitle">集中管理会话、部署与系统配置。</p>
       </div>
 

@@ -2,7 +2,7 @@
   <div ref="containerEl" class="messages">
     <div class="messages-shell">
       <div v-if="messages.length === 0 && !isStreaming" class="welcome">
-        <div class="welcome-badge">IrisClaw Workspace</div>
+        <div class="welcome-badge">Iris Workspace</div>
         <h2>把灵感、问题和工具流都放进一个对话里</h2>
         <p>
           支持流式响应、多会话记录与工具调用，适合长时间沉浸式协作。

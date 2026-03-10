@@ -9,7 +9,7 @@ import { ref, computed, watch } from 'vue'
 
 export type ThemeMode = 'dark' | 'light' | 'system'
 
-const STORAGE_KEY = 'irisclaw-theme'
+const STORAGE_KEY = 'iris-theme'
 
 const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
 

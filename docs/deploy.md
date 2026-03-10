@@ -15,7 +15,7 @@
 
 ## Linux VPS 部署（Nginx + 域名 + HTTPS）
 
-本节将 IrisClaw 部署到 VPS，通过域名 + HTTPS 安全访问。
+本节将 Iris 部署到 VPS，通过域名 + HTTPS 安全访问。
 
 > 若启用了 `platform.web.managementToken`，Web GUI 中的配置/部署/Cloudflare 管理接口会要求 `X-Management-Token`。请先在侧边栏“管理令牌”中录入。
 
@@ -24,7 +24,7 @@
 ```
 浏览器 → https://chat.example.com (Nginx 443)
        → Nginx 反代 + HTTPS + 可选密码保护
-       → http://127.0.0.1:8192 (IrisClaw，仅本机监听)
+       → http://127.0.0.1:8192 (Iris，仅本机监听)
 ```
 
 ---
@@ -61,20 +61,20 @@ npm -v
 
 ```bash
 # 创建专用用户
-sudo useradd -r -s /bin/false -m -d /opt/irisclaw irisclaw
+sudo useradd -r -s /bin/false -m -d /opt/iris iris
 
 # 克隆项目
-sudo git clone https://github.com/你的用户名/IrisClaw.git /opt/irisclaw
-sudo chown -R irisclaw:irisclaw /opt/irisclaw
-cd /opt/irisclaw
+sudo git clone https://github.com/你的用户名/Iris.git /opt/iris
+sudo chown -R iris:iris /opt/iris
+cd /opt/iris
 
 # 安装依赖并构建
-sudo -u irisclaw npm run setup
-sudo -u irisclaw npm run build
+sudo -u iris npm run setup
+sudo -u iris npm run build
 
 # 创建配置文件
-sudo -u irisclaw cp config.example.yaml config.yaml
-sudo -u irisclaw nano config.yaml
+sudo -u iris cp config.example.yaml config.yaml
+sudo -u iris nano config.yaml
 ```
 
 **配置要点**（`config.yaml`）：
@@ -93,21 +93,21 @@ platform:
 
 ```bash
 # 复制服务文件
-sudo cp deploy/irisclaw.service /etc/systemd/system/
+sudo cp deploy/iris.service /etc/systemd/system/
 
-# 如果部署路径不是 /opt/irisclaw，编辑服务文件修改 WorkingDirectory
-sudo nano /etc/systemd/system/irisclaw.service
+# 如果部署路径不是 /opt/iris，编辑服务文件修改 WorkingDirectory
+sudo nano /etc/systemd/system/iris.service
 
 # 创建数据目录
-sudo mkdir -p /opt/irisclaw/data
-sudo chown irisclaw:irisclaw /opt/irisclaw/data
+sudo mkdir -p /opt/iris/data
+sudo chown iris:iris /opt/iris/data
 
 # 启用并启动服务
 sudo systemctl daemon-reload
-sudo systemctl enable --now irisclaw
+sudo systemctl enable --now iris
 
 # 检查状态
-sudo systemctl status irisclaw
+sudo systemctl status iris
 ```
 
 验证应用已启动：
@@ -124,16 +124,16 @@ curl http://127.0.0.1:8192/api/status
 sudo apt install -y nginx
 
 # 复制配置文件
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/irisclaw
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/iris
 
 # 编辑配置：将 chat.example.com 替换为你的域名
-sudo nano /etc/nginx/sites-available/irisclaw
+sudo nano /etc/nginx/sites-available/iris
 
 # 创建 certbot 验证目录
 sudo mkdir -p /var/www/certbot
 
 # 启用站点（如有默认站点可删除）
-sudo ln -s /etc/nginx/sites-available/irisclaw /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/iris /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
 # 检查配置语法
@@ -178,9 +178,9 @@ sudo apt install -y apache2-utils
 sudo htpasswd -c /etc/nginx/.htpasswd 用户名
 
 # 编辑 Nginx 配置，取消 Basic Auth 注释
-sudo nano /etc/nginx/sites-available/irisclaw
+sudo nano /etc/nginx/sites-available/iris
 # 找到以下两行，去掉前面的 #：
-#   auth_basic "IrisClaw";
+#   auth_basic "Iris";
 #   auth_basic_user_file /etc/nginx/.htpasswd;
 
 # 重载 Nginx
@@ -221,7 +221,7 @@ Cloudflare Token 推荐通过环境变量或文件提供，避免明文写入 `c
 
 ```yaml
 cloudflare:
-  apiTokenEnv: IRISCLAW_CF_API_TOKEN
+  apiTokenEnv: IRIS_CF_API_TOKEN
   zoneId: auto
 ```
 
@@ -242,11 +242,11 @@ sudo ufw enable
 
 ```bash
 # 1. 检查服务状态
-sudo systemctl status irisclaw
+sudo systemctl status iris
 sudo systemctl status nginx
 
 # 2. 浏览器访问
-# 打开 https://你的域名，应看到 IrisClaw Web 界面
+# 打开 https://你的域名，应看到 Iris Web 界面
 
 # 3. 测试 SSE 流式输出
 # 在界面中发送消息，文字应逐字流式显示，而非等待完成后一次性出现
@@ -261,7 +261,7 @@ sudo systemctl status nginx
 
 ```bash
 # 应用日志
-sudo journalctl -u irisclaw -f
+sudo journalctl -u iris -f
 
 # Nginx 日志
 sudo tail -f /var/log/nginx/access.log
@@ -271,11 +271,11 @@ sudo tail -f /var/log/nginx/error.log
 ### 更新代码
 
 ```bash
-cd /opt/irisclaw
-sudo -u irisclaw git pull
-sudo -u irisclaw npm run setup
-sudo -u irisclaw npm run build
-sudo systemctl restart irisclaw
+cd /opt/iris
+sudo -u iris git pull
+sudo -u iris npm run setup
+sudo -u iris npm run build
+sudo systemctl restart iris
 ```
 
 ### 证书续期
@@ -292,8 +292,8 @@ sudo systemctl list-timers | grep certbot
 
 | 问题 | 排查方法 |
 |------|----------|
-| 502 Bad Gateway | `systemctl status irisclaw` 检查应用是否运行 |
+| 502 Bad Gateway | `systemctl status iris` 检查应用是否运行 |
 | SSE 流式输出被缓冲 | 确认 Nginx 配置中 `/api/chat` 的 `proxy_buffering off` |
 | 证书申请失败 | 确认 DNS 已指向 VPS、80 端口已开放 |
-| 应用启动失败 | `journalctl -u irisclaw -e` 查看错误日志 |
+| 应用启动失败 | `journalctl -u iris -e` 查看错误日志 |
 | 页面空白 | 确认已执行 `npm run build`，检查 `web-ui/dist/` 是否存在 |

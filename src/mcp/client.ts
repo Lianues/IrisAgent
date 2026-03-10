@@ -59,7 +59,7 @@ export class MCPClient {
       const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
 
       this.client = new Client(
-        { name: 'IrisClaw', version: '1.0.0' },
+        { name: 'Iris', version: '1.0.0' },
         { capabilities: {} },
       );
 

@@ -55,7 +55,7 @@ system:
 
 # cloudflare:
 #   apiToken: your-cloudflare-api-token
-#   # apiTokenEnv: IRISCLAW_CF_API_TOKEN
+#   # apiTokenEnv: IRIS_CF_API_TOKEN
 #   # apiTokenFile: ./data/secrets/cloudflare.token
 #   zoneId: auto
 ```

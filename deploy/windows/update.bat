@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
-title IrisClaw 更新
+title Iris 更新
 
 echo ============================================
-echo          IrisClaw 更新
+echo          Iris 更新
 echo ============================================
 echo.
 
@@ -80,7 +80,7 @@ popd
 
 :start
 echo ============================================
-echo   正在启动 IrisClaw...
+echo   正在启动 Iris...
 echo ============================================
 echo.
 

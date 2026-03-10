@@ -38,7 +38,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ retry: [] }>()
 
-const roleLabel = computed(() => (props.role === 'user' ? '你' : 'IrisClaw'))
+const roleLabel = computed(() => (props.role === 'user' ? '你' : 'Iris'))
 const messageEl = ref<HTMLDivElement | null>(null)
 const messageCopyText = ref('复制')
 let messageCopyTimer: number | null = null
