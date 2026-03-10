@@ -89,6 +89,7 @@ export interface MessageMeta {
   tokenIn?: number;
   tokenOut?: number;
   durationMs?: number;
+  streamOutputDurationMs?: number;
 }
 
 export interface AppHandle {
@@ -98,7 +99,7 @@ export interface AppHandle {
   startStream(): void;
   pushStreamParts(parts: MessagePart[]): void;
   endStream(): void;
-  finalizeAssistantParts(parts: MessagePart[]): void;
+  finalizeAssistantParts(parts: MessagePart[], meta?: MessageMeta): void;
   setToolInvocations(invocations: ToolInvocation[]): void;
   setGenerating(generating: boolean): void;
   clearMessages(): void;
@@ -202,19 +203,19 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
         setStreamingParts([]);
       },
 
-      finalizeAssistantParts(parts) {
+      finalizeAssistantParts(parts, meta?) {
         const normalizedParts = mergeMessageParts(parts);
         setMessages(prev => {
           if (normalizedParts.length === 0) return prev;
-          if (prev.length === 0) return [{ id: nextMsgId(), role: 'assistant', parts: normalizedParts }];
+          if (prev.length === 0) return [{ id: nextMsgId(), role: 'assistant', parts: normalizedParts, ...meta }];
           const last = prev[prev.length - 1];
           if (last.role !== 'assistant') {
-            return [...prev, { id: nextMsgId(), role: 'assistant', parts: normalizedParts }];
+            return [...prev, { id: nextMsgId(), role: 'assistant', parts: normalizedParts, ...meta }];
           }
           const replaceCount = pendingCommittedStreamPartsRef.current;
           const baseParts = replaceCount > 0 ? last.parts.slice(0, Math.max(0, last.parts.length - replaceCount)) : last.parts;
           const copy = [...prev];
-          copy[copy.length - 1] = { ...last, parts: mergeMessageParts([...baseParts, ...normalizedParts]) };
+          copy[copy.length - 1] = { ...last, parts: mergeMessageParts([...baseParts, ...normalizedParts]), ...meta };
           return copy;
         });
         pendingCommittedStreamPartsRef.current = 0;

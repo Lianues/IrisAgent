@@ -58,6 +58,7 @@ function getMessageMeta(content: Content): MessageMeta | undefined {
   if (content.usageMetadata?.promptTokenCount != null) meta.tokenIn = content.usageMetadata.promptTokenCount;
   if (content.usageMetadata?.candidatesTokenCount != null) meta.tokenOut = content.usageMetadata.candidatesTokenCount;
   if (content.durationMs != null) meta.durationMs = content.durationMs;
+  if (content.streamOutputDurationMs != null) meta.streamOutputDurationMs = content.streamOutputDurationMs;
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
@@ -101,7 +102,8 @@ export class ConsolePlatform extends PlatformAdapter {
     this.backend.on('assistant:content', (sid: string, content: Content) => {
       if (sid === this.sessionId) {
         const parts = convertPartsToMessageParts(content.parts, 'queued');
-        this.appHandle?.finalizeAssistantParts(parts);
+        const meta = getMessageMeta(content);
+        this.appHandle?.finalizeAssistantParts(parts, meta);
       }
     });
 

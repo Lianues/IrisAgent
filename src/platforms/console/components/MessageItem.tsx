@@ -59,6 +59,7 @@ export interface ChatMessage {
   tokenOut?: number;
   /** 回答耗时（毫秒） */
   durationMs?: number;
+  streamOutputDurationMs?: number;
 }
 
 // ====== 组件 ======
@@ -160,7 +161,7 @@ export const MessageItem = React.memo(function MessageItem(
             {msg.tokenOut != null && `OUT: ${msg.tokenOut.toLocaleString()}`}
             {msg.durationMs != null && (msg.tokenIn != null || msg.tokenOut != null ? '    ' : '')}
             {msg.durationMs != null && `TIME: ${(msg.durationMs / 1000).toFixed(1)}s`}
-            {msg.tokenOut != null && msg.durationMs != null && `   ${formatTokenSpeed(msg.tokenOut, msg.durationMs)}`}
+            {msg.tokenOut != null && msg.streamOutputDurationMs != null && `   ${formatTokenSpeed(msg.tokenOut, msg.streamOutputDurationMs)}`}
           </Text>
         </Box>
       )}

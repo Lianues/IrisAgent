@@ -69,6 +69,8 @@ export interface Content {
   usageMetadata?: UsageMetadata;
   /** 本轮响应耗时（毫秒），存储用 */
   durationMs?: number;
+  /** 流式输出阶段耗时（从首个有效流式块到最后一个有效流式块，毫秒） */
+  streamOutputDurationMs?: number;
 }
 
 // ============ 类型守卫工具函数 ============

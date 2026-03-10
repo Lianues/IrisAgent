@@ -408,6 +408,9 @@ export class Backend extends EventEmitter {
   ): Promise<Content> {
     const parts: Part[] = [];
     let usageMetadata: UsageMetadata | undefined;
+    let streamOutputFirstChunkAt: number | undefined;
+    let streamOutputLastChunkAt: number | undefined;
+    let streamOutputChunkCount = 0;
     const thoughtTiming: ThoughtTimingState = {};
 
     this.emit('stream:start', sessionId);
@@ -430,6 +433,11 @@ export class Backend extends EventEmitter {
       if (deltaParts.length > 0) {
         const emittedParts: Part[] = [];
         const now = Date.now();
+        if (streamOutputFirstChunkAt == null) {
+          streamOutputFirstChunkAt = now;
+        }
+        streamOutputLastChunkAt = now;
+        streamOutputChunkCount++;
         for (const part of deltaParts) {
           emittedParts.push(appendMergedPart(parts, part, now, thoughtTiming));
         }
@@ -451,6 +459,11 @@ export class Backend extends EventEmitter {
 
     const content: Content = { role: 'model', parts };
     if (usageMetadata) content.usageMetadata = usageMetadata;
+    if (
+      streamOutputChunkCount >= 3 &&
+      streamOutputFirstChunkAt != null &&
+      streamOutputLastChunkAt != null
+    ) content.streamOutputDurationMs = streamOutputLastChunkAt - streamOutputFirstChunkAt;
 
     return content;
   }
