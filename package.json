@@ -6,11 +6,11 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:ui && tsc",
-    "build:ui": "cd web-ui && npm run build",
-    "dev:ui": "cd web-ui && npm run dev",
+    "build:ui": "cd src/platforms/web/web-ui && npm run build",
+    "dev:ui": "cd src/platforms/web/web-ui && npm run dev",
     "start": "node dist/index.js",
     "dev": "tsx --experimental-specifier-resolution=node src/index.ts",
-    "setup": "npm install && cd web-ui && npm install"
+    "setup": "npm install && cd src/platforms/web/web-ui && npm install"
   },
   "engines": {
     "node": ">=18.0.0"

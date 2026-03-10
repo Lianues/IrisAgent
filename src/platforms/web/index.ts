@@ -80,10 +80,9 @@ export class WebPlatform extends PlatformAdapter {
     super();
     this.config = config;
     this.router = new Router();
-    // 静态文件目录：优先使用 Vue 构建产物（web-ui/dist），回退到旧的 public 目录
+    // 静态文件目录：优先使用 Vue 构建产物（web-ui/dist）
     // __dirname 在 dev(tsx) 时为 src/platforms/web，在 prod 时为 dist/platforms/web
-    const projectRoot = path.resolve(__dirname, '../../..');
-    const vueDist = path.join(projectRoot, 'web-ui/dist');
+    const vueDist = path.join(__dirname, 'web-ui/dist');
     const legacyPublic = path.join(__dirname, 'public');
     this.publicDir = fs.existsSync(vueDist) ? vueDist : legacyPublic;
     this.setupRoutes();
