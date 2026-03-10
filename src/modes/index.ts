@@ -2,7 +2,7 @@
  * 模式模块统一入口
  */
 
-export { ModeDefinition, ToolFilter } from './types';
+export type { ModeDefinition, ToolFilter } from './types';
 export { ModeRegistry } from './registry';
 
 import { ModeDefinition } from './types';

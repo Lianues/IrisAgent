@@ -17,8 +17,8 @@ import { createLogger } from '../../../logger';
 import { SubAgentTypeRegistry } from './types';
 
 // 统一导出类型层
+export type{ SubAgentTypeConfig } from './types';
 export {
-  SubAgentTypeConfig,
   SubAgentTypeRegistry,
   createDefaultSubAgentTypes,
   buildSubAgentGuidance,
