@@ -7,7 +7,7 @@ import { SystemConfig } from './types';
 export function parseSystemConfig(raw: any = {}): SystemConfig {
   return {
     systemPrompt: raw.systemPrompt ?? '',
-    maxToolRounds: raw.maxToolRounds ?? 10,
+    maxToolRounds: raw.maxToolRounds ?? 200,
     stream: raw.stream ?? true,
     maxAgentDepth: raw.maxAgentDepth ?? 3,
   };

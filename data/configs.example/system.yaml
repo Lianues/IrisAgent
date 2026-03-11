@@ -4,7 +4,7 @@
 systemPrompt: ""
 
 # 工具执行最大轮次
-maxToolRounds: 10
+maxToolRounds: 200
 
 # 流式输出
 stream: true

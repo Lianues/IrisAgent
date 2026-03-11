@@ -149,7 +149,7 @@ export class Backend extends EventEmitter {
     this.modeRegistry = modeRegistry;
     this.defaultMode = config?.defaultMode;
 
-    this.toolLoopConfig = { maxRounds: config?.maxToolRounds ?? 10 };
+    this.toolLoopConfig = { maxRounds: config?.maxToolRounds ?? 200 };
     this.toolLoop = new ToolLoop(tools, prompt, this.toolLoopConfig, toolState);
 
     // 转发工具状态事件

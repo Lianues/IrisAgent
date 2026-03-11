@@ -59,7 +59,7 @@ export function createDefaultSubAgentTypes(): SubAgentTypeConfig[] {
       systemPrompt: '你是一个通用子代理，负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。',
       excludedTools: ['sub_agent'],
       tier: 'secondary',
-      maxToolRounds: 10,
+      maxToolRounds: 200,
     },
     {
       name: 'explore',
@@ -67,7 +67,7 @@ export function createDefaultSubAgentTypes(): SubAgentTypeConfig[] {
       systemPrompt: '你是一个只读探索代理，负责搜索和阅读信息。不要修改任何文件，只返回你发现的内容。',
       allowedTools: ['read_file', 'terminal'],
       tier: 'light',
-      maxToolRounds: 20,
+      maxToolRounds: 200,
     },
     {
       name: 'recall',
