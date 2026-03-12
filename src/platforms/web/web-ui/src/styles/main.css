@@ -1160,6 +1160,67 @@ select:focus-visible {
   border-radius: 16px;
 }
 
+.doc-bubble {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 22px;
+  box-shadow: var(--shadow-sm);
+  animation: floatUp 220ms ease-out;
+}
+
+.doc-bubble-user {
+  background: linear-gradient(135deg, rgba(139, 124, 255, 0.95), rgba(90, 122, 255, 0.92));
+  border-bottom-right-radius: 8px;
+}
+
+.doc-bubble-model {
+  background: linear-gradient(180deg, rgba(29, 37, 64, 0.92), rgba(20, 25, 47, 0.86));
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-bottom-left-radius: 8px;
+}
+
+.doc-bubble-icon {
+  font-size: 1.6rem;
+  color: rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
+}
+
+.doc-bubble-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.doc-bubble-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-bubble-type {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.doc-bubble-model .doc-bubble-icon {
+  color: var(--accent);
+}
+
+.doc-bubble-model .doc-bubble-name {
+  color: var(--text-primary);
+}
+
+.doc-bubble-model .doc-bubble-type {
+  color: var(--text-tertiary);
+}
+
 .message p {
   margin: 0.45em 0;
 }
@@ -1398,6 +1459,43 @@ select:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
   cursor: pointer;
+}
+
+.doc-preview-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 96px;
+  max-width: 200px;
+  animation: floatUp 220ms ease-out;
+}
+
+.doc-preview-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 6px 10px;
+}
+
+.doc-preview-icon {
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.doc-preview-name {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  line-height: 1.2;
 }
 
 .input-meta {
@@ -3034,6 +3132,19 @@ select:focus-visible {
   background: rgba(255, 255, 255, 0.94);
   border-color: rgba(17, 24, 39, 0.12);
   color: var(--text-primary);
+}
+
+:root[data-theme="light"] .doc-bubble-model {
+  background: #ffffff;
+  border-color: rgba(17, 24, 39, 0.1);
+}
+
+:root[data-theme="light"] .doc-bubble-user {
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%);
+}
+
+:root[data-theme="light"] .doc-preview-icon {
+  color: #059669;
 }
 
 :root[data-theme="light"] .input-area textarea,

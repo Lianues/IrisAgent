@@ -4,7 +4,7 @@
       ref="fileInputEl"
       class="sr-only"
       type="file"
-      accept="image/*"
+      accept="image/*,.pdf,.docx,.pptx,.xlsx,.xls"
       multiple
       :disabled="disabled"
       @change="handleFileSelection"
@@ -23,10 +23,10 @@
         <div class="input-hint">Enter 发送 · Shift + Enter 换行</div>
       </div>
 
-      <div v-if="images.length > 0" class="image-preview-strip">
+      <div v-if="images.length > 0 || documents.length > 0" class="image-preview-strip">
         <div
           v-for="(image, index) in images"
-          :key="`${image.mimeType}-${index}`"
+          :key="`img-${index}`"
           class="image-preview-item"
         >
           <img :src="toImageSrc(image)" :alt="`待发送图片 ${index + 1}`" />
@@ -35,6 +35,25 @@
             type="button"
             :disabled="disabled"
             @click="removeImage(index)"
+          >
+            <AppIcon :name="ICONS.common.close" />
+          </button>
+        </div>
+
+        <div
+          v-for="(doc, index) in documents"
+          :key="`doc-${index}`"
+          class="image-preview-item doc-preview-item"
+        >
+          <div class="doc-preview-content">
+            <AppIcon :name="ICONS.common.document" class="doc-preview-icon" />
+            <span class="doc-preview-name">{{ doc.fileName }}</span>
+          </div>
+          <button
+            class="image-preview-remove"
+            type="button"
+            :disabled="disabled"
+            @click="removeDocument(index)"
           >
             <AppIcon :name="ICONS.common.close" />
           </button>
@@ -57,11 +76,11 @@
           <button
             class="btn-attach"
             type="button"
-            :disabled="disabled || images.length >= MAX_IMAGES"
+            :disabled="disabled || (images.length >= MAX_IMAGES && documents.length >= MAX_DOCUMENTS)"
             @click="openFilePicker"
           >
             <AppIcon :name="ICONS.common.attach" class="btn-attach-icon" />
-            <span>上传图片</span>
+            <span>上传文件</span>
           </button>
 
           <button
@@ -76,7 +95,7 @@
       </div>
 
       <div class="input-upload-hint">
-        <span>支持拖拽/粘贴上传 · 最多 {{ MAX_IMAGES }} 张 · 单张不超过 5MB</span>
+        <span>支持拖拽/粘贴上传 · 图片最多 {{ MAX_IMAGES }} 张(5MB) · 文档最多 {{ MAX_DOCUMENTS }} 个(50MB)</span>
         <span v-if="errorMessage" class="input-error">{{ errorMessage }}</span>
       </div>
     </div>
@@ -85,26 +104,37 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import type { ImageInput } from '../api/types'
+import type { ImageInput, DocumentInput } from '../api/types'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
 
 const MAX_IMAGES = 5
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_DOCUMENTS = 10
+const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
+const SUPPORTED_DOC_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.xlsx', '.xls']
+const SUPPORTED_DOC_MIMES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+])
 
 const props = defineProps<{ disabled: boolean }>()
-const emit = defineEmits<{ send: [text: string, images?: ImageInput[]] }>()
+const emit = defineEmits<{ send: [text: string, images?: ImageInput[], documents?: DocumentInput[]] }>()
 
 const disabled = computed(() => props.disabled)
 const text = ref('')
 const images = ref<ImageInput[]>([])
+const documents = ref<DocumentInput[]>([])
 const errorMessage = ref('')
 const dragActive = ref(false)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 let dragDepth = 0
 
-const canSend = computed(() => text.value.trim().length > 0 || images.value.length > 0)
+const canSend = computed(() => text.value.trim().length > 0 || images.value.length > 0 || documents.value.length > 0)
 
 function setError(message: string) {
   errorMessage.value = message
@@ -118,16 +148,25 @@ function toImageSrc(image: ImageInput): string {
   return `data:${image.mimeType};base64,${image.data}`
 }
 
+function isDocumentFile(file: File): boolean {
+  if (SUPPORTED_DOC_MIMES.has(file.type)) return true
+  const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0]
+  return ext ? SUPPORTED_DOC_EXTENSIONS.includes(ext) : false
+}
+
 function openFilePicker() {
-  if (props.disabled || images.value.length >= MAX_IMAGES) return
+  if (props.disabled || (images.value.length >= MAX_IMAGES && documents.value.length >= MAX_DOCUMENTS)) return
   fileInputEl.value?.click()
 }
 
 function removeImage(index: number) {
   images.value.splice(index, 1)
-  if (images.value.length < MAX_IMAGES) {
-    clearError()
-  }
+  clearError()
+}
+
+function removeDocument(index: number) {
+  documents.value.splice(index, 1)
+  clearError()
 }
 
 function readFileAsImageInput(file: File): Promise<ImageInput> {
@@ -153,27 +192,57 @@ function readFileAsImageInput(file: File): Promise<ImageInput> {
   })
 }
 
+function readFileAsDocumentInput(file: File): Promise<DocumentInput> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error(`无法读取文档 ${file.name}`))
+        return
+      }
+      const [, data = ''] = reader.result.split(',', 2)
+      if (!data) {
+        reject(new Error(`文档 ${file.name} 转码失败`))
+        return
+      }
+      resolve({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        data,
+      })
+    }
+    reader.onerror = () => reject(new Error(`文档 ${file.name} 读取失败`))
+    reader.readAsDataURL(file)
+  })
+}
+
 async function appendFiles(files: File[]) {
   if (props.disabled || files.length === 0) return
 
   const errors: string[] = []
-  const imageFiles = files.filter((file) => file.type.startsWith('image/'))
-  if (imageFiles.length !== files.length) {
-    errors.push('仅支持上传 image/* 图片文件')
+  const imageFiles: File[] = []
+  const docFiles: File[] = []
+
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      imageFiles.push(file)
+    } else if (isDocumentFile(file)) {
+      docFiles.push(file)
+    } else {
+      errors.push(`${file.name}: 不支持的文件类型`)
+    }
   }
 
-  const remainingSlots = MAX_IMAGES - images.value.length
-  if (remainingSlots <= 0) {
-    setError(`最多上传 ${MAX_IMAGES} 张图片`)
-    return
+  // 处理图片
+  const remainingImageSlots = MAX_IMAGES - images.value.length
+  if (imageFiles.length > 0 && remainingImageSlots <= 0) {
+    errors.push(`图片已达上限 ${MAX_IMAGES} 张`)
   }
-
-  const candidateFiles = imageFiles.slice(0, remainingSlots)
-  if (imageFiles.length > remainingSlots) {
-    errors.push(`最多上传 ${MAX_IMAGES} 张图片`)
+  const candidateImages = imageFiles.slice(0, Math.max(0, remainingImageSlots))
+  if (imageFiles.length > remainingImageSlots && remainingImageSlots > 0) {
+    errors.push(`图片最多上传 ${MAX_IMAGES} 张`)
   }
-
-  const validFiles = candidateFiles.filter((file) => {
+  const validImages = candidateImages.filter((file) => {
     if (file.size > MAX_IMAGE_BYTES) {
       errors.push(`${file.name} 超过 5MB 限制`)
       return false
@@ -181,14 +250,35 @@ async function appendFiles(files: File[]) {
     return true
   })
 
-  if (validFiles.length === 0) {
-    setError(errors[0] ?? '没有可用的图片文件')
+  // 处理文档
+  const remainingDocSlots = MAX_DOCUMENTS - documents.value.length
+  if (docFiles.length > 0 && remainingDocSlots <= 0) {
+    errors.push(`文档已达上限 ${MAX_DOCUMENTS} 个`)
+  }
+  const candidateDocs = docFiles.slice(0, Math.max(0, remainingDocSlots))
+  if (docFiles.length > remainingDocSlots && remainingDocSlots > 0) {
+    errors.push(`文档最多上传 ${MAX_DOCUMENTS} 个`)
+  }
+  const validDocs = candidateDocs.filter((file) => {
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      errors.push(`${file.name} 超过 50MB 限制`)
+      return false
+    }
+    return true
+  })
+
+  if (validImages.length === 0 && validDocs.length === 0) {
+    setError(errors[0] ?? '没有可用的文件')
     return
   }
 
   try {
-    const nextImages = await Promise.all(validFiles.map(readFileAsImageInput))
-    images.value = [...images.value, ...nextImages]
+    const [newImages, newDocs] = await Promise.all([
+      Promise.all(validImages.map(readFileAsImageInput)),
+      Promise.all(validDocs.map(readFileAsDocumentInput)),
+    ])
+    images.value = [...images.value, ...newImages]
+    documents.value = [...documents.value, ...newDocs]
     if (errors.length > 0) {
       setError(errors.join('；'))
     } else {
@@ -250,6 +340,7 @@ async function handlePaste(event: ClipboardEvent) {
 function resetComposer() {
   text.value = ''
   images.value = []
+  documents.value = []
   clearError()
   nextTick(() => {
     if (inputEl.value) inputEl.value.style.height = 'auto'
@@ -263,8 +354,18 @@ function handleSend() {
     mimeType: image.mimeType,
     data: image.data,
   }))
+  const outgoingDocs = documents.value.map((doc) => ({
+    fileName: doc.fileName,
+    mimeType: doc.mimeType,
+    data: doc.data,
+  }))
 
-  emit('send', text.value, outgoingImages.length > 0 ? outgoingImages : undefined)
+  emit(
+    'send',
+    text.value,
+    outgoingImages.length > 0 ? outgoingImages : undefined,
+    outgoingDocs.length > 0 ? outgoingDocs : undefined,
+  )
   resetComposer()
 }
 

@@ -7,6 +7,7 @@ export const ICONS = {
     chevronRight: 'chevron_right',
     attach: 'attach_file',
     send: 'north_east',
+    document: 'description',
   },
   sidebar: {
     chat: 'chat',

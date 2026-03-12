@@ -4,12 +4,20 @@ export interface ImageInput {
   data: string
 }
 
+/** 文档输入 */
+export interface DocumentInput {
+  fileName: string
+  mimeType: string
+  data: string
+}
+
 /** 消息内容部分 */
 export interface MessagePart {
-  type: 'text' | 'image' | 'function_call' | 'function_response'
+  type: 'text' | 'image' | 'document' | 'function_call' | 'function_response'
   text?: string
   mimeType?: string
   data?: string
+  fileName?: string
   name?: string
   args?: unknown
   response?: unknown

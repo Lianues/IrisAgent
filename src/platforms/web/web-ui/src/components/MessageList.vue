@@ -39,7 +39,7 @@
 
         <template v-for="(part, j) in msg.parts" :key="`${i}-${j}`">
           <MessageBubble
-            v-if="part.type === 'text' && part.text?.trim()"
+            v-if="part.type === 'text' && part.text?.trim() && !isInternalMarker(part.text!)"
             :role="msg.role"
             :text="part.text!"
             @retry="emit('retry')"
@@ -52,9 +52,17 @@
             :data="part.data"
           />
 
+          <DocumentBubble
+            v-else-if="part.type === 'document' && part.mimeType && part.data"
+            :role="msg.role"
+            :mime-type="part.mimeType"
+            :data="part.data"
+            :file-name="part.fileName"
+          />
+
           <!-- 工具折叠按钮：紧跟在文本后、工具部分前显示 -->
           <button
-            v-if="part.type === 'text' && part.text?.trim() && hasToolParts(msg) && isLastTextPart(msg, j)"
+            v-if="part.type === 'text' && part.text?.trim() && !isInternalMarker(part.text!) && hasToolParts(msg) && isLastTextPart(msg, j)"
             class="tool-collapse-btn"
             :class="{ expanded: !collapsedTools.has(i) }"
             type="button"
@@ -96,6 +104,7 @@ import { ref, reactive, watch, nextTick } from 'vue'
 import type { Message } from '../api/types'
 import MessageBubble from './MessageBubble.vue'
 import ImageBubble from './ImageBubble.vue'
+import DocumentBubble from './DocumentBubble.vue'
 import ToolBlock from './ToolBlock.vue'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
@@ -113,6 +122,11 @@ const containerEl = ref<HTMLElement>()
 /** 记录哪些消息索引的工具被折叠 */
 const collapsedTools = reactive(new Set<number>())
 
+/** 后端存储的内部标记文本，不应在 UI 中单独展示 */
+function isInternalMarker(text: string): boolean {
+  return text.startsWith('[Document: ') || text.startsWith('[Image: original ')
+}
+
 function hasToolParts(msg: Message): boolean {
   return msg.parts.some(p => p.type === 'function_call' || p.type === 'function_response')
 }
@@ -121,15 +135,20 @@ function countToolParts(msg: Message): number {
   return msg.parts.filter(p => p.type === 'function_call' || p.type === 'function_response').length
 }
 
+/** 判断文本 part 是否为用户可见（非内部标记） */
+function isVisibleTextPart(p: { type: string; text?: string }): boolean {
+  return p.type === 'text' && !!p.text?.trim() && !isInternalMarker(p.text!)
+}
+
 /** 获取消息中第一个有效文本部分的索引，没有则返回 -1 */
 function getTextPartIndex(msg: Message): number {
-  return msg.parts.findIndex(p => p.type === 'text' && p.text?.trim())
+  return msg.parts.findIndex(isVisibleTextPart)
 }
 
 /** 判断当前 part 是否是消息中最后一个有效文本部分 */
 function isLastTextPart(msg: Message, partIndex: number): boolean {
   for (let i = msg.parts.length - 1; i >= 0; i--) {
-    if (msg.parts[i].type === 'text' && msg.parts[i].text?.trim()) {
+    if (isVisibleTextPart(msg.parts[i])) {
       return i === partIndex
     }
   }

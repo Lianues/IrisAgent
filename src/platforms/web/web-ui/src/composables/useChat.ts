@@ -8,7 +8,7 @@
 import { ref, watch } from 'vue'
 import { useSessions } from './useSessions'
 import * as api from '../api/client'
-import type { ImageInput, Message, MessagePart } from '../api/types'
+import type { ImageInput, DocumentInput, Message, MessagePart } from '../api/types'
 
 /** 当前会话的消息列表 */
 const messages = ref<Message[]>([])
@@ -43,7 +43,15 @@ function normalizeImages(images?: ImageInput[]): ImageInput[] {
   }))
 }
 
-function buildUserMessageParts(text: string, images?: ImageInput[]): MessagePart[] {
+function normalizeDocuments(documents?: DocumentInput[]): DocumentInput[] {
+  return (documents ?? []).map((doc) => ({
+    fileName: doc.fileName,
+    mimeType: doc.mimeType,
+    data: doc.data,
+  }))
+}
+
+function buildUserMessageParts(text: string, images?: ImageInput[], documents?: DocumentInput[]): MessagePart[] {
   const parts: MessagePart[] = []
 
   for (const image of normalizeImages(images)) {
@@ -51,6 +59,15 @@ function buildUserMessageParts(text: string, images?: ImageInput[]): MessagePart
       type: 'image',
       mimeType: image.mimeType,
       data: image.data,
+    })
+  }
+
+  for (const doc of normalizeDocuments(documents)) {
+    parts.push({
+      type: 'document',
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      data: doc.data,
     })
   }
 
@@ -77,7 +94,7 @@ function abortCurrent() {
 
 // 模块级 watch，生命周期与模块一致，不受组件卸载影响
 watch(currentSessionId, async (id) => {
-  // 由 onSessionId 触发的“新会话绑定”不应被视为切换会话
+  // 由 onSessionId 触发的"新会话绑定"不应被视为切换会话
   const isInternalSessionBinding =
     currentController !== null && id !== null && id === activeRequestSessionId
 
@@ -120,9 +137,10 @@ export function useChat() {
     isStreaming.value = false
   }
 
-  async function sendMessage(text: string, images?: ImageInput[]) {
+  async function sendMessage(text: string, images?: ImageInput[], documents?: DocumentInput[]) {
     const normalizedImages = normalizeImages(images)
-    if (sending.value || (!text.trim() && normalizedImages.length === 0)) return
+    const normalizedDocs = normalizeDocuments(documents)
+    if (sending.value || (!text.trim() && normalizedImages.length === 0 && normalizedDocs.length === 0)) return
 
     sending.value = true
     streamingText.value = ''
@@ -131,7 +149,7 @@ export function useChat() {
     // 立即显示用户消息
     messages.value.push({
       role: 'user',
-      parts: buildUserMessageParts(text, normalizedImages),
+      parts: buildUserMessageParts(text, normalizedImages, normalizedDocs),
     })
 
     // 记录本次请求上下文，用于回调归属校验
@@ -146,7 +164,7 @@ export function useChat() {
       onSessionId(id) {
         if (isStale()) return
 
-        // 先更新请求归属，再更新 currentSessionId，避免 watch 误判为“切换会话”
+        // 先更新请求归属，再更新 currentSessionId，避免 watch 误判为"切换会话"
         activeRequestSessionId = id
         if (currentSessionId.value !== id) {
           currentSessionId.value = id
@@ -190,7 +208,7 @@ export function useChat() {
         activeRequestToken = null
         activeRequestSessionId = null
       },
-    }, normalizedImages)
+    }, normalizedImages, normalizedDocs)
   }
 
   /** 重试：截断后端历史，移除前端消息，重新发送 */
@@ -217,8 +235,13 @@ export function useChat() {
         part.type === 'image' && typeof part.mimeType === 'string' && typeof part.data === 'string'
       ))
       .map((part) => ({ mimeType: part.mimeType, data: part.data }))
+    const documents = userMsg.parts
+      .filter((part): part is MessagePart & { type: 'document'; mimeType: string; data: string } => (
+        part.type === 'document' && typeof part.mimeType === 'string' && typeof part.data === 'string'
+      ))
+      .map((part) => ({ fileName: part.fileName ?? '', mimeType: part.mimeType, data: part.data }))
 
-    if (!text.trim() && images.length === 0) return
+    if (!text.trim() && images.length === 0 && documents.length === 0) return
 
     // 提前置忙，防止异步截断期间重复触发
     sending.value = true
@@ -244,7 +267,7 @@ export function useChat() {
 
     // 解除忙状态后重新发送（sendMessage 内部会重新置 sending = true）
     sending.value = false
-    void sendMessage(text, images)
+    void sendMessage(text, images, documents)
   }
 
   return { messages, sending, streamingText, isStreaming, sendMessage, retryLastMessage }

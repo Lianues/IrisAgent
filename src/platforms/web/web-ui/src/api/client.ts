@@ -5,7 +5,7 @@
  */
 
 import type {
-  ImageInput, Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
+  ImageInput, DocumentInput, Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
   DeployFormOptions, DeployStateResponse, DeployPreviewResponse,
   CfStatusResponse, CfDnsRecord, CfDnsInput, CfSetupResponse,
 } from './types'
@@ -222,7 +222,7 @@ export async function cfSetup(apiToken: string): Promise<CfSetupResponse> {
  * 发送聊天消息并通过 SSE 接收响应。
  * 使用 fetch + ReadableStream 手动解析（EventSource 不支持 POST）。
  */
-export function sendChat(sessionId: string | null, message: string, callbacks: ChatCallbacks, images?: ImageInput[]): AbortController {
+export function sendChat(sessionId: string | null, message: string, callbacks: ChatCallbacks, images?: ImageInput[], documents?: DocumentInput[]): AbortController {
   const controller = new AbortController()
 
   fetch('/api/chat', {
@@ -232,6 +232,7 @@ export function sendChat(sessionId: string | null, message: string, callbacks: C
       sessionId,
       message,
       ...(images && images.length > 0 ? { images } : {}),
+      ...(documents && documents.length > 0 ? { documents } : {}),
     }),
     signal: controller.signal,
   }).then(async (response) => {
