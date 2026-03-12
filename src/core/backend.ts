@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import { execSync } from 'child_process';
 import type { LLMConfig } from '../config/types';
 import { LLMRouter, LLMTier } from '../llm/router';
-import { supportsVision as llmSupportsVision } from '../llm/vision';
+import { supportsVision as llmSupportsVision, isDocumentMimeType, supportsNativePDF, supportsNativeOffice } from '../llm/vision';
 import { StorageProvider, SessionMeta } from '../storage/base';
 import { ToolRegistry } from '../tools/registry';
 import { ToolStateManager } from '../tools/state';
@@ -30,12 +30,21 @@ import {
   Content, Part, LLMRequest, UsageMetadata, ToolInvocation,
   extractText, isFunctionCallPart, isFunctionResponsePart, isInlineDataPart, isTextPart,
 } from '../types';
+import { resizeImage, formatDimensionNote } from '../media/image-resize.js';
+import { extractDocument, isSupportedDocumentMime } from '../media/document-extract.js';
+import { convertToPDF } from '../media/office-to-pdf.js';
+import type { DocumentInput } from '../media/document-extract.js';
 
 const logger = createLogger('Backend');
 const IMAGE_UNAVAILABLE_NOTICE = (count: number) => (
   count > 1
     ? `[用户发送了 ${count} 张图片，但当前模型无法查看图片内容]`
     : '[用户发送了 1 张图片，但当前模型无法查看图片内容]'
+);
+const DOCUMENT_UNAVAILABLE_NOTICE = (count: number) => (
+  count > 1
+    ? `[用户发送了 ${count} 个文档，但当前模型无法查看文档内容]`
+    : '[用户发送了 1 个文档，但当前模型无法查看文档内容]'
 );
 
 interface ThoughtTimingState {
@@ -46,6 +55,8 @@ export interface ImageInput {
   mimeType: string;
   data: string;
 }
+
+export type { DocumentInput } from '../media/document-extract.js';
 
 function appendMergedPart(parts: Part[], nextPart: Part, now: number, thoughtTiming?: ThoughtTimingState): Part {
   let normalizedPart = nextPart;
@@ -199,9 +210,9 @@ export class Backend extends EventEmitter {
   // ============ 公共 API（平台层调用） ============
 
   /** 发送消息，触发完整的 LLM + 工具循环 */
-  async chat(sessionId: string, text: string, images?: ImageInput[]): Promise<void> {
+  async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[]): Promise<void> {
     try {
-      const storedUserParts = await this.buildStoredUserParts(text, images);
+      const storedUserParts = await this.buildStoredUserParts(text, images, documents);
       const llmUserParts = this.preparePartsForLLM(storedUserParts);
       await this.handleMessage(sessionId, storedUserParts, llmUserParts);
     } catch (err) {
@@ -549,31 +560,101 @@ export class Backend extends EventEmitter {
 
   // ============ 会话元数据 ============
 
-  private async buildStoredUserParts(text: string, images?: ImageInput[]): Promise<Part[]> {
+  private async buildStoredUserParts(text: string, images?: ImageInput[], documents?: DocumentInput[]): Promise<Part[]> {
     const parts: Part[] = [];
     const hasText = text.trim().length > 0;
     const hasImages = Array.isArray(images) && images.length > 0;
+    const hasDocuments = Array.isArray(documents) && documents.length > 0;
     const visionEnabled = llmSupportsVision(this.primaryLLMConfig);
 
+    // ---- 图片处理（含自动缩放） ----
     if (hasImages) {
       if (visionEnabled || !this.ocrService) {
         for (const image of images!) {
-          parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+          // 自动缩放
+          const resized = await resizeImage(image.mimeType, image.data);
+          parts.push({ inlineData: { mimeType: resized.mimeType, data: resized.data } });
+
+          // 仅在 vision 启用时添加坐标映射说明（非 vision 模型会剥离图片，dimension note 无意义）
+          if (visionEnabled) {
+            const dimNote = formatDimensionNote(resized);
+            if (dimNote) {
+              parts.push({ text: dimNote });
+            }
+          }
         }
       } else if (this.ocrService) {
-        const ocrTexts = await Promise.all(images!.map(async (image, index) => {
+        // OCR 模式：先缩放再 OCR
+        const resizedImages = await Promise.all(images!.map(async (image) => {
+          return await resizeImage(image.mimeType, image.data);
+        }));
+
+        const ocrTexts = await Promise.all(resizedImages.map(async (resized, index) => {
           try {
-            return await this.ocrService!.extractText(image.mimeType, image.data);
+            return await this.ocrService!.extractText(resized.mimeType, resized.data);
           } catch (err) {
             const detail = err instanceof Error ? err.message : String(err);
             throw new Error(`OCR 处理第 ${index + 1} 张图片失败: ${detail}`);
           }
         }));
 
-        for (let index = 0; index < images!.length; index++) {
-          const image = images![index];
-          parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+        for (let index = 0; index < resizedImages.length; index++) {
+          const resized = resizedImages[index];
+          parts.push({ inlineData: { mimeType: resized.mimeType, data: resized.data } });
           parts.push(createOCRTextPart(index + 1, ocrTexts[index]));
+        }
+      }
+    }
+
+    // ---- 文档处理（按端点能力分级） ----
+    if (hasDocuments) {
+      const nativePdf = supportsNativePDF(this.primaryLLMConfig);
+      const nativeOffice = supportsNativeOffice(this.primaryLLMConfig);
+
+      const EXTENSION_TO_MIME: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.xls': 'application/vnd.ms-excel',
+      };
+
+      for (const doc of documents!) {
+        // 解析有效 MIME
+        let effectiveMime = doc.mimeType;
+        const ext = doc.fileName.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
+        if (!isDocumentMimeType(effectiveMime) && ext in EXTENSION_TO_MIME) {
+          effectiveMime = EXTENSION_TO_MIME[ext];
+        }
+
+        const isPdf = effectiveMime === 'application/pdf';
+        const isOffice = isDocumentMimeType(effectiveMime) && !isPdf;
+
+        if (isPdf && nativePdf) {
+          // ① PDF 直传（Gemini / Claude / OpenAI Responses）
+          parts.push({ inlineData: { mimeType: 'application/pdf', data: doc.data } });
+          parts.push({ text: `[Document: ${doc.fileName}]` });
+        } else if (isOffice && nativePdf) {
+          // ② Office 优先转 PDF 直传（Gemini / Claude / OpenAI Responses）
+          const pdfBuffer = await convertToPDF(Buffer.from(doc.data, 'base64'), ext);
+          if (pdfBuffer) {
+            parts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBuffer.toString('base64') } });
+            parts.push({ text: `[Document: ${doc.fileName}]` });
+          } else if (nativeOffice) {
+            // 转换失败，但端点支持 Office 原生直传（OpenAI Responses）
+            parts.push({ inlineData: { mimeType: effectiveMime, data: doc.data } });
+            parts.push({ text: `[Document: ${doc.fileName}]` });
+          } else {
+            // 转换失败，回退文本提取
+            await this.extractDocumentFallback(doc, parts);
+          }
+        } else if (isOffice && nativeOffice) {
+          // ③ 端点支持 Office 但不支持 PDF（当前无此情况，留作扩展）
+          parts.push({ inlineData: { mimeType: effectiveMime, data: doc.data } });
+          parts.push({ text: `[Document: ${doc.fileName}]` });
+        } else {
+          // ④ 文本提取（OpenAI Compatible 或不支持原生的情况）
+          await this.extractDocumentFallback(doc, parts);
         }
       }
     }
@@ -587,6 +668,23 @@ export class Backend extends EventEmitter {
     }
 
     return parts;
+  }
+
+  /** 文档回退文本提取（复用原有 extractDocument 逻辑） */
+  private async extractDocumentFallback(doc: DocumentInput, parts: Part[]): Promise<void> {
+    try {
+      const result = await extractDocument(doc);
+      if (result.success) {
+        parts.push({ text: `[Document: ${doc.fileName}]\n${result.text}` });
+      } else {
+        logger.warn(`文档提取失败 (${doc.fileName}): ${result.error}`);
+        parts.push({ text: `[Document: ${doc.fileName}] 提取失败: ${result.error}` });
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      logger.warn(`文档处理异常 (${doc.fileName}): ${detail}`);
+      parts.push({ text: `[Document: ${doc.fileName}] 处理异常: ${detail}` });
+    }
   }
 
   private prepareHistoryForLLM(history: Content[]): Content[] {
@@ -603,6 +701,7 @@ export class Backend extends EventEmitter {
     const visionEnabled = llmSupportsVision(this.primaryLLMConfig);
     const prepared: Part[] = [];
     let strippedImageCount = 0;
+    let strippedDocumentCount = 0;
     let hasOCRContext = false;
 
     for (const part of parts) {
@@ -615,10 +714,23 @@ export class Backend extends EventEmitter {
       }
 
       if (isInlineDataPart(part)) {
-        if (visionEnabled) {
-          prepared.push({ inlineData: { ...part.inlineData } });
+        const mime = part.inlineData.mimeType;
+        if (isDocumentMimeType(mime)) {
+          // 文档 InlineDataPart：按端点能力决定保留或剥离
+          if (mime === 'application/pdf' && supportsNativePDF(this.primaryLLMConfig)) {
+            prepared.push({ inlineData: { ...part.inlineData } });
+          } else if (mime !== 'application/pdf' && supportsNativeOffice(this.primaryLLMConfig)) {
+            prepared.push({ inlineData: { ...part.inlineData } });
+          } else {
+            strippedDocumentCount++;
+          }
         } else {
-          strippedImageCount++;
+          // 图片 InlineDataPart：现有逻辑
+          if (visionEnabled) {
+            prepared.push({ inlineData: { ...part.inlineData } });
+          } else {
+            strippedImageCount++;
+          }
         }
         continue;
       }
@@ -658,6 +770,9 @@ export class Backend extends EventEmitter {
     if (!visionEnabled && strippedImageCount > 0 && !hasOCRContext) {
       prepared.unshift({ text: IMAGE_UNAVAILABLE_NOTICE(strippedImageCount) });
     }
+    if (strippedDocumentCount > 0) {
+      prepared.unshift({ text: DOCUMENT_UNAVAILABLE_NOTICE(strippedDocumentCount) });
+    }
 
     if (prepared.length === 0) {
       prepared.push({ text: '' });
@@ -671,18 +786,31 @@ export class Backend extends EventEmitter {
     const cwd = process.cwd();
 
     if (isNewSession) {
+      const hasDocuments = userParts.some(p =>
+        (isTextPart(p) && p.text?.startsWith('[Document: ')) ||
+        (isInlineDataPart(p) && isDocumentMimeType(p.inlineData.mimeType))
+      );
+      const hasImages = userParts.some(p =>
+        isInlineDataPart(p) && !isDocumentMimeType(p.inlineData.mimeType)
+      );
       const titleText = userParts.reduce((result, part) => {
         if (isOCRTextPart(part)) {
           return result;
         }
 
         if (isTextPart(part)) {
-          return result + (part.text ?? '');
+          const text = part.text ?? '';
+          // 跳过图片缩放 dimension note 和文档提取文本（不应出现在 session 标题中）
+          if (text.startsWith('[Image: original ') || text.startsWith('[Document: ')) {
+            return result;
+          }
+          return result + text;
         }
 
         return result;
       }, '').trim();
-      const title = titleText.slice(0, 100) || (userParts.some(isInlineDataPart) ? '图片消息' : '新对话');
+      const fallbackTitle = hasImages ? '图片消息' : (hasDocuments ? '文档消息' : '新对话');
+      const title = titleText.slice(0, 100) || fallbackTitle;
       await this.storage.saveMeta({
         id: sessionId,
         title,

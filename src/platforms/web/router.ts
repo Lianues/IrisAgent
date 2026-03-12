@@ -71,10 +71,10 @@ export class Router {
 }
 
 /**
- * 请求体大小上限（40MB）。
- * 单张 5MB 图片经 base64 编码后约为 6.7MB，允许最多 5 张时需要更高上限。
+ * 请求体大小上限（100MB）。
+ * 单个 50MB 文档经 base64 编码后约为 67MB，需要更高上限。
  */
-const MAX_BODY_SIZE = 40 * 1024 * 1024;
+const MAX_BODY_SIZE = 100 * 1024 * 1024;
 
 /** 读取请求体并解析为 JSON */
 export function readBody(req: http.IncomingMessage): Promise<any> {

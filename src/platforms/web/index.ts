@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { PlatformAdapter } from '../base';
 import { Backend } from '../../core/backend';
 import type { ImageInput } from '../../core/backend';
+import type { DocumentInput } from '../../media/document-extract.js';
 import { Router, sendJSON } from './router';
 import { createChatHandler } from './handlers/chat';
 import { createSessionsHandlers } from './handlers/sessions';
@@ -191,8 +192,8 @@ export class WebPlatform extends PlatformAdapter {
   }
 
   /** 分发用户消息到 Backend */
-  async dispatchMessage(sessionId: string, message: string, images?: ImageInput[]): Promise<void> {
-    await this.backend.chat(sessionId, message, images);
+  async dispatchMessage(sessionId: string, message: string, images?: ImageInput[], documents?: DocumentInput[]): Promise<void> {
+    await this.backend.chat(sessionId, message, images, documents);
   }
 
   /** 注入 MCP 管理器引用 */

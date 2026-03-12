@@ -10,6 +10,7 @@ import {
   LLMRequest, LLMResponse, LLMStreamChunk, Part, FunctionCallPart,
   isVisibleTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart, isTextPart,
 } from '../../types';
+import { isDocumentMimeType } from '../vision';
 import { FormatAdapter, StreamDecodeState } from './types';
 
 export class OpenAIResponsesFormat implements FormatAdapter {
@@ -86,10 +87,18 @@ export class OpenAIResponsesFormat implements FormatAdapter {
             if (isTextPart(part) && part.thought !== true && part.text) {
               contentBlocks.push({ type: 'input_text', text: part.text });
             } else if (isInlineDataPart(part)) {
-              contentBlocks.push({
-                type: 'input_image',
-                image_url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-              });
+              const mime = part.inlineData.mimeType;
+              if (isDocumentMimeType(mime)) {
+                contentBlocks.push({
+                  type: 'input_file',
+                  file_data: `data:${mime};base64,${part.inlineData.data}`,
+                });
+              } else {
+                contentBlocks.push({
+                  type: 'input_image',
+                  image_url: `data:${mime};base64,${part.inlineData.data}`,
+                });
+              }
             }
           }
           if (contentBlocks.length === 0) {

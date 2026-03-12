@@ -1,8 +1,33 @@
 /**
- * Vision 能力检测
+ * Vision 能力检测 + 文档能力检测
  */
 
 import type { LLMConfig } from '../config/types';
+
+const DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+]);
+
+/** 检查是否为文档 MIME 类型（PDF / DOCX / PPTX / XLSX） */
+export function isDocumentMimeType(mimeType: string): boolean {
+  return DOCUMENT_MIME_TYPES.has(mimeType);
+}
+
+/** PDF 原生直传: Gemini, Claude, OpenAI Responses */
+export function supportsNativePDF(config?: Pick<LLMConfig, 'provider'>): boolean {
+  if (!config) return false;
+  return config.provider === 'gemini' || config.provider === 'claude' || config.provider === 'openai-responses';
+}
+
+/** Office 原生直传: OpenAI Responses only */
+export function supportsNativeOffice(config?: Pick<LLMConfig, 'provider'>): boolean {
+  if (!config) return false;
+  return config.provider === 'openai-responses';
+}
 
 const VISION_PATTERNS = [
   /gpt-4o/i,

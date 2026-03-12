@@ -12,6 +12,7 @@ import { RouteParams, sendJSON } from '../router';
 import { StorageProvider } from '../../../storage/base';
 import { isOCRTextPart } from '../../../ocr';
 import { Content, isTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart } from '../../../types';
+import { isDocumentMimeType } from '../../../llm/vision';
 
 /** 将 Content[] 转换为前端友好格式 */
 function formatMessages(contents: Content[]) {
@@ -28,11 +29,19 @@ function formatMessages(contents: Content[]) {
       }
 
       if (isInlineDataPart(part)) {
-        formatted.parts.push({
-          type: 'image',
-          mimeType: part.inlineData.mimeType,
-          data: part.inlineData.data,
-        });
+        if (isDocumentMimeType(part.inlineData.mimeType)) {
+          formatted.parts.push({
+            type: 'document',
+            mimeType: part.inlineData.mimeType,
+            data: part.inlineData.data,
+          });
+        } else {
+          formatted.parts.push({
+            type: 'image',
+            mimeType: part.inlineData.mimeType,
+            data: part.inlineData.data,
+          });
+        }
         continue;
       }
 

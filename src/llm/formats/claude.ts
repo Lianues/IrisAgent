@@ -89,14 +89,26 @@ export class ClaudeFormat implements FormatAdapter {
               contentBlocks.push({ type: 'text', text: part.text });
             } else if (isInlineDataPart(part)) {
               hasInlineImage = true;
-              contentBlocks.push({
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: part.inlineData.mimeType,
-                  data: part.inlineData.data,
-                },
-              });
+              const mime = part.inlineData.mimeType;
+              if (mime === 'application/pdf') {
+                contentBlocks.push({
+                  type: 'document',
+                  source: {
+                    type: 'base64',
+                    media_type: mime,
+                    data: part.inlineData.data,
+                  },
+                });
+              } else {
+                contentBlocks.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mime,
+                    data: part.inlineData.data,
+                  },
+                });
+              }
             }
           }
 
