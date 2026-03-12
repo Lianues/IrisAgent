@@ -12,3 +12,4 @@ logs/
 # 便携版 Node.js（启动脚本自动下载）
 node/
 node-download.zip
+一键启动.bat
