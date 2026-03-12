@@ -1,12 +1,8 @@
 # 子代理配置
 # 自定义子代理类型和行为，留空或省略则使用内置默认配置
 
-# 是否允许多个子代理调用并行执行（默认 true）
-# 启用后，LLM 同时发起的多个子代理可以并发执行，适合独立子任务
-# parallel: true
-
 # 子代理类型定义
-# 每种类型有独立的系统提示词、工具策略和 LLM 层级
+# 每种类型有独立的系统提示词、工具策略、并行调度策略和 LLM 层级
 # 提供 types 时将完全替代内置默认类型
 #
 # 字段说明：
@@ -14,6 +10,8 @@
 #   systemPrompt  - 子代理的系统提示词
 #   allowedTools  - 工具白名单（与 excludedTools 互斥，优先）
 #   excludedTools - 工具黑名单
+#   parallel      - 当前类型的 sub_agent 调用是否按 parallel 工具参与调度（默认 false）
+#                   不写就是 false，只有显式写 true 才会参与并行调度
 #   tier          - 使用的 LLM 层级：primary / secondary / light
 #   maxToolRounds - 最大工具执行轮次
 #
@@ -21,10 +19,11 @@
 #
 # types:
 #   general-purpose:
-#     description: "执行需要多步工具操作的复杂子任务。适合将独立的子任务委派出去并行处理。"
+#     description: "执行需要多步工具操作的复杂子任务。适合承接相对独立的子任务。"
 #     systemPrompt: "你是一个通用子代理，负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。"
 #     excludedTools:
 #       - sub_agent
+#     parallel: false
 #     tier: secondary
 #     maxToolRounds: 200
 #
@@ -34,6 +33,7 @@
 #     allowedTools:
 #       - read_file
 #       - terminal
+#     parallel: false
 #     tier: light
 #     maxToolRounds: 200
 #
@@ -50,5 +50,6 @@
 #       将所有找到的记忆整理为清晰的摘要返回。如果没有找到任何相关记忆，明确说明。
 #     allowedTools:
 #       - memory_search
+#     parallel: false
 #     tier: light
 #     maxToolRounds: 3

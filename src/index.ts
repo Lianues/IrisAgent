@@ -124,8 +124,6 @@ async function main() {
     }
   }
 
-  const subAgentParallel = config.subAgents?.parallel;
-
   // ---- 3.5 注册用户自定义模式 ----
   const modeRegistry = new ModeRegistry();
   modeRegistry.register(DEFAULT_MODE);
@@ -161,7 +159,6 @@ async function main() {
     tools,
     subAgentTypes,
     maxDepth: config.system.maxAgentDepth,
-    parallel: subAgentParallel,
   }));
 
   // ---- 6. 创建平台适配器（按需动态导入，减少不必要的原生依赖加载） ----

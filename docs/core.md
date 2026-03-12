@@ -232,6 +232,7 @@ interface SubAgentType {
   name: string;              // 类型标识
   description: string;       // 供 LLM 选择时参考
   systemPrompt: string;      // 子 Agent 的系统提示词
+  parallel: boolean;         // 当前类型的 sub_agent 调用是否可并行调度，默认 false
   tier: LLMTier;             // 使用的 LLM 层级
   maxToolRounds: number;     // 最大工具轮次
   allowedTools?: string[];   // 工具白名单
@@ -241,15 +242,17 @@ interface SubAgentType {
 
 **默认类型：**
 
-| 类型 | 层级 | 轮次 | 工具过滤 | 用途 |
-|------|------|------|----------|------|
-| `general-purpose` | secondary | 10 | 排除 agent | 多步骤通用任务 |
-| `explore` | light | 20 | 仅 read_file、terminal | 只读探索 |
-| `recall` | light | 3 | 仅 memory_search | 记忆搜索 |
+| 类型 | 层级 | 轮次 | 并行调度 | 工具过滤 | 用途 |
+|------|------|------|----------|----------|------|
+| `general-purpose` | secondary | 200 | false | 排除 `sub_agent` | 多步骤通用任务 |
+| `explore` | light | 200 | false | 仅 `read_file`、`terminal` | 只读探索 |
+| `recall` | light | 3 | false | 仅 `memory_search` | 记忆搜索 |
+
+`parallel` 的含义是：当前类型的 `sub_agent` 调用是否作为 parallel 工具参与调度。默认 `false`。不写就是 `false`，只有显式写 `true` 的类型，才会在同一轮里与相邻的 parallel 工具一起进入并行批次。
 
 ### agentGuidance
 
-根据已注册的 Agent 类型生成指导文本，注入系统提示词，指导 LLM 使用 `agent` 工具。
+根据已注册的 Agent 类型生成指导文本，注入系统提示词，指导 LLM 使用 `sub_agent` 工具。指导文本会显示各类型是“可并行调度”还是“串行调度”。
 
 ### autoRecall
 

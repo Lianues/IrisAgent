@@ -111,12 +111,12 @@ export interface SubAgentTypeDef {
   tier: string;
   /** 最大工具执行轮次 */
   maxToolRounds: number;
+  /** 当前类型的 sub_agent 调用是否可按 parallel 工具参与调度，默认 false */
+  parallel: boolean;
 }
 
-/** 子代理全局配置（对应 sub-agents.yaml） */
+/** 子代理配置（对应 sub-agents.yaml） */
 export interface SubAgentsConfig {
-  /** 是否允许多个子代理并行执行，默认 true */
-  parallel: boolean;
   /** 自定义子代理类型定义列表（提供时完全替代内置默认） */
   types?: SubAgentTypeDef[];
 }

@@ -66,13 +66,20 @@ export interface ToolStateChangeEvent {
 /** 工具执行器类型 */
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
+/** 按本次调用参数判定工具是否可并行执行 */
+export type ToolParallelResolver = (args: Record<string, unknown>) => boolean;
+
+/** 工具并行策略 */
+export type ToolParallelPolicy = boolean | ToolParallelResolver;
+
 /** 完整的工具定义 = 声明 + 执行器 */
 export interface ToolDefinition {
   declaration: FunctionDeclaration;
   handler: ToolHandler;
   /**
    * 是否允许与相邻的同样标记为 parallel 的工具并行执行。
-   * 默认 false（串行）。仅适用于无副作用的只读工具。
+   * 可以是固定布尔值，也可以按本次调用参数动态判定。
+   * 默认 false（串行）。仅适用于可以安全并行的调用。
    */
-  parallel?: boolean;
+  parallel?: ToolParallelPolicy;
 }

@@ -32,12 +32,15 @@ export interface SubAgentToolDeps {
   tools: ToolRegistry;
   subAgentTypes: SubAgentTypeRegistry;
   maxDepth: number;
-  /** 是否允许多个子代理并行执行，默认 true */
-  parallel?: boolean;
 }
 
 /** 工具名称常量 */
 const TOOL_NAME = 'sub_agent';
+
+function getSubAgentTypeName(args: Record<string, unknown>): string {
+  const type = args.type;
+  return typeof type === 'string' && type.trim() ? type : 'general-purpose';
+}
 
 /**
  * 创建 sub_agent 工具
@@ -47,10 +50,10 @@ const TOOL_NAME = 'sub_agent';
  */
 export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number = 0): ToolDefinition {
   const typeDescriptions = deps.subAgentTypes.getAll()
-    .map(t => `  - ${t.name}: ${t.description}`)
+    .map(t => `  - ${t.name}: ${t.description}（${t.parallel ? '可并行调度' : '串行调度'}）`)
     .join('\n');
 
-  const toolDescription = `启动子代理执行子任务。子代理拥有独立上下文和工具循环，完成后返回结果。\n\n可用类型：\n${typeDescriptions}`;
+  const toolDescription = `启动子代理执行子任务。子代理拥有独立上下文和工具循环，完成后返回结果。不同类型可分别配置是否参与并行调度。\n\n可用类型：\n${typeDescriptions}`;
 
   return {
     declaration: {
@@ -71,10 +74,10 @@ export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number 
         required: ['prompt'],
       },
     },
-    parallel: deps.parallel !== false,
+    parallel: (args) => deps.subAgentTypes.get(getSubAgentTypeName(args))?.parallel === true,
     handler: async (args) => {
       const prompt = args.prompt as string;
-      const typeName = (args.type as string) || 'general-purpose';
+      const typeName = getSubAgentTypeName(args);
 
       // 深度检查
       if (currentDepth >= deps.maxDepth) {

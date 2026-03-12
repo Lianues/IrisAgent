@@ -5,7 +5,7 @@
  *
  * 调度策略：
  *   - 默认串行：每个工具独占一批，顺序执行。
- *   - 局部并行：连续的 parallel=true 工具归为同一批，并发执行。
+ *   - 局部并行：连续判定为 parallel=true 的工具归为同一批，并发执行。
  *
  * 示例：
  *   输入： [read_a, read_b, modify_a, read_c, read_d]
@@ -26,8 +26,33 @@ const logger = createLogger('ToolScheduler');
 export interface ExecutionBatch {
   /** 此批次包含的调用索引（对应原始 functionCalls 数组） */
   indices: number[];
- /** 此批次是否并行执行 */
+  /** 此批次是否并行执行 */
   parallel: boolean;
+}
+
+function normalizeParallelArgs(call: FunctionCallPart): Record<string, unknown> {
+  const args = call.functionCall.args;
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    return args as Record<string, unknown>;
+  }
+  return {};
+}
+
+function isParallelCall(call: FunctionCallPart, registry: ToolRegistry): boolean {
+  const tool = registry.get(call.functionCall.name);
+  if (!tool?.parallel) return false;
+
+  if (typeof tool.parallel === 'function') {
+    try {
+      return tool.parallel(normalizeParallelArgs(call)) === true;
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(`工具并行判定失败，按串行处理: ${call.functionCall.name}: ${errorMsg}`);
+      return false;
+    }
+  }
+
+  return tool.parallel === true;
 }
 
 // ============ 分批 ============
@@ -36,8 +61,8 @@ export interface ExecutionBatch {
  * 将一组工具调用按调度策略分批。
  *
  * 规则：
- *   1. 连续的 parallel=true 工具归为同一批（并行执行）
- *   2. parallel=false 的工具独占一批（串行执行）
+ *   1. 连续判定为 parallel=true 的工具归为同一批（并行执行）
+ *   2. 判定为 parallel=false 的工具独占一批（串行执行）
  *   3. 未注册的工具视为串行
  */
 export function buildExecutionPlan(
@@ -48,8 +73,7 @@ export function buildExecutionPlan(
   let i = 0;
 
   while (i < calls.length) {
-    const tool = registry.get(calls[i].functionCall.name);
-    const canParallel = tool?.parallel === true;
+    const canParallel = isParallelCall(calls[i], registry);
 
     if (!canParallel) {
       batches.push({ indices: [i], parallel: false });
@@ -57,8 +81,7 @@ export function buildExecutionPlan(
     } else {
       const batch: number[] = [];
       while (i < calls.length) {
-        const t = registry.get(calls[i].functionCall.name);
-        if (t?.parallel !== true) break;
+        if (!isParallelCall(calls[i], registry)) break;
         batch.push(i);
         i++;
       }
