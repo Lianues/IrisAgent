@@ -1,7 +1,29 @@
 <template>
   <div ref="containerEl" class="messages" @scroll="handleScroll">
     <div class="messages-shell">
-      <div v-if="messages.length === 0 && !isStreaming && !sending" class="welcome">
+      <div v-if="messagesError && messages.length > 0" class="messages-inline-status error">
+        <span>历史消息加载失败：{{ messagesError }}</span>
+        <button class="message-state-action" type="button" @click="emit('reload-history')">
+          重新加载
+        </button>
+      </div>
+
+      <div v-if="messagesError && messages.length === 0 && !isStreaming && !sending" class="message-state-card error">
+        <span class="message-state-icon"><AppIcon :name="ICONS.status.warn" /></span>
+        <h3>无法加载会话历史</h3>
+        <p>{{ messagesError }}</p>
+        <button class="message-state-action" type="button" @click="emit('reload-history')">
+          重新加载
+        </button>
+      </div>
+
+      <div v-else-if="messagesLoading && messages.length === 0 && !isStreaming && !sending" class="message-state-card loading">
+        <span class="message-state-icon"><AppIcon :name="ICONS.status.loading" /></span>
+        <h3>正在加载会话历史</h3>
+        <p>请稍候，Iris 正在同步这段工作流的上下文。</p>
+      </div>
+
+      <div v-else-if="messages.length === 0 && !isStreaming && !sending" class="welcome">
         <div class="welcome-badge">Iris Workspace</div>
         <h2>把灵感、问题和工具流都放进一个对话里</h2>
         <p>
@@ -138,12 +160,17 @@ import { ICONS } from '../constants/icons'
 
 const props = defineProps<{
   messages: Message[]
+  messagesLoading: boolean
+  messagesError: string
   sending: boolean
   streamingText: string
   isStreaming: boolean
 }>()
 
-const emit = defineEmits<{ retry: [messageIndex: number] }>()
+const emit = defineEmits<{
+  retry: [messageIndex: number]
+  'reload-history': []
+}>()
 
 const containerEl = ref<HTMLElement>()
 const shouldStickToBottom = ref(true)

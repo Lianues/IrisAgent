@@ -35,7 +35,36 @@
       <div class="session-list" v-if="route.path === '/'">
         <div class="sidebar-section-label">会话列表</div>
 
-        <div class="sidebar-empty" v-if="sessions.length === 0">
+        <div v-if="sessionActionError" class="sidebar-inline-status error">
+          <span>{{ sessionActionError }}</span>
+          <button class="sidebar-inline-action" type="button" @click="clearSessionActionError">
+            知道了
+          </button>
+        </div>
+
+        <div v-if="sessionsError && sessions.length > 0" class="sidebar-inline-status error">
+          <span>会话刷新失败：{{ sessionsError }}</span>
+          <button class="sidebar-inline-action" type="button" :disabled="sessionsLoading" @click="handleReloadSessions">
+            重试
+          </button>
+        </div>
+
+        <div class="sidebar-empty sidebar-empty-error" v-if="sessionsError && sessions.length === 0 && !sessionsLoading">
+          <span class="sidebar-empty-icon"><AppIcon :name="ICONS.status.warn" /></span>
+          <p>会话加载失败</p>
+          <span>{{ sessionsError }}</span>
+          <button class="sidebar-inline-action" type="button" @click="handleReloadSessions">
+            重新加载
+          </button>
+        </div>
+
+        <div class="sidebar-empty" v-else-if="sessionsLoading && sessions.length === 0">
+          <span class="sidebar-empty-icon"><AppIcon :name="ICONS.status.loading" /></span>
+          <p>正在加载会话</p>
+          <span>稍候片刻，Iris 正在同步你的工作记录。</span>
+        </div>
+
+        <div class="sidebar-empty" v-else-if="sessions.length === 0">
           <span class="sidebar-empty-icon"><AppIcon :name="ICONS.sidebar.empty" /></span>
           <p>暂无会话</p>
           <span>点击“新建会话”开始第一次对话。</span>
@@ -121,9 +150,19 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const router = useRouter()
-const { sessions, currentSessionId, loadSessions, newChat, switchSession, removeSession } = useSessions()
+const {
+  sessions,
+  currentSessionId,
+  sessionsLoading,
+  sessionsError,
+  loadSessions,
+  newChat,
+  switchSession,
+  removeSession,
+} = useSessions()
 
 const deletingSessionId = ref<string | null>(null)
+const sessionActionError = ref('')
 const managementReady = ref(false)
 const authReady = ref(false)
 
@@ -154,13 +193,24 @@ function formatSessionTime(updatedAt?: string): string {
   }).format(date)
 }
 
+async function handleReloadSessions() {
+  sessionActionError.value = ''
+  await loadSessions()
+}
+
+function clearSessionActionError() {
+  sessionActionError.value = ''
+}
+
 async function handleNewChat() {
+  sessionActionError.value = ''
   if (route.path !== '/') await router.push('/')
   newChat()
   emit('toggle')
 }
 
 async function handleSwitchSession(id: string) {
+  sessionActionError.value = ''
   if (route.path !== '/') await router.push('/')
   switchSession(id)
   emit('toggle')
@@ -173,7 +223,10 @@ async function handleDeleteSession(id: string, title: string) {
 
   deletingSessionId.value = id
   try {
+    sessionActionError.value = ''
     await removeSession(id)
+  } catch (err) {
+    sessionActionError.value = `删除会话失败：${err instanceof Error ? err.message : '未知错误'}`
   } finally {
     deletingSessionId.value = null
   }

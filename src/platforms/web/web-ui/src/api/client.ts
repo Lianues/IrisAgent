@@ -263,6 +263,28 @@ export async function cfSetup(apiToken: string): Promise<CfSetupResponse> {
 
 // ============ SSE 聊天 ============
 
+function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): void {
+  const dataLines = rawBlock
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => (line.startsWith('data: ') ? line.slice(6) : line.slice(5)))
+
+  if (dataLines.length === 0) return
+
+  try {
+    const event = JSON.parse(dataLines.join('\n'))
+    switch (event.type) {
+      case 'delta': callbacks.onDelta?.(event.text); break
+      case 'message': callbacks.onMessage?.(event.text); break
+      case 'stream_end': callbacks.onStreamEnd?.(); break
+      case 'done': callbacks.onDone?.(); break
+      case 'error': callbacks.onError?.(event.message); break
+    }
+  } catch {
+    // 忽略解析错误（如心跳）
+  }
+}
+
 /**
  * 发送聊天消息并通过 SSE 接收响应。
  * 使用 fetch + ReadableStream 手动解析（EventSource 不支持 POST）。
@@ -304,31 +326,29 @@ export function sendChat(sessionId: string | null, message: string, callbacks: C
     const decoder = new TextDecoder()
     let buffer = ''
 
+    const processBufferedEvents = (flushRemainder = false) => {
+      const blocks = buffer.split(/\r?\n\r?\n/)
+      if (!flushRemainder) {
+        buffer = blocks.pop() || ''
+      } else {
+        buffer = ''
+      }
+
+      for (const block of blocks) {
+        dispatchChatStreamEvent(block, callbacks)
+      }
+    }
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6))
-            switch (event.type) {
-              case 'delta': callbacks.onDelta?.(event.text); break
-              case 'message': callbacks.onMessage?.(event.text); break
-              case 'stream_end': callbacks.onStreamEnd?.(); break
-              case 'done': callbacks.onDone?.(); break
-              case 'error': callbacks.onError?.(event.message); break
-            }
-          } catch {
-            // 忽略解析错误（如心跳）
-          }
-        }
-      }
+      processBufferedEvents(false)
     }
+
+    buffer += decoder.decode()
+    processBufferedEvents(true)
   }).catch((err) => {
     if (err.name !== 'AbortError') callbacks.onError?.(err.message)
   })

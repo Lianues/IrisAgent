@@ -76,7 +76,13 @@
 
       <div class="form-group">
         <label>后端端口</label>
-        <input type="number" v-model.number="form.port" placeholder="8192" />
+        <input
+          type="number"
+          :value="portInput"
+          placeholder="8192"
+          @input="handlePortInput"
+          @blur="syncPortInput"
+        />
         <p class="field-hint">Iris 后端监听的端口，对应 config.yaml 中 web.port 的值。{{ runtimeHint }}</p>
       </div>
 
@@ -340,6 +346,7 @@ const runtimeWeb = reactive({
 })
 
 const activeTab = ref<'nginx' | 'service'>('nginx')
+const portInput = ref(String(form.port))
 const copyText = ref('复制')
 
 // 环境检测
@@ -472,10 +479,27 @@ function cloudflareModeLabel(mode: CloudflareSslMode | null): string {
 }
 
 
+function clampPort(value: number): number {
+  return Math.min(65535, Math.max(1, Math.trunc(value)))
+}
+
+function syncPortInput() {
+  portInput.value = String(form.port)
+}
+
+function handlePortInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  portInput.value = value
+  if (!value.trim()) return
+
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) form.port = clampPort(parsed)
+}
+
 function buildDeployOptions(): DeployFormOptions {
   return {
     domain: form.domain,
-    port: form.port,
+    port: clampPort(form.port),
     deployPath: form.deployPath,
     user: form.user,
     enableHttps: form.enableHttps,
@@ -485,6 +509,17 @@ function buildDeployOptions(): DeployFormOptions {
 
 let previewRequestId = 0
 let previewTimer: ReturnType<typeof setTimeout> | null = null
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleCopyReset() {
+  if (copyResetTimer) {
+    clearTimeout(copyResetTimer)
+  }
+  copyResetTimer = setTimeout(() => {
+    copyText.value = '复制'
+    copyResetTimer = null
+  }, 2000)
+}
 
 async function refreshPreview() {
   const requestId = ++previewRequestId
@@ -534,6 +569,7 @@ onUnmounted(() => {
   if (previewTimer) clearTimeout(previewTimer)
   unsubscribeManagementToken?.()
   unsubscribeAuthToken?.()
+  if (copyResetTimer) clearTimeout(copyResetTimer)
 })
 
 onMounted(async () => {
@@ -563,6 +599,7 @@ async function loadDeployState() {
     runtimeWeb.host = result.web.host
     runtimeWeb.port = result.web.port
     Object.assign(form, result.defaults)
+    syncPortInput()
   } catch (e: any) {
     stateError.value = e.message || '未知错误'
   }
@@ -719,10 +756,10 @@ async function handleCopy() {
   try {
     await navigator.clipboard.writeText(currentPreviewContent.value)
     copyText.value = '已复制'
-    setTimeout(() => { copyText.value = '复制' }, 2000)
+    scheduleCopyReset()
   } catch {
     copyText.value = '复制失败'
-    setTimeout(() => { copyText.value = '复制' }, 2000)
+    scheduleCopyReset()
   }
 }
 

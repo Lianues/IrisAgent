@@ -6,13 +6,13 @@
       type="file"
       accept="image/*,.pdf,.docx,.pptx,.xlsx,.xls"
       multiple
-      :disabled="disabled"
+      :disabled="interactionDisabled"
       @change="handleFileSelection"
     />
 
     <div
       class="input-shell"
-      :class="{ 'drag-active': dragActive, 'input-shell-busy': disabled }"
+      :class="{ 'drag-active': dragActive, 'input-shell-busy': interactionDisabled }"
       @dragenter.prevent="handleDragEnter"
       @dragover.prevent="handleDragOver"
       @dragleave.prevent="handleDragLeave"
@@ -31,8 +31,8 @@
           <div class="input-title">继续当前工作流</div>
           <div class="input-hint">Enter 发送 · Shift + Enter 换行</div>
         </div>
-        <div class="input-status-badge" :class="{ busy: disabled }">
-          {{ disabled ? 'Iris 正在整理回复' : '已连接工作流上下文' }}
+        <div class="input-status-badge" :class="{ busy: interactionDisabled }">
+          {{ statusBadgeText }}
         </div>
       </div>
 
@@ -50,7 +50,7 @@
 
       <div v-if="images.length > 0 || documents.length > 0" class="input-attachment-summary">
         <span>{{ attachmentSummary }}</span>
-        <button class="input-clear-attachments" type="button" :disabled="disabled" @click="clearAttachments">
+        <button class="input-clear-attachments" type="button" :disabled="interactionDisabled" @click="clearAttachments">
           清空附件
         </button>
       </div>
@@ -65,7 +65,7 @@
           <button
             class="image-preview-remove"
             type="button"
-            :disabled="disabled"
+            :disabled="interactionDisabled"
             @click="removeImage(index)"
           >
             <AppIcon :name="ICONS.common.close" />
@@ -84,7 +84,7 @@
           <button
             class="image-preview-remove"
             type="button"
-            :disabled="disabled"
+            :disabled="interactionDisabled"
             @click="removeDocument(index)"
           >
             <AppIcon :name="ICONS.common.close" />
@@ -98,7 +98,7 @@
           v-model="text"
           placeholder="给 Iris 发送消息..."
           rows="1"
-          :disabled="disabled"
+          :disabled="interactionDisabled"
           @keydown.enter.exact="handleEnterKey"
           @input="autoResize"
           @paste="handlePaste"
@@ -108,7 +108,7 @@
           <button
             class="btn-attach"
             type="button"
-            :disabled="disabled || (images.length >= MAX_IMAGES && documents.length >= MAX_DOCUMENTS)"
+            :disabled="interactionDisabled || (images.length >= MAX_IMAGES && documents.length >= MAX_DOCUMENTS)"
             @click="openFilePicker"
           >
             <AppIcon :name="ICONS.common.attach" class="btn-attach-icon" />
@@ -117,12 +117,12 @@
 
           <button
             class="btn-send"
-            :class="{ sending: disabled }"
-            :disabled="disabled || !canSend"
+            :class="{ sending: interactionDisabled }"
+            :disabled="interactionDisabled || !canSend"
             @click="handleSend"
           >
             <span class="btn-send-label">{{ sendButtonText }}</span>
-            <span v-if="disabled" class="btn-send-spinner" aria-hidden="true">
+            <span v-if="interactionDisabled" class="btn-send-spinner" aria-hidden="true">
               <span></span>
               <span></span>
               <span></span>
@@ -133,7 +133,7 @@
       </div>
 
       <div class="input-upload-hint">
-        <span>{{ disabled ? '当前回答完成前，附件与输入将暂时锁定。' : '支持拖拽 / 粘贴上传 · 图片最多 ' + MAX_IMAGES + ' 张(5MB) · 文档最多 ' + MAX_DOCUMENTS + ' 个(50MB)' }}</span>
+        <span>{{ uploadHintText }}</span>
         <span v-if="errorMessage" class="input-error">{{ errorMessage }}</span>
       </div>
     </div>
@@ -173,15 +173,31 @@ const text = ref('')
 const images = ref<ImageInput[]>([])
 const documents = ref<DocumentInput[]>([])
 const errorMessage = ref('')
+const attachmentsProcessing = ref(false)
 const dragActive = ref(false)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 let dragDepth = 0
 
-const canSend = computed(() => text.value.trim().length > 0 || images.value.length > 0 || documents.value.length > 0)
-const showQuickPrompts = computed(() => !disabled.value && !text.value.trim() && images.value.length === 0 && documents.value.length === 0)
-const sendButtonText = computed(() => (disabled.value ? '生成中...' : '发送'))
+const interactionDisabled = computed(() => disabled.value || attachmentsProcessing.value)
+const canSend = computed(() => !attachmentsProcessing.value && (text.value.trim().length > 0 || images.value.length > 0 || documents.value.length > 0))
+const showQuickPrompts = computed(() => !interactionDisabled.value && !text.value.trim() && images.value.length === 0 && documents.value.length === 0)
+const sendButtonText = computed(() => {
+  if (disabled.value) return '生成中...'
+  if (attachmentsProcessing.value) return '处理中...'
+  return '发送'
+})
 const attachButtonLabel = computed(() => (images.value.length > 0 || documents.value.length > 0 ? '继续添加' : '上传文件'))
+const statusBadgeText = computed(() => {
+  if (disabled.value) return 'Iris 正在整理回复'
+  if (attachmentsProcessing.value) return '正在处理附件'
+  return '已连接工作流上下文'
+})
+const uploadHintText = computed(() => {
+  if (disabled.value) return '当前回答完成前，附件与输入将暂时锁定。'
+  if (attachmentsProcessing.value) return '正在处理附件，请稍候后再发送或继续上传。'
+  return `支持拖拽 / 粘贴上传 · 图片最多 ${MAX_IMAGES} 张(5MB) · 文档最多 ${MAX_DOCUMENTS} 个(50MB)`
+})
 const attachmentSummary = computed(() => {
   const parts: string[] = []
   if (images.value.length > 0) parts.push(`${images.value.length} 张图片`)
@@ -221,22 +237,25 @@ function applyQuickPrompt(prompt: string) {
 }
 
 function openFilePicker() {
-  if (props.disabled || (images.value.length >= MAX_IMAGES && documents.value.length >= MAX_DOCUMENTS)) return
+  if (interactionDisabled.value || (images.value.length >= MAX_IMAGES && documents.value.length >= MAX_DOCUMENTS)) return
   fileInputEl.value?.click()
 }
 
 function clearAttachments() {
+  if (interactionDisabled.value) return
   images.value = []
   documents.value = []
   clearError()
 }
 
 function removeImage(index: number) {
+  if (interactionDisabled.value) return
   images.value.splice(index, 1)
   clearError()
 }
 
 function removeDocument(index: number) {
+  if (interactionDisabled.value) return
   documents.value.splice(index, 1)
   clearError()
 }
@@ -289,76 +308,81 @@ function readFileAsDocumentInput(file: File): Promise<DocumentInput> {
 }
 
 async function appendFiles(files: File[]) {
-  if (props.disabled || files.length === 0) return
+  if (interactionDisabled.value || files.length === 0) return
 
-  const errors: string[] = []
-  const imageFiles: File[] = []
-  const docFiles: File[] = []
-
-  for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      imageFiles.push(file)
-    } else if (isDocumentFile(file)) {
-      docFiles.push(file)
-    } else {
-      errors.push(`${file.name}: 不支持的文件类型`)
-    }
-  }
-
-  // 处理图片
-  const remainingImageSlots = MAX_IMAGES - images.value.length
-  if (imageFiles.length > 0 && remainingImageSlots <= 0) {
-    errors.push(`图片已达上限 ${MAX_IMAGES} 张`)
-  }
-  const candidateImages = imageFiles.slice(0, Math.max(0, remainingImageSlots))
-  if (imageFiles.length > remainingImageSlots && remainingImageSlots > 0) {
-    errors.push(`图片最多上传 ${MAX_IMAGES} 张`)
-  }
-  const validImages = candidateImages.filter((file) => {
-    if (file.size > MAX_IMAGE_BYTES) {
-      errors.push(`${file.name} 超过 5MB 限制`)
-      return false
-    }
-    return true
-  })
-
-  // 处理文档
-  const remainingDocSlots = MAX_DOCUMENTS - documents.value.length
-  if (docFiles.length > 0 && remainingDocSlots <= 0) {
-    errors.push(`文档已达上限 ${MAX_DOCUMENTS} 个`)
-  }
-  const candidateDocs = docFiles.slice(0, Math.max(0, remainingDocSlots))
-  if (docFiles.length > remainingDocSlots && remainingDocSlots > 0) {
-    errors.push(`文档最多上传 ${MAX_DOCUMENTS} 个`)
-  }
-  const validDocs = candidateDocs.filter((file) => {
-    if (file.size > MAX_DOCUMENT_BYTES) {
-      errors.push(`${file.name} 超过 50MB 限制`)
-      return false
-    }
-    return true
-  })
-
-  if (validImages.length === 0 && validDocs.length === 0) {
-    setError(errors[0] ?? '没有可用的文件')
-    return
-  }
+  attachmentsProcessing.value = true
 
   try {
-    const [newImages, newDocs] = await Promise.all([
-      Promise.all(validImages.map(readFileAsImageInput)),
-      Promise.all(validDocs.map(readFileAsDocumentInput)),
-    ])
-    images.value = [...images.value, ...newImages]
-    documents.value = [...documents.value, ...newDocs]
-    if (errors.length > 0) {
-      setError(errors.join('；'))
-    } else {
-      clearError()
+    const errors: string[] = []
+    const imageFiles: File[] = []
+    const docFiles: File[] = []
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        imageFiles.push(file)
+      } else if (isDocumentFile(file)) {
+        docFiles.push(file)
+      } else {
+        errors.push(`${file.name}: 不支持的文件类型`)
+      }
     }
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
-    setError(detail)
+
+    // 处理图片
+    const remainingImageSlots = MAX_IMAGES - images.value.length
+    if (imageFiles.length > 0 && remainingImageSlots <= 0) {
+      errors.push(`图片已达上限 ${MAX_IMAGES} 张`)
+    }
+    const candidateImages = imageFiles.slice(0, Math.max(0, remainingImageSlots))
+    if (imageFiles.length > remainingImageSlots && remainingImageSlots > 0) {
+      errors.push(`图片最多上传 ${MAX_IMAGES} 张`)
+    }
+    const validImages = candidateImages.filter((file) => {
+      if (file.size > MAX_IMAGE_BYTES) {
+        errors.push(`${file.name} 超过 5MB 限制`)
+        return false
+      }
+      return true
+    })
+
+    // 处理文档
+    const remainingDocSlots = MAX_DOCUMENTS - documents.value.length
+    if (docFiles.length > 0 && remainingDocSlots <= 0) {
+      errors.push(`文档已达上限 ${MAX_DOCUMENTS} 个`)
+    }
+    const candidateDocs = docFiles.slice(0, Math.max(0, remainingDocSlots))
+    if (docFiles.length > remainingDocSlots && remainingDocSlots > 0) {
+      errors.push(`文档最多上传 ${MAX_DOCUMENTS} 个`)
+    }
+    const validDocs = candidateDocs.filter((file) => {
+      if (file.size > MAX_DOCUMENT_BYTES) {
+        errors.push(`${file.name} 超过 50MB 限制`)
+        return false
+      }
+      return true
+    })
+
+    if (validImages.length === 0 && validDocs.length === 0) {
+      setError(errors[0] ?? '没有可用的文件')
+    } else {
+      try {
+        const [newImages, newDocs] = await Promise.all([
+          Promise.all(validImages.map(readFileAsImageInput)),
+          Promise.all(validDocs.map(readFileAsDocumentInput)),
+        ])
+        images.value = [...images.value, ...newImages]
+        documents.value = [...documents.value, ...newDocs]
+        if (errors.length > 0) {
+          setError(errors.join('；'))
+        } else {
+          clearError()
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
+        setError(detail)
+      }
+    }
+  } finally {
+    attachmentsProcessing.value = false
   }
 }
 
@@ -370,18 +394,18 @@ async function handleFileSelection(event: Event) {
 }
 
 function handleDragEnter(event: DragEvent) {
-  if (props.disabled || !event.dataTransfer?.types.includes('Files')) return
+  if (interactionDisabled.value || !event.dataTransfer?.types.includes('Files')) return
   dragDepth += 1
   dragActive.value = true
 }
 
 function handleDragOver(event: DragEvent) {
-  if (props.disabled || !event.dataTransfer?.types.includes('Files')) return
+  if (interactionDisabled.value || !event.dataTransfer?.types.includes('Files')) return
   dragActive.value = true
 }
 
 function handleDragLeave(event: DragEvent) {
-  if (props.disabled || !event.dataTransfer?.types.includes('Files')) return
+  if (interactionDisabled.value || !event.dataTransfer?.types.includes('Files')) return
   dragDepth = Math.max(0, dragDepth - 1)
   if (dragDepth === 0) {
     dragActive.value = false
@@ -391,13 +415,13 @@ function handleDragLeave(event: DragEvent) {
 async function handleDrop(event: DragEvent) {
   dragDepth = 0
   dragActive.value = false
-  if (props.disabled) return
+  if (interactionDisabled.value) return
   const files = Array.from(event.dataTransfer?.files ?? [])
   await appendFiles(files)
 }
 
 async function handlePaste(event: ClipboardEvent) {
-  if (props.disabled) return
+  if (interactionDisabled.value) return
   const imageFiles = Array.from(event.clipboardData?.items ?? [])
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
@@ -429,7 +453,7 @@ function handleEnterKey(event: KeyboardEvent) {
 }
 
 function handleSend() {
-  if (!canSend.value || props.disabled) return
+  if (!canSend.value || interactionDisabled.value) return
 
   const outgoingImages = images.value.map((image) => ({
     mimeType: image.mimeType,

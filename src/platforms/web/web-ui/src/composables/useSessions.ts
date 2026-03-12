@@ -14,13 +14,23 @@ const sessions = ref<SessionSummary[]>([])
 /** 当前选中的会话 */
 const currentSessionId = ref<string | null>(null)
 
+/** 是否正在加载会话列表 */
+const sessionsLoading = ref(false)
+
+/** 会话列表加载错误 */
+const sessionsError = ref('')
+
 export function useSessions() {
   async function loadSessions() {
+    sessionsLoading.value = true
+    sessionsError.value = ''
     try {
       const data = await api.getSessions()
       sessions.value = data.sessions || []
-    } catch {
-      // 静默
+    } catch (err) {
+      sessionsError.value = err instanceof Error ? err.message : '加载会话列表失败'
+    } finally {
+      sessionsLoading.value = false
     }
   }
 
@@ -40,5 +50,5 @@ export function useSessions() {
     await loadSessions()
   }
 
-  return { sessions, currentSessionId, loadSessions, newChat, switchSession, removeSession }
+  return { sessions, currentSessionId, sessionsLoading, sessionsError, loadSessions, newChat, switchSession, removeSession }
 }

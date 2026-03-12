@@ -197,7 +197,14 @@
 
             <div class="form-group">
               <label>工具最大轮次</label>
-              <input type="number" v-model.number="config.maxToolRounds" min="1" max="50" />
+              <input
+                type="number"
+                :value="maxToolRoundsInput"
+                min="1"
+                max="50"
+                @input="handleMaxToolRoundsInput"
+                @blur="syncMaxToolRoundsInput"
+              />
             </div>
 
             <div class="settings-switch-row">
@@ -299,7 +306,14 @@
 
                 <div class="form-group">
                   <label>超时（毫秒）</label>
-                  <input type="number" v-model.number="server.timeout" min="1000" max="120000" />
+                  <input
+                    type="number"
+                    :value="server.timeoutInput"
+                    min="1000"
+                    max="120000"
+                    @input="handleMcpTimeoutInput(server, $event)"
+                    @blur="syncMcpTimeoutInput(server)"
+                  />
                 </div>
               </div>
             </div>
@@ -372,7 +386,7 @@
             <!-- 多 zone 选择器 -->
             <div v-if="cf.zones.length > 1" class="form-group">
               <label>选择域名</label>
-              <select v-model="cf.activeZoneId" @change="handleZoneChange">
+              <select v-model="cf.activeZoneId" :disabled="cf.sslSaving" @change="handleZoneChange">
                 <option v-for="zone in cf.zones" :key="zone.id" :value="zone.id">
                   {{ zone.name }} ({{ zone.status }})
                 </option>
@@ -391,17 +405,18 @@
             <div class="settings-grid two-columns" style="margin-top:12px">
               <div class="form-group">
                 <label>SSL 模式</label>
-                <select v-model="cf.sslMode" @change="handleSslChange">
+                <select v-model="cf.sslMode" :disabled="cf.sslLoading || cf.sslSaving" @change="handleSslChange">
+                  <option value="unknown" disabled>Unknown — 无法读取当前状态</option>
                   <option value="off">Off — 不加密</option>
                   <option value="flexible">Flexible — 浏览器到 CF 加密</option>
                   <option value="full">Full — 全程加密（不验证源站证书）</option>
                   <option value="strict">Full (Strict) — 全程加密 + 验证源站证书</option>
                 </select>
-                <p class="field-hint">{{ sslHints[cf.sslMode] || '' }}</p>
-                <p v-if="cf.sslMode === 'full' || cf.sslMode === 'strict'" class="field-hint" style="margin-top:4px;color:var(--accent-cyan, var(--accent))">
+                <p class="field-hint">{{ cf.sslSaving ? '正在保存 SSL 模式...' : (cf.sslLoading ? '正在读取当前 SSL 模式...' : (sslHints[cf.sslMode] || '')) }}</p>
+                <p v-if="!cf.sslLoading && (cf.sslMode === 'full' || cf.sslMode === 'strict')" class="field-hint" style="margin-top:4px;color:var(--accent-cyan, var(--accent))">
                   需要 Nginx 开启 HTTPS（443 端口 + SSL 证书），否则 CF 到源站连接会失败（521/525）。
                 </p>
-                <p v-if="cf.sslMode === 'flexible'" class="field-hint" style="margin-top:4px;color:var(--accent-cyan, var(--accent))">
+                <p v-if="!cf.sslLoading && cf.sslMode === 'flexible'" class="field-hint" style="margin-top:4px;color:var(--accent-cyan, var(--accent))">
                   Nginx 只需监听 80 端口即可，无需配置 SSL 证书。
                 </p>
               </div>
@@ -424,7 +439,7 @@
                   <span class="cf-dns-name" :title="rec.name">{{ rec.name }}</span>
                   <span class="cf-dns-content" :title="rec.content">{{ rec.content }}</span>
                   <span>{{ rec.proxied ? 'ON' : 'OFF' }}</span>
-                  <button class="btn-dns-delete" type="button" @click="confirmDnsDelete(rec)" title="删除" aria-label="删除 DNS 记录">
+                  <button class="btn-dns-delete" type="button" :disabled="cf.dnsSaving || cf.dnsDeletingId === rec.id" @click="confirmDnsDelete(rec)" title="删除" aria-label="删除 DNS 记录">
                     <AppIcon :name="ICONS.common.close" />
                   </button>
                 </div>
@@ -442,9 +457,9 @@
                 <input type="text" v-model="cf.newDns.name" :placeholder="dnsNamePlaceholder" class="cf-dns-add-input" />
                 <input type="text" v-model="cf.newDns.content" :placeholder="dnsContentPlaceholder" class="cf-dns-add-input" />
                 <label class="cf-dns-add-proxied" :title="'开启后流量经过 Cloudflare CDN 代理，获得 DDoS 防护和缓存加速'">
-                  <input type="checkbox" v-model="cf.newDns.proxied" /> CDN 代理
+                  <input type="checkbox" v-model="cf.newDns.proxied" :disabled="!dnsProxySupported" /> CDN 代理
                 </label>
-                <button class="btn-save" type="button" style="padding:6px 14px;font-size:0.8rem" @click="handleDnsAdd">
+                <button class="btn-save" type="button" :disabled="cf.dnsSaving || !!cf.dnsDeletingId || cf.dnsLoading" style="padding:6px 14px;font-size:0.8rem" @click="handleDnsAdd">
                   添加
                 </button>
               </div>
@@ -469,7 +484,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { getConfig, updateConfig, getStatus, fetchConfigModels, cfGetStatus, cfSetup, cfListDns, cfAddDns, cfRemoveDns, cfGetSsl, cfSetSsl } from '../api/client'
-import type { CfDnsRecord, ConfigModelOption } from '../api/types'
+import type { CfDnsRecord, ConfigModelOption, CloudflareSslMode } from '../api/types'
 import { useTheme, type ThemeMode } from '../composables/useTheme'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
@@ -511,6 +526,8 @@ const config = reactive({
   stream: true,
 })
 
+const maxToolRoundsInput = ref(String(config.maxToolRounds))
+
 type TierName = 'primary' | 'secondary' | 'light'
 
 interface TierConfig {
@@ -522,6 +539,26 @@ interface TierConfig {
 
 function createEmptyTier(provider = 'gemini'): TierConfig {
   return { provider, apiKey: '', model: '', baseUrl: '' }
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.trunc(value)))
+}
+
+function syncMaxToolRoundsInput() {
+  maxToolRoundsInput.value = String(config.maxToolRounds)
+}
+
+function handleMaxToolRoundsInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  maxToolRoundsInput.value = value
+
+  if (!value.trim()) return
+
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) {
+    config.maxToolRounds = clampInteger(parsed, 1, 50)
+  }
 }
 
 const tiers = reactive({
@@ -584,7 +621,10 @@ const modelCatalog = reactive<Record<TierName, TierModelCatalogState>>({
   light: createTierModelCatalogState(),
 })
 
+const modelCatalogRequestVersion = reactive<Record<TierName, number>>({ primary: 0, secondary: 0, light: 0 })
+
 function resetTierModelCatalog(tierName: TierName) {
+  modelCatalogRequestVersion[tierName] += 1
   Object.assign(modelCatalog[tierName], createTierModelCatalogState())
 }
 
@@ -613,6 +653,7 @@ function normalizeApiKeyForLookup(apiKey: string): string | undefined {
 async function fetchTierModels(tierName: TierName) {
   const tier = tiers[tierName]
   const state = modelCatalog[tierName]
+  const requestVersion = ++modelCatalogRequestVersion[tierName]
 
   state.loading = true
   state.error = ''
@@ -624,6 +665,8 @@ async function fetchTierModels(tierName: TierName) {
       baseUrl: tier.baseUrl,
       apiKey: normalizeApiKeyForLookup(tier.apiKey),
     })
+
+    if (requestVersion !== modelCatalogRequestVersion[tierName]) return
 
     state.options = result.models
     state.baseUrl = result.baseUrl
@@ -638,9 +681,12 @@ async function fetchTierModels(tierName: TierName) {
       tier.model = result.models[0].id
     }
   } catch (err: any) {
+    if (requestVersion !== modelCatalogRequestVersion[tierName]) return
     state.error = '拉取失败：' + (err?.message || '未知错误')
   } finally {
-    state.loading = false
+    if (requestVersion === modelCatalogRequestVersion[tierName]) {
+      state.loading = false
+    }
   }
 }
 
@@ -669,6 +715,7 @@ interface MCPServerEntry {
   url: string
   authHeader: string  // Authorization header 值
   timeout: number
+  timeoutInput: string
   enabled: boolean
   open: boolean       // UI 展开状态
 }
@@ -680,7 +727,7 @@ const mcpOriginalNames = ref<string[]>([])
 function addMcpServer() {
   mcpServers.push({
     name: '', transport: 'stdio', command: '', args: '', cwd: '',
-    url: '', authHeader: '', timeout: 30000, enabled: true, open: true,
+    url: '', authHeader: '', timeout: 30000, timeoutInput: '30000', enabled: true, open: true,
   })
 }
 
@@ -688,8 +735,43 @@ function removeMcpServer(idx: number) {
   mcpServers.splice(idx, 1)
 }
 
+function syncMcpTimeoutInput(server: MCPServerEntry) {
+  server.timeoutInput = String(server.timeout)
+}
+
+function handleMcpTimeoutInput(server: MCPServerEntry, event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  server.timeoutInput = value
+
+  if (!value.trim()) return
+
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) {
+    server.timeout = clampInteger(parsed, 1000, 120000)
+  }
+}
+
 function sanitizeMcpName(server: MCPServerEntry) {
   server.name = server.name.replace(/[^a-zA-Z0-9_]/g, '_')
+}
+
+function findDuplicateMcpNames(): string[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+
+  for (const server of mcpServers) {
+    const normalized = server.name.trim()
+    if (!normalized) continue
+
+    if (seen.has(normalized)) {
+      duplicates.add(normalized)
+      continue
+    }
+
+    seen.add(normalized)
+  }
+
+  return Array.from(duplicates)
 }
 
 function buildMCPPayload(): { payload: any; currentNames: string[] } {
@@ -707,7 +789,7 @@ function buildMCPPayload(): { payload: any; currentNames: string[] } {
     const entry: any = {
       transport: s.transport,
       enabled: s.enabled,
-      timeout: s.timeout || 30000,
+      timeout: clampInteger(s.timeout || 30000, 1000, 120000),
     }
     if (s.transport === 'stdio') {
       entry.command = s.command
@@ -747,15 +829,23 @@ const cf = reactive({
   tokenSource: null as 'inline' | 'env' | 'file' | null,
   // SSL
   sslMode: 'full',
+  sslSaving: false,
+  sslLoading: false,
   sslMsg: '',
   sslError: false,
   // DNS
   dnsRecords: [] as CfDnsRecord[],
   dnsLoading: false,
+  dnsSaving: false,
+  dnsDeletingId: null as string | null,
   dnsMsg: '',
   dnsError: false,
   newDns: { type: 'A', name: '', content: '', proxied: true },
 })
+
+let cfDnsRequestVersion = 0
+let cfSslRequestVersion = 0
+let cfSslMutationVersion = 0
 
 
 const streamHint = computed(() => {
@@ -780,7 +870,13 @@ async function requestClose() {
 
   if (dirty.value) {
     await handleSave()
-    if (dirty.value || saving.value) return
+    if (saving.value) return
+    if (dirty.value && !saving.value) {
+      const confirmedDiscard = window.confirm(
+        `${statusText.value || '当前更改尚未成功保存。'}\n\n是否放弃未保存的更改并关闭设置？`,
+      )
+      if (!confirmedDiscard) return
+    }
   }
 
   emit('close')
@@ -821,7 +917,7 @@ watch(
     () => JSON.stringify(tiers),
     () => JSON.stringify(tierEnabled),
     // 排除 open（纯 UI 状态）
-    () => JSON.stringify(mcpServers, (key, value) => key === 'open' ? undefined : value),
+    () => JSON.stringify(mcpServers, (key, value) => (key === 'open' || key === 'timeoutInput') ? undefined : value),
   ],
   scheduleAutoSave,
 )
@@ -862,6 +958,7 @@ onMounted(async () => {
 
     config.systemPrompt = data.system?.systemPrompt || ''
     config.maxToolRounds = data.system?.maxToolRounds ?? 10
+    syncMaxToolRoundsInput()
     config.stream = data.system?.stream ?? true
 
     // MCP
@@ -877,6 +974,7 @@ onMounted(async () => {
           url: cfg.url || '',
           authHeader: cfg.headers?.Authorization || '',
           timeout: cfg.timeout ?? 30000,
+          timeoutInput: String(cfg.timeout ?? 30000),
           enabled: cfg.enabled !== false,
           open: false,
         })
@@ -887,12 +985,14 @@ onMounted(async () => {
     await nextTick()
     configLoaded = true
     dirty.value = false
+    syncMaxToolRoundsInput()
   } catch (err: any) {
     configLoaded = true
     statusText.value = '加载配置失败: ' + (err?.message || '未知错误')
     statusError.value = true
     dirty.value = false
   }
+  syncMaxToolRoundsInput()
 
   try {
     const status = await getStatus()
@@ -927,6 +1027,14 @@ async function handleSave() {
 
   statusText.value = ''
   statusError.value = false
+
+  const duplicateMcpNames = findDuplicateMcpNames()
+  if (duplicateMcpNames.length > 0) {
+    statusText.value = `保存失败: MCP 服务器名称重复（${duplicateMcpNames.join('、')}）`
+    statusError.value = true
+    saving.value = false
+    return
+  }
 
   try {
     const llmPayload: Record<string, unknown> = {
@@ -1005,6 +1113,12 @@ const dnsContentPlaceholder = computed(() => {
   return m[cf.newDns.type] || '记录值'
 })
 
+const dnsProxySupported = computed(() => ['A', 'AAAA', 'CNAME'].includes(cf.newDns.type))
+
+watch(() => cf.newDns.type, (type) => {
+  if (!['A', 'AAAA', 'CNAME'].includes(type)) cf.newDns.proxied = false
+})
+
 // ============ Cloudflare 方法 ============
 
 async function loadCfStatus() {
@@ -1024,31 +1138,84 @@ async function loadCfStatus() {
 
     if (status.connected) {
       await Promise.all([loadCfDns(), loadCfSsl()])
+    } else {
+      cfDnsRequestVersion += 1
+      cfSslRequestVersion += 1
+      cfSslMutationVersion += 1
+      cf.dnsRecords = []
+      cf.dnsSaving = false
+      cf.dnsDeletingId = null
+      cf.dnsMsg = ''
+      cf.dnsError = false
+      cf.sslMode = 'unknown'
+      cf.sslSaving = false
+      committedSslMode = 'unknown'
+      cf.sslLoading = false
+      cf.sslMsg = ''
+      cf.sslError = false
     }
   } catch (err: any) {
+    cfDnsRequestVersion += 1
+    cfSslRequestVersion += 1
+    cfSslMutationVersion += 1
     cf.connected = false
     cf.error = err?.message || '加载 Cloudflare 状态失败'
+    cf.dnsRecords = []
+    cf.dnsSaving = false
+    cf.dnsDeletingId = null
+    cf.sslMode = 'unknown'
+    cf.sslSaving = false
+    committedSslMode = 'unknown'
+    cf.sslLoading = false
   }
 }
 
 async function loadCfDns() {
+  const requestVersion = ++cfDnsRequestVersion
+  const zoneId = cf.activeZoneId
+  cf.dnsMsg = ''
+  cf.dnsError = false
   cf.dnsLoading = true
   try {
-    const result = await cfListDns(cf.activeZoneId)
+    const result = await cfListDns(zoneId)
+    if (requestVersion !== cfDnsRequestVersion) return
     cf.dnsRecords = result.records || []
   } catch (err: any) {
+    if (requestVersion !== cfDnsRequestVersion) return
+    cf.dnsRecords = []
     cf.dnsMsg = '加载 DNS 记录失败: ' + err.message
     cf.dnsError = true
   } finally {
-    cf.dnsLoading = false
+    if (requestVersion === cfDnsRequestVersion) {
+      cf.dnsLoading = false
+    }
   }
 }
 
+let committedSslMode: CloudflareSslMode = 'full'
+
 async function loadCfSsl() {
+  const requestVersion = ++cfSslRequestVersion
+  const zoneId = cf.activeZoneId
+  cf.sslLoading = true
+  cf.sslMsg = ''
+  cf.sslError = false
   try {
-    const result = await cfGetSsl(cf.activeZoneId)
+    const result = await cfGetSsl(zoneId)
+    if (requestVersion !== cfSslRequestVersion) return
     cf.sslMode = result.mode || 'full'
-  } catch { /* 静默 */ }
+    committedSslMode = cf.sslMode
+  } catch (err: any) {
+    if (requestVersion !== cfSslRequestVersion) return
+    cf.sslMode = 'unknown'
+    committedSslMode = 'unknown'
+    cf.sslMsg = '读取当前 SSL 模式失败：' + (err?.message || '未知错误')
+    cf.sslError = true
+  } finally {
+    if (requestVersion === cfSslRequestVersion) {
+      cf.sslLoading = false
+    }
+  }
 }
 
 async function handleCfSetup() {
@@ -1071,30 +1238,53 @@ async function handleCfSetup() {
 }
 
 async function handleSslChange() {
+  if (cf.sslMode === 'unknown' || cf.sslLoading || cf.sslSaving) return
+  const requestVersion = ++cfSslMutationVersion
+  const zoneId = cf.activeZoneId
+  const targetMode = cf.sslMode as CloudflareSslMode
+  const previousMode = committedSslMode
   cf.sslMsg = ''
   cf.sslError = false
+  cf.sslSaving = true
   try {
-    await cfSetSsl(cf.sslMode, cf.activeZoneId)
+    await cfSetSsl(targetMode, zoneId)
+    if (requestVersion !== cfSslMutationVersion || zoneId !== cf.activeZoneId) return
+    committedSslMode = targetMode
+    cf.sslMode = targetMode
     cf.sslMsg = 'SSL 模式已更新'
   } catch (err: any) {
+    if (requestVersion !== cfSslMutationVersion) return
+    committedSslMode = previousMode
+    if (zoneId === cf.activeZoneId) {
+      cf.sslMode = previousMode
+    }
     cf.sslMsg = '更新失败: ' + err.message
     cf.sslError = true
+  } finally {
+    if (requestVersion === cfSslMutationVersion) cf.sslSaving = false
   }
 }
 
 async function handleDnsAdd() {
+  if (cf.dnsSaving || cf.dnsDeletingId) return
+  if (!dnsProxySupported.value) cf.newDns.proxied = false
   if (!cf.newDns.name || !cf.newDns.content) { cf.dnsMsg = '名称和内容不能为空'; cf.dnsError = true; return }
   cf.dnsMsg = ''
   cf.dnsError = false
+  cf.dnsSaving = true
   try {
     await cfAddDns({ ...cf.newDns }, cf.activeZoneId)
     cf.newDns.name = ''
     cf.newDns.content = ''
-    cf.dnsMsg = '添加成功'
     await loadCfDns()
+    if (!cf.dnsError) {
+      cf.dnsMsg = '添加成功'
+    }
   } catch (err: any) {
     cf.dnsMsg = '添加失败: ' + err.message
     cf.dnsError = true
+  } finally {
+    cf.dnsSaving = false
   }
 }
 
@@ -1104,8 +1294,10 @@ function confirmDnsDelete(rec: CfDnsRecord) {
 }
 
 async function handleDnsDelete(id: string) {
+  if (cf.dnsSaving || cf.dnsDeletingId) return
   cf.dnsMsg = ''
   cf.dnsError = false
+  cf.dnsDeletingId = id
   try {
     await cfRemoveDns(id, cf.activeZoneId)
     cf.dnsRecords = cf.dnsRecords.filter(r => r.id !== id)
@@ -1113,11 +1305,21 @@ async function handleDnsDelete(id: string) {
   } catch (err: any) {
     cf.dnsMsg = '删除失败: ' + err.message
     cf.dnsError = true
+  } finally {
+    if (cf.dnsDeletingId === id) {
+      cf.dnsDeletingId = null
+    }
   }
 }
 
 async function handleZoneChange() {
   // 多 zone 场景下切换 zone 后重新加载 DNS 和 SSL
+  cf.dnsMsg = ''
+  cf.dnsError = false
+  cfSslMutationVersion += 1
+  cf.sslSaving = false
+  cf.sslMsg = ''
+  cf.sslError = false
   await Promise.all([loadCfDns(), loadCfSsl()])
 }
 

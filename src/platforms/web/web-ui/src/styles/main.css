@@ -756,6 +756,64 @@ select:focus-visible {
   font-size: 0.9rem;
 }
 
+.sidebar-empty-error {
+  background: rgba(255, 124, 124, 0.08);
+  border-style: solid;
+  border-color: rgba(255, 124, 124, 0.18);
+}
+
+.sidebar-inline-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.sidebar-inline-status.error {
+  background: rgba(255, 124, 124, 0.08);
+  border-color: rgba(255, 124, 124, 0.18);
+}
+
+.sidebar-inline-action,
+.message-state-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(var(--tint-rgb), 0.08);
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.sidebar-inline-action:hover,
+.message-state-action:hover {
+  transform: translateY(var(--motion-lift-xs));
+  background: rgba(var(--tint-rgb), 0.12);
+}
+
+.sidebar-inline-action:disabled,
+.message-state-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .session-item {
   display: flex;
   align-items: center;
@@ -1266,6 +1324,60 @@ select:focus-visible {
   color: var(--text-tertiary);
   line-height: 1.7;
   font-size: 0.86rem;
+}
+
+.message-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+  box-shadow: var(--shadow-sm);
+}
+
+.message-state-card.error {
+  background: rgba(255, 124, 124, 0.08);
+  border-color: rgba(255, 124, 124, 0.18);
+}
+
+.message-state-card.loading {
+  background: rgba(116, 215, 255, 0.08);
+  border-color: rgba(116, 215, 255, 0.16);
+}
+
+.message-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(var(--tint-rgb), 0.08);
+  font-size: 1.12rem;
+}
+
+.message-state-card h3 {
+  font-size: 1rem;
+}
+
+.message-state-card p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.messages-inline-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 124, 124, 0.08);
+  border: 1px solid rgba(255, 124, 124, 0.18);
+  color: var(--text-secondary);
 }
 
 .message-stack {
@@ -3474,7 +3586,12 @@ select:focus-visible {
   font-size: 1.05rem;
 }
 
-.btn-dns-delete:hover { color: var(--error); }
+.btn-dns-delete:hover:not(:disabled) { color: var(--error); }
+
+.btn-dns-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .cf-dns-add {
   display: flex;
@@ -3697,10 +3814,16 @@ select:focus-visible {
   .input-box,
   .input-actions,
   .input-attachment-summary,
+  .messages-inline-status,
+  .sidebar-inline-status,
   .settings-section-head,
   .settings-switch-row,
   .form-actions {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .message-state-card {
     align-items: stretch;
   }
 
@@ -4021,6 +4144,36 @@ select:focus-visible {
 
 :root[data-theme="light"] .thinking-copy {
   color: var(--text-secondary);
+}
+
+:root[data-theme="light"] .sidebar-empty-error,
+:root[data-theme="light"] .messages-inline-status,
+:root[data-theme="light"] .message-state-card.error {
+  background: rgba(220, 53, 69, 0.08);
+  border-color: rgba(220, 53, 69, 0.16);
+}
+
+:root[data-theme="light"] .message-state-card.loading {
+  background: rgba(5, 150, 105, 0.08);
+  border-color: rgba(5, 150, 105, 0.16);
+}
+
+:root[data-theme="light"] .sidebar-inline-status,
+:root[data-theme="light"] .message-state-card,
+:root[data-theme="light"] .sidebar-inline-action,
+:root[data-theme="light"] .message-state-action {
+  background: #f8faf9;
+  border-color: rgba(17, 24, 39, 0.08);
+  color: var(--text-secondary);
+}
+
+:root[data-theme="light"] .message-state-icon {
+  background: rgba(17, 24, 39, 0.06);
+}
+
+:root[data-theme="light"] .sidebar-inline-action:hover,
+:root[data-theme="light"] .message-state-action:hover {
+  background: #f3f4f6;
 }
 
 :root[data-theme="light"] .chat-topbar,

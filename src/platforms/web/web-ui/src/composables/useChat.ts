@@ -13,6 +13,12 @@ import type { ImageInput, DocumentInput, Message, MessagePart } from '../api/typ
 /** 当前会话的消息列表 */
 const messages = ref<Message[]>([])
 
+/** 是否正在加载历史消息 */
+const messagesLoading = ref(false)
+
+/** 历史消息加载错误 */
+const messagesError = ref('')
+
 /** 是否正在发送 */
 const sending = ref(false)
 
@@ -93,6 +99,34 @@ function abortCurrent() {
   activeRequestSessionId = null
 }
 
+async function loadMessagesForSession(id: string | null) {
+  const version = ++loadVersion
+  messagesError.value = ''
+
+  if (!id) {
+    messages.value = []
+    messagesLoading.value = false
+    return
+  }
+
+  messagesLoading.value = true
+  messages.value = []
+
+  try {
+    const data = await api.getMessages(id)
+    if (version !== loadVersion) return
+    messages.value = data.messages || []
+  } catch (err) {
+    if (version !== loadVersion) return
+    messages.value = []
+    messagesError.value = err instanceof Error ? err.message : '加载会话消息失败'
+  } finally {
+    if (version === loadVersion) {
+      messagesLoading.value = false
+    }
+  }
+}
+
 // 模块级 watch，生命周期与模块一致，不受组件卸载影响
 watch(currentSessionId, async (id) => {
   // 由 onSessionId 触发的"新会话绑定"不应被视为切换会话
@@ -109,20 +143,7 @@ watch(currentSessionId, async (id) => {
   isStreaming.value = false
   sending.value = false
 
-  const version = ++loadVersion
-  if (id) {
-    try {
-      const data = await api.getMessages(id)
-      // 请求期间会话又切换了，丢弃过期响应
-      if (version !== loadVersion) return
-      messages.value = data.messages || []
-    } catch {
-      if (version !== loadVersion) return
-      messages.value = []
-    }
-  } else {
-    messages.value = []
-  }
+  await loadMessagesForSession(id)
 })
 
 export function useChat() {
@@ -138,6 +159,13 @@ export function useChat() {
     isStreaming.value = false
   }
 
+  async function reloadMessages() {
+    if (sending.value) return
+    streamingText.value = ''
+    isStreaming.value = false
+    await loadMessagesForSession(currentSessionId.value)
+  }
+
   async function sendMessage(text: string, images?: ImageInput[], documents?: DocumentInput[]) {
     const normalizedImages = normalizeImages(images)
     const normalizedDocs = normalizeDocuments(documents)
@@ -146,6 +174,7 @@ export function useChat() {
     sending.value = true
     streamingText.value = ''
     isStreaming.value = false
+    messagesError.value = ''
 
     // 立即显示用户消息
     messages.value.push({
@@ -170,7 +199,7 @@ export function useChat() {
         if (currentSessionId.value !== id) {
           currentSessionId.value = id
         }
-        loadSessions()
+        void loadSessions()
       },
       onDelta(delta) {
         if (isStale()) return
@@ -195,7 +224,7 @@ export function useChat() {
         currentController = null
         activeRequestToken = null
         activeRequestSessionId = null
-        loadSessions()
+        void loadSessions()
       },
       onError(msg) {
         if (isStale()) return
@@ -251,6 +280,7 @@ export function useChat() {
 
     // 提前置忙，防止异步截断期间重复触发
     sending.value = true
+    messagesError.value = ''
 
     // 先截断后端历史，确保前后端一致
     if (currentSessionId.value) {
@@ -276,5 +306,15 @@ export function useChat() {
     void sendMessage(text, images, documents)
   }
 
-  return { messages, sending, streamingText, isStreaming, sendMessage, retryLastMessage }
+  return {
+    messages,
+    messagesLoading,
+    messagesError,
+    sending,
+    streamingText,
+    isStreaming,
+    sendMessage,
+    retryLastMessage,
+    reloadMessages,
+  }
 }
