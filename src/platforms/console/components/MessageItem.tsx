@@ -5,6 +5,7 @@
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { ToolInvocation } from '../../../types';
+import { MarkdownText } from './MarkdownText';
 import { GeneratingTimer } from './GeneratingTimer';
 import { ToolCall } from './ToolCall';
 
@@ -26,20 +27,6 @@ function formatElapsedMs(ms: number): string {
 
 function formatTokenSpeed(tokenOut: number, durationMs: number): string {
   return `${(tokenOut / Math.max(durationMs / 1000, 0.001)).toFixed(1)} t/s`;
-}
-
-/** 极简 Markdown 渲染 */
-function renderMarkdown(text: string, baseColor: string) {
-  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <Text key={i} bold color="white">{part.slice(2, -2)}</Text>;
-    }
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <Text key={i} backgroundColor="gray" color="black">{part.slice(1,-1)}</Text>;
-    }
-    return <Text key={i} color={baseColor}>{part}</Text>;
-  });
 }
 
 // ====== 数据结构 ======
@@ -82,7 +69,6 @@ export const MessageItem = React.memo(function MessageItem(
   const isUser = msg.role === 'user';
   const themeColor = isUser ? 'cyan' : 'green';
   const labelText = isUser ? 'USER' : 'IRIS';
-  const textColor = 'white';
 
   const displayParts: MessagePart[] = [...msg.parts];
   if (liveParts && liveParts.length > 0) {
@@ -110,10 +96,10 @@ export const MessageItem = React.memo(function MessageItem(
             <Box key={i} paddingLeft={0} width="100%">
               <Text dimColor color={themeColor}>{PIPE} </Text>
               <Box flexGrow={1} width="100%">
-                <Text wrap="wrap">
-                  {renderMarkdown(part.text, textColor)}
-                  {isLastPart && isStreaming && <Text backgroundColor="green"> </Text>}
-                </Text>
+                <MarkdownText
+                  text={part.text}
+                  showCursor={isLastPart && isStreaming}
+                />
               </Box>
             </Box>
           );
