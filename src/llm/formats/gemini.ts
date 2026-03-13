@@ -124,6 +124,9 @@ function filterInternalFields(obj: unknown): unknown {
     if (key === 'durationMs' || key === 'streamOutputDurationMs' || key === 'thoughtDurationMs' || key === 'usageMetadata') {
       continue;
     }
+    if (key === 'modelName') {
+      continue; // 过滤我们新加的模型名称字段
+    }
     // 递归处理嵌套对象
     result[key] = filterInternalFields(value);
   }

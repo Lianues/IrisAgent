@@ -95,6 +95,7 @@ export interface MessageMeta {
   tokenOut?: number;
   durationMs?: number;
   streamOutputDurationMs?: number;
+  modelName?: string;
 }
 
 export interface AppHandle {
@@ -141,7 +142,6 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeHidden, setActiveHidden] = useState(false);
   const [contextTokens, setContextTokens] = useState(0);
   const [currentModelId, setCurrentModelId] = useState(modelId);
   const [currentModelName, setCurrentModelName] = useState(modelName);
@@ -158,7 +158,6 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
   const toolInvocationsRef = useRef<ToolInvocation[]>([]);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCommittedStreamPartsRef = useRef(0);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUsageRef = useRef<UsageMetadata | null>(null);
 
   // 监听终端 resize：触发 React 重渲染。
@@ -272,24 +271,10 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
       },
 
       setGenerating(generating) {
-        if (hideTimerRef.current) {
-          clearTimeout(hideTimerRef.current);
-          hideTimerRef.current = null;
-        }
-        if (!generating) {
-          // 两阶段提交，避免 Ink <Static> 转场时内容重复：
-          // Phase 1: 先将动态区的 activeMessage 隐藏（但仍排除在 Static 外）
-          setActiveHidden(true);
-          // Phase 2: 下一帧再真正结束 generating，消息进入 Static 时动态区已空
-          hideTimerRef.current = setTimeout(() => {
-            hideTimerRef.current = null;
-            setIsGenerating(false);
-            setActiveHidden(false);
-          }, 30);
-        } else {
-          setActiveHidden(false);
-          setIsGenerating(true);
-        }
+        // 废除两阶段提交，直接同步更新状态。
+        // 在现代 Ink (5+) 和 React 18 批处理中，同步地将消息推入 Static 并从动态区移除
+        // 能最大程度避免因为 30ms 延迟导致的消息瞬间消失再出现的闪烁。
+        setIsGenerating(generating);
       },
 
       clearMessages() {
@@ -446,13 +431,12 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
 
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
   const lastIsActiveAssistant = isGenerating && lastMsg?.role === 'assistant';
-  const excludeFromStatic = lastIsActiveAssistant || activeHidden;
-  const activeMessage = (lastIsActiveAssistant && !activeHidden) ? lastMsg : null;
+  const activeMessage = lastIsActiveAssistant ? lastMsg : null;
 
   const staticMessages = useMemo(() => {
-    const candidates = excludeFromStatic ? messages.slice(0, -1) : messages;
+    const candidates = lastIsActiveAssistant ? messages.slice(0, -1) : messages;
     return candidates;
-  }, [messages, excludeFromStatic]);
+  }, [messages, lastIsActiveAssistant]);
 
   // ============ 设置视图 ============
   if (viewMode === 'settings') {
@@ -557,22 +541,22 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
       {/* 已完成消息 — 写入终端缓冲区，不再重绘 */}
       <Static items={staticMessages}>
         {(msg: ChatMessage, index: number) => (
-          <Box key={msg.id} flexDirection="column" marginBottom={1}>
-            {index === 0 && (
+          <Box key={msg.id} flexDirection="column" paddingBottom={1}>
+            {index === 0 &&(
               <Box marginBottom={1}>
                 <Gradient name="atlas">
                   <Text bold italic>IRIS</Text>
                 </Gradient>
               </Box>
             )}
-            <MessageItem msg={msg} />
+            <MessageItem msg={msg} modelName={currentModelName} />
           </Box>
         )}
       </Static>
 
       {/* 动态区域 */}
       <Box flexDirection="column">
-        {/* 首条消息前显示 Logo */}
+        {/* 首条消息前显示 Logo，防止刚开启应用时画面为空 */}
         {staticMessages.length === 0 && (
           <Box marginBottom={1}>
             <Gradient name="atlas">
@@ -587,19 +571,21 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
               msg={activeMessage}
               liveParts={streamingParts.length > 0 ? streamingParts : undefined}
               isStreaming={isStreaming}
+              modelName={currentModelName}
             />
             {isStreaming && streamingParts.length === 0 && (
               <GeneratingTimer isGenerating={isGenerating} />
             )}
           </>
         )}
-        {isGenerating && !activeMessage && !activeHidden && (
+        {isGenerating && !activeMessage && (
           <>
             {streamingParts.length > 0 ? (
               <MessageItem
                 msg={{ id: 'tmp', role: 'assistant', parts: [] }}
                 liveParts={streamingParts}
                 isStreaming={isStreaming}
+                modelName={currentModelName}
               />
             ) : (
               <GeneratingTimer isGenerating={isGenerating} />
@@ -609,11 +595,17 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
       </Box>
 
       {/* 底部交互区 */}
-      <Box flexDirection="column" marginTop={1}>
-        <Text wrap="truncate-end">
-          <Text dimColor>{'\u2500'.repeat(Math.max(3, termWidth - 6))}</Text>
-        </Text>
-        <Text wrap="truncate-end" dimColor>
+      <Box
+        flexDirection="column"
+        marginTop={1}
+        borderStyle="single"
+        borderTop
+        borderLeft={false} borderRight={false} borderBottom={false}
+        borderColor="gray"
+        borderDimColor
+        paddingTop={0}
+      >
+        <Text wrap="truncate-end" dimColor italic>
           {'MODEL: '}{currentModelName}
           {currentModelId ? ` (${currentModelId})` : ''}
           {'  '}
@@ -625,8 +617,9 @@ export function App({ onReady, onSubmit, onNewSession, onLoadSession, onListSess
             ? ` (${Math.round(contextTokens / currentContextWindow * 100)}%)`
             : ''
           }
+          {'  │  '}{process.cwd()}
+          {resizeTick % 2 === 0 ? '' : '\u200B'}
         </Text>
-        <Text wrap="truncate-end" dimColor>{process.cwd()}{resizeTick % 2 === 0 ? '' : '\u200B'}</Text>
         <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
       </Box>
     </Box>

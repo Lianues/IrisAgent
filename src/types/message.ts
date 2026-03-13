@@ -76,6 +76,8 @@ export interface Content {
   durationMs?: number;
   /** 流式输出阶段耗时（从首个有效流式块到最后一个有效流式块，毫秒） */
   streamOutputDurationMs?: number;
+  /** 产生该消息的 AI 模型名称（例如：gemini-2.5-flash），用于历史回显 */
+  modelName?: string;
 }
 
 // ============ 类型守卫工具函数 ============

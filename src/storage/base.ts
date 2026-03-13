@@ -74,6 +74,9 @@ export abstract class StorageProvider {
     if (content.streamOutputDurationMs != null) {
       normalized.streamOutputDurationMs = content.streamOutputDurationMs;
     }
+    if (content.modelName) {
+      normalized.modelName = content.modelName;
+    }
     for (const [k, v] of Object.entries(content)) {
       if (!known.has(k)) {
         (normalized as unknown as Record<string, unknown>)[k] = v;

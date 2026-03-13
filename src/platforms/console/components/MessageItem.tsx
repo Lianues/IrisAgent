@@ -1,8 +1,5 @@
 /**
- * 单条消息渲染 - 基于有序 parts 模型
- *
- * 使用 Ink Box 的 borderLeft 实现左侧边条，
- * 自动贯穿所有内容行。
+ * 单条消息渲染 - 现代化左侧引导线风格
  */
 
 import React from 'react';
@@ -50,6 +47,7 @@ export interface ChatMessage {
   /** 回答耗时（毫秒） */
   durationMs?: number;
   streamOutputDurationMs?: number;
+  modelName?: string;
 }
 
 // ====== 组件 ======
@@ -59,18 +57,18 @@ interface MessageItemProps {
   liveTools?: ToolInvocation[];
   liveParts?: MessagePart[];
   isStreaming?: boolean;
+  modelName?: string;
 }
 
-const CIRCLE_OPEN = '○';
-const CIRCLE_FILL = '●';
 
 export const MessageItem = React.memo(function MessageItem(
-  { msg, liveTools, liveParts, isStreaming }: MessageItemProps
+  { msg, liveTools, liveParts, isStreaming, modelName }: MessageItemProps
 ) {
   const { stdout } = useStdout();
   const isUser = msg.role === 'user';
-  const themeColor = isUser ? 'cyan' : 'green';
-  const labelText = isUser ? 'USER' : 'IRIS';
+  const labelName = isUser ? 'USER' : (msg.modelName || modelName || 'iris').toLowerCase();
+  const labelColor = isUser ? 'cyan' : 'green';
+  const headerText = `· ${labelName} `;
 
   const displayParts: MessagePart[] = [...msg.parts];
   if (liveParts && liveParts.length > 0) {
@@ -84,55 +82,62 @@ export const MessageItem = React.memo(function MessageItem(
 
   return (
     <Box flexDirection="column" width="100%">
-      {/* 标签 */}
-      <Box marginBottom={0}>
-        <Text bold color={themeColor}>{isUser ? CIRCLE_OPEN : CIRCLE_FILL}</Text>
-        <Text bold color="black" backgroundColor={themeColor}>{` ${labelText} `}</Text>
+      {/* 楼层头部：带角色名的细线分割 */}
+      <Box marginBottom={1} flexDirection="row">
+        <Text color={labelColor} bold>{headerText}</Text>
+        <Text dimColor wrap="truncate-end">
+          {'─'.repeat(Math.max(2, (stdout?.columns ?? 80) - headerText.length))}
+        </Text>
       </Box>
 
-      {/* 内容区域 — 左侧边条自动贯穿所有行 */}
+      {/* 消息主体：绝对顶格，不加任何 paddingLeft，保证复制不带空格 */}
       <Box
         flexDirection="column"
         width="100%"
-        borderStyle="bold"
-        borderLeft
-        borderRight={false}
-        borderTop={false}
-        borderBottom={false}
-        borderColor={themeColor}
-        borderDimColor
-        paddingLeft={1}
       >
         {/* 按顺序渲染每个 part */}
         {displayParts.map((part, i) => {
           if (part.type === 'text' && part.text.length > 0) {
             const isLastPart = i === displayParts.length - 1;
             return (
-              <MarkdownText
-                key={i}
-                text={part.text}
-                showCursor={isLastPart && isStreaming}
-              />
+              <Box key={i} marginTop={i > 0 ? 1 : 0}>
+                {isUser ? (
+                  <Text>{part.text}</Text>
+                ) : (
+                  <MarkdownText text={part.text} showCursor={isLastPart && isStreaming} />
+                )}
+              </Box>
             );
           }
+          
           if (part.type === 'thought') {
             const previewText = getThoughtTailPreview(part.text, Math.max(24, (stdout?.columns ?? 80) - 20));
             const isLastPart = i === displayParts.length - 1;
-            const prefix = part.durationMs != null ? `[THINKING ${formatElapsedMs(part.durationMs)}]` : '[THINKING]';
+            const prefix = part.durationMs != null ? `THINKING   ${formatElapsedMs(part.durationMs)}` : 'THINKING';
             return (
-              <Text key={i} wrap="truncate-end" italic>
-                <Text bold italic color="gray">{prefix}</Text>
-                {previewText ? <Text dimColor italic> {previewText}</Text> : null}
-                {isLastPart && isStreaming && <Text backgroundColor="gray"> </Text>}
-              </Text>
+              <Box key={i} marginTop={i > 0 ? 1 : 0} flexDirection="column">
+                <Text bold italic color="gray">{'  · ' + prefix}</Text>
+                <Box
+                  flexDirection="column"
+                >
+                  <Text wrap="wrap" italic dimColor>
+                    {'    '}{previewText ? previewText : '...'}
+                    {isLastPart && isStreaming && <Text backgroundColor="gray"> </Text>}
+                  </Text>
+                </Box>
+              </Box>
             );
           }
+          
           if (part.type === 'tool_use') {
             return (
-              <Box key={i} flexDirection="column" width="100%">
-                <Text bold color="gray">[TOOL_USE]</Text>
-                <Box flexDirection="column">
-                  {part.tools.map(inv => <ToolCall key={inv.id} invocation={inv} lineColor={themeColor} />)}
+              <Box key={i} flexDirection="column" width="100%" marginTop={i > 0 ? 1 : 0}>
+                <Text bold color="gray">{'  · TOOL_USE'}</Text>
+                <Box
+                  flexDirection="column"
+                  paddingLeft={4}
+                >
+                  {part.tools.map(inv => <ToolCall key={inv.id} invocation={inv} lineColor="gray" />)}
                 </Box>
               </Box>
             );
@@ -142,23 +147,28 @@ export const MessageItem = React.memo(function MessageItem(
 
         {/* assistant 消息的 token / 耗时信息 */}
         {!isUser && !isStreaming && (msg.tokenIn != null || msg.durationMs != null) && (
-          <Text dimColor>
-            {msg.tokenIn != null && `IN: ${msg.tokenIn.toLocaleString()}`}
-            {msg.tokenIn != null && msg.tokenOut != null && '  '}
-            {msg.tokenOut != null && `OUT: ${msg.tokenOut.toLocaleString()}`}
-            {msg.durationMs != null && (msg.tokenIn != null || msg.tokenOut != null ? '    ' : '')}
-            {msg.durationMs != null && `TIME: ${(msg.durationMs / 1000).toFixed(1)}s`}
-            {msg.tokenOut != null && msg.streamOutputDurationMs != null && `   ${formatTokenSpeed(msg.tokenOut, msg.streamOutputDurationMs)}`}
-          </Text>
+          <Box marginTop={hasAnyContent ? 1 : 0} flexDirection="row">
+            <Text dimColor>{'· '}</Text>
+            <Text dimColor>
+              {msg.tokenIn != null && `IN: ${msg.tokenIn.toLocaleString()}`}
+              {msg.tokenIn != null && msg.tokenOut != null && '  '}
+              {msg.tokenOut != null && `OUT: ${msg.tokenOut.toLocaleString()}`}
+              {msg.durationMs != null && (msg.tokenIn != null || msg.tokenOut != null ? '    ' : '')}
+              {msg.durationMs != null && `TIME: ${(msg.durationMs / 1000).toFixed(1)}s`}
+              {msg.tokenOut != null && msg.streamOutputDurationMs != null && `   ${formatTokenSpeed(msg.tokenOut, msg.streamOutputDurationMs)}`}
+            </Text>
+          </Box>
         )}
 
         {/* 没有内容但正在流式生成 */}
         {!hasAnyContent && isStreaming && (
-          <GeneratingTimer isGenerating={true} />
+          <Box>
+            <GeneratingTimer isGenerating={true} />
+          </Box>
         )}
 
-        {/* 没有内容也不在流式 */}
-        {!hasAnyContent && !isStreaming && !isUser && (
+        {/* 没有内容也不在流式（通常用不到，但占位保证引导线高度） */}
+        {!hasAnyContent && !isStreaming && (
           <Text>{' '}</Text>
         )}
       </Box>

@@ -21,6 +21,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
+    "cli-highlight": "^2.1.11",
     "discord.js": "^14.25.1",
     "grammy": "^1.41.1",
     "ink": "^5.0.1",

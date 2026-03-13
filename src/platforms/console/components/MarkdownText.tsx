@@ -12,6 +12,7 @@ import React, { useMemo } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
+import { highlight } from 'cli-highlight';
 
 // ── 工具函数 ────────────────────────────────────────────
 
@@ -207,25 +208,34 @@ function renderBlock(
     // ── 代码块 ──
     case 'code': {
       const t = token as Tokens.Code;
-      const lines = t.text.split('\n');
+      
+      // 使用 cli-highlight 进行高亮渲染，如果失败则回退到原生文本
+      let highlighted = t.text;
+      try {
+        highlighted = highlight(t.text, { language: t.lang || 'plaintext', ignoreIllegals: true });
+      } catch (e) {
+        // fallback
+      }
+      
+      const lines = highlighted.split('\n');
       // 去除尾部空行
-      while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+      while (lines.length > 0 && lines[lines.length - 1].replace(/\x1b\[[0-9;]*m/g, '').trim() === '') {
         lines.pop();
       }
       return (
         <Box key={key} flexDirection="column">
           <Text>
-            <Text dimColor>{'┌ '}</Text>
-            <Text dimColor italic>{t.lang || 'code'}</Text>
+            <Text dimColor>{'╭─ '}</Text>
+            <Text bold color="gray">{t.lang || 'code'}</Text>
           </Text>
           {lines.map((line, li) => (
             <Text key={li}>
-              <Text dimColor>{'│ '}</Text>
-              <Text>{line}</Text>
+              <Text dimColor>{'│  '}</Text>
+              <Text>{line}</Text> {/* 注意：这里 line 包含了 ANSI 转义序列，Ink 的 Text 会将其原样透传给终端，终端会自动解析色彩 */}
             </Text>
           ))}
           <Text>
-            <Text dimColor>{'└'}</Text>
+            <Text dimColor>{'╰─'}</Text>
             {cursor}
           </Text>
         </Box>

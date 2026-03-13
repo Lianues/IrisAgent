@@ -63,6 +63,7 @@ function getMessageMeta(content: Content): MessageMeta | undefined {
   if (content.usageMetadata?.candidatesTokenCount != null) meta.tokenOut = content.usageMetadata.candidatesTokenCount;
   if (content.durationMs != null) meta.durationMs = content.durationMs;
   if (content.streamOutputDurationMs != null) meta.streamOutputDurationMs = content.streamOutputDurationMs;
+  if (content.modelName) (meta as any).modelName = content.modelName;
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
