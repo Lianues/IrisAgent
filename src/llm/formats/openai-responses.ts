@@ -12,6 +12,7 @@ import {
 } from '../../types';
 import { isDocumentMimeType } from '../vision';
 import { FormatAdapter, StreamDecodeState } from './types';
+import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
 
 export class OpenAIResponsesFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -22,7 +23,7 @@ export class OpenAIResponsesFormat implements FormatAdapter {
     const body: Record<string, any> = {
       model: this.model,
       store: false,
-      contains: ['reasoning.encrypted_content'],
+      include: ['reasoning.encrypted_content'],
     };
 
     // 1. systemInstruction -> instructions
@@ -35,7 +36,8 @@ export class OpenAIResponsesFormat implements FormatAdapter {
 
     // 2. contents -> input
     const inputItems: any[] = [];
-    let toolUseIdCounter = 0;
+    const pendingToolCallIds: string[] = [];
+    let generatedToolCallIdCounter = 0;
 
     for (const content of request.contents) {
       if (content.role === 'model') {
@@ -59,25 +61,32 @@ export class OpenAIResponsesFormat implements FormatAdapter {
             }
             currentMessageItem.content.push({ type: 'output_text', text: part.text });
           } else if (isFunctionCallPart(part)) {
+            const callId = resolveCallId(part.functionCall.callId, `call_${generatedToolCallIdCounter++}`);
             inputItems.push({
-              id: `call_${toolUseIdCounter++}`,
               type: 'function_call',
+              call_id: callId,
               name: part.functionCall.name,
               arguments: JSON.stringify(part.functionCall.args),
             });
+            pendingToolCallIds.push(callId);
             currentMessageItem = null;
           }
         }
       } else {
         const funcRespParts = content.parts.filter(isFunctionResponsePart);
         if (funcRespParts.length > 0) {
-          const firstCallIndex = toolUseIdCounter - funcRespParts.length;
           for (let i = 0; i < funcRespParts.length; i++) {
             const part = funcRespParts[i];
             if (!isFunctionResponsePart(part)) continue;
+            const callId = consumeCallId({
+              explicit: part.functionResponse.callId,
+              pendingCallIds: pendingToolCallIds,
+              providerLabel: 'OpenAI Responses',
+              toolName: part.functionResponse.name,
+            });
             inputItems.push({
               type: 'function_call_output',
-              call_id: `call_${firstCallIndex + i}`,
+              call_id: callId,
               output: JSON.stringify(part.functionResponse.response),
             });
           }
@@ -197,8 +206,25 @@ export class OpenAIResponsesFormat implements FormatAdapter {
           }
         }
       } else if (item?.type === 'function_call') {
-        emitFunctionCallChunk(chunk, item, streamState);
+        rememberPendingFunctionCall(streamState, item);
+        if (item.status === 'completed') {
+          emitFunctionCallChunk(chunk, item, streamState);
+        }
       }
+    } else if (event === 'response.function_call_arguments.delta') {
+      appendPendingFunctionCallArguments(
+        streamState,
+        data.item_id ?? data.id ?? data.call_id,
+        data.delta,
+      );
+    } else if (event === 'response.function_call_arguments.done') {
+      const itemKey = rememberPendingFunctionCall(streamState, {
+        id: data.item_id ?? data.id,
+        call_id: data.call_id,
+        name: data.name,
+        arguments: data.arguments,
+      });
+      if (itemKey) emitFunctionCallChunk(chunk, itemKey, streamState);
     } else if (event === 'response.output_item.done') {
       const item = data.item;
       if (item?.type === 'reasoning' && item.encrypted_content) {
@@ -210,6 +236,7 @@ export class OpenAIResponsesFormat implements FormatAdapter {
           }
         }
       } else if (item?.type === 'function_call') {
+        rememberPendingFunctionCall(streamState, item);
         emitFunctionCallChunk(chunk, item, streamState);
       }
     } else if (event === 'response.completed') {
@@ -228,12 +255,20 @@ export class OpenAIResponsesFormat implements FormatAdapter {
   createStreamState(): StreamDecodeState {
     return {
       emittedFunctionCallIds: new Set<string>(),
+      pendingFunctionCalls: new Map<string, PendingOpenAIResponsesFunctionCall>(),
     } as OpenAIResponsesStreamState;
   }
 }
 
 interface OpenAIResponsesStreamState extends StreamDecodeState {
   emittedFunctionCallIds: Set<string>;
+  pendingFunctionCalls: Map<string, PendingOpenAIResponsesFunctionCall>;
+}
+
+interface PendingOpenAIResponsesFunctionCall {
+  callId?: string;
+  name?: string;
+  argumentsText: string;
 }
 
 function createReasoningPart(
@@ -267,6 +302,7 @@ function createFunctionCallPart(item: any): FunctionCallPart {
     functionCall: {
       name: item.name,
       args: parseFunctionCallArguments(item.arguments),
+      callId: normalizeCallId(item.call_id) ?? normalizeCallId(item.id),
     },
   };
 }
@@ -282,24 +318,77 @@ function parseFunctionCallArguments(argumentsValue: unknown): Record<string, unk
   return {};
 }
 
+function rememberPendingFunctionCall(
+  state: OpenAIResponsesStreamState,
+  item: any,
+): string | undefined {
+  const itemKey = getPendingFunctionCallKey(item);
+  if (!itemKey) return undefined;
+
+  const pending = state.pendingFunctionCalls.get(itemKey) ?? { argumentsText: '' };
+  const callId = normalizeCallId(item.call_id) ?? normalizeCallId(item.id);
+  if (callId) pending.callId = callId;
+  if (typeof item.name === 'string' && item.name.trim()) pending.name = item.name;
+  if (typeof item.arguments === 'string') {
+    if (item.arguments || !pending.argumentsText) {
+      pending.argumentsText = item.arguments;
+    }
+  } else if (item.arguments && typeof item.arguments === 'object' && !Array.isArray(item.arguments)) {
+    pending.argumentsText = JSON.stringify(item.arguments);
+  }
+
+  state.pendingFunctionCalls.set(itemKey, pending);
+  return itemKey;
+}
+
+function appendPendingFunctionCallArguments(
+  state: OpenAIResponsesStreamState,
+  itemId: unknown,
+  delta: unknown,
+): void {
+  const itemKey = normalizeCallId(itemId);
+  if (!itemKey || typeof delta !== 'string') return;
+
+  const pending = state.pendingFunctionCalls.get(itemKey) ?? { argumentsText: '' };
+  pending.argumentsText += delta;
+  state.pendingFunctionCalls.set(itemKey, pending);
+}
+
+function getPendingFunctionCallKey(item: any): string | undefined {
+  return normalizeCallId(item?.id) ?? normalizeCallId(item?.call_id);
+}
+
 function emitFunctionCallChunk(
   chunk: LLMStreamChunk,
-  item: any,
+  itemOrKey: any,
   state: OpenAIResponsesStreamState,
 ): void {
-  const functionCall = tryCreateFunctionCallPart(item);
+  const itemKey = typeof itemOrKey === 'string'
+    ? itemOrKey
+    : rememberPendingFunctionCall(state, itemOrKey);
+  if (!itemKey) return;
+
+  const pending = state.pendingFunctionCalls.get(itemKey);
+  if (!pending?.name) return;
+
+  const functionCall = tryCreateFunctionCallPart({
+    id: itemKey,
+    call_id: pending.callId ?? itemKey,
+    name: pending.name,
+    arguments: pending.argumentsText,
+  });
   if (!functionCall) return;
 
-  const itemId = String(item.id ?? `${item.name}:${JSON.stringify(item.arguments ?? {})}`);
-  if (state.emittedFunctionCallIds.has(itemId)) return;
-  state.emittedFunctionCallIds.add(itemId);
+  const emittedId = functionCall.functionCall.callId ?? itemKey;
+  if (state.emittedFunctionCallIds.has(emittedId)) return;
+  state.emittedFunctionCallIds.add(emittedId);
+  state.pendingFunctionCalls.delete(itemKey);
 
   chunk.functionCalls = [...(chunk.functionCalls ?? []), functionCall];
   chunk.partsDelta = [...(chunk.partsDelta ?? []), functionCall];
 }
 
 function tryCreateFunctionCallPart(item: any): FunctionCallPart | undefined {
-  if (item.arguments === undefined) return undefined;
   try {
     return createFunctionCallPart(item);
   } catch {

@@ -985,6 +985,7 @@ export class Backend extends EventEmitter {
           functionCall: {
             name: part.functionCall.name,
             args: JSON.parse(JSON.stringify(part.functionCall.args ?? {})),
+            callId: part.functionCall.callId,
           },
         });
         continue;
@@ -995,6 +996,7 @@ export class Backend extends EventEmitter {
           functionResponse: {
             name: part.functionResponse.name,
             response: JSON.parse(JSON.stringify(part.functionResponse.response ?? {})),
+            callId: part.functionResponse.callId,
           },
         });
         continue;

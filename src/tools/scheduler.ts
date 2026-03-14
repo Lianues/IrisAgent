@@ -119,6 +119,7 @@ async function executeSingle(
     return {
       functionResponse: {
         name: call.functionCall.name,
+        callId: call.functionCall.callId,
         response: { result } as Record<string, unknown>,
       },
     };
@@ -131,6 +132,7 @@ async function executeSingle(
     return {
       functionResponse: {
         name: call.functionCall.name,
+        callId: call.functionCall.callId,
         response: { error: errorMsg },
       },
     };

@@ -9,6 +9,7 @@ import {
   isTextPart, isVisibleTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart,
 } from '../../types';
 import { FormatAdapter, StreamDecodeState } from './types';
+import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
 
 export class ClaudeFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -27,7 +28,8 @@ export class ClaudeFormat implements FormatAdapter {
 
     // contents → messages
     const messages: Record<string, unknown>[] = [];
-    let toolUseIdCounter = 0;
+    const pendingToolUseIds: string[] = [];
+    let generatedToolUseIdCounter = 0;
 
     for (const content of request.contents) {
       const textParts = content.parts.filter(isVisibleTextPart);
@@ -54,12 +56,14 @@ export class ClaudeFormat implements FormatAdapter {
         // 工具调用部分
         for (const part of funcCallParts) {
           if (!isFunctionCallPart(part)) continue;
+          const toolUseId = resolveCallId(part.functionCall.callId, `toolu_${generatedToolUseIdCounter++}`);
           contentBlocks.push({
             type: 'tool_use',
-            id: `toolu_${toolUseIdCounter++}`,
+            id: toolUseId,
             name: part.functionCall.name,
             input: part.functionCall.args,
           });
+          pendingToolUseIds.push(toolUseId);
         }
 
         if (contentBlocks.length > 0) {
@@ -71,9 +75,12 @@ export class ClaudeFormat implements FormatAdapter {
           const contentBlocks: Record<string, unknown>[] = [];
           for (const part of funcRespParts) {
             if (!isFunctionResponsePart(part)) continue;
-            // tool_use_id 需要匹配之前 assistant 消息中的 tool_use id
-            // 使用计数器回推：funcResp 总是紧跟在 funcCall 之后
-            const toolUseId = `toolu_${toolUseIdCounter - funcRespParts.length + contentBlocks.length}`;
+            const toolUseId = consumeCallId({
+              explicit: part.functionResponse.callId,
+              pendingCallIds: pendingToolUseIds,
+              providerLabel: 'Claude',
+              toolName: part.functionResponse.name,
+            });
             contentBlocks.push({
               type: 'tool_result',
               tool_use_id: toolUseId,
@@ -163,7 +170,11 @@ export class ClaudeFormat implements FormatAdapter {
           parts.push({ text: block.text });
         } else if (block.type === 'tool_use') {
           parts.push({
-            functionCall: { name: block.name, args: block.input },
+            functionCall: {
+              name: block.name,
+              args: block.input,
+              callId: normalizeCallId(block.id),
+            },
           });
         } else if (block.type === 'thinking') {
           // Claude thinking block: { type: "thinking", thinking: "思考文本", signature: "签名" }
@@ -257,6 +268,7 @@ export class ClaudeFormat implements FormatAdapter {
               args: st.currentToolUse.arguments
                 ? JSON.parse(st.currentToolUse.arguments)
                 : {},
+              callId: st.currentToolUse.id,
             },
           });
           st.currentToolUse = null;

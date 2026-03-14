@@ -34,6 +34,8 @@ export interface FunctionCallPart {
   functionCall: {
     name: string;
     args: Record<string, unknown>;
+    /** provider 原生工具调用 ID（OpenAI tool_call.id / Responses call_id / Claude tool_use.id） */
+    callId?: string;
   };
 }
 
@@ -42,6 +44,8 @@ export interface FunctionResponsePart {
   functionResponse: {
     name: string;
     response: Record<string, unknown>;
+    /** 对应的 provider 原生工具调用 ID，需与上一轮 functionCall.callId 对齐 */
+    callId?: string;
   };
 }
 

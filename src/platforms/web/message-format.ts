@@ -17,6 +17,7 @@ export interface WebMessagePart {
   name?: string
   args?: unknown
   response?: unknown
+  callId?: string
 }
 
 export interface WebMessage {
@@ -76,6 +77,7 @@ export function formatContent(content: Content): WebMessage {
         type: 'function_call',
         name: part.functionCall.name,
         args: part.functionCall.args,
+        callId: part.functionCall.callId,
       })
       continue
     }
@@ -85,6 +87,7 @@ export function formatContent(content: Content): WebMessage {
         type: 'function_response',
         name: part.functionResponse.name,
         response: part.functionResponse.response,
+        callId: part.functionResponse.callId,
       })
     }
   }

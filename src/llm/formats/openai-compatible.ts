@@ -10,6 +10,7 @@ import {
   isTextPart, isVisibleTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart,
 } from '../../types';
 import { FormatAdapter, StreamDecodeState } from './types';
+import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
 
 export class OpenAICompatibleFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -27,7 +28,8 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     }
 
     // contents → messages
-    let pendingCallId = 0;
+    const pendingToolCallIds: string[] = [];
+    let generatedToolCallIdCounter = 0;
     for (const content of request.contents) {
       const textParts = content.parts.filter(isVisibleTextPart);
       const funcCallParts = content.parts.filter(isFunctionCallPart);
@@ -36,9 +38,13 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       if (content.role === 'model') {
         if (funcCallParts.length > 0) {
           const toolCalls = funcCallParts.map((part, i) => {
-            if (!isFunctionCallPart(part)) throw new Error('unreachable');
+            if (!isFunctionCallPart(part)) {
+              throw new Error('unreachable');
+            }
+            const callId = resolveCallId(part.functionCall.callId, `call_${generatedToolCallIdCounter + i}`);
+            pendingToolCallIds.push(callId);
             return {
-              id: `call_${pendingCallId + i}`,
+              id: callId,
               type: 'function' as const,
               function: {
                 name: part.functionCall.name,
@@ -46,6 +52,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
               },
             };
           });
+          generatedToolCallIdCounter += funcCallParts.length;
           const text = textParts.map(p => {
             if (!isTextPart(p)) throw new Error('unreachable');
             return p.text;
@@ -62,14 +69,21 @@ export class OpenAICompatibleFormat implements FormatAdapter {
         if (funcRespParts.length > 0) {
           for (let i = 0; i < funcRespParts.length; i++) {
             const part = funcRespParts[i];
-            if (!isFunctionResponsePart(part)) throw new Error('unreachable');
+            if (!isFunctionResponsePart(part)) {
+              throw new Error('unreachable');
+            }
+            const callId = consumeCallId({
+              explicit: part.functionResponse.callId,
+              pendingCallIds: pendingToolCallIds,
+              providerLabel: 'OpenAI Compatible',
+              toolName: part.functionResponse.name,
+            });
             messages.push({
               role: 'tool',
-              tool_call_id: `call_${pendingCallId + i}`,
+              tool_call_id: callId,
               content: JSON.stringify(part.functionResponse.response),
             });
           }
-          pendingCallId += funcRespParts.length;
         } else {
           const contentBlocks: Record<string, unknown>[] = [];
           let hasInlineImage = false;
@@ -154,7 +168,11 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     if (msg.tool_calls) {
       for (const tc of msg.tool_calls) {
         parts.push({
-          functionCall: { name: tc.function.name, args: JSON.parse(tc.function.arguments) },
+          functionCall: {
+            name: tc.function.name,
+            args: JSON.parse(tc.function.arguments),
+            callId: normalizeCallId(tc.id),
+          },
         });
       }
     }
@@ -185,24 +203,28 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     }
 
     // 累积工具调用分片
-    const pending = state.pendingToolCalls as Map<number, { name: string; arguments: string }>;
+    const pending = state.pendingToolCalls as Map<number, { callId?: string; name: string; arguments: string }>;
     if (choice?.delta?.tool_calls) {
       for (const tc of choice.delta.tool_calls) {
         if (!pending.has(tc.index)) {
-          pending.set(tc.index, { name: '', arguments: '' });
+          pending.set(tc.index, { callId: undefined, name: '', arguments: '' });
         }
         const entry = pending.get(tc.index)!;
+        if (tc.id) entry.callId = normalizeCallId(tc.id) ?? entry.callId;
         if (tc.function?.name) entry.name = tc.function.name;
         if (tc.function?.arguments) entry.arguments += tc.function.arguments;
       }
     }
-
     // 结束时输出累积的工具调用
     if (choice?.finish_reason) {
       chunk.finishReason = choice.finish_reason;
       if (pending.size > 0) {
         chunk.functionCalls = Array.from(pending.values()).map(tc => ({
-          functionCall: { name: tc.name, args: JSON.parse(tc.arguments) },
+          functionCall: {
+            name: tc.name,
+            args: JSON.parse(tc.arguments),
+            callId: tc.callId,
+          },
         }));
         pending.clear();
       }
@@ -222,7 +244,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
 
   createStreamState(): StreamDecodeState {
     return {
-      pendingToolCalls: new Map<number, { name: string; arguments: string }>(),
+      pendingToolCalls: new Map<number, { callId?: string; name: string; arguments: string }>(),
     };
   }
 }

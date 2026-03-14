@@ -21,6 +21,7 @@ export interface MessagePart {
   name?: string
   args?: unknown
   response?: unknown
+  callId?: string
 }
 
 /** 一条完整消息 */

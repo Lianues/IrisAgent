@@ -11,8 +11,146 @@
 import React, { useMemo } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { marked } from 'marked';
-import type { Token, Tokens } from 'marked';
 import { highlight } from 'cli-highlight';
+
+namespace Tokens {
+  export interface Base {
+    type: string;
+    text?: string;
+    tokens?: Token[];
+  }
+
+  export interface Text extends Base {
+    type: 'text';
+    text: string;
+    tokens?: Token[];
+  }
+
+  export interface Strong extends Base {
+    type: 'strong';
+    tokens: Token[];
+  }
+
+  export interface Em extends Base {
+    type: 'em';
+    tokens: Token[];
+  }
+
+  export interface Codespan extends Base {
+    type: 'codespan';
+    text: string;
+  }
+
+  export interface Del extends Base {
+    type: 'del';
+    tokens: Token[];
+  }
+
+  export interface Link extends Base {
+    type: 'link';
+    href: string;
+    text?: string;
+    tokens?: Token[];
+  }
+
+  export interface Image extends Base {
+    type: 'image';
+    href: string;
+    text: string;
+  }
+
+  export interface Br extends Base {
+    type: 'br';
+  }
+
+  export interface Escape extends Base {
+    type: 'escape';
+    text: string;
+  }
+
+  export interface Heading extends Base {
+    type: 'heading';
+    depth: number;
+    text: string;
+    tokens: Token[];
+  }
+
+  export interface Paragraph extends Base {
+    type: 'paragraph';
+    tokens: Token[];
+  }
+
+  export interface Code extends Base {
+    type: 'code';
+    text: string;
+    lang?: string;
+  }
+
+  export interface Blockquote extends Base {
+    type: 'blockquote';
+    tokens?: Token[];
+  }
+
+  export interface ListItem {
+    task?: boolean;
+    checked?: boolean;
+    tokens: Token[];
+  }
+
+  export interface List extends Base {
+    type: 'list';
+    items: ListItem[];
+    ordered?: boolean;
+    start?: number;
+  }
+
+  export interface Hr extends Base {
+    type: 'hr';
+  }
+
+  export interface TableCell {
+    text: string;
+    tokens: Token[];
+  }
+
+  export interface Table extends Base {
+    type: 'table';
+    header: TableCell[];
+    rows: TableCell[][];
+  }
+
+  export interface HTML extends Base {
+    type: 'html';
+    text: string;
+  }
+
+  export interface Space extends Base {
+    type: 'space';
+  }
+
+  export type Token =
+    | Text
+    | Strong
+    | Em
+    | Codespan
+    | Del
+    | Link
+    | Image
+    | Br
+    | Escape
+    | Heading
+    | Paragraph
+    | Code
+    | Blockquote
+    | List
+    | Hr
+    | Table
+    | HTML
+    | Space
+    | Base;
+}
+
+type Token = Tokens.Token;
 
 // ── 工具函数 ────────────────────────────────────────────
 
@@ -126,10 +264,10 @@ function renderInline(tokens: Token[], kp = ''): React.ReactNode[] {
         break;
       default: {
         // 未知行内 token：尝试递归 tokens 或渲染 text
-        if ('tokens' in t && Array.isArray((t as any).tokens)) {
-          out.push(<Text key={k}>{renderInline((t as any).tokens, `${k}.`)}</Text>);
-        } else if ('text' in t) {
-          out.push(<Text key={k}>{unescape(String((t as any).text))}</Text>);
+        if (Array.isArray(t.tokens)) {
+          out.push(<Text key={k}>{renderInline(t.tokens, `${k}.`)}</Text>);
+        } else if (typeof t.text === 'string') {
+          out.push(<Text key={k}>{unescape(t.text)}</Text>);
         }
         break;
       }
@@ -287,7 +425,7 @@ function renderBlock(
             if (item.task) {
               marker = item.checked ? '☑ ' : '☐ ';
             } else if (t.ordered) {
-              marker = `${((t as any).start || 1) + ii}. `;
+              marker = `${(t.start ?? 1) + ii}. `;
             } else {
               marker = '• ';
             }
@@ -353,7 +491,7 @@ function renderBlock(
       }
 
       /** 渲染单元格：居中对齐，两侧补空格 */
-      const renderCell = (cell: Tokens.TableCell, ci: number, kp: string, bold?: boolean, isHeader?: boolean): React.ReactNode => {
+      const renderCell = (cell: Tokens.TableCell, ci: number, kp: string, bold?: boolean): React.ReactNode => {
         const textW = displayWidth(unescape(cell.text));
         const total = Math.max(0, colWidths[ci] - textW);
         const padL = Math.floor(total / 2);
@@ -379,7 +517,7 @@ function renderBlock(
           <Text dimColor wrap="truncate-end">{'┌'}{topLine}{'┐'}</Text>
           {/* 表头 │ xx │ yy │ */}
           <Text wrap="truncate-end">
-            {t.header.map((cell, ci) => renderCell(cell, ci, `${key}.h${ci}.`, true, true))}
+            {t.header.map((cell, ci) => renderCell(cell, ci, `${key}.h${ci}.`, true))}
             <Text dimColor>{'│'}</Text>
           </Text>
           {/* 表头分隔 ├──┼──┤ */}
@@ -412,20 +550,20 @@ function renderBlock(
 
     // ── 未知类型 ──
     default: {
-      if ('tokens' in token && Array.isArray((token as any).tokens)) {
+      if (Array.isArray(token.tokens)) {
         return (
           <Box key={key}>
             <Text wrap="wrap">
-              {renderInline((token as any).tokens, `${key}.`)}
+              {renderInline(token.tokens, `${key}.`)}
               {cursor}
             </Text>
           </Box>
         );
       }
-      if ('text' in token) {
+      if (typeof token.text === 'string') {
         return (
           <Text key={key}>
-            {unescape(String((token as any).text))}
+            {unescape(token.text)}
             {cursor}
           </Text>
         );
@@ -449,10 +587,10 @@ export function MarkdownText({ text, showCursor }: MarkdownTextProps) {
   const termWidth = stdout?.columns ?? 80;
 
   // 解析 token 并缓存
-  const tokens = useMemo(() => {
+  const tokens = useMemo<Token[] | null>(() => {
     if (!text) return null;
     try {
-      return marked.lexer(text);
+      return marked.lexer(text) as Token[];
     } catch {
       return null;
     }
