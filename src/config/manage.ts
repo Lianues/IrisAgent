@@ -117,9 +117,6 @@ function normalizeMergedConfig(data: any): any {
     delete merged.llm.apiKey;
     delete merged.llm.model;
     delete merged.llm.baseUrl;
-    delete merged.llm.primary;
-    delete merged.llm.secondary;
-    delete merged.llm.light;
 
     const modelNames = Object.keys(merged.llm.models).filter(modelName => {
       const model = merged.llm.models[modelName];

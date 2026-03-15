@@ -21,8 +21,27 @@ function getArgsSummary(toolName: string, args: Record<string, unknown>): string
       const cmd = String(args.command || '');
       return cmd.length > 30 ? `"${cmd.slice(0, 30)}\u2026"` : `"${cmd}"`;
     }
-    case 'read_file':
-      return String(args.path || '');
+    case 'read_file': {
+      const files = Array.isArray(args.files) ? args.files as unknown[] : [];
+      const filePaths = files
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return '';
+          return String((entry as Record<string, unknown>).path ?? '').trim();
+        })
+        .filter(Boolean);
+
+      if (filePaths.length > 1) {
+        return `${filePaths[0]} +${filePaths.length - 1}`;
+      }
+      if (filePaths.length === 1) {
+        return filePaths[0];
+      }
+
+      const singleFilePath = args.file && typeof args.file === 'object'
+        ? String((args.file as Record<string, unknown>).path ?? '').trim()
+        : '';
+      return singleFilePath || String(args.path || '');
+    }
     case 'apply_diff':
       return String(args.path || '');
     case 'search_in_files': {

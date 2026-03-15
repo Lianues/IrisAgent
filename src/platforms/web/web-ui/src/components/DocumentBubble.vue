@@ -18,15 +18,16 @@
 import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import { getRoleLabel } from '../utils/role'
 
 const props = defineProps<{
   role: 'user' | 'model'
   mimeType: string
-  data: string
+  data?: string
   fileName?: string
 }>()
 
-const roleLabel = computed(() => (props.role === 'user' ? '你' : 'Iris'))
+const roleLabel = computed(() => getRoleLabel(props.role))
 
 const MIME_LABELS: Record<string, string> = {
   'application/pdf': 'PDF 文档',

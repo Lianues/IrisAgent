@@ -10,61 +10,7 @@
 import * as http from 'http';
 import { RouteParams, sendJSON } from '../router';
 import { StorageProvider } from '../../../storage/base';
-import { isOCRTextPart } from '../../../ocr';
-import { Content, isTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart } from '../../../types';
-import { isDocumentMimeType } from '../../../llm/vision';
-
-/** 将 Content[] 转换为前端友好格式 */
-function formatMessages(contents: Content[]) {
-  return contents.map(c => {
-    const formatted: any = { role: c.role, parts: [] };
-    for (const part of c.parts) {
-      if (isOCRTextPart(part)) {
-        continue;
-      }
-
-      if (isTextPart(part)) {
-        formatted.parts.push({ type: 'text', text: part.text });
-        continue;
-      }
-
-      if (isInlineDataPart(part)) {
-        if (isDocumentMimeType(part.inlineData.mimeType)) {
-          formatted.parts.push({
-            type: 'document',
-            mimeType: part.inlineData.mimeType,
-            data: part.inlineData.data,
-          });
-        } else {
-          formatted.parts.push({
-            type: 'image',
-            mimeType: part.inlineData.mimeType,
-            data: part.inlineData.data,
-          });
-        }
-        continue;
-      }
-
-      if (isFunctionCallPart(part)) {
-        formatted.parts.push({
-          type: 'function_call',
-          name: part.functionCall.name,
-          args: part.functionCall.args,
-        });
-        continue;
-      }
-
-      if (isFunctionResponsePart(part)) {
-        formatted.parts.push({
-          type: 'function_response',
-          name: part.functionResponse.name,
-          response: part.functionResponse.response,
-        });
-      }
-    }
-    return formatted;
-  });
-}
+import { formatMessages } from '../message-format';
 
 export function createSessionsHandlers(storage: StorageProvider) {
   return {

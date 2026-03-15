@@ -3,6 +3,7 @@ export const ICONS = {
     menu: 'menu',
     add: 'add',
     close: 'close',
+    delete: 'delete',
     settings: 'settings',
     chevronRight: 'chevron_right',
     attach: 'attach_file',
@@ -10,6 +11,7 @@ export const ICONS = {
     document: 'description',
     copy: 'content_copy',
     retry: 'refresh',
+    download: 'download',
     arrowDown: 'south',
     sparkle: 'auto_awesome',
   },
@@ -20,7 +22,7 @@ export const ICONS = {
     key: 'key',
   },
   tool: {
-    call: 'bolt',
+    call: 'build',
     response: 'check_circle',
   },
   status: {

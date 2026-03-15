@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 title Iris
 
 echo ============================================
-echo          Iris AI 聊天框架
+echo          Iris AI Framework
 echo ============================================
 echo.
 
@@ -14,7 +14,7 @@ REM ---- 步骤 1: 检测/下载 Node.js ----
 call "%SCRIPT_DIR%scripts\setup-node.bat"
 if %errorlevel% neq 0 (
     echo.
-    echo 启动中止：Node.js 安装失败。
+    echo Startup aborted: Node.js setup failed.
     pause
     exit /b 1
 )
@@ -23,7 +23,7 @@ REM ---- 步骤 2: 安装依赖 + 构建 ----
 call "%SCRIPT_DIR%scripts\setup-deps.bat"
 if %errorlevel% neq 0 (
     echo.
-    echo 启动中止：依赖安装或构建失败。
+    echo Startup aborted: dependency install or build failed.
     pause
     exit /b 1
 )
@@ -32,7 +32,7 @@ REM ---- 步骤 3: 初始化配置文件 ----
 call "%SCRIPT_DIR%scripts\setup-config.bat"
 if %errorlevel% neq 0 (
     echo.
-    echo 启动中止：配置文件初始化失败。
+    echo Startup aborted: config initialization failed.
     pause
     exit /b 1
 )
@@ -44,32 +44,37 @@ pushd "%PROJECT_ROOT%"
 
 REM 清理残留进程：如果 8192 端口被占用，杀掉旧进程
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":8192 "') do (
-    echo 检测到端口 8192 被占用（PID: %%a），正在清理...
+    echo Port 8192 in use ^(PID: %%a^), cleaning up...
     taskkill /PID %%a /F >nul 2>&1
 )
 
 echo.
 echo ============================================
-echo   Iris 已启动！
-echo   访问地址: http://localhost:8192
-echo   关闭此窗口即可停止服务
+echo   Iris is running!
+echo   URL: http://localhost:8192
+echo   Close this window to stop the server
 echo ============================================
 echo.
 
-REM 延迟 2 秒后打开浏览器（后台执行，不阻塞 node 启动）
+REM 延迟 2 秒后打开浏览器（后台执行，不阻塞启动）
 start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8192"
 
-REM 前台运行 node，关闭窗口即终止进程
-node dist/index.js
-
-REM 如果 node 异常退出，暂停让用户看到错误信息
-if %errorlevel% neq 0 (
+REM 前台运行，关闭窗口即终止进程
+if not exist "node_modules\tsx\dist\cli.mjs" (
+    echo [start] ERROR: node_modules\tsx\dist\cli.mjs not found.
+    echo [start] Please run npm install in the project root and try again.
     echo.
-    echo ================================================================
-    echo   Iris 异常退出（错误码: %errorlevel%）
-    echo   请检查上方的错误信息
-    echo ================================================================
     pause
+    popd
+    exit /b 1
 )
+node node_modules\tsx\dist\cli.mjs src/index.ts
+
+REM 如果到达这里说明进程已退出，暂停让用户看到信息
+echo.
+echo ================================================================
+echo   Iris has stopped. (exit code: %errorlevel%)
+echo ================================================================
+pause
 
 popd

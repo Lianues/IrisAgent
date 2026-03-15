@@ -57,12 +57,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
-import SettingsPanel from './components/SettingsPanel.vue'
-import ManagementTokenDialog from './components/ManagementTokenDialog.vue'
 import AppIcon from './components/AppIcon.vue'
 import { ICONS } from './constants/icons'
+
+const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
+const ManagementTokenDialog = defineAsyncComponent(() => import('./components/ManagementTokenDialog.vue'))
 
 const sidebarOpen = ref(false)
 const settingsOpen = ref(false)

@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck:ui && npm run build:ui && tsc",
+    "build": "npm run typecheck:ui && npm run build:ui && tsc -p tsconfig.build.json",
     "build:ui": "cd src/platforms/web/web-ui && npm run build",
     "typecheck:ui": "cd src/platforms/web/web-ui && npm run typecheck",
     "lint:ui": "cd src/platforms/web/web-ui && npm run lint",

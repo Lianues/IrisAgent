@@ -6,7 +6,7 @@
 
 import * as fs from 'fs';
 import { ToolDefinition } from '../../types';
-import { resolveProjectPath } from '../utils';
+import { normalizeObjectArrayArg, resolveProjectPath } from '../utils';
 
 interface DeleteCodeEntry {
   path: string;
@@ -21,6 +21,15 @@ interface DeleteCodeResult {
   end_line?: number;
   deletedLines?: number;
   error?: string;
+}
+
+function isDeleteCodeEntry(value: unknown): value is DeleteCodeEntry {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).path === 'string'
+    && typeof (value as Record<string, unknown>).start_line === 'number'
+    && typeof (value as Record<string, unknown>).end_line === 'number';
 }
 
 export const deleteCode: ToolDefinition = {
@@ -51,8 +60,13 @@ export const deleteCode: ToolDefinition = {
     },
   },
   handler: async (args) => {
-    const fileList = args.files as DeleteCodeEntry[] | undefined;
-    if (!fileList || !Array.isArray(fileList) || fileList.length === 0) {
+    const fileList = normalizeObjectArrayArg(args, {
+      arrayKey: 'files',
+      singularKeys: ['file'],
+      isEntry: isDeleteCodeEntry,
+    });
+
+    if (!fileList || fileList.length === 0) {
       throw new Error('files 参数必须是非空数组');
     }
 

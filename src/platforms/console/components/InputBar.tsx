@@ -9,44 +9,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import chalk from 'chalk';
-
-/** 指令定义 */
-export interface Command {
-  name: string;
-  description: string;
-}
-
-/** 内置指令列表 */
-export const COMMANDS: Command[] = [
-  { name: '/new',      description: '新建对话' },
-  { name: '/load',     description: '加载历史对话' },
-  { name: '/model',    description: '查看或切换当前模型' },
-  { name: '/settings', description: '打开设置中心（LLM / System / MCP）' },
-  { name: '/mcp',      description: '直接打开 MCP 管理区' },
-  { name: '/sh',       description: '执行命令（如 cd、dir、git 等）' },
-  { name: '/exit',     description: '退出应用' },
-];
+import { COMMANDS, type Command, getCommandInput, isExactCommandValue } from '../input-commands';
+import {
+  findIndexByCellOffset,
+  getCellOffsetForIndex,
+  getLineLength,
+  getTextWidth,
+  insertTextAtIndex,
+  removeGraphemeBeforeIndex,
+  splitLineAtIndex,
+  splitVisualChunks,
+} from '../text-layout';
 
 interface InputBarProps {
   disabled: boolean;
   onSubmit: (text: string) => void;
 }
 
-function getCommandInput(cmd: Command): string {
-  return cmd.name === '/sh' || cmd.name === '/model' ? `${cmd.name} ` : cmd.name;
-}
-
-function isExactCommandValue(value: string, cmd: Command): boolean {
-  return value === cmd.name || value === getCommandInput(cmd);
-}
+const PROMPT_PREFIX = '❯ ';
+const CONTINUATION_PREFIX = '  ';
 
 /** 前缀宽度（"❯ " 或 "  "） */
-const PREFIX_WIDTH = 2;
+const PREFIX_WIDTH = getTextWidth(PROMPT_PREFIX);
 
 export function InputBar({ disabled, onSubmit }: InputBarProps) {
   const [lines, setLines] = useState<string[]>(['']);
   const [cursorLine, setCursorLine] = useState(0);
-  const [cursorCol, setCursorCol] = useState(0);
+  const [cursorCol, setCursorCol] = useState(0); // 当前逻辑行中的 grapheme 索引
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { stdout } = useStdout();
 
@@ -58,7 +47,7 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
 
   const exactMatchIndex = useMemo(() => {
     if (isMultiline) return -1;
-    return COMMANDS.findIndex(cmd => isExactCommandValue(firstLine, cmd));
+    return COMMANDS.findIndex((cmd) => isExactCommandValue(firstLine, cmd));
   }, [firstLine, isMultiline]);
 
   const commandQuery = useMemo(() => {
@@ -73,7 +62,7 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
   const filtered = useMemo(() => {
     if (!showCommands) return [];
     if (exactMatchIndex >= 0) return COMMANDS;
-    return COMMANDS.filter(cmd => cmd.name.startsWith(commandQuery.trim()));
+    return COMMANDS.filter((cmd) => cmd.name.startsWith(commandQuery.trim()));
   }, [showCommands, exactMatchIndex, commandQuery]);
 
   useEffect(() => {
@@ -85,19 +74,18 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
       setSelectedIndex(exactMatchIndex);
       return;
     }
-    setSelectedIndex(prev => Math.min(prev, filtered.length - 1));
+    setSelectedIndex((prev) => Math.min(prev, filtered.length - 1));
   }, [showCommands, filtered.length, exactMatchIndex]);
 
   const insertNewLine = () => {
-    setLines(prev => {
+    setLines((prev) => {
       const copy = [...prev];
       const line = copy[cursorLine] ?? '';
-      const before = line.slice(0, cursorCol);
-      const after = line.slice(cursorCol);
+      const { before, after } = splitLineAtIndex(line, cursorCol);
       copy.splice(cursorLine, 1, before, after);
       return copy;
     });
-    setCursorLine(prev => prev + 1);
+    setCursorLine((prev) => prev + 1);
     setCursorCol(0);
   };
 
@@ -115,7 +103,7 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
   const setValueFromCommand = (text: string) => {
     setLines([text]);
     setCursorLine(0);
-    setCursorCol(text.length);
+    setCursorCol(getLineLength(text));
   };
 
   const applySelection = (index: number) => {
@@ -174,36 +162,38 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
     // ---- 方向键 ----
     if (key.upArrow) {
       if (cursorLine > 0) {
-        const prevLineLen = (lines[cursorLine - 1] ?? '').length;
-        setCursorLine(prev => prev - 1);
-        setCursorCol(Math.min(cursorCol, prevLineLen));
+        const targetCell = getCellOffsetForIndex(lines[cursorLine] ?? '', cursorCol);
+        const prevLine = lines[cursorLine - 1] ?? '';
+        setCursorLine((prev) => prev - 1);
+        setCursorCol(findIndexByCellOffset(prevLine, targetCell));
       }
       return;
     }
     if (key.downArrow) {
       if (cursorLine < lines.length - 1) {
-        const nextLineLen = (lines[cursorLine + 1] ?? '').length;
-        setCursorLine(prev => prev + 1);
-        setCursorCol(Math.min(cursorCol, nextLineLen));
+        const targetCell = getCellOffsetForIndex(lines[cursorLine] ?? '', cursorCol);
+        const nextLine = lines[cursorLine + 1] ?? '';
+        setCursorLine((prev) => prev + 1);
+        setCursorCol(findIndexByCellOffset(nextLine, targetCell));
       }
       return;
     }
     if (key.leftArrow) {
       if (cursorCol > 0) {
-        setCursorCol(prev => prev - 1);
+        setCursorCol((prev) => prev - 1);
       } else if (cursorLine > 0) {
-        const prevLineLen = (lines[cursorLine - 1] ?? '').length;
-        setCursorLine(prev => prev - 1);
+        const prevLineLen = getLineLength(lines[cursorLine - 1] ?? '');
+        setCursorLine((prev) => prev - 1);
         setCursorCol(prevLineLen);
       }
       return;
     }
     if (key.rightArrow) {
-      const lineLen = (lines[cursorLine] ?? '').length;
+      const lineLen = getLineLength(lines[cursorLine] ?? '');
       if (cursorCol < lineLen) {
-        setCursorCol(prev => prev + 1);
+        setCursorCol((prev) => prev + 1);
       } else if (cursorLine < lines.length - 1) {
-        setCursorLine(prev => prev + 1);
+        setCursorLine((prev) => prev + 1);
         setCursorCol(0);
       }
       return;
@@ -212,23 +202,24 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
     // ---- Backspace ----
     if (key.backspace || key.delete) {
       if (cursorCol > 0) {
-        setLines(prev => {
+        setLines((prev) => {
           const copy = [...prev];
           const line = copy[cursorLine] ?? '';
-          copy[cursorLine] = line.slice(0, cursorCol - 1) + line.slice(cursorCol);
+          const { nextText } = removeGraphemeBeforeIndex(line, cursorCol);
+          copy[cursorLine] = nextText;
           return copy;
         });
-        setCursorCol(prev => prev - 1);
+        setCursorCol((prev) => prev - 1);
       } else if (cursorLine > 0) {
         // 合并到上一行
-        const prevLineLen = (lines[cursorLine - 1] ?? '').length;
-        setLines(prev => {
+        const prevLineLen = getLineLength(lines[cursorLine - 1] ?? '');
+        setLines((prev) => {
           const copy = [...prev];
           copy[cursorLine - 1] = (copy[cursorLine - 1] ?? '') + (copy[cursorLine] ?? '');
           copy.splice(cursorLine, 1);
           return copy;
         });
-        setCursorLine(prev => prev - 1);
+        setCursorLine((prev) => prev - 1);
         setCursorCol(prevLineLen);
       }
       return;
@@ -236,23 +227,25 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
 
     // ---- 普通字符输入 ----
     if (input) {
-      setLines(prev => {
+      const inputLength = getLineLength(input);
+
+      setLines((prev) => {
         const copy = [...prev];
         const line = copy[cursorLine] ?? '';
-        copy[cursorLine] = line.slice(0, cursorCol) + input + line.slice(cursorCol);
+        copy[cursorLine] = insertTextAtIndex(line, cursorCol, input);
         return copy;
       });
-      setCursorCol(prev => prev + input.length);
+      setCursorCol((prev) => prev + inputLength);
 
       // 更新指令选中
       if (cursorLine === 0) {
-        const nextFirstLine = (lines[0] ?? '').slice(0, cursorCol) + input + (lines[0] ?? '').slice(cursorCol);
+        const nextFirstLine = insertTextAtIndex(lines[0] ?? '', cursorCol, input);
         if (nextFirstLine.startsWith('/') && !isMultiline) {
-          const nextExactIndex = COMMANDS.findIndex(cmd => isExactCommandValue(nextFirstLine, cmd));
+          const nextExactIndex = COMMANDS.findIndex((cmd) => isExactCommandValue(nextFirstLine, cmd));
           if (nextExactIndex >= 0) {
             setSelectedIndex(nextExactIndex);
           } else {
-            const nextFiltered = COMMANDS.filter(cmd => cmd.name.startsWith(nextFirstLine.trim()));
+            const nextFiltered = COMMANDS.filter((cmd) => cmd.name.startsWith(nextFirstLine.trim()));
             if (nextFiltered.length > 0) {
               setSelectedIndex(0);
             }
@@ -271,12 +264,14 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
   function renderLine(text: string, lineIndex: number, isFirstLine: boolean): React.ReactNode[] {
     const isCursorLine = lineIndex === cursorLine;
     const rows: React.ReactNode[] = [];
+    const chunks = splitVisualChunks(text, contentWidth);
+    const lineLength = getLineLength(text);
 
     // 空行也要渲染一行
     if (text.length === 0) {
       const prefix = isFirstLine
-        ? <Text color={disabled ? 'gray' : 'cyan'} bold>{'\u276F'} </Text>
-        : <Text dimColor>{'  '}</Text>;
+        ? <Text color={disabled ? 'gray' : 'cyan'} bold>{PROMPT_PREFIX}</Text>
+        : <Text dimColor>{CONTINUATION_PREFIX}</Text>;
       const cursor = isCursorLine && !disabled ? chalk.inverse(' ') : '';
       rows.push(
         <Box key={`${lineIndex}-0`} flexDirection="row">
@@ -287,68 +282,56 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
       return rows;
     }
 
-    // 按 contentWidth 拆分视觉行
-    let offset = 0;
-    let rowIdx = 0;
-    while (offset < text.length || rowIdx === 0) {
-      const chunk = text.slice(offset, offset + contentWidth);
-      const chunkStart = offset;
-      const chunkEnd = offset + chunk.length;
-      offset = chunkEnd;
-
+    chunks.forEach((chunk, rowIdx) => {
       const prefix = rowIdx === 0
         ? (isFirstLine
-          ? <Text color={disabled ? 'gray' : 'cyan'} bold>{'\u276F'} </Text>
-          : <Text dimColor>{'  '}</Text>)
-        : <Text dimColor>{'  '}</Text>;
+          ? <Text color={disabled ? 'gray' : 'cyan'} bold>{PROMPT_PREFIX}</Text>
+          : <Text dimColor>{CONTINUATION_PREFIX}</Text>)
+        : <Text dimColor>{CONTINUATION_PREFIX}</Text>;
 
-      let rendered: string;
-      rendered = chunk;
+      let rendered = chunk.graphemes.join('');
 
       // 光标在本视觉行内部：反色显示“光标所在的字符”（与 ink-text-input 一致）
       if (
         isCursorLine
         && !disabled
-        && cursorCol >= chunkStart
-        && cursorCol < chunkEnd
+        && cursorCol >= chunk.startIndex
+        && cursorCol < chunk.endIndex
       ) {
-        const relPos = cursorCol - chunkStart;
-        const before = chunk.slice(0, relPos);
-        const cursorChar = chunk[relPos];
-        const after = chunk.slice(relPos + 1);
-        rendered = before + chalk.inverse(cursorChar) + after;
+        const relIndex = cursorCol - chunk.startIndex;
+        const before = chunk.graphemes.slice(0, relIndex).join('');
+        const cursorGrapheme = chunk.graphemes[relIndex] ?? ' ';
+        const after = chunk.graphemes.slice(relIndex + 1).join('');
+        rendered = before + chalk.inverse(cursorGrapheme) + after;
       }
 
       // 光标在文本末尾：显示“反色空格”作为光标（与 ink-text-input 一致）
       const isEndOfTextCursor = isCursorLine && !disabled
-        && cursorCol === text.length
-        && chunkEnd === text.length;
+        && cursorCol === lineLength
+        && chunk.endIndex === lineLength;
 
       const needsCursorSpace = isEndOfTextCursor;
 
       // 特殊情况：文本刚好填满一行宽度时，如果在本行末尾追加“反色空格”，会多占 1 列并触发额外换行。
-      // 这里改为反色显示本行最后一个字符，避免显示抖动。
-      if (needsCursorSpace && chunk.length >= contentWidth) {
-        const lastChar = chunk[chunk.length - 1];
-        rendered = chunk.slice(0, -1) + chalk.inverse(lastChar);
+      // 这里改为反色显示本行最后一个 grapheme，避免显示抖动。
+      if (needsCursorSpace && chunk.width >= contentWidth && chunk.graphemes.length > 0) {
+        const lastGrapheme = chunk.graphemes[chunk.graphemes.length - 1];
+        rendered = chunk.graphemes.slice(0, -1).join('') + chalk.inverse(lastGrapheme);
       }
 
       rows.push(
         <Box key={`${lineIndex}-${rowIdx}`} flexDirection="row">
           {prefix}
-          <Text>{needsCursorSpace && chunk.length < contentWidth ? rendered + chalk.inverse(' ') : rendered}</Text>
+          <Text>{needsCursorSpace && chunk.width < contentWidth ? rendered + chalk.inverse(' ') : rendered}</Text>
         </Box>,
       );
-      rowIdx++;
-
-      if (chunk.length === 0) break;
-    }
+    });
 
     return rows;
   }
 
   const maxLen = filtered.length > 0
-    ? Math.max(...filtered.map(cmd => cmd.name.length))
+    ? Math.max(...filtered.map((cmd) => cmd.name.length))
     : 0;
 
   return (
@@ -364,7 +347,7 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
       {/* 指令列表 */}
       {filtered.length > 0 && (
         <Box flexDirection="column" paddingLeft={1}>
-          {filtered.map((cmd, index) => {
+          {filtered.map((cmd: Command, index) => {
             const padded = cmd.name.padEnd(maxLen);
             const isSelected = index === selectedIndex;
             return (

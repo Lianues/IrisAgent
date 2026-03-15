@@ -418,7 +418,14 @@ export function App({ onReady, onSubmit, onToolApproval, onNewSession, onLoadSes
           setMessages([]);
           toolInvocationsRef.current = [];
           setViewMode('chat');
-          onLoadSession(selected.id);
+          onLoadSession(selected.id).catch((err: unknown) => {
+            const detail = err instanceof Error ? err.message : String(err);
+            setMessages((prev: ChatMessage[]) => [...prev, {
+              id: nextMsgId(),
+              role: 'assistant',
+              parts: [{ type: 'text', text: `加载历史对话失败: ${detail}` }],
+            }]);
+          });
         }
       } else if (key.escape) {
         setViewMode('chat');

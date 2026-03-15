@@ -110,7 +110,7 @@
         <code style="background:var(--code-bg);padding:1px 5px;border-radius:4px">
           sudo certbot certonly --webroot -w /var/www/certbot -d {{ previewDomain }}
         </code>
-        <br/>如使用 Cloudflare 代理，可在 CF 侧开启 SSL 而这里关闭 HTTPS。
+        <br />如使用 Cloudflare 代理，可在 CF 侧开启 SSL 而这里关闭 HTTPS。
       </p>
 
       <div class="form-group inline">
@@ -129,7 +129,8 @@
         <h4>后续步骤</h4>
         <p>部署 Nginx 后，还需完成以下操作才能从外部访问：</p>
         <ol style="margin:8px 0 0;padding-left:1.4em;line-height:2">
-          <li><strong>开放防火墙端口</strong>
+          <li>
+            <strong>开放防火墙端口</strong>
             <code class="deploy-guide-cmd" style="display:inline;padding:2px 8px;margin-left:4px">sudo ufw allow 80,443/tcp</code>
           </li>
           <li><strong>配置域名解析</strong> — 在域名服务商处添加 A 记录指向服务器 IP</li>
@@ -164,13 +165,17 @@
           type="button"
           :class="{ active: activeTab === 'nginx' }"
           @click="activeTab = 'nginx'"
-        >nginx.conf</button>
+        >
+          nginx.conf
+        </button>
         <button
           class="deploy-tab"
           type="button"
           :class="{ active: activeTab === 'service' }"
           @click="activeTab = 'service'"
-        >iris.service</button>
+        >
+          iris.service
+        </button>
       </div>
 
       <div class="deploy-code-wrapper">

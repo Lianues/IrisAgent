@@ -21,6 +21,40 @@ interface WriteResult {
   error?: string;
 }
 
+function isWriteEntry(value: unknown): value is WriteEntry {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).path === 'string'
+    && typeof (value as Record<string, unknown>).content === 'string';
+}
+
+function normalizeWriteArgs(args: Record<string, unknown>): WriteEntry[] | undefined {
+  if (Array.isArray(args.files) && args.files.length > 0) {
+    const normalized = args.files.filter(isWriteEntry);
+    return normalized.length === args.files.length
+      ? normalized
+      : undefined;
+  }
+
+  if (isWriteEntry(args.files)) {
+    return [args.files];
+  }
+
+  if (isWriteEntry(args.file)) {
+    return [args.file];
+  }
+
+  if (isWriteEntry(args)) {
+    return [{
+      path: args.path,
+      content: args.content,
+    }];
+  }
+
+  return undefined;
+}
+
 export const writeFile: ToolDefinition = {
   declaration: {
     name: 'write_file',
@@ -50,8 +84,8 @@ export const writeFile: ToolDefinition = {
     },
   },
   handler: async (args) => {
-    const fileList = args.files as WriteEntry[] | undefined;
-    if (!fileList || !Array.isArray(fileList) || fileList.length === 0) {
+    const fileList = normalizeWriteArgs(args);
+    if (!fileList || fileList.length === 0) {
       throw new Error('files 参数必须是非空数组');
     }
 

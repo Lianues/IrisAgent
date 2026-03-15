@@ -1,0 +1,27 @@
+/**
+ * Console 平台输入栏指令定义。
+ */
+
+export interface Command {
+  name: string;
+  description: string;
+}
+
+/** 内置指令列表 */
+export const COMMANDS: Command[] = [
+  { name: '/new',      description: '新建对话' },
+  { name: '/load',     description: '加载历史对话' },
+  { name: '/model',    description: '查看或切换当前模型' },
+  { name: '/settings', description: '打开设置中心（LLM / System / MCP）' },
+  { name: '/mcp',      description: '直接打开 MCP 管理区' },
+  { name: '/sh',       description: '执行命令（如 cd、dir、git 等）' },
+  { name: '/exit',     description: '退出应用' },
+];
+
+export function getCommandInput(cmd: Command): string {
+  return cmd.name === '/sh' || cmd.name === '/model' ? `${cmd.name} ` : cmd.name;
+}
+
+export function isExactCommandValue(value: string, cmd: Command): boolean {
+  return value === cmd.name || value === getCommandInput(cmd);
+}

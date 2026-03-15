@@ -12,5 +12,32 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/')
+
+          if (normalizedId.includes('/src/utils/markdown.ts')) {
+            return 'markdown-renderer'
+          }
+
+          if (normalizedId.includes('/node_modules/highlight.js/')) {
+            return 'vendor-highlight'
+          }
+
+          if (normalizedId.includes('/node_modules/katex/')) {
+            return 'vendor-katex'
+          }
+
+          if (normalizedId.includes('/node_modules/markdown-it/') || normalizedId.includes('/node_modules/dompurify/')) {
+            return 'vendor-markdown'
+          }
+
+          if (normalizedId.includes('/node_modules/vue/') || normalizedId.includes('/node_modules/@vue/')) {
+            return 'vendor-vue'
+          }
+        },
+      },
+    },
   },
 })

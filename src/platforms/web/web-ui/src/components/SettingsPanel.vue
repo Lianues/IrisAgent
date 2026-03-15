@@ -11,9 +11,10 @@
           <span class="settings-kicker">Control Center</span>
           <h2>设置中心</h2>
           <p>配置模型连接、系统策略与工具能力，打造你的 AI 工作台。</p>
-          <p v-if="managementEnabled" class="field-hint" style="margin-top:6px">
-            管理接口已启用令牌保护。当前状态：
-            <strong :style="{ color: managementReady ? 'var(--success)' : 'var(--error)' }">{{ managementReady ? '已解锁' : '未解锁' }}</strong>
+          <p v-if="accessProtectionEnabled || accessCredentialHint" class="field-hint" style="margin-top:6px">
+            Web 访问保护状态：
+            <strong :style="{ color: accessLocked ? 'var(--error)' : 'var(--success)' }">{{ accessStatusText }}</strong>
+            <span v-if="accessCredentialHint"> · {{ accessCredentialHint }}</span>
           </p>
         </div>
         <button class="btn-close" type="button" aria-label="关闭设置" @click="requestClose">
@@ -22,23 +23,28 @@
       </div>
 
       <div class="settings-body">
+        <div class="settings-section-group">
+          <p class="section-group-intro">Iris 采用「主模型 + 子代理」协作模式：你在下方注册模型连接，然后为子代理绑定模型。主 AI 遇到复杂任务时会自动委派给对应子代理。</p>
+
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
               <h3>模型与凭证</h3>
-              <p>配置模型池，使用模型名称作为键，默认模型决定启动时的活动模型。</p>
+              <p>在这里添加你的 LLM 模型连接。每个模型需要一个名称、提供商、模型 ID 和 API Key。你可以注册多个模型，通过 /model 命令随时切换。</p>
             </div>
-            <span class="settings-pill">LLM</span>
+            <span class="settings-pill">模型池</span>
           </div>
 
           <div class="settings-grid two-columns" style="margin-bottom:16px">
             <div class="form-group">
               <label>默认模型</label>
-              <select v-model="defaultModelName" :disabled="defaultModelOptions.length === 0">
-                <option v-if="defaultModelOptions.length === 0" value="">请先填写模型名称</option>
-                <option v-for="option in defaultModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-              <p class="field-hint">启动时默认使用这个模型名称。`/model` 也使用这个名称切换。</p>
+              <AppSelect
+                v-model="defaultModelName"
+                :options="defaultModelOptions"
+                :disabled="defaultModelOptions.length === 0"
+                placeholder="请先填写模型名称"
+              />
+              <p class="field-hint">Iris 启动后默认使用的模型。对话中 /model 加名称可切换。</p>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end;justify-content:flex-end">
               <button class="btn-save" type="button" @click="addModelEntry">新增模型</button>
@@ -66,31 +72,35 @@
                 <div class="form-group">
                   <label>模型名称</label>
                   <input type="text" v-model="entry.modelName" placeholder="例如：gemini_flash" />
-                  <p class="field-hint">作为 llm.models 下的键，也作为 `/model` 的切换名称。</p>
+                  <p class="field-hint">给模型起个简短别名，对话中用 /model 加这个名称来切换。</p>
                 </div>
                 <div class="form-group">
                   <label>LLM 提供商</label>
-                  <select v-model="entry.provider" @change="handleModelProviderChange(entry)">
-                    <option value="gemini">Gemini</option>
-                    <option value="openai-compatible">OpenAI 兼容</option>
-                    <option value="openai-responses">OpenAI Responses</option>
-                    <option value="claude">Claude</option>
-                  </select>
+                  <AppSelect
+                    v-model="entry.provider"
+                    :options="llmProviderOptions"
+                    @change="handleModelProviderChange(entry)"
+                  />
                 </div>
                 <div class="form-group">
                   <label>模型 ID</label>
                   <div class="inline-field-actions">
                     <input type="text" v-model="entry.modelId" placeholder="例如：gpt-4o 或 gemini-2.0-flash" />
-                    <button class="btn-inline-action" type="button"
-                            :disabled="entry.modelCatalog.loading || (managementEnabled && !managementReady)"
-                            @click="fetchModelOptions(index)">
+                    <button
+                      class="btn-inline-action"
+                      type="button"
+                      :disabled="entry.modelCatalog.loading || accessLocked"
+                      @click="fetchModelOptions(index)"
+                    >
                       {{ entry.modelCatalog.loading ? '拉取中...' : '拉取列表' }}
                     </button>
                   </div>
-                  <select v-if="entry.modelCatalog.options.length > 0" v-model="entry.modelId" class="model-list-select">
-                    <option value="">选择已发现的模型（也可继续手动输入）</option>
-                    <option v-for="option in entry.modelCatalog.options" :key="option.id" :value="option.id">{{ option.label }}</option>
-                  </select>
+                  <AppSelect
+                    v-if="entry.modelCatalog.options.length > 0"
+                    v-model="entry.modelId"
+                    class="model-list-select"
+                    :options="buildModelCatalogSelectOptions(entry.modelCatalog.options)"
+                  />
                   <p class="field-hint" :class="{ 'model-fetch-error': !!entry.modelCatalog.error }">{{ modelCatalogHint(entry) }}</p>
                 </div>
                 <div class="form-group full-width">
@@ -107,13 +117,98 @@
           </div>
         </section>
 
+          <p class="section-group-connector">模型池中的模型可被下方子代理引用 ↓</p>
+
+        <section class="settings-section">
+          <div class="settings-section-head">
+            <div>
+              <h3>子代理类型</h3>
+              <p>子代理是主 AI 的"专职助手"。主 AI 遇到复杂任务时，会自动把子任务委派给合适类型的子代理执行。每种子代理有独立的角色、工具权限和模型。</p>
+            </div>
+            <span class="settings-pill">{{ subAgentEntries.length }} 个类型</span>
+          </div>
+
+          <div v-for="(entry, idx) in subAgentEntries" :key="entry.uid" class="tier-block">
+            <div class="tier-header" @click="entry.open = !entry.open">
+              <span class="tier-arrow" :class="{ open: entry.open }">▶</span>
+              <span class="tier-label">{{ entry.name || '未命名' }}</span>
+              <span class="tier-desc">{{ entry.description || '无描述' }} · 模型: {{ entry.modelName || '跟随活动模型' }}</span>
+              <button class="btn-mcp-remove" type="button" @click.stop="removeSubAgentEntry(idx)" title="删除子代理类型">
+                <AppIcon :name="ICONS.common.close" />
+              </button>
+            </div>
+            <div v-show="entry.open" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>类型名称</label>
+                  <input type="text" v-model="entry.name" placeholder="例如：general-purpose" />
+                  <p class="field-hint">主 AI 通过这个名称识别子代理类型，建议英文短横线命名。</p>
+                </div>
+                <div class="form-group">
+                  <label>使用模型</label>
+                  <AppSelect v-model="entry.modelName" :options="subAgentModelOptions" />
+                </div>
+                <div class="form-group full-width">
+                  <label>描述</label>
+                  <input type="text" v-model="entry.description" placeholder="面向主 LLM 的用途说明" />
+                  <p class="field-hint">这段描述会展示给主 AI，帮助它判断什么时候使用这个子代理。</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>系统提示词</label>
+                  <textarea v-model="entry.systemPrompt" rows="4" placeholder="子代理的系统提示词"></textarea>
+                  <p class="field-hint">定义子代理的角色和行为准则。</p>
+                </div>
+                <div class="form-group">
+                  <label>工具策略</label>
+                  <AppSelect v-model="entry.toolMode" :options="subAgentToolModeOptions" />
+                  <p class="field-hint">控制子代理能使用哪些工具。</p>
+                </div>
+                <div class="form-group">
+                  <label>最大工具轮次</label>
+                  <input
+                    type="number"
+                    :value="entry.maxToolRoundsInput"
+                    min="1"
+                    max="999"
+                    @input="handleSubAgentMaxToolRoundsInput(entry, $event)"
+                    @blur="syncSubAgentMaxToolRoundsInput(entry)"
+                  />
+                  <p class="field-hint">子代理连续使用工具的上限。到达后停止并返回结果。</p>
+                </div>
+                <div class="form-group full-width" v-if="entry.toolMode !== 'all'">
+                  <label>{{ entry.toolMode === 'allowed' ? '工具白名单' : '工具黑名单' }}（每行一个）</label>
+                  <textarea v-model="entry.toolList" rows="3" placeholder="read_file&#10;shell&#10;..."></textarea>
+                </div>
+                <div class="settings-switch-row">
+                  <div>
+                    <span class="switch-label">并行调度</span>
+                    <p class="field-hint">开启后主 AI 可同时派出多个此类型子代理并行工作，适合互不依赖的子任务。</p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" v-model="entry.parallel" />
+                    <span class="toggle-switch-ui"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="subAgentEntries.length === 0" class="empty-state-block">
+            <p>还没有配置任何子代理类型。子代理可以帮助主 AI 并行处理复杂任务。</p>
+            <button class="btn-save" type="button" @click="loadBuiltinSubAgentDefaults">加载内置默认配置</button>
+          </div>
+
+          <button class="btn-mcp-add" type="button" @click="addSubAgentEntry">+ 新增子代理类型</button>
+        </section>
+        </div>
+
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
               <h3>系统行为</h3>
-              <p>调节提示词、工具轮次与回复方式。</p>
+              <p>控制 Iris 的基础行为：系统提示词定义默认角色与风格；工具轮次限制连续调用工具的最大次数；流式输出决定回复是逐字显示还是一次性返回。</p>
             </div>
-            <span class="settings-pill">System</span>
+            <span class="settings-pill">基础</span>
           </div>
 
           <div class="settings-grid two-columns">
@@ -174,7 +269,7 @@
           <div class="settings-section-head">
             <div>
               <h3>MCP 服务器</h3>
-              <p>连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表。</p>
+              <p>MCP 让你连接外部工具服务器。连接后，服务器提供的工具会自动出现在 AI 的能力列表中。</p>
             </div>
             <span class="settings-pill">{{ mcpServers.length }} 个服务器</span>
           </div>
@@ -183,7 +278,7 @@
             <div class="tier-header" @click="server.open = !server.open">
               <span class="tier-arrow" :class="{ open: server.open }">▶</span>
               <span class="tier-label">{{ server.name || '未命名' }}</span>
-              <span class="tier-desc">{{ server.transport === 'stdio' ? '本地进程' : 'HTTP' }}</span>
+              <span class="tier-desc">{{ transportLabel(server.transport) }}</span>
               <label class="toggle-switch tier-toggle" @click.stop>
                 <input type="checkbox" v-model="server.enabled" />
                 <span class="toggle-switch-ui"></span>
@@ -196,15 +291,17 @@
               <div class="settings-grid two-columns">
                 <div class="form-group">
                   <label>服务器名称</label>
-                  <input type="text" v-model="server.name" placeholder="仅字母、数字、下划线"
-                         @input="sanitizeMcpName(server)" />
+                  <input
+                    type="text" v-model="server.name" placeholder="仅字母、数字、下划线"
+                    @input="sanitizeMcpName(server)"
+                  />
                 </div>
                 <div class="form-group">
                   <label>传输方式</label>
-                  <select v-model="server.transport">
-                    <option value="stdio">stdio（本地进程）</option>
-                    <option value="http">HTTP（远程服务器）</option>
-                  </select>
+                  <AppSelect
+                    v-model="server.transport"
+                    :options="mcpTransportOptions"
+                  />
                 </div>
 
                 <template v-if="server.transport === 'stdio'">
@@ -218,12 +315,14 @@
                   </div>
                   <div class="form-group full-width">
                     <label>参数（每行一个）</label>
-                    <textarea v-model="server.args" rows="3"
-                              placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/path/to/dir"></textarea>
+                    <textarea
+                      v-model="server.args" rows="3"
+                      placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/path/to/dir"
+                    ></textarea>
                   </div>
                 </template>
 
-                <template v-if="server.transport === 'http'">
+                <template v-if="server.transport !== 'stdio'">
                   <div class="form-group full-width">
                     <label>URL</label>
                     <input type="text" v-model="server.url" placeholder="https://mcp.example.com/mcp" />
@@ -256,8 +355,56 @@
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
+              <h3>模式</h3>
+              <p>模式让你为不同场景预设一套提示词和工具策略。例如 code 模式可限制只用代码相关工具。对话中 /mode 切换即生效。</p>
+            </div>
+            <span class="settings-pill">{{ modeEntries.length }} 个模式</span>
+          </div>
+
+          <div v-for="(entry, idx) in modeEntries" :key="entry.uid" class="tier-block">
+            <div class="tier-header" @click="entry.open = !entry.open">
+              <span class="tier-arrow" :class="{ open: entry.open }">▶</span>
+              <span class="tier-label">{{ entry.name || '未命名' }}</span>
+              <span class="tier-desc">{{ entry.description || '无描述' }}</span>
+              <button class="btn-mcp-remove" type="button" @click.stop="removeModeEntry(idx)" title="删除模式">
+                <AppIcon :name="ICONS.common.close" />
+              </button>
+            </div>
+            <div v-show="entry.open" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group full-width">
+                  <label>模式名称</label>
+                  <input type="text" v-model="entry.name" placeholder="例如：code" />
+                  <p class="field-hint">名称「normal」为保留名称，不可使用。</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>描述（可选）</label>
+                  <input type="text" v-model="entry.description" placeholder="模式用途说明" />
+                </div>
+                <div class="form-group full-width">
+                  <label>系统提示词（可选）</label>
+                  <textarea v-model="entry.systemPrompt" rows="4" placeholder="覆盖默认系统提示词"></textarea>
+                </div>
+                <div class="form-group">
+                  <label>工具策略</label>
+                  <AppSelect v-model="entry.toolMode" :options="modeToolModeOptions" />
+                </div>
+                <div class="form-group full-width" v-if="entry.toolMode !== 'all'">
+                  <label>{{ entry.toolMode === 'include' ? '工具白名单' : '工具黑名单' }}（每行一个）</label>
+                  <textarea v-model="entry.toolList" rows="3" placeholder="read_file&#10;memory_search&#10;..."></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-mcp-add" type="button" @click="addModeEntry">+ 新增模式</button>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head">
+            <div>
               <h3>工具状态</h3>
-              <p>当前挂载到模型上下文中的可用能力。</p>
+              <p>当前 AI 可使用的所有工具（含内置和 MCP 提供的）。此列表为只读。</p>
             </div>
             <span class="settings-pill">{{ tools.length }} 个工具</span>
           </div>
@@ -287,16 +434,18 @@
           <div v-if="!cf.connected" class="settings-grid two-columns">
             <div class="form-group full-width cf-guide-steps">
               <p class="field-hint" style="line-height:1.8">
-                <strong style="color:var(--text-secondary)">快速开始：</strong><br/>
+                <strong style="color:var(--text-secondary)">快速开始：</strong><br />
                 1. 打开
-                <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener"
-                   style="color:var(--accent-cyan, var(--accent));text-decoration:underline">
+                <a
+                  href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener"
+                  style="color:var(--accent-cyan, var(--accent));text-decoration:underline"
+                >
                   Cloudflare API Tokens 页面
-                </a>，点击 "Create Token"<br/>
-                2. 选择 "Edit zone DNS" 模板，或自定义权限：<br/>
+                </a>，点击 "Create Token"<br />
+                2. 选择 "Edit zone DNS" 模板，或自定义权限：<br />
                 <span style="padding-left:1.2em;display:inline-block">
                   Zone &gt; Zone &gt; Read，Zone &gt; DNS &gt; Edit，Zone &gt; Zone Settings &gt; Edit
-                </span><br/>
+                </span><br />
                 3. 将生成的 Token 粘贴到下方
               </p>
             </div>
@@ -305,7 +454,7 @@
               <input type="password" v-model="cf.tokenInput" placeholder="以 Bearer token 格式，例如 xyzABC123..." />
             </div>
             <div class="form-group full-width" style="display:flex;align-items:center;gap:12px">
-              <button class="btn-save" type="button" :disabled="cf.loading" @click="handleCfSetup">
+              <button class="btn-save" type="button" :disabled="cf.loading || accessLocked" @click="handleCfSetup">
                 {{ cf.loading ? '验证中...' : '连接' }}
               </button>
               <span v-if="cf.error" class="settings-status error">{{ cf.error }}</span>
@@ -317,11 +466,12 @@
             <!-- 多 zone 选择器 -->
             <div v-if="cf.zones.length > 1" class="form-group">
               <label>选择域名</label>
-              <select v-model="cf.activeZoneId" :disabled="cf.sslSaving" @change="handleZoneChange">
-                <option v-for="zone in cf.zones" :key="zone.id" :value="zone.id">
-                  {{ zone.name }} ({{ zone.status }})
-                </option>
-              </select>
+              <AppSelect
+                v-model="cf.activeZoneId"
+                :options="buildZoneSelectOptions(cf.zones)"
+                :disabled="cf.sslSaving || accessLocked"
+                @change="handleZoneChange"
+              />
             </div>
 
             <!-- 单 zone 卡片 -->
@@ -336,13 +486,12 @@
             <div class="settings-grid two-columns" style="margin-top:12px">
               <div class="form-group">
                 <label>SSL 模式</label>
-                <select v-model="cf.sslMode" :disabled="cf.sslLoading || cf.sslSaving" @change="handleSslChange">
-                  <option value="unknown" disabled>Unknown — 无法读取当前状态</option>
-                  <option value="off">Off — 不加密</option>
-                  <option value="flexible">Flexible — 浏览器到 CF 加密</option>
-                  <option value="full">Full — 全程加密（不验证源站证书）</option>
-                  <option value="strict">Full (Strict) — 全程加密 + 验证源站证书</option>
-                </select>
+                <AppSelect
+                  v-model="cf.sslMode"
+                  :options="cloudflareSslOptions"
+                  :disabled="cf.sslLoading || cf.sslSaving || accessLocked"
+                  @change="handleSslChange"
+                />
                 <p class="field-hint">{{ cf.sslSaving ? '正在保存 SSL 模式...' : (cf.sslLoading ? '正在读取当前 SSL 模式...' : (sslHints[cf.sslMode] || '')) }}</p>
                 <p v-if="!cf.sslLoading && (cf.sslMode === 'full' || cf.sslMode === 'strict')" class="field-hint" style="margin-top:4px;color:var(--accent-cyan, var(--accent))">
                   需要 Nginx 开启 HTTPS（443 端口 + SSL 证书），否则 CF 到源站连接会失败（521/525）。
@@ -370,7 +519,7 @@
                   <span class="cf-dns-name" :title="rec.name">{{ rec.name }}</span>
                   <span class="cf-dns-content" :title="rec.content">{{ rec.content }}</span>
                   <span>{{ rec.proxied ? 'ON' : 'OFF' }}</span>
-                  <button class="btn-dns-delete" type="button" :disabled="cf.dnsSaving || cf.dnsDeletingId === rec.id" @click="confirmDnsDelete(rec)" title="删除" aria-label="删除 DNS 记录">
+                  <button class="btn-dns-delete" type="button" :disabled="accessLocked || cf.dnsSaving || cf.dnsDeletingId === rec.id" @click="confirmDnsDelete(rec)" title="删除" aria-label="删除 DNS 记录">
                     <AppIcon :name="ICONS.common.close" />
                   </button>
                 </div>
@@ -378,19 +527,18 @@
 
               <!-- 添加 DNS 记录 -->
               <div class="cf-dns-add">
-                <select v-model="cf.newDns.type" class="cf-dns-add-type">
-                  <option value="A">A</option>
-                  <option value="AAAA">AAAA</option>
-                  <option value="CNAME">CNAME</option>
-                  <option value="MX">MX</option>
-                  <option value="TXT">TXT</option>
-                </select>
+                <AppSelect
+                  v-model="cf.newDns.type"
+                  class="cf-dns-add-type"
+                  size="sm"
+                  :options="dnsTypeOptions"
+                />
                 <input type="text" v-model="cf.newDns.name" :placeholder="dnsNamePlaceholder" class="cf-dns-add-input" />
                 <input type="text" v-model="cf.newDns.content" :placeholder="dnsContentPlaceholder" class="cf-dns-add-input" />
                 <label class="cf-dns-add-proxied" :title="'开启后流量经过 Cloudflare CDN 代理，获得 DDoS 防护和缓存加速'">
                   <input type="checkbox" v-model="cf.newDns.proxied" :disabled="!dnsProxySupported" /> CDN 代理
                 </label>
-                <button class="btn-save" type="button" :disabled="cf.dnsSaving || !!cf.dnsDeletingId || cf.dnsLoading" style="padding:6px 14px;font-size:0.8rem" @click="handleDnsAdd">
+                <button class="btn-save" type="button" :disabled="accessLocked || cf.dnsSaving || !!cf.dnsDeletingId || cf.dnsLoading" style="padding:6px 14px;font-size:0.8rem" @click="handleDnsAdd">
                   添加
                 </button>
               </div>
@@ -414,18 +562,84 @@
 
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import AppSelect from './AppSelect.vue'
 import { ICONS } from '../constants/icons'
 import { useSettingsPanel } from '../features/settings/useSettingsPanel'
+
+const llmProviderOptions = [
+  { value: 'gemini', label: 'Gemini', description: 'Google 原生模型接口' },
+  { value: 'openai-compatible', label: 'OpenAI 兼容', description: '兼容多数 OpenAI 风格网关' },
+  { value: 'openai-responses', label: 'OpenAI Responses', description: '面向 Responses API 的兼容实现' },
+  { value: 'claude', label: 'Claude', description: 'Anthropic 官方接口' },
+]
+
+const mcpTransportOptions = [
+  { value: 'stdio', label: 'stdio', description: '本地进程调用' },
+  { value: 'sse', label: 'sse', description: '远程事件流' },
+  { value: 'streamable-http', label: 'streamable-http', description: '远程 HTTP 连接' },
+]
+
+const cloudflareSslOptions = [
+  { value: 'unknown', label: 'Unknown', description: '无法读取当前状态', disabled: true },
+  { value: 'off', label: 'Off', description: '不加密' },
+  { value: 'flexible', label: 'Flexible', description: '浏览器到 Cloudflare 加密' },
+  { value: 'full', label: 'Full', description: '全程加密，不验证源站证书' },
+  { value: 'strict', label: 'Full (Strict)', description: '全程加密，并验证源站证书' },
+]
+
+const dnsTypeOptions = [
+  { value: 'A', label: 'A', description: 'IPv4' },
+  { value: 'AAAA', label: 'AAAA', description: 'IPv6' },
+  { value: 'CNAME', label: 'CNAME', description: '别名' },
+  { value: 'MX', label: 'MX', description: '邮件' },
+  { value: 'TXT', label: 'TXT', description: '文本' },
+]
+
+const subAgentToolModeOptions = [
+  { value: 'all', label: '全部工具', description: '不限制工具使用' },
+  { value: 'allowed', label: '白名单', description: '仅允许指定工具' },
+  { value: 'excluded', label: '黑名单', description: '排除指定工具' },
+]
+
+const modeToolModeOptions = [
+  { value: 'all', label: '全部工具', description: '不限制工具使用' },
+  { value: 'include', label: '白名单', description: '仅允许指定工具' },
+  { value: 'exclude', label: '黑名单', description: '排除指定工具' },
+]
+
+function buildModelCatalogSelectOptions(options: Array<{ id: string; label: string }>) {
+  return [
+    {
+      value: '',
+      label: '选择已发现的模型',
+      description: '也可继续手动输入模型 ID',
+    },
+    ...options.map((option) => ({
+      value: option.id,
+      label: option.label,
+    })),
+  ]
+}
+
+function buildZoneSelectOptions(zones: Array<{ id: string; name: string; status: string }>) {
+  return zones.map((zone) => ({
+    value: zone.id,
+    label: zone.name,
+    description: zone.status,
+  }))
+}
 
 const emit = defineEmits<{ close: [] }>()
 
 const {
-  managementEnabled,
-  managementReady,
   currentTheme,
   setTheme,
   themeOptions,
   themeHint,
+  accessProtectionEnabled,
+  accessLocked,
+  accessStatusText,
+  accessCredentialHint,
   config,
   maxToolRoundsInput,
   handleMaxToolRoundsInput,
@@ -436,6 +650,7 @@ const {
   providerLabel,
   addModelEntry,
   removeModelEntry,
+  transportLabel,
   handleModelProviderChange,
   fetchModelOptions,
   modelCatalogHint,
@@ -450,6 +665,16 @@ const {
   syncMcpTimeoutInput,
   handleMcpTimeoutInput,
   sanitizeMcpName,
+  subAgentEntries,
+  subAgentModelOptions,
+  addSubAgentEntry,
+  removeSubAgentEntry,
+  loadBuiltinSubAgentDefaults,
+  handleSubAgentMaxToolRoundsInput,
+  syncSubAgentMaxToolRoundsInput,
+  modeEntries,
+  addModeEntry,
+  removeModeEntry,
   cf,
   streamHint,
   resetOverlayCloseIntent,

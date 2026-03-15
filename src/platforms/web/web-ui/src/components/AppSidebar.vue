@@ -77,18 +77,35 @@
             class="session-item"
             :class="{ active: session.id === currentSessionId }"
           >
+            <span
+              class="session-activity-shell"
+              :class="{
+                visible: !!sessionActivityState(session.id),
+                streaming: sessionActivityState(session.id) === 'streaming',
+                completed: sessionActivityState(session.id) === 'completed',
+              }"
+              aria-hidden="true"
+            >
+              <span v-if="sessionActivityState(session.id)" class="session-activity-dot"></span>
+            </span>
+
             <button class="session-button" type="button" @click="handleSwitchSession(session.id)">
               <span class="session-caption">{{ formatSessionTime(session.updatedAt) }}</span>
               <span class="session-name">{{ displaySessionTitle(session) }}</span>
             </button>
+
             <button
               class="btn-delete-session"
+              :class="{ armed: armedDeleteSessionId === session.id }"
               type="button"
-              title="删除会话"
+              :title="buildDeleteButtonTitle(session.id, displaySessionTitle(session))"
+              :aria-label="buildDeleteButtonTitle(session.id, displaySessionTitle(session))"
               :disabled="deletingSessionId === session.id"
-              @click.stop="handleDeleteSession(session.id, displaySessionTitle(session))"
+              @click.stop="handleDeleteSessionClick(session.id)"
             >
-              <AppIcon :name="ICONS.common.close" />
+              <AppIcon
+                :name="deletingSessionId === session.id ? ICONS.status.loading : (armedDeleteSessionId === session.id ? ICONS.common.delete : ICONS.common.close)"
+              />
             </button>
           </div>
         </div>
@@ -155,6 +172,7 @@ const router = useRouter()
 const {
   sessions,
   currentSessionId,
+  sessionActivity,
   sessionsLoading,
   sessionsError,
   loadSessions,
@@ -164,6 +182,7 @@ const {
 } = useSessions()
 
 const deletingSessionId = ref<string | null>(null)
+const armedDeleteSessionId = ref<string | null>(null)
 const sessionActionError = ref('')
 const managementReady = ref(false)
 const authReady = ref(false)
@@ -290,8 +309,13 @@ function displaySessionTitle(session: SessionSummary): string {
   return '未命名会话'
 }
 
+function sessionActivityState(sessionId: string) {
+  return sessionActivity.value[sessionId] ?? null
+}
+
 async function handleReloadSessions() {
   sessionActionError.value = ''
+  armedDeleteSessionId.value = null
   await loadSessions()
 }
 
@@ -301,6 +325,7 @@ function clearSessionActionError() {
 
 async function handleNewChat() {
   sessionActionError.value = ''
+  armedDeleteSessionId.value = null
   if (route.path !== '/') await router.push('/')
   newChat()
   emit('toggle')
@@ -308,17 +333,35 @@ async function handleNewChat() {
 
 async function handleSwitchSession(id: string) {
   sessionActionError.value = ''
+  armedDeleteSessionId.value = null
   if (route.path !== '/') await router.push('/')
   switchSession(id)
   emit('toggle')
 }
 
-async function handleDeleteSession(id: string, title: string) {
+function buildDeleteButtonTitle(id: string, title: string): string {
+  if (deletingSessionId.value === id) {
+    return `正在删除：${title}`
+  }
+
+  if (armedDeleteSessionId.value === id) {
+    return `再次点击彻底删除：${title}`
+  }
+
+  return `删除会话：${title}`
+}
+
+async function handleDeleteSessionClick(id: string) {
   if (deletingSessionId.value) return
-  const confirmed = window.confirm(`确认删除会话？\n\n${title}`)
-  if (!confirmed) return
+
+  if (armedDeleteSessionId.value !== id) {
+    armedDeleteSessionId.value = id
+    sessionActionError.value = ''
+    return
+  }
 
   deletingSessionId.value = id
+  armedDeleteSessionId.value = null
   try {
     sessionActionError.value = ''
     await removeSession(id)
@@ -352,11 +395,13 @@ onUnmounted(() => {
 })
 
 watch(() => route.fullPath, async () => {
+  armedDeleteSessionId.value = null
   await loadSessions()
   refreshAccessState()
 })
 
 watch(() => props.mobileOpen, () => {
+  if (!props.mobileOpen) armedDeleteSessionId.value = null
   refreshAccessState()
 })
 </script>

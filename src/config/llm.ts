@@ -63,19 +63,6 @@ function hasObjectModels(raw: any): boolean {
   return !!raw?.models && typeof raw.models === 'object' && !Array.isArray(raw.models);
 }
 
-function hasLegacyLLMShape(raw: any): boolean {
-  if (!raw || typeof raw !== 'object') return false;
-  return !!(
-    raw.primary
-    || raw.secondary
-    || raw.light
-    || raw.provider
-    || raw.apiKey
-    || raw.model
-    || raw.baseUrl
-  );
-}
-
 /** 解析模型池配置 */
 export function parseLLMConfig(raw: any = {}): LLMRegistryConfig {
   if (hasObjectModels(raw)) {
@@ -92,10 +79,6 @@ export function parseLLMConfig(raw: any = {}): LLMRegistryConfig {
         models,
       };
     }
-  }
-
-  if (hasLegacyLLMShape(raw)) {
-    throw new Error('llm.yaml 已不再支持旧格式。请改用 defaultModel + models.<modelName>。');
   }
 
   return {

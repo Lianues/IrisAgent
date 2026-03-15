@@ -11,15 +11,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
+import { getRoleLabel } from '../utils/role'
 
 const props = defineProps<{
   role: 'user' | 'model'
   mimeType: string
-  data: string
+  data?: string
+  previewUrl?: string
+  revokePreviewOnUnmount?: boolean
 }>()
 
-const roleLabel = computed(() => (props.role === 'user' ? '你' : 'Iris'))
-const imageSrc = computed(() => `data:${props.mimeType};base64,${props.data}`)
+const roleLabel = computed(() => getRoleLabel(props.role))
+const imageSrc = computed(() => {
+  if (props.previewUrl?.trim()) return props.previewUrl
+  return `data:${props.mimeType};base64,${props.data ?? ''}`
+})
 const altText = computed(() => (props.role === 'user' ? '用户上传的图片' : '模型返回的图片'))
+
+onBeforeUnmount(() => {
+  if (props.revokePreviewOnUnmount && props.previewUrl?.startsWith('blob:')) {
+    URL.revokeObjectURL(props.previewUrl)
+  }
+})
 </script>

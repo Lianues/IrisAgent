@@ -9,19 +9,87 @@ import * as crypto from 'crypto';
 import { Backend, type ImageInput } from '../../../core/backend';
 import type { DocumentInput } from '../../../media/document-extract.js';
 import { isSupportedDocumentMime } from '../../../media/document-extract.js';
-import { readBody, sendJSON } from '../router';
+import { CHAT_ATTACHMENT_LIMITS, formatAttachmentBytes } from '../chat-attachments';
+import { readBody, readRawBody, sendJSON } from '../router';
 import type { WebPlatform } from '../index';
 
-const MAX_IMAGES = 5;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_DOCUMENTS = 10;
-const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+class ChatRequestError extends Error {
+  status: number;
 
-function normalizeImages(raw: unknown): ImageInput[] | null {
-  if (raw == null) return [];
-  if (!Array.isArray(raw) || raw.length > MAX_IMAGES) return null;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ChatRequestError';
+    this.status = status;
+  }
+}
+
+interface NormalizedAttachmentResult<T> {
+  items: T[];
+  totalBytes: number;
+}
+
+interface ParsedChatRequest {
+  sessionId: string | null;
+  message: string;
+  images: ImageInput[];
+  documents: DocumentInput[];
+}
+
+function normalizeMimeType(mimeType: string): string {
+  return mimeType.split(';', 1)[0].trim().toLowerCase();
+}
+
+function getContentType(req: http.IncomingMessage): string {
+  const header = req.headers['content-type'];
+  return normalizeMimeType(Array.isArray(header) ? (header[0] ?? '') : (header ?? ''));
+}
+
+function buildImageLimitError(): string {
+  return `图片参数无效：最多支持 ${CHAT_ATTACHMENT_LIMITS.maxImages} 张 image/* 图片，且单张不超过 ${formatAttachmentBytes(CHAT_ATTACHMENT_LIMITS.maxImageBytes)}`;
+}
+
+function buildDocumentLimitError(): string {
+  return `文档参数无效：最多支持 ${CHAT_ATTACHMENT_LIMITS.maxDocuments} 个文档（PDF / Office / Markdown / JSON / XML / Python 等文本代码文件），且单个不超过 ${formatAttachmentBytes(CHAT_ATTACHMENT_LIMITS.maxDocumentBytes)}`;
+}
+
+function buildTotalLimitError(): string {
+  return `附件总量过大：图片与文档合计不能超过 ${formatAttachmentBytes(CHAT_ATTACHMENT_LIMITS.maxTotalBytes)}`;
+}
+
+function decodeBase64ByteLength(base64: string): number {
+  try {
+    return Buffer.from(base64, 'base64').byteLength;
+  } catch {
+    return 0;
+  }
+}
+
+function toRequestHeaders(headers: http.IncomingHttpHeaders): Headers {
+  const normalized = new Headers();
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        normalized.append(key, item);
+      }
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      normalized.set(key, value);
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeImages(raw: unknown): NormalizedAttachmentResult<ImageInput> | null {
+  if (raw == null) return { items: [], totalBytes: 0 };
+  if (!Array.isArray(raw) || raw.length > CHAT_ATTACHMENT_LIMITS.maxImages) return null;
 
   const images: ImageInput[] = [];
+  let totalBytes = 0;
+
   for (const item of raw) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       return null;
@@ -30,32 +98,31 @@ function normalizeImages(raw: unknown): ImageInput[] | null {
     const mimeType = typeof (item as any).mimeType === 'string' ? (item as any).mimeType : '';
     const rawData = typeof (item as any).data === 'string' ? (item as any).data : '';
     const dataUrlMatch = rawData.match(/^data:([^;]+);base64,(.+)$/);
-    const normalizedMimeType = dataUrlMatch?.[1] ?? mimeType;
+    const normalizedMimeType = normalizeMimeType(dataUrlMatch?.[1] ?? mimeType);
     const normalizedData = dataUrlMatch?.[2] ?? rawData;
+    const binarySize = decodeBase64ByteLength(normalizedData);
 
-    let binarySize = 0;
-    try {
-      binarySize = Buffer.from(normalizedData, 'base64').byteLength;
-    } catch {}
-
-    if (!normalizedMimeType.startsWith('image/') || !normalizedData || binarySize <= 0 || binarySize > MAX_IMAGE_BYTES) {
+    if (!normalizedMimeType.startsWith('image/') || !normalizedData || binarySize <= 0 || binarySize > CHAT_ATTACHMENT_LIMITS.maxImageBytes) {
       return null;
     }
 
+    totalBytes += binarySize;
     images.push({
       mimeType: normalizedMimeType,
       data: normalizedData,
     });
   }
 
-  return images;
+  return { items: images, totalBytes };
 }
 
-function normalizeDocuments(raw: unknown): DocumentInput[] | null {
-  if (raw == null) return [];
-  if (!Array.isArray(raw) || raw.length > MAX_DOCUMENTS) return null;
+function normalizeDocuments(raw: unknown): NormalizedAttachmentResult<DocumentInput> | null {
+  if (raw == null) return { items: [], totalBytes: 0 };
+  if (!Array.isArray(raw) || raw.length > CHAT_ATTACHMENT_LIMITS.maxDocuments) return null;
 
   const documents: DocumentInput[] = [];
+  let totalBytes = 0;
+
   for (const item of raw) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       return null;
@@ -64,39 +131,195 @@ function normalizeDocuments(raw: unknown): DocumentInput[] | null {
     const fileName = typeof (item as any).fileName === 'string' ? (item as any).fileName : '';
     const mimeType = typeof (item as any).mimeType === 'string' ? (item as any).mimeType : '';
     const rawData = typeof (item as any).data === 'string' ? (item as any).data : '';
-
-    // Strip data URL prefix if present
     const dataUrlMatch = rawData.match(/^data:([^;]+);base64,(.+)$/);
-    const normalizedMimeType = dataUrlMatch?.[1] ?? mimeType;
+    const normalizedMimeType = normalizeMimeType(dataUrlMatch?.[1] ?? mimeType);
     const normalizedData = dataUrlMatch?.[2] ?? rawData;
+    const binarySize = decodeBase64ByteLength(normalizedData);
 
-    if (!fileName || !normalizedData) {
+    if (!fileName || !normalizedData || !isSupportedDocumentMime(normalizedMimeType, fileName) || binarySize <= 0 || binarySize > CHAT_ATTACHMENT_LIMITS.maxDocumentBytes) {
       return null;
     }
 
-    // Validate supported document type
-    if (!isSupportedDocumentMime(normalizedMimeType, fileName)) {
-      return null;
-    }
-
-    // Validate size (same pattern as normalizeImages)
-    let binarySize = 0;
-    try {
-      binarySize = Buffer.from(normalizedData, 'base64').byteLength;
-    } catch {}
-
-    if (binarySize <= 0 || binarySize > MAX_DOCUMENT_BYTES) {
-      return null;
-    }
-
+    totalBytes += binarySize;
     documents.push({
       fileName,
-      mimeType: normalizedMimeType,
+      mimeType: normalizedMimeType || 'application/octet-stream',
       data: normalizedData,
     });
   }
 
-  return documents;
+  return { items: documents, totalBytes };
+}
+
+function assertTotalAttachmentBytes(totalBytes: number): void {
+  if (totalBytes > CHAT_ATTACHMENT_LIMITS.maxTotalBytes) {
+    throw new ChatRequestError(413, buildTotalLimitError());
+  }
+}
+
+function resolveOptionalSessionId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim();
+  return value ? value : null;
+}
+
+async function parseJsonChatRequest(req: http.IncomingMessage): Promise<ParsedChatRequest> {
+  let body: any;
+  try {
+    body = await readBody(req);
+  } catch (error) {
+    if (error instanceof Error && error.message === '请求体过大') {
+      throw new ChatRequestError(413, buildTotalLimitError());
+    }
+    throw new ChatRequestError(400, '请求体解析失败');
+  }
+
+  const message = typeof body.message === 'string' ? body.message : '';
+  const imagesResult = normalizeImages(body.images);
+  const documentsResult = normalizeDocuments(body.documents);
+
+  if (imagesResult === null) {
+    throw new ChatRequestError(400, buildImageLimitError());
+  }
+
+  if (documentsResult === null) {
+    throw new ChatRequestError(400, buildDocumentLimitError());
+  }
+
+  assertTotalAttachmentBytes(imagesResult.totalBytes + documentsResult.totalBytes);
+
+  return {
+    sessionId: resolveOptionalSessionId(body.sessionId),
+    message,
+    images: imagesResult.items,
+    documents: documentsResult.items,
+  };
+}
+
+async function parseMultipartChatRequest(req: http.IncomingMessage): Promise<ParsedChatRequest> {
+  let rawBody: Buffer;
+  try {
+    rawBody = await readRawBody(req, CHAT_ATTACHMENT_LIMITS.maxMultipartBodyBytes);
+  } catch (error) {
+    if (error instanceof Error && error.message === '请求体过大') {
+      throw new ChatRequestError(413, buildTotalLimitError());
+    }
+    throw new ChatRequestError(400, '请求体解析失败');
+  }
+
+  let formData: FormData;
+  try {
+    const request = new Request('http://localhost/api/chat', {
+      method: req.method ?? 'POST',
+      headers: toRequestHeaders(req.headers),
+      body: rawBody,
+    });
+    formData = await request.formData();
+  } catch {
+    throw new ChatRequestError(400, 'multipart/form-data 解析失败');
+  }
+
+  const rawMessage = formData.get('message');
+  if (rawMessage != null && typeof rawMessage !== 'string') {
+    throw new ChatRequestError(400, 'message 参数无效');
+  }
+
+  const rawSessionId = formData.get('sessionId');
+  if (rawSessionId != null && typeof rawSessionId !== 'string') {
+    throw new ChatRequestError(400, 'sessionId 参数无效');
+  }
+
+  const imageEntries = formData.getAll('images');
+  const documentEntries = formData.getAll('documents');
+
+  if (imageEntries.length > CHAT_ATTACHMENT_LIMITS.maxImages) {
+    throw new ChatRequestError(400, buildImageLimitError());
+  }
+
+  if (documentEntries.length > CHAT_ATTACHMENT_LIMITS.maxDocuments) {
+    throw new ChatRequestError(400, buildDocumentLimitError());
+  }
+
+  const images: ImageInput[] = [];
+  const documents: DocumentInput[] = [];
+  let totalBytes = 0;
+
+  for (const entry of imageEntries) {
+    if (!(entry instanceof File)) {
+      throw new ChatRequestError(400, '图片参数无效：请使用 multipart 文件字段 images');
+    }
+
+    const mimeType = normalizeMimeType(entry.type);
+    if (!mimeType.startsWith('image/')) {
+      throw new ChatRequestError(400, buildImageLimitError());
+    }
+
+    if (entry.size <= 0) {
+      throw new ChatRequestError(400, `${entry.name || '图片'} 为空文件，无法上传`);
+    }
+    if (entry.size > CHAT_ATTACHMENT_LIMITS.maxImageBytes) {
+      throw new ChatRequestError(413, `${entry.name || '图片'} 超过 ${formatAttachmentBytes(CHAT_ATTACHMENT_LIMITS.maxImageBytes)} 限制`);
+    }
+
+    totalBytes += entry.size;
+    assertTotalAttachmentBytes(totalBytes);
+
+    const buffer = Buffer.from(await entry.arrayBuffer());
+    images.push({
+      mimeType,
+      data: buffer.toString('base64'),
+    });
+  }
+
+  for (const entry of documentEntries) {
+    if (!(entry instanceof File)) {
+      throw new ChatRequestError(400, '文档参数无效：请使用 multipart 文件字段 documents');
+    }
+
+    const fileName = entry.name || 'document';
+    const mimeType = normalizeMimeType(entry.type) || 'application/octet-stream';
+    if (!isSupportedDocumentMime(mimeType, fileName)) {
+      throw new ChatRequestError(400, `${fileName}: 不支持的文档类型`);
+    }
+
+    if (entry.size <= 0) {
+      throw new ChatRequestError(400, `${fileName} 为空文件，无法上传`);
+    }
+    if (entry.size > CHAT_ATTACHMENT_LIMITS.maxDocumentBytes) {
+      throw new ChatRequestError(413, `${fileName} 超过 ${formatAttachmentBytes(CHAT_ATTACHMENT_LIMITS.maxDocumentBytes)} 限制`);
+    }
+
+    totalBytes += entry.size;
+    assertTotalAttachmentBytes(totalBytes);
+
+    const buffer = Buffer.from(await entry.arrayBuffer());
+    documents.push({
+      fileName,
+      mimeType,
+      data: buffer.toString('base64'),
+    });
+  }
+
+  return {
+    sessionId: resolveOptionalSessionId(rawSessionId),
+    message: typeof rawMessage === 'string' ? rawMessage : '',
+    images,
+    documents,
+  };
+}
+
+async function parseChatRequest(req: http.IncomingMessage): Promise<ParsedChatRequest> {
+  const contentType = getContentType(req);
+
+  if (!contentType || contentType === 'application/json') {
+    return parseJsonChatRequest(req);
+  }
+
+  if (contentType === 'multipart/form-data') {
+    return parseMultipartChatRequest(req);
+  }
+
+  throw new ChatRequestError(415, '仅支持 application/json 或 multipart/form-data 请求');
 }
 
 export function createChatSuggestionsHandler(backend: Backend) {
@@ -116,34 +339,27 @@ export function createChatSuggestionsHandler(backend: Backend) {
 
 export function createChatHandler(platform: WebPlatform) {
   return async (req: http.IncomingMessage, res: http.ServerResponse) => {
-    let body: any;
+    let parsedRequest: ParsedChatRequest;
     try {
-      body = await readBody(req);
-    } catch {
+      parsedRequest = await parseChatRequest(req);
+    } catch (error) {
+      if (error instanceof ChatRequestError) {
+        sendJSON(res, error.status, { error: error.message });
+        return;
+      }
+
       sendJSON(res, 400, { error: '请求体解析失败' });
       return;
     }
 
-    const message = typeof body.message === 'string' ? body.message : '';
-    const images = normalizeImages(body.images);
-    const documents = normalizeDocuments(body.documents);
-
-    if (images === null) {
-      sendJSON(res, 400, { error: '图片参数无效：最多支持 5 张 image/* 图片，且单张不超过 5MB' });
-      return;
-    }
-
-    if (documents === null) {
-      sendJSON(res, 400, { error: '文档参数无效：最多支持 10 个文档（PDF/DOCX/PPTX/XLSX），且单个不超过 50MB' });
-      return;
-    }
+    const { message, images, documents } = parsedRequest;
 
     if (!message.trim() && images.length === 0 && documents.length === 0) {
       sendJSON(res, 400, { error: '消息、图片和文档不能同时为空' });
       return;
     }
 
-    const sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : `web-${crypto.randomUUID()}`;
+    const sessionId = parsedRequest.sessionId ?? `web-${crypto.randomUUID()}`;
 
     // 并发控制：同一 session 已有请求时拒绝
     if (platform.hasPending(sessionId)) {
@@ -156,9 +372,13 @@ export function createChatHandler(platform: WebPlatform) {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
       'X-Session-Id': sessionId,
     });
     res.flushHeaders();
+
+    // 禁用 Nagle 算法，确保每次 res.write() 立即发送，避免 SSE 事件被合并
+    res.socket?.setNoDelay(true);
 
     // 注册到 pending，等待 Orchestrator 处理
     platform.registerPending(sessionId, res);

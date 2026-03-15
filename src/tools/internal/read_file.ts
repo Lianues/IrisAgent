@@ -8,7 +8,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ToolDefinition } from '../../types';
-import { resolveProjectPath } from '../utils';
+import { normalizeObjectArrayArg, resolveProjectPath } from '../utils';
 
 /** 支持的文本文件扩展名 */
 const TEXT_EXTENSIONS = new Set([
@@ -68,6 +68,13 @@ interface ReadResult {
   error?: string;
 }
 
+function isFileReadRequest(value: unknown): value is FileReadRequest {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).path === 'string';
+}
+
 export const readFile: ToolDefinition = {
   parallel: true,
   declaration: {
@@ -99,8 +106,13 @@ export const readFile: ToolDefinition = {
     },
   },
   handler: async (args) => {
-    const fileList = args.files as FileReadRequest[] | undefined;
-    if (!fileList || !Array.isArray(fileList) || fileList.length === 0) {
+    const fileList = normalizeObjectArrayArg(args, {
+      arrayKey: 'files',
+      singularKeys: ['file'],
+      isEntry: isFileReadRequest,
+    });
+
+    if (!fileList || fileList.length === 0) {
       throw new Error('files 参数必须是非空数组');
     }
 

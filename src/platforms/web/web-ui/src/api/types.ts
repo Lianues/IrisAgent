@@ -11,22 +11,56 @@ export interface DocumentInput {
   data: string
 }
 
+/** 前端上传中的图片附件 */
+export interface ChatImageAttachment {
+  mimeType: string
+  data?: string
+  file?: File
+  fileName?: string
+  previewUrl?: string
+  size?: number
+}
+
+/** 前端上传中的文档附件 */
+export interface ChatDocumentAttachment {
+  fileName: string
+  mimeType: string
+  data?: string
+  file?: File
+  size?: number
+}
+
 /** 消息内容部分 */
 export interface MessagePart {
-  type: 'text' | 'image' | 'document' | 'function_call' | 'function_response'
+  type: 'text' | 'thought' | 'image' | 'document' | 'function_call' | 'function_response'
   text?: string
+  durationMs?: number
   mimeType?: string
   data?: string
+  file?: File
   fileName?: string
+  previewUrl?: string
+  size?: number
   name?: string
   args?: unknown
   response?: unknown
+  callId?: string
+}
+
+/** 消息性能元数据 */
+export interface MessageMeta {
+  tokenIn?: number
+  tokenOut?: number
+  durationMs?: number
+  streamOutputDurationMs?: number
+  modelName?: string
 }
 
 /** 一条完整消息 */
 export interface Message {
   role: 'user' | 'model'
   parts: MessagePart[]
+  meta?: MessageMeta
 }
 
 /** 会话摘要 */
@@ -211,10 +245,14 @@ export interface CfSetupResponse {
 
 /** SSE 聊天回调 */
 export interface ChatCallbacks {
+  onStreamStart?: () => void
   onDelta?: (text: string) => void
+  onThoughtDelta?: (text: string, durationMs?: number) => void
   onMessage?: (text: string) => void
   onStreamEnd?: () => void
   onDone?: () => void
+  onDoneMeta?: (durationMs: number) => void
   onError?: (message: string) => void
   onSessionId?: (id: string) => void
+  onAssistantContent?: (message: Message) => void
 }

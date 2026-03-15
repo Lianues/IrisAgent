@@ -76,30 +76,39 @@ export class Router {
  */
 const MAX_BODY_SIZE = 100 * 1024 * 1024;
 
-/** 读取请求体并解析为 JSON */
-export function readBody(req: http.IncomingMessage): Promise<any> {
+/** 读取原始请求体 */
+export function readRawBody(req: http.IncomingMessage, maxBodySize = MAX_BODY_SIZE): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
     req.on('data', (chunk: Buffer) => {
       totalSize += chunk.length;
-      if (totalSize > MAX_BODY_SIZE) {
+      if (totalSize > maxBodySize) {
         req.destroy();
         reject(new Error('请求体过大'));
         return;
       }
       chunks.push(chunk);
     });
+
     req.on('end', () => {
-      try {
-        const body = Buffer.concat(chunks).toString('utf-8');
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        reject(new Error('请求体 JSON 解析失败'));
-      }
+      resolve(Buffer.concat(chunks));
     });
+
     req.on('error', reject);
   });
+}
+
+/** 读取请求体并解析为 JSON */
+export async function readBody(req: http.IncomingMessage, maxBodySize = MAX_BODY_SIZE): Promise<any> {
+  const rawBody = await readRawBody(req, maxBodySize);
+
+  try {
+    const body = rawBody.toString('utf-8');
+    return body ? JSON.parse(body) : {};
+  } catch {
+    throw new Error('请求体 JSON 解析失败');
+  }
 }
 
 /** 发送 JSON 响应 */

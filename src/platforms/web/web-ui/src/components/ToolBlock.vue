@@ -13,19 +13,21 @@
       :aria-expanded="open"
       @click="open = !open"
     >
-      <AppIcon :name="ICONS.common.chevronRight" class="tool-icon" />
+      <span class="tool-leading" :class="type">
+        <AppIcon :name="compactIconName" class="tool-leading-icon" />
+      </span>
       <div class="tool-header-main">
-        <span class="tool-label">{{ type === 'call' ? '工具调用' : '工具结果' }}</span>
-        <strong class="tool-name">{{ name }}</strong>
+        <div class="tool-header-topline">
+          <span class="tool-kind-chip">{{ type === 'call' ? '工具调用' : '工具结果' }}</span>
+          <strong class="tool-name">{{ name }}</strong>
+        </div>
+        <span class="tool-summary">{{ summary }}</span>
       </div>
-      <div class="tool-header-side">
-        <span class="tool-state">{{ summary }}</span>
-        <span class="tool-toggle-text">{{ open ? '收起' : '展开' }}</span>
-      </div>
+      <AppIcon :name="ICONS.common.chevronRight" class="tool-icon" />
     </button>
 
     <div class="tool-body-wrap">
-      <div class="tool-body">
+      <div v-if="open" class="tool-body">
         <div class="tool-body-actions">
           <span class="tool-body-label">结构化内容</span>
           <button class="tool-copy-btn" :class="copyStateClass" type="button" @click.stop="copyToolData">
@@ -33,16 +35,22 @@
             <span>{{ copyText }}</span>
           </button>
         </div>
-        <pre class="tool-pre"><code>{{ formatted }}</code></pre>
+        <div class="tool-pre" role="presentation">
+          <div v-for="line in formattedLines" :key="line.index" class="tool-pre-line">
+            <span class="tool-pre-line-number">{{ line.number }}</span>
+            <span class="tool-pre-line-content">{{ line.content || '\u200B' }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import { useCopyFeedback } from '../composables/useCopyFeedback'
 
 const props = defineProps<{
   type: 'call' | 'response'
@@ -52,9 +60,7 @@ const props = defineProps<{
 }>()
 
 const open = ref(false)
-const copyText = ref('复制内容')
-const copyState = ref<'idle' | 'success' | 'error'>('idle')
-let copyTimer: number | null = null
+const { copyText, copyStateClass, copy } = useCopyFeedback('复制内容')
 
 const compactIconName = computed(() => (props.type === 'call' ? ICONS.tool.call : ICONS.tool.response))
 
@@ -81,38 +87,20 @@ function summarizeToolData(value: unknown): string {
 
 const formatted = computed(() => formatToolData(props.data))
 const summary = computed(() => summarizeToolData(props.data))
-const copyStateClass = computed(() => {
-  if (copyState.value === 'success') return 'copied'
-  if (copyState.value === 'error') return 'error'
-  return ''
-})
 
-function scheduleCopyReset() {
-  if (copyTimer !== null) {
-    window.clearTimeout(copyTimer)
-  }
-  copyTimer = window.setTimeout(() => {
-    copyText.value = '复制内容'
-    copyState.value = 'idle'
-    copyTimer = null
-  }, 1800)
-}
+const formattedLines = computed(() => {
+  const lines = formatted.value.replace(/\r\n?/g, '\n').split('\n')
+  const totalLines = Math.max(1, lines.length)
+  const width = String(totalLines).length
+
+  return (lines.length > 0 ? lines : ['']).map((content, index) => ({
+    index,
+    number: String(index + 1).padStart(width, ' '),
+    content,
+  }))
+})
 
 async function copyToolData() {
-  try {
-    await navigator.clipboard.writeText(formatted.value)
-    copyText.value = '已复制'
-    copyState.value = 'success'
-  } catch {
-    copyText.value = '复制失败'
-    copyState.value = 'error'
-  }
-  scheduleCopyReset()
+  await copy(formatted.value)
 }
-
-onBeforeUnmount(() => {
-  if (copyTimer !== null) {
-    window.clearTimeout(copyTimer)
-  }
-})
 </script>

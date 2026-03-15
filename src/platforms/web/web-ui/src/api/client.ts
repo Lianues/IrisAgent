@@ -5,7 +5,7 @@
  */
 
 import type {
-  ImageInput, DocumentInput, Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
+  ImageInput, DocumentInput, ChatImageAttachment, ChatDocumentAttachment, Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
   DeployFormOptions, DeployStateResponse, DeployPreviewResponse,
   CfStatusResponse, CfDnsRecord, CfDnsInput, CfSetupResponse, SessionSummary, ConfigModelListResponse, ChatSuggestionsResponse,
 } from './types'
@@ -280,10 +280,14 @@ function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): vo
   try {
     const event = JSON.parse(dataLines.join('\n'))
     switch (event.type) {
+      case 'stream_start': callbacks.onStreamStart?.(); break
       case 'delta': callbacks.onDelta?.(event.text); break
+      case 'thought_delta': callbacks.onThoughtDelta?.(event.text, event.durationMs); break
       case 'message': callbacks.onMessage?.(event.text); break
+      case 'assistant_content': callbacks.onAssistantContent?.(event.message); break
       case 'stream_end': callbacks.onStreamEnd?.(); break
       case 'done': callbacks.onDone?.(); break
+      case 'done_meta': callbacks.onDoneMeta?.(event.durationMs); break
       case 'error': callbacks.onError?.(event.message); break
     }
   } catch {
@@ -291,73 +295,159 @@ function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): vo
   }
 }
 
+function canUseMultipartPayload(images: ChatImageAttachment[], documents: ChatDocumentAttachment[]): boolean {
+  if (images.length === 0 && documents.length === 0) return false
+  return images.every((image) => image.file instanceof File)
+    && documents.every((doc) => doc.file instanceof File)
+}
+
+function buildMultipartChatPayload(sessionId: string | null, message: string, images: ChatImageAttachment[], documents: ChatDocumentAttachment[]): FormData {
+  const formData = new FormData()
+
+  if (sessionId) {
+    formData.append('sessionId', sessionId)
+  }
+  formData.append('message', message)
+
+  for (const image of images) {
+    if (!(image.file instanceof File)) continue
+    formData.append('images', image.file, image.fileName || image.file.name || 'image')
+  }
+
+  for (const doc of documents) {
+    if (!(doc.file instanceof File)) continue
+    formData.append('documents', doc.file, doc.fileName || doc.file.name || 'document')
+  }
+
+  return formData
+}
+
+function buildJsonChatPayload(sessionId: string | null, message: string, images: ChatImageAttachment[], documents: ChatDocumentAttachment[]) {
+  const encodedImages: ImageInput[] = []
+  for (const image of images) {
+    if (!image.data) {
+      throw new Error('当前附件只保留了本地文件引用，请重新上传后再试')
+    }
+    encodedImages.push({
+      mimeType: image.mimeType,
+      data: image.data,
+    })
+  }
+
+  const encodedDocuments: DocumentInput[] = []
+  for (const doc of documents) {
+    if (!doc.data) {
+      throw new Error('当前附件只保留了本地文件引用，请重新上传后再试')
+    }
+    encodedDocuments.push({
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      data: doc.data,
+    })
+  }
+
+  return {
+    sessionId,
+    message,
+    ...(encodedImages.length > 0 ? { images: encodedImages } : {}),
+    ...(encodedDocuments.length > 0 ? { documents: encodedDocuments } : {}),
+  }
+}
+
 /**
  * 发送聊天消息并通过 SSE 接收响应。
  * 使用 fetch + ReadableStream 手动解析（EventSource 不支持 POST）。
  */
-export function sendChat(sessionId: string | null, message: string, callbacks: ChatCallbacks, images?: ImageInput[], documents?: DocumentInput[]): AbortController {
+export function sendChat(
+  sessionId: string | null,
+  message: string,
+  callbacks: ChatCallbacks,
+  images?: ChatImageAttachment[],
+  documents?: ChatDocumentAttachment[],
+): AbortController {
   const controller = new AbortController()
+  const resolvedImages = images ?? []
+  const resolvedDocuments = documents ?? []
+
+  let body: BodyInit
+  let headers: HeadersInit | undefined
+
+  try {
+    if (canUseMultipartPayload(resolvedImages, resolvedDocuments)) {
+      body = buildMultipartChatPayload(sessionId, message, resolvedImages, resolvedDocuments)
+      headers = applyStoredTokens('/api/chat')
+    } else {
+      body = JSON.stringify(buildJsonChatPayload(sessionId, message, resolvedImages, resolvedDocuments))
+      headers = applyStoredTokens('/api/chat', { 'Content-Type': 'application/json' })
+    }
+  } catch (error) {
+    queueMicrotask(() => {
+      callbacks.onError?.(error instanceof Error ? error.message : String(error))
+    })
+    return controller
+  }
 
   fetch('/api/chat', {
     method: 'POST',
-    headers: applyStoredTokens('/api/chat', { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      sessionId,
-      message,
-      ...(images && images.length > 0 ? { images } : {}),
-      ...(documents && documents.length > 0 ? { documents } : {}),
-    }),
+    headers,
+    body,
     signal: controller.signal,
-  }).then(async (response) => {
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: '请求失败' } as ErrorResponseBody))
-      if (response.status === 401) {
-        handleUnauthorized(err)
-      }
-      callbacks.onError?.(err.error || `HTTP ${response.status}`)
-      return
-    }
-
-    // 获取服务端分配的 sessionId
-    const actualSessionId = response.headers.get('X-Session-Id')
-    if (actualSessionId) callbacks.onSessionId?.(actualSessionId)
-
-    // 手动解析 SSE 流
-    if (!response.body) {
-      callbacks.onError?.('响应体为空')
-      return
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    const processBufferedEvents = (flushRemainder = false) => {
-      const blocks = buffer.split(/\r?\n\r?\n/)
-      if (!flushRemainder) {
-        buffer = blocks.pop() || ''
-      } else {
-        buffer = ''
-      }
-
-      for (const block of blocks) {
-        dispatchChatStreamEvent(block, callbacks)
-      }
-    }
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      processBufferedEvents(false)
-    }
-
-    buffer += decoder.decode()
-    processBufferedEvents(true)
-  }).catch((err) => {
-    if (err.name !== 'AbortError') callbacks.onError?.(err.message)
   })
+    .then(async (response) => {
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: '请求失败' } as ErrorResponseBody))
+        if (response.status === 401) {
+          handleUnauthorized(err)
+        }
+        callbacks.onError?.(err.error || `HTTP ${response.status}`)
+        return
+      }
+
+      // 获取服务端分配的 sessionId
+      const actualSessionId = response.headers.get('X-Session-Id')
+      if (actualSessionId) callbacks.onSessionId?.(actualSessionId)
+
+      // 手动解析 SSE 流
+      if (!response.body) {
+        callbacks.onError?.('响应体为空')
+        return
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      const processBufferedEvents = (flushRemainder = false) => {
+        const blocks = buffer.split(/\r?\n\r?\n/)
+        if (!flushRemainder) {
+          buffer = blocks.pop() || ''
+        } else {
+          buffer = ''
+        }
+
+        for (const block of blocks) {
+          dispatchChatStreamEvent(block, callbacks)
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        processBufferedEvents(false)
+
+        // await reader.read() 在数据已就绪时通过微任务恢复，不会让出给渲染引擎。
+        // 插入一个宏任务断点，确保 rAF 和浏览器渲染有机会执行，使流式内容可见。
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      }
+
+      buffer += decoder.decode()
+      processBufferedEvents(true)
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') callbacks.onError?.(err.message)
+    })
 
   return controller
 }

@@ -12,9 +12,12 @@
     "check": "npm run typecheck && npm run lint"
   },
   "dependencies": {
+    "dompurify": "^3.3.3",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.38",
+    "markdown-it": "^14.1.0",
     "vue": "^3.5.0",
-    "vue-router": "^4.5.0",
-    "markdown-it": "^14.1.0"
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

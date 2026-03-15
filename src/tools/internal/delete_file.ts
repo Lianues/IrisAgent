@@ -6,7 +6,7 @@
 
 import * as fs from 'fs';
 import { ToolDefinition } from '../../types';
-import { resolveProjectPath } from '../utils';
+import { normalizeStringArrayArg, resolveProjectPath } from '../utils';
 
 interface DeleteResult {
   path: string;
@@ -35,8 +35,12 @@ export const deleteFile: ToolDefinition = {
     },
   },
   handler: async (args) => {
-    const pathList = args.paths as string[];
-    if (!pathList || !Array.isArray(pathList) || pathList.length === 0) {
+    const pathList = normalizeStringArrayArg(args, {
+      arrayKey: 'paths',
+      singularKeys: ['path'],
+    });
+
+    if (!pathList || pathList.length === 0) {
       throw new Error('paths 参数必须是非空数组');
     }
 

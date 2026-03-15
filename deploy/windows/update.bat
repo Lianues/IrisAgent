@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
-title Iris 更新
+title Iris Update
 
 echo ============================================
-echo          Iris 更新
+echo          Iris Update
 echo ============================================
 echo.
 
@@ -19,10 +19,10 @@ pushd "%PROJECT_ROOT%"
 REM ---- 步骤 1: 记录当前版本，拉取最新代码 ----
 for /f %%i in ('git rev-parse HEAD') do set "OLD_HEAD=%%i"
 
-echo [更新] 正在拉取最新代码...
+echo [update] Pulling latest code...
 git pull
 if %errorlevel% neq 0 (
-    echo [更新] 错误: git pull 失败，请检查网络或手动解决冲突。
+    echo [update] ERROR: git pull failed.
     popd
     pause
     exit /b 1
@@ -31,56 +31,56 @@ if %errorlevel% neq 0 (
 for /f %%i in ('git rev-parse HEAD') do set "NEW_HEAD=%%i"
 
 if "%OLD_HEAD%"=="%NEW_HEAD%" (
-    echo [更新] 已是最新版本，无需重新构建。
+    echo [update] Already up to date.
     popd
     goto :start
 )
 
-echo [更新] 检测到新版本，开始更新...
-echo         %OLD_HEAD:~0,8% → %NEW_HEAD:~0,8%
+echo [update] New version detected, updating...
+echo          %OLD_HEAD:~0,8% -^> %NEW_HEAD:~0,8%
 echo.
 
 REM ---- 步骤 2: 安装依赖 ----
-echo [更新] 正在安装根目录依赖...
+echo [update] Installing root dependencies...
 call npm install
 if %errorlevel% neq 0 (
-    echo [更新] 错误: 根目录 npm install 失败。
+    echo [update] ERROR: root npm install failed.
     popd
     pause
     exit /b 1
 )
 
-echo [更新] 正在安装 web-ui 依赖...
+echo [update] Installing web-ui dependencies...
 pushd src\platforms\web\web-ui
 call npm install
 if %errorlevel% neq 0 (
-    echo [更新] 错误: web-ui npm install 失败。
+    echo [update] ERROR: web-ui npm install failed.
     popd
     popd
     pause
     exit /b 1
 )
 popd
-echo [更新] 依赖安装完成。
+echo [update] Dependencies installed.
 echo.
 
 REM ---- 步骤 3: 重新构建 ----
-echo [更新] 正在构建项目...
+echo [update] Building project...
 call npm run build
 if %errorlevel% neq 0 (
-    echo [更新] 错误: 项目构建失败。
+    echo [update] ERROR: build failed.
     popd
     pause
     exit /b 1
 )
-echo [更新] 构建完成。
+echo [update] Build complete.
 echo.
 
 popd
 
 :start
 echo ============================================
-echo   正在启动 Iris...
+echo   Starting Iris...
 echo ============================================
 echo.
 

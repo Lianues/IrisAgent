@@ -2,7 +2,7 @@
  * 文档文本提取模块
  *
  * 移植自 Pi 的 attachment-utils.ts，适配 Node.js。
- * 支持 PDF / DOCX / PPTX / XLSX(XLS) 格式。
+ * 支持 PDF / DOCX / PPTX / XLSX(XLS) 与常见文本/代码文件格式。
  */
 
 import { PDFParse } from 'pdf-parse';
@@ -25,12 +25,32 @@ export interface ExtractedDocument {
   error?: string;
 }
 
-const SUPPORTED_MIME_TYPES = new Set([
+const SUPPORTED_BINARY_MIME_TYPES = new Set([
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
+]);
+
+const SUPPORTED_TEXT_MIME_TYPES = new Set([
+  'text/markdown',
+  'text/x-markdown',
+  'application/json',
+  'application/ld+json',
+  'application/xml',
+  'image/svg+xml',
+  'application/x-yaml',
+  'text/yaml',
+  'text/x-yaml',
+  'application/toml',
+  'text/x-toml',
+  'application/javascript',
+  'text/javascript',
+  'application/x-javascript',
+  'application/x-sh',
+  'application/x-shellscript',
+  'application/sql',
 ]);
 
 const EXTENSION_TO_MIME: Record<string, string> = {
@@ -39,20 +59,97 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.xls': 'application/vnd.ms-excel',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
+  '.json': 'application/json',
+  '.jsonc': 'application/json',
+  '.yaml': 'application/x-yaml',
+  '.yml': 'application/x-yaml',
+  '.toml': 'application/toml',
+  '.ini': 'text/plain',
+  '.cfg': 'text/plain',
+  '.conf': 'text/plain',
+  '.env': 'text/plain',
+  '.xml': 'application/xml',
+  '.svg': 'image/svg+xml',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.csv': 'text/csv',
+  '.tsv': 'text/tab-separated-values',
+  '.log': 'text/plain',
+  '.py': 'text/x-python',
+  '.js': 'application/javascript',
+  '.jsx': 'text/javascript',
+  '.ts': 'text/typescript',
+  '.tsx': 'text/typescript',
+  '.mjs': 'application/javascript',
+  '.cjs': 'application/javascript',
+  '.java': 'text/x-java-source',
+  '.c': 'text/x-c',
+  '.h': 'text/x-c',
+  '.cpp': 'text/x-c++src',
+  '.hpp': 'text/x-c++src',
+  '.cc': 'text/x-c++src',
+  '.cs': 'text/plain',
+  '.go': 'text/plain',
+  '.rs': 'text/plain',
+  '.php': 'application/x-httpd-php',
+  '.rb': 'text/plain',
+  '.sh': 'application/x-sh',
+  '.bash': 'application/x-sh',
+  '.zsh': 'application/x-sh',
+  '.ps1': 'text/plain',
+  '.sql': 'application/sql',
+  '.css': 'text/css',
+  '.scss': 'text/plain',
+  '.less': 'text/plain',
+  '.vue': 'text/plain',
 };
+
+const EXTENSION_TO_LANGUAGE: Record<string, string> = {
+  '.md': 'markdown', '.markdown': 'markdown',
+  '.json': 'json', '.jsonc': 'json',
+  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml',
+  '.xml': 'xml', '.svg': 'xml', '.html': 'html', '.htm': 'html',
+  '.py': 'python', '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+  '.ts': 'typescript', '.tsx': 'typescript',
+  '.java': 'java', '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp', '.cc': 'cpp',
+  '.cs': 'csharp', '.go': 'go', '.rs': 'rust', '.php': 'php', '.rb': 'ruby',
+  '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash', '.ps1': 'powershell',
+  '.sql': 'sql', '.css': 'css', '.scss': 'scss', '.less': 'less', '.vue': 'vue',
+  '.csv': 'csv', '.tsv': 'tsv',
+};
+
+function normalizeMimeType(mimeType: string): string {
+  return mimeType.split(';', 1)[0].trim().toLowerCase();
+}
+
+function getFileExtension(fileName?: string): string {
+  return fileName?.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
+}
+
+function isSupportedTextMime(mimeType: string): boolean {
+  return mimeType.startsWith('text/') || SUPPORTED_TEXT_MIME_TYPES.has(mimeType);
+}
+
+function resolveSupportedDocumentMime(mimeType: string, fileName?: string): string | null {
+  const normalizedMimeType = normalizeMimeType(mimeType);
+
+  if (SUPPORTED_BINARY_MIME_TYPES.has(normalizedMimeType) || isSupportedTextMime(normalizedMimeType)) {
+    return normalizedMimeType;
+  }
+
+  const ext = getFileExtension(fileName);
+  if (!ext) return null;
+  return EXTENSION_TO_MIME[ext] ?? null;
+}
 
 /**
  * Check if a MIME type (or file extension) is supported for document extraction.
  */
 export function isSupportedDocumentMime(mimeType: string, fileName?: string): boolean {
-  if (SUPPORTED_MIME_TYPES.has(mimeType)) return true;
-
-  if (fileName) {
-    const ext = fileName.toLowerCase().match(/\.[^.]+$/)?.[0];
-    if (ext && ext in EXTENSION_TO_MIME) return true;
-  }
-
-  return false;
+  return resolveSupportedDocumentMime(mimeType, fileName) !== null;
 }
 
 /**
@@ -71,14 +168,7 @@ export async function extractDocument(doc: DocumentInput): Promise<ExtractedDocu
       };
     }
 
-    // Resolve effective MIME type
-    let effectiveMime = doc.mimeType;
-    if (!SUPPORTED_MIME_TYPES.has(effectiveMime)) {
-      const ext = doc.fileName.toLowerCase().match(/\.[^.]+$/)?.[0];
-      if (ext && ext in EXTENSION_TO_MIME) {
-        effectiveMime = EXTENSION_TO_MIME[ext];
-      }
-    }
+    const effectiveMime = resolveSupportedDocumentMime(doc.mimeType, doc.fileName);
 
     switch (effectiveMime) {
       case 'application/pdf':
@@ -90,13 +180,10 @@ export async function extractDocument(doc: DocumentInput): Promise<ExtractedDocu
       case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
       case 'application/vnd.ms-excel':
         return await processExcel(buffer, doc.fileName);
+      case null:
+        return unsupportedDocument(doc.fileName, doc.mimeType);
       default:
-        return {
-          fileName: doc.fileName,
-          text: '',
-          success: false,
-          error: `不支持的文档格式: ${doc.mimeType}`,
-        };
+        return await processTextDocument(buffer, doc.fileName, effectiveMime);
     }
   } catch (err) {
     return {
@@ -106,6 +193,95 @@ export async function extractDocument(doc: DocumentInput): Promise<ExtractedDocu
       error: `文档处理失败: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+function unsupportedDocument(fileName: string, mimeType: string): ExtractedDocument {
+  return {
+    fileName,
+    text: '',
+    success: false,
+    error: `不支持的文档格式: ${mimeType}`,
+  };
+}
+
+async function processTextDocument(buffer: Buffer, fileName: string, mimeType: string): Promise<ExtractedDocument> {
+  try {
+    if (looksLikeBinaryBuffer(buffer)) {
+      return {
+        fileName,
+        text: '',
+        success: false,
+        error: '检测到疑似二进制内容，无法按文本文件读取',
+      };
+    }
+
+    const ext = getFileExtension(fileName);
+    const language = EXTENSION_TO_LANGUAGE[ext] ?? 'text';
+    const decoded = decodeTextBuffer(buffer)
+      .replace(/^\uFEFF/, '')
+      .replace(/\u0000/g, '')
+      .replace(/\r\n?/g, '\n');
+
+    const content = decoded.trim().length > 0 ? decoded.trimEnd() : '(空文件)';
+    const extractedText = [
+      `[MimeType: ${mimeType || 'text/plain'}]`,
+      `[Language: ${language}]`,
+      '````' + (language === 'text' ? '' : language),
+      content,
+      '````',
+    ].join('\n');
+
+    return { fileName, text: extractedText, success: true };
+  } catch (err) {
+    throw new Error(`文本文件处理失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function decodeTextBuffer(buffer: Buffer): string {
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    return buffer.toString('utf8', 3);
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return buffer.subarray(2).toString('utf16le');
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    const swapped = Buffer.from(buffer.subarray(2));
+    for (let index = 0; index + 1 < swapped.length; index += 2) {
+      const first = swapped[index];
+      swapped[index] = swapped[index + 1];
+      swapped[index + 1] = first;
+    }
+    return swapped.toString('utf16le');
+  }
+
+  return buffer.toString('utf8');
+}
+
+function looksLikeBinaryBuffer(buffer: Buffer): boolean {
+  let startIndex = 0;
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    startIndex = 3;
+  } else if (
+    buffer.length >= 2
+    && ((buffer[0] === 0xff && buffer[1] === 0xfe) || (buffer[0] === 0xfe && buffer[1] === 0xff))
+  ) {
+    startIndex = 2;
+  }
+
+  const sample = buffer.subarray(startIndex, Math.min(buffer.length, startIndex + 2048));
+  let suspiciousBytes = 0;
+
+  for (const byte of sample) {
+    if (byte === 0) return true;
+    const isAllowedControl = byte === 9 || byte === 10 || byte === 13;
+    if (!isAllowedControl && ((byte >= 0 && byte < 8) || (byte > 13 && byte < 32))) {
+      suspiciousBytes += 1;
+    }
+  }
+
+  return sample.length > 0 && suspiciousBytes / sample.length > 0.1;
 }
 
 // ============ PDF ============

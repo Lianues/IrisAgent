@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import { ToolDefinition} from '../../types';
-import { resolveProjectPath } from '../utils';
+import { normalizeObjectArrayArg, resolveProjectPath } from '../utils';
 
 interface InsertEntry {
   path: string;
@@ -21,6 +21,15 @@ interface InsertResult {
   line?: number;
   insertedLines?: number;
   error?: string;
+}
+
+function isInsertEntry(value: unknown): value is InsertEntry {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).path === 'string'
+    && typeof (value as Record<string, unknown>).line === 'number'
+    && typeof (value as Record<string, unknown>).content === 'string';
 }
 
 export const insertCode: ToolDefinition = {
@@ -52,8 +61,13 @@ export const insertCode: ToolDefinition = {
     },
   },
   handler: async (args) => {
-    const fileList = args.files as InsertEntry[] | undefined;
-    if(!fileList || !Array.isArray(fileList) || fileList.length === 0) {
+    const fileList = normalizeObjectArrayArg(args, {
+      arrayKey: 'files',
+      singularKeys: ['file'],
+      isEntry: isInsertEntry,
+    });
+
+    if(!fileList || fileList.length === 0) {
       throw new Error('files 参数必须是非空数组');
     }
 
