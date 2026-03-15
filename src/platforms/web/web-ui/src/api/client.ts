@@ -436,6 +436,10 @@ export function sendChat(
 
         buffer += decoder.decode(value, { stream: true })
         processBufferedEvents(false)
+
+        // await reader.read() 在数据已就绪时通过微任务恢复，不会让出给渲染引擎。
+        // 插入一个宏任务断点，确保 rAF 和浏览器渲染有机会执行，使流式内容可见。
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
       }
 
       buffer += decoder.decode()

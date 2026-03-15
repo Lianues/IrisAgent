@@ -372,9 +372,13 @@ export function createChatHandler(platform: WebPlatform) {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
       'X-Session-Id': sessionId,
     });
     res.flushHeaders();
+
+    // 禁用 Nagle 算法，确保每次 res.write() 立即发送，避免 SSE 事件被合并
+    res.socket?.setNoDelay(true);
 
     // 注册到 pending，等待 Orchestrator 处理
     platform.registerPending(sessionId, res);
