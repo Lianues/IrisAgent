@@ -23,13 +23,16 @@
       </div>
 
       <div class="settings-body">
+        <div class="settings-section-group">
+          <p class="section-group-intro">Iris 采用「主模型 + 子代理」协作模式：你在下方注册模型连接，然后为子代理绑定模型。主 AI 遇到复杂任务时会自动委派给对应子代理。</p>
+
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
               <h3>模型与凭证</h3>
-              <p>配置模型池，使用模型名称作为键，默认模型决定启动时的活动模型。</p>
+              <p>在这里添加你的 LLM 模型连接。每个模型需要一个名称、提供商、模型 ID 和 API Key。你可以注册多个模型，通过 /model 命令随时切换。</p>
             </div>
-            <span class="settings-pill">LLM</span>
+            <span class="settings-pill">模型池</span>
           </div>
 
           <div class="settings-grid two-columns" style="margin-bottom:16px">
@@ -41,7 +44,7 @@
                 :disabled="defaultModelOptions.length === 0"
                 placeholder="请先填写模型名称"
               />
-              <p class="field-hint">启动时默认使用这个模型名称。`/model` 也使用这个名称切换。</p>
+              <p class="field-hint">Iris 启动后默认使用的模型。对话中 /model 加名称可切换。</p>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end;justify-content:flex-end">
               <button class="btn-save" type="button" @click="addModelEntry">新增模型</button>
@@ -69,7 +72,7 @@
                 <div class="form-group">
                   <label>模型名称</label>
                   <input type="text" v-model="entry.modelName" placeholder="例如：gemini_flash" />
-                  <p class="field-hint">作为 llm.models 下的键，也作为 `/model` 的切换名称。</p>
+                  <p class="field-hint">给模型起个简短别名，对话中用 /model 加这个名称来切换。</p>
                 </div>
                 <div class="form-group">
                   <label>LLM 提供商</label>
@@ -114,13 +117,98 @@
           </div>
         </section>
 
+          <p class="section-group-connector">模型池中的模型可被下方子代理引用 ↓</p>
+
+        <section class="settings-section">
+          <div class="settings-section-head">
+            <div>
+              <h3>子代理类型</h3>
+              <p>子代理是主 AI 的"专职助手"。主 AI 遇到复杂任务时，会自动把子任务委派给合适类型的子代理执行。每种子代理有独立的角色、工具权限和模型。</p>
+            </div>
+            <span class="settings-pill">{{ subAgentEntries.length }} 个类型</span>
+          </div>
+
+          <div v-for="(entry, idx) in subAgentEntries" :key="entry.uid" class="tier-block">
+            <div class="tier-header" @click="entry.open = !entry.open">
+              <span class="tier-arrow" :class="{ open: entry.open }">▶</span>
+              <span class="tier-label">{{ entry.name || '未命名' }}</span>
+              <span class="tier-desc">{{ entry.description || '无描述' }} · 模型: {{ entry.modelName || '跟随活动模型' }}</span>
+              <button class="btn-mcp-remove" type="button" @click.stop="removeSubAgentEntry(idx)" title="删除子代理类型">
+                <AppIcon :name="ICONS.common.close" />
+              </button>
+            </div>
+            <div v-show="entry.open" class="tier-body">
+              <div class="settings-grid two-columns">
+                <div class="form-group">
+                  <label>类型名称</label>
+                  <input type="text" v-model="entry.name" placeholder="例如：general-purpose" />
+                  <p class="field-hint">主 AI 通过这个名称识别子代理类型，建议英文短横线命名。</p>
+                </div>
+                <div class="form-group">
+                  <label>使用模型</label>
+                  <AppSelect v-model="entry.modelName" :options="subAgentModelOptions" />
+                </div>
+                <div class="form-group full-width">
+                  <label>描述</label>
+                  <input type="text" v-model="entry.description" placeholder="面向主 LLM 的用途说明" />
+                  <p class="field-hint">这段描述会展示给主 AI，帮助它判断什么时候使用这个子代理。</p>
+                </div>
+                <div class="form-group full-width">
+                  <label>系统提示词</label>
+                  <textarea v-model="entry.systemPrompt" rows="4" placeholder="子代理的系统提示词"></textarea>
+                  <p class="field-hint">定义子代理的角色和行为准则。</p>
+                </div>
+                <div class="form-group">
+                  <label>工具策略</label>
+                  <AppSelect v-model="entry.toolMode" :options="subAgentToolModeOptions" />
+                  <p class="field-hint">控制子代理能使用哪些工具。</p>
+                </div>
+                <div class="form-group">
+                  <label>最大工具轮次</label>
+                  <input
+                    type="number"
+                    :value="entry.maxToolRoundsInput"
+                    min="1"
+                    max="999"
+                    @input="handleSubAgentMaxToolRoundsInput(entry, $event)"
+                    @blur="syncSubAgentMaxToolRoundsInput(entry)"
+                  />
+                  <p class="field-hint">子代理连续使用工具的上限。到达后停止并返回结果。</p>
+                </div>
+                <div class="form-group full-width" v-if="entry.toolMode !== 'all'">
+                  <label>{{ entry.toolMode === 'allowed' ? '工具白名单' : '工具黑名单' }}（每行一个）</label>
+                  <textarea v-model="entry.toolList" rows="3" placeholder="read_file&#10;shell&#10;..."></textarea>
+                </div>
+                <div class="settings-switch-row">
+                  <div>
+                    <span class="switch-label">并行调度</span>
+                    <p class="field-hint">开启后主 AI 可同时派出多个此类型子代理并行工作，适合互不依赖的子任务。</p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" v-model="entry.parallel" />
+                    <span class="toggle-switch-ui"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="subAgentEntries.length === 0" class="empty-state-block">
+            <p>还没有配置任何子代理类型。子代理可以帮助主 AI 并行处理复杂任务。</p>
+            <button class="btn-save" type="button" @click="loadBuiltinSubAgentDefaults">加载内置默认配置</button>
+          </div>
+
+          <button class="btn-mcp-add" type="button" @click="addSubAgentEntry">+ 新增子代理类型</button>
+        </section>
+        </div>
+
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
               <h3>系统行为</h3>
-              <p>调节提示词、工具轮次与回复方式。</p>
+              <p>控制 Iris 的基础行为：系统提示词定义默认角色与风格；工具轮次限制连续调用工具的最大次数；流式输出决定回复是逐字显示还是一次性返回。</p>
             </div>
-            <span class="settings-pill">System</span>
+            <span class="settings-pill">基础</span>
           </div>
 
           <div class="settings-grid two-columns">
@@ -181,7 +269,7 @@
           <div class="settings-section-head">
             <div>
               <h3>MCP 服务器</h3>
-              <p>连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表。</p>
+              <p>MCP 让你连接外部工具服务器。连接后，服务器提供的工具会自动出现在 AI 的能力列表中。</p>
             </div>
             <span class="settings-pill">{{ mcpServers.length }} 个服务器</span>
           </div>
@@ -267,80 +355,8 @@
         <section class="settings-section">
           <div class="settings-section-head">
             <div>
-              <h3>子代理类型</h3>
-              <p>自定义子代理类型，定义独立的系统提示词、工具策略和调度行为。</p>
-            </div>
-            <span class="settings-pill">{{ subAgentEntries.length }} 个类型</span>
-          </div>
-
-          <div v-for="(entry, idx) in subAgentEntries" :key="entry.uid" class="tier-block">
-            <div class="tier-header" @click="entry.open = !entry.open">
-              <span class="tier-arrow" :class="{ open: entry.open }">▶</span>
-              <span class="tier-label">{{ entry.name || '未命名' }}</span>
-              <span class="tier-desc">{{ entry.description || '无描述' }}</span>
-              <button class="btn-mcp-remove" type="button" @click.stop="removeSubAgentEntry(idx)" title="删除子代理类型">
-                <AppIcon :name="ICONS.common.close" />
-              </button>
-            </div>
-            <div v-show="entry.open" class="tier-body">
-              <div class="settings-grid two-columns">
-                <div class="form-group">
-                  <label>类型名称</label>
-                  <input type="text" v-model="entry.name" placeholder="例如：general-purpose" />
-                </div>
-                <div class="form-group">
-                  <label>固定模型（可选）</label>
-                  <input type="text" v-model="entry.modelName" placeholder="留空则跟随当前活动模型" />
-                </div>
-                <div class="form-group full-width">
-                  <label>描述</label>
-                  <input type="text" v-model="entry.description" placeholder="面向主 LLM 的用途说明" />
-                </div>
-                <div class="form-group full-width">
-                  <label>系统提示词</label>
-                  <textarea v-model="entry.systemPrompt" rows="4" placeholder="子代理的系统提示词"></textarea>
-                </div>
-                <div class="form-group">
-                  <label>工具策略</label>
-                  <AppSelect v-model="entry.toolMode" :options="subAgentToolModeOptions" />
-                </div>
-                <div class="form-group">
-                  <label>最大工具轮次</label>
-                  <input
-                    type="number"
-                    :value="entry.maxToolRoundsInput"
-                    min="1"
-                    max="999"
-                    @input="handleSubAgentMaxToolRoundsInput(entry, $event)"
-                    @blur="syncSubAgentMaxToolRoundsInput(entry)"
-                  />
-                </div>
-                <div class="form-group full-width" v-if="entry.toolMode !== 'all'">
-                  <label>{{ entry.toolMode === 'allowed' ? '工具白名单' : '工具黑名单' }}（每行一个）</label>
-                  <textarea v-model="entry.toolList" rows="3" placeholder="read_file&#10;shell&#10;..."></textarea>
-                </div>
-                <div class="settings-switch-row">
-                  <div>
-                    <span class="switch-label">并行调度</span>
-                    <p class="field-hint">开启后该类型的 sub_agent 调用将参与 parallel 调度。</p>
-                  </div>
-                  <label class="toggle-switch">
-                    <input type="checkbox" v-model="entry.parallel" />
-                    <span class="toggle-switch-ui"></span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <button class="btn-mcp-add" type="button" @click="addSubAgentEntry">+ 新增子代理类型</button>
-        </section>
-
-        <section class="settings-section">
-          <div class="settings-section-head">
-            <div>
               <h3>模式</h3>
-              <p>定义不同模式的系统提示词和工具策略，通过 /mode 切换。</p>
+              <p>模式让你为不同场景预设一套提示词和工具策略。例如 code 模式可限制只用代码相关工具。对话中 /mode 切换即生效。</p>
             </div>
             <span class="settings-pill">{{ modeEntries.length }} 个模式</span>
           </div>
@@ -388,7 +404,7 @@
           <div class="settings-section-head">
             <div>
               <h3>工具状态</h3>
-              <p>当前挂载到模型上下文中的可用能力。</p>
+              <p>当前 AI 可使用的所有工具（含内置和 MCP 提供的）。此列表为只读。</p>
             </div>
             <span class="settings-pill">{{ tools.length }} 个工具</span>
           </div>
@@ -650,8 +666,10 @@ const {
   handleMcpTimeoutInput,
   sanitizeMcpName,
   subAgentEntries,
+  subAgentModelOptions,
   addSubAgentEntry,
   removeSubAgentEntry,
+  loadBuiltinSubAgentDefaults,
   handleSubAgentMaxToolRoundsInput,
   syncSubAgentMaxToolRoundsInput,
   modeEntries,

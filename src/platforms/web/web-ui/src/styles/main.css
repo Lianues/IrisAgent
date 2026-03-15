@@ -4189,6 +4189,50 @@ select:focus-visible {
   color: var(--text-tertiary);
 }
 
+.settings-section-group {
+  border: 1px solid rgba(var(--tint-rgb), 0.10);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-section-group > .settings-section {
+  border: none;
+  padding: 0;
+  background: none;
+}
+
+.section-group-intro {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.section-group-connector {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  padding: 10px 0;
+  opacity: 0.7;
+}
+
+.empty-state-block {
+  text-align: center;
+  padding: 20px 16px;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  border: 1px dashed rgba(var(--tint-rgb), 0.15);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+
+.empty-state-block p {
+  margin-bottom: 12px;
+}
+
 /* ---- Deploy Studio ---- */
 .deploy-page {
   width: 100%;

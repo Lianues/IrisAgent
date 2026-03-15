@@ -420,6 +420,22 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
   const subAgentEntries = reactive<SubAgentEntry[]>([])
   const subAgentOriginalNames = ref<string[]>([])
 
+  const subAgentModelOptions = computed(() => {
+    const options: Array<{ value: string; label: string; description?: string }> = [
+      { value: '', label: '跟随当前活动模型', description: '使用与主对话相同的模型' },
+    ]
+    for (const entry of modelEntries) {
+      const name = entry.modelName.trim()
+      if (!name) continue
+      options.push({
+        value: name,
+        label: name,
+        description: `${providerLabel(entry.provider)} · ${entry.modelId || '未填写模型 ID'}`,
+      })
+    }
+    return options
+  })
+
   function addSubAgentEntry() {
     subAgentEntries.push(createSubAgentEntry())
   }
@@ -440,6 +456,42 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
 
   function syncSubAgentMaxToolRoundsInput(entry: SubAgentEntry) {
     entry.maxToolRoundsInput = String(entry.maxToolRounds)
+  }
+
+  function loadBuiltinSubAgentDefaults() {
+    if (subAgentEntries.length > 0) return
+    subAgentEntries.push(
+      createSubAgentEntry({
+        name: 'general-purpose',
+        description: '执行需要多步工具操作的复杂子任务。适合承接相对独立的子任务。',
+        systemPrompt: '你是一个通用子代理，负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。',
+        toolMode: 'excluded',
+        toolList: 'sub_agent',
+        parallel: false,
+        maxToolRounds: 200,
+        open: false,
+      }),
+      createSubAgentEntry({
+        name: 'explore',
+        description: '只读搜索和阅读文件、执行查询命令。不做修改，只返回发现的信息。',
+        systemPrompt: '你是一个只读探索代理，负责搜索和阅读信息。不要修改任何文件，只返回你发现的内容。',
+        toolMode: 'allowed',
+        toolList: 'read_file\nsearch_in_files\nshell',
+        parallel: false,
+        maxToolRounds: 200,
+        open: false,
+      }),
+      createSubAgentEntry({
+        name: 'recall',
+        description: '从长期记忆中检索相关信息。当需要回忆用户偏好、历史事实或之前保存的内容时使用。',
+        systemPrompt: '你是一个记忆召回代理。根据给定的查询，从长期记忆中尽可能全面地检索相关信息。\n\n策略：\n1. 先用原始查询搜索\n2. 如果结果不够，提取关键词重新搜索\n3. 尝试相关概念或同义词搜索\n\n将所有找到的记忆整理为清晰的摘要返回。如果没有找到任何相关记忆，明确说明。',
+        toolMode: 'allowed',
+        toolList: 'memory_search',
+        parallel: false,
+        maxToolRounds: 3,
+        open: false,
+      }),
+    )
   }
 
   function findDuplicateSubAgentNames(): string[] {
@@ -1473,8 +1525,10 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     handleMcpTimeoutInput,
     sanitizeMcpName,
     subAgentEntries,
+    subAgentModelOptions,
     addSubAgentEntry,
     removeSubAgentEntry,
+    loadBuiltinSubAgentDefaults,
     handleSubAgentMaxToolRoundsInput,
     syncSubAgentMaxToolRoundsInput,
     modeEntries,
