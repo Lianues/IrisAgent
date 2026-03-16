@@ -31,6 +31,21 @@ export function Summary({ config, onConfirm, onBack }: SummaryProps) {
     ? config.apiKey.slice(0, 4) + "••••" + config.apiKey.slice(-4)
     : "••••••••"
 
+  const maskedSecret = config.wxworkSecret.length > 8
+    ? config.wxworkSecret.slice(0, 4) + "••••" + config.wxworkSecret.slice(-4)
+    : config.wxworkSecret.length > 0 ? "••••••••" : ""
+
+  const platformDisplay = () => {
+    switch (config.platform) {
+      case "web":
+        return `Web (端口 ${config.webPort})`
+      case "wxwork":
+        return "企业微信 (WXWork)"
+      default:
+        return "Console (TUI)"
+    }
+  }
+
   return (
     <box flexDirection="column" gap={1} padding={1}>
       <text fg="#6c5ce7" decoration="bold">
@@ -60,8 +75,20 @@ export function Summary({ config, onConfirm, onBack }: SummaryProps) {
         </text>
         <text>
           <span fg="#636e72">{"平台:     "}</span>
-          <span fg="#dfe6e9">{config.platform === "web" ? `Web (端口 ${config.webPort})` : "Console (TUI)"}</span>
+          <span fg="#dfe6e9">{platformDisplay()}</span>
         </text>
+        {config.platform === "wxwork" && (
+          <box flexDirection="column">
+            <text>
+              <span fg="#636e72">{"Bot ID:   "}</span>
+              <span fg="#dfe6e9">{config.wxworkBotId}</span>
+            </text>
+            <text>
+              <span fg="#636e72">{"Secret:   "}</span>
+              <span fg="#dfe6e9">{maskedSecret}</span>
+            </text>
+          </box>
+        )}
       </box>
 
       {!confirmed ? (

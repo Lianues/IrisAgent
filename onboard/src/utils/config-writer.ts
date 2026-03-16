@@ -14,8 +14,12 @@ export interface OnboardConfig {
   model: string
   baseUrl: string
   modelName: string
-  platform: "console" | "web"
+  platform: "console" | "web" | "wxwork"
   webPort: number
+  /** 企业微信 Bot ID（platform === 'wxwork' 时使用） */
+  wxworkBotId: string
+  /** 企业微信 Bot Secret（platform === 'wxwork' 时使用） */
+  wxworkSecret: string
 }
 
 /** Provider 默认值 */
@@ -135,6 +139,17 @@ export function writeConfigs(irisDir: string, config: OnboardConfig): void {
       ...existingWeb,
       port: config.webPort,
       host: "0.0.0.0",
+    }
+  }
+  if (config.platform === "wxwork") {
+    // 保留已有的 wxwork 配置（showToolStatus 等），仅更新 botId 和 secret
+    const existingWxwork = (existingPlatform.wxwork && typeof existingPlatform.wxwork === "object")
+      ? existingPlatform.wxwork as Record<string, unknown>
+      : {}
+    platformConfig.wxwork = {
+      ...existingWxwork,
+      botId: config.wxworkBotId,
+      secret: config.wxworkSecret,
     }
   }
   writeYaml(platformPath, platformConfig, "平台配置")

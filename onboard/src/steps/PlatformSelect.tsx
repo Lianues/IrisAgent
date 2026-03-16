@@ -16,44 +16,99 @@ const PLATFORMS = [
     label: "Web (HTTP + GUI)",
     desc: "浏览器访问，适合服务器部署和远程使用",
   },
+  {
+    value: "wxwork",
+    label: "企业微信 (WXWork)",
+    desc: "企业微信智能机器人，WebSocket 长连接模式",
+  },
 ] as const
 
+type SubStep = "select" | "webPort" | "wxworkBotId" | "wxworkSecret"
+
 interface PlatformSelectProps {
-  onSelect: (platform: "console" | "web", port: number) => void
+  onSelect: (platform: "console" | "web" | "wxwork", opts: {
+    port?: number
+    wxworkBotId?: string
+    wxworkSecret?: string
+  }) => void
   onBack: () => void
 }
 
 export function PlatformSelect({ onSelect, onBack }: PlatformSelectProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [showPortInput, setShowPortInput] = useState(false)
+  const [subStep, setSubStep] = useState<SubStep>("select")
+
+  // Web 端口输入
   const [portState, portActions] = useTextInput("8192")
+
+  // 企业微信 Bot ID 输入
+  const [botIdState, botIdActions] = useTextInput("")
+  // 企业微信 Secret 输入
+  const [secretState, secretActions] = useTextInput("")
+
   const cursorVisible = useCursorBlink()
 
   useKeyboard((key) => {
-    if (showPortInput) {
+    // ---- Web 端口输入 ----
+    if (subStep === "webPort") {
       if (key.name === "return") {
         const portNum = parseInt(portState.value, 10)
         if (portNum > 0 && portNum < 65536) {
-          onSelect("web", portNum)
+          onSelect("web", { port: portNum })
         }
         return
       }
       if (key.name === "escape") {
-        setShowPortInput(false)
+        setSubStep("select")
         return
       }
-      // 只允许数字输入——拦截字符，只放行数字
+      // 只允许数字输入
       if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
         if (/^\d$/.test(key.sequence)) {
           portActions.handleKey(key)
         }
         return
       }
-      // 其他编辑键（左右移动、backspace 等）正常委托
       portActions.handleKey(key)
       return
     }
 
+    // ---- 企业微信 Bot ID 输入 ----
+    if (subStep === "wxworkBotId") {
+      if (key.name === "return") {
+        if (botIdState.value.trim().length > 0) {
+          setSubStep("wxworkSecret")
+        }
+        return
+      }
+      if (key.name === "escape") {
+        setSubStep("select")
+        return
+      }
+      botIdActions.handleKey(key)
+      return
+    }
+
+    // ---- 企业微信 Secret 输入 ----
+    if (subStep === "wxworkSecret") {
+      if (key.name === "return") {
+        if (secretState.value.trim().length > 0) {
+          onSelect("wxwork", {
+            wxworkBotId: botIdState.value.trim(),
+            wxworkSecret: secretState.value.trim(),
+          })
+        }
+        return
+      }
+      if (key.name === "escape") {
+        setSubStep("wxworkBotId")
+        return
+      }
+      secretActions.handleKey(key)
+      return
+    }
+
+    // ---- 平台选择列表 ----
     if (key.name === "up" || key.name === "k") {
       setSelectedIndex((i) => Math.max(0, i - 1))
     }
@@ -63,9 +118,11 @@ export function PlatformSelect({ onSelect, onBack }: PlatformSelectProps) {
     if (key.name === "return") {
       const selected = PLATFORMS[selectedIndex].value
       if (selected === "web") {
-        setShowPortInput(true)
+        setSubStep("webPort")
+      } else if (selected === "wxwork") {
+        setSubStep("wxworkBotId")
       } else {
-        onSelect("console", 8192)
+        onSelect("console", {})
       }
     }
     if (key.name === "escape") {
@@ -83,7 +140,7 @@ export function PlatformSelect({ onSelect, onBack }: PlatformSelectProps) {
       </text>
       <text fg="#636e72">使用 ↑↓ 选择，Enter 确认，Esc 返回</text>
 
-      {!showPortInput ? (
+      {subStep === "select" && (
         <box flexDirection="column" gap={0}>
           {PLATFORMS.map((p, i) => {
             const isSelected = i === selectedIndex
@@ -104,7 +161,9 @@ export function PlatformSelect({ onSelect, onBack }: PlatformSelectProps) {
             )
           })}
         </box>
-      ) : (
+      )}
+
+      {subStep === "webPort" && (
         <box flexDirection="column" gap={1}>
           <text fg="#dfe6e9">Web 服务端口：</text>
           <box borderStyle="single" borderColor="#00b894" paddingLeft={1} paddingRight={1}>
@@ -117,6 +176,39 @@ export function PlatformSelect({ onSelect, onBack }: PlatformSelectProps) {
             />
           </box>
           <text fg="#636e72">Enter 确认  |  Esc 返回选择</text>
+        </box>
+      )}
+
+      {subStep === "wxworkBotId" && (
+        <box flexDirection="column" gap={1}>
+          <text fg="#dfe6e9">企业微信 Bot ID：</text>
+          <text fg="#636e72">在企业微信管理后台 → 应用管理 → 智能机器人 中获取</text>
+          <box borderStyle="single" borderColor="#00b894" paddingLeft={1} paddingRight={1}>
+            <InputDisplay
+              value={botIdState.value}
+              cursor={botIdState.cursor}
+              isActive={true}
+              cursorVisible={cursorVisible}
+              placeholder="aibXXXXXXXXXXXX"
+            />
+          </box>
+          <text fg="#636e72">Enter 下一步  |  Esc 返回选择</text>
+        </box>
+      )}
+
+      {subStep === "wxworkSecret" && (
+        <box flexDirection="column" gap={1}>
+          <text fg="#dfe6e9">企业微信 Bot Secret：</text>
+          <box borderStyle="single" borderColor="#00b894" paddingLeft={1} paddingRight={1}>
+            <InputDisplay
+              value={secretState.value}
+              cursor={secretState.cursor}
+              isActive={true}
+              cursorVisible={cursorVisible}
+              placeholder="your-bot-secret"
+            />
+          </box>
+          <text fg="#636e72">Enter 确认  |  Esc 返回 Bot ID</text>
         </box>
       )}
     </box>
