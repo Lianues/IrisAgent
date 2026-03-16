@@ -53,11 +53,9 @@ WeCom 等平台需要 `/stop` 指令中止正在进行的 LLM 调用和工具执
 - **欢迎页 Logo 居中**：无消息时的 IRIS ASCII Logo 居中显示，颜色恢复为主题紫色。
 - **自动滚动**：消息区域增加 `stickyScroll` + `stickyStart="bottom"`，新消息自动滚动到底部。
 
-#### 流式消息去重
+#### ~~流式消息去重~~（已由上游修复，本 PR 移除）
 
-修复了 upstream/main 中已存在的 bug：流式模式下 `endStream()` commit 内容后，`assistant:content` 事件又带全量 parts 调用 `finalizeAssistantParts`，导致同一条消息内文字重复。
-
-修复方式：在 `ConsolePlatform` 中新增 `isStreamingCycle` 标志，流式周期内的 `assistant:content` 事件仅更新 meta（token 统计、耗时），不再重复写入内容。
+此 bug（流式 `endStream()` commit 后 `finalizeAssistantParts` 重复写入）已由上游 `6c07ecc` 通过 `uncommittedStreamPartsRef` 暂存机制修复。本 PR 中原有的 `isStreamingCycle` 方案已移除，避免死代码。
 
 ### 3. /undo 和 /redo 指令
 

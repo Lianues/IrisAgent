@@ -105,9 +105,6 @@ export class ConsolePlatform extends PlatformAdapter {
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
 
-  /** 当前是否正在流式输出周期中（stream:start → stream:end 之间） */
-  private isStreamingCycle = false;
-
   /** redo 用的 Content 栈（与前端 undoRedoRef 对应） */
   private redoContentStack: Content[] = [];
 
@@ -147,20 +144,13 @@ export class ConsolePlatform extends PlatformAdapter {
     this.backend.on('assistant:content', (sid: string, content: Content) => {
       if (sid === this.sessionId) {
         const meta = getMessageMeta(content);
-        if (this.isStreamingCycle) {
-          // 流式周期内，endStream 已经 commit 了完整内容，只需更新 meta
-          this.isStreamingCycle = false;
-          if (meta) this.appHandle?.finalizeAssistantParts([], meta);
-        } else {
-          const parts = convertPartsToMessageParts(content.parts, 'queued');
-          this.appHandle?.finalizeAssistantParts(parts, meta);
-        }
+        const parts = convertPartsToMessageParts(content.parts, 'queued');
+        this.appHandle?.finalizeAssistantParts(parts, meta);
       }
     });
 
     this.backend.on('stream:start', (sid: string) => {
       if (sid === this.sessionId) {
-        this.isStreamingCycle = true;
         this.appHandle?.startStream();
       }
     });
