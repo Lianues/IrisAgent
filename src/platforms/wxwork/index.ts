@@ -608,6 +608,7 @@ export class WXWorkPlatform extends PlatformAdapter {
         return true;
       }
       cs.stopped = true;
+      this.backend.abortChat(cs.sessionId);
       // 立即关闭流式消息
       if (cs.frame && cs.stream) {
         if (cs.stream.throttleTimer) {
@@ -620,8 +621,6 @@ export class WXWorkPlatform extends PlatformAdapter {
         this.wsClient.replyStream(cs.frame, cs.stream.streamId, stopText, true).catch(() => {});
         cs.stream = null;
       }
-      // Backend 后台的 LLM 调用会继续完成，但 stopped=true 会使后续事件全部忽略
-      // done 事件到来时会释放 busy 锁并处理 pendingMessages
       logger.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
       return true;
     }
@@ -636,6 +635,7 @@ export class WXWorkPlatform extends PlatformAdapter {
       // 先中止当前回复
       if (cs.busy) {
         cs.stopped = true;
+        this.backend.abortChat(cs.sessionId);
         if (cs.frame && cs.stream) {
           if (cs.stream.throttleTimer) {
             clearTimeout(cs.stream.throttleTimer);
