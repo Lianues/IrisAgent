@@ -10,7 +10,7 @@ import { createRoot } from '@opentui/react';
 import { PlatformAdapter } from '../base';
 import { Backend } from '../../core/backend';
 import { SessionMeta } from '../../storage/base';
-import { Content, Part, ToolInvocation, ToolStatus, UsageMetadata } from '../../types';
+import { Content, Part, ToolInvocation, ToolStatus, UsageMetadata, isFunctionResponsePart } from '../../types';
 import { setGlobalLogLevel, LogLevel } from '../../logger/index';
 import type { MCPManager } from '../../mcp';
 import { App, AppHandle, MessageMeta } from './App';
@@ -105,8 +105,8 @@ export class ConsolePlatform extends PlatformAdapter {
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
 
-  /** redo 用的 Content 栈（与前端 undoRedoRef 对应） */
-  private redoContentStack: Content[] = [];
+  /** redo 用的 Content 组栈（每个元素是一次 undo 移除的一组 Content） */
+  private redoContentStack: Content[][] = [];
 
   /** 串行化 undo/redo 持久化操作，防止并发写入 */
   private historyMutationQueue: Promise<void> = Promise.resolve();
@@ -218,27 +218,49 @@ export class ConsolePlatform extends PlatformAdapter {
           resolve();
         },
         onSubmit: (text: string) => this.handleInput(text),
-        onUndo: (newLength: number) => {
+        onUndo: (removedRole: string) => {
           // 串行化：排入持久化队列，保证多次 undo 不会并发写入
           this.enqueueHistoryMutation(async () => {
             const history = await this.backend.getHistory(this.sessionId);
-            if (history.length > newLength) {
-              this.redoContentStack.push(history[history.length - 1]);
-              if (this.redoContentStack.length > 200) {
-                this.redoContentStack.splice(0, this.redoContentStack.length - 200);
+            if (history.length === 0) return;
+
+            let removeCount = 0;
+            if (removedRole === 'assistant') {
+              // assistant 消息在后端对应多条 Content（model + user/functionResponse 工具循环）
+              // 从末尾向前扫描，移除所有 role=model 和 role=user（仅含 functionResponse）的条目
+              for (let i = history.length - 1; i >= 0; i--) {
+                const entry = history[i];
+                if (entry.role === 'model') {
+                  removeCount++;
+                } else if (entry.role === 'user' && entry.parts.every(p => isFunctionResponsePart(p))) {
+                  removeCount++;
+                } else {
+                  break;
+                }
               }
+              if (removeCount === 0) removeCount = 1; // fallback
+            } else {
+              removeCount = 1;
             }
-            await this.backend.truncateHistory(this.sessionId, newLength);
-          });
+
+            const removedGroup = history.slice(history.length - removeCount);
+            this.redoContentStack.push(removedGroup);
+            if (this.redoContentStack.length > 200) {
+              this.redoContentStack.splice(0, this.redoContentStack.length - 200);
+            }
+            await this.backend.truncateHistory(this.sessionId, history.length - removeCount);
+          }).catch(err => console.warn('[ConsolePlatform] onUndo 持久化失败:', err));
         },
         onRedo: (_restoredRole: string) => {
           // 串行化：排入持久化队列
           this.enqueueHistoryMutation(async () => {
-            const content = this.redoContentStack.pop();
-            if (content) {
-              await this.backend.getStorage().addMessage(this.sessionId, content);
+            const group = this.redoContentStack.pop();
+            if (group) {
+              for (const content of group) {
+                await this.backend.addMessage(this.sessionId, content);
+              }
             }
-          });
+          }).catch(err => console.warn('[ConsolePlatform] onRedo 持久化失败:', err));
         },
         onClearRedoStack: () => {
           this.redoContentStack.length = 0;

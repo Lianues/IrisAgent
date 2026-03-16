@@ -100,7 +100,7 @@ interface SwitchModelResult { ok: boolean; message: string; modelId?: string; mo
 interface AppProps {
   onReady: (handle: AppHandle) => void;
   onSubmit: (text: string) => void;
-  onUndo: (newLength: number) => void;
+  onUndo: (removedRole: string) => void;
   onRedo: (restoredRole: string) => void;
   onClearRedoStack: () => void;
   onToolApproval: (toolId: string, approved: boolean) => void;
@@ -265,21 +265,25 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
     if (text === '/exit') { onExit(); return; }
     if (text === '/new') { clearRedo(undoRedoRef.current); onClearRedoStack(); setMessages([]); toolInvocationsRef.current = []; onNewSession(); return; }
     if (text === '/undo') {
+      let removedRole: string | null = null;
       setMessages((prev) => {
         const result = performUndo(prev, undoRedoRef.current);
         if (!result) return prev;
-        onUndo(result.messages.length);
+        removedRole = result.removed.role;
         return result.messages;
       });
+      if (removedRole) onUndo(removedRole);
       return;
     }
     if (text === '/redo') {
+      let restoredRole: string | null = null;
       setMessages((prev) => {
         const result = performRedo(prev, undoRedoRef.current);
         if (!result) return prev;
-        onRedo(result.restored.role);
+        restoredRole = result.restored.role;
         return result.messages;
       });
+      if (restoredRole) onRedo(restoredRole);
       return;
     }
     if (text === '/load') { onListSessions().then(metas => { setSessionList(metas); setSelectedIndex(0); setViewMode('session-list'); }); return; }
@@ -527,29 +531,6 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
           <text fg={C.dim}>{isGenerating ? 'esc 中断生成' : 'tab 补全'}  ·  ctrl+c 退出</text>
         </box>
       </box>
-
-      {/* 工具审批 / 输入栏 */}
-      {pendingApprovals.length > 0 ? (
-        <box paddingLeft={1} paddingRight={1} flexShrink={0} flexDirection="column">
-          <text>
-            <span fg={C.warn}><strong>? </strong></span>
-            <span fg={C.text}>确认执行 </span>
-            <span fg={C.warn}><strong>{pendingApprovals[0].toolName}</strong></span>
-            {pendingApprovals.length > 1 ? <span fg={C.dim}>{`  (剩余 ${pendingApprovals.length - 1} 个)`}</span> : null}
-          </text>
-          <text>
-            <span fg={C.dim}>{'  ←→ 切换  Enter 确认  '}</span>
-            {approvalChoice === 'approve'
-              ? <span><span fg={C.accent} bg="#1e3a2f"><strong> ✔ 批准(Y) </strong></span><span fg={C.dim}>   ✘ 拒绝(N) </span></span>
-              : <span><span fg={C.dim}>   ✔ 批准(Y) </span><span fg={C.error} bg="#3a1e1e"><strong> ✘ 拒绝(N) </strong></span></span>
-            }
-          </text>
-        </box>
-      ) : (
-        <box paddingLeft={1} paddingRight={1} flexShrink={0}>
-          <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
-        </box>
-      )}
     </box>
   );
 }

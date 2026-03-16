@@ -49,7 +49,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.2"
 
       # ── 构建 Iris 主体 ────────────────────
       - name: Install dependencies
@@ -88,11 +88,11 @@ jobs:
 
           # Iris 运行时文件
           cp -r dist/                         "$RELEASE_DIR/"
-          cp -r node_modules/                 "$RELEASE_DIR/"
           cp -r data/configs.example/         "$RELEASE_DIR/data/configs.example/"
           cp -r deploy/                       "$RELEASE_DIR/deploy/"
           cp -r src/platforms/web/web-ui/dist/ "$RELEASE_DIR/src/platforms/web/web-ui/dist/" 2>/dev/null || true
           cp    package.json                  "$RELEASE_DIR/"
+          cp    bun.lock                      "$RELEASE_DIR/"
           cp    README.md                     "$RELEASE_DIR/"
 
           # 提示词模板
@@ -103,8 +103,12 @@ jobs:
           cp onboard/dist/iris-onboard-linux-${{ matrix.arch }} "$RELEASE_DIR/bin/iris-onboard"
           chmod +x "$RELEASE_DIR/bin/iris-onboard"
 
-          # 清理开发依赖和不必要文件
+          # 仅安装生产依赖（排除 devDependencies）
+          cd "$RELEASE_DIR" && bun install --production --frozen-lockfile && cd ..
+
+          # 清理不必要文件
           rm -rf "$RELEASE_DIR/node_modules/.cache"
+          rm -f  "$RELEASE_DIR/bun.lock"
           find "$RELEASE_DIR/node_modules" -name "*.ts" -not -name "*.d.ts" -delete 2>/dev/null || true
           find "$RELEASE_DIR/node_modules" -name "*.map" -delete 2>/dev/null || true
           find "$RELEASE_DIR/node_modules" -type d -name "__tests__" -exec rm -rf {} + 2>/dev/null || true

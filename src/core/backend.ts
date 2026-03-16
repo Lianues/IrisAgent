@@ -449,6 +449,11 @@ export class Backend extends EventEmitter {
     await this.storage.truncateHistory(sessionId, keepCount);
   }
 
+  /** 添加消息到会话历史 */
+  async addMessage(sessionId: string, content: Content): Promise<void> {
+    await this.storage.addMessage(sessionId, content);
+  }
+
   /** 切换工作目录 */
   setCwd(dirPath: string): void {
     const resolved = path.resolve(process.cwd(), dirPath);
