@@ -95,10 +95,10 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
     inputActions.handleKey(key);
   });
 
-  // 处理粘贴事件：将换行替换为空格后插入输入框，避免多行文本被拆成多条消息
+  // 处理粘贴事件：保留换行符，支持多行粘贴
   usePaste((text) => {
     if (disabled) return;
-    const cleaned = text.replace(/[\r\n]+/g, ' ').trim();
+    const cleaned = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
     if (cleaned) {
       inputActions.insert(cleaned);
     }

@@ -38,16 +38,24 @@ export function InputDisplay({ value, cursor, isActive, cursorVisible, placehold
   }
 
   const before = display.slice(0, cursor)
-  const at = cursor < display.length ? display[cursor] : ''
+  const rawAt = cursor < display.length ? display[cursor] : ''
   const after = cursor < display.length ? display.slice(cursor + 1) : ''
+  const atNewline = rawAt === '\n'
 
   return (
     <text>
       <span fg={C.text}>{before}</span>
-      {at ? (
-        cursorVisible
-          ? <span bg={C.accent} fg={C.cursorFg}>{at}</span>
-          : <span fg={C.text}>{at}</span>
+      {rawAt ? (
+        atNewline ? (
+          <>
+            {cursorVisible && <span bg={C.accent} fg={C.cursorFg}>{' '}</span>}
+            <span fg={C.text}>{'\n'}</span>
+          </>
+        ) : (
+          cursorVisible
+            ? <span bg={C.accent} fg={C.cursorFg}>{rawAt}</span>
+            : <span fg={C.text}>{rawAt}</span>
+        )
       ) : (
         cursorVisible
           ? <span bg={C.accent} fg={C.cursorFg}>{' '}</span>
