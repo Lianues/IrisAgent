@@ -88,6 +88,17 @@ function flushPendingThoughtDelta() {
   pendingThoughtDelta = ''
 }
 
+/** 释放消息中所有 blob: URL，防止浏览器 URL store 泄漏 */
+function revokeBlobUrls(msgs: Message[]) {
+  for (const msg of msgs) {
+    for (const part of msg.parts) {
+      if (part.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(part.previewUrl)
+      }
+    }
+  }
+}
+
 function resetStreamingState() {
   cancelScheduledStreamingFlush()
   pendingStreamingDelta = ''
@@ -125,6 +136,10 @@ function queueStreamingDelta(delta: string) {
   pendingStreamingDelta += delta
   if (!isStreaming.value) {
     isStreaming.value = true
+    // 立即刷新首个增量，使流式气泡 (v-if="isStreaming && streamingText") 马上可见，
+    // 不必等到下一帧 rAF 才设置 streamingText。
+    flushPendingStreamingDelta()
+    return
   }
 
   if (scheduledStreamingFlushId !== null) return
@@ -149,6 +164,8 @@ function queueThoughtDelta(delta: string, durationMs?: number) {
   }
   if (!isStreaming.value) {
     isStreaming.value = true
+    flushPendingThoughtDelta()
+    return
   }
 
   if (scheduledThoughtFlushId !== null) return
@@ -231,6 +248,7 @@ async function loadMessagesForSession(id: string | null, preserveExisting = fals
   deletingMessageIndex.value = null
 
   if (!id) {
+    revokeBlobUrls(messages.value)
     messages.value = []
     messagesLoading.value = false
     return
@@ -239,12 +257,14 @@ async function loadMessagesForSession(id: string | null, preserveExisting = fals
   messagesLoading.value = true
 
   if (!preserveExisting) {
+    revokeBlobUrls(messages.value)
     messages.value = []
   }
 
   try {
     const data = await api.getMessages(id)
     if (version !== loadVersion) return
+    revokeBlobUrls(messages.value)
     messages.value = data.messages || []
   } catch (err) {
     if (version !== loadVersion) return
@@ -383,6 +403,7 @@ export function useChat() {
       }
 
       resetStreamingState()
+      revokeBlobUrls(messages.value.slice(targetIndex))
       messages.value.splice(targetIndex)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
@@ -651,6 +672,7 @@ export function useChat() {
       }
     }
 
+    revokeBlobUrls(messages.value.slice(retryUserIndex))
     messages.value.splice(retryUserIndex)
 
     sending.value = false

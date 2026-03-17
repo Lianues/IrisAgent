@@ -269,6 +269,8 @@ export async function cfSetup(apiToken: string): Promise<CfSetupResponse> {
 
 // ============ SSE 聊天 ============
 
+let _dispatchCount = 0
+
 function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): void {
   const dataLines = rawBlock
     .split(/\r?\n/)
@@ -279,8 +281,12 @@ function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): vo
 
   try {
     const event = JSON.parse(dataLines.join('\n'))
+    _dispatchCount++
+    if (_dispatchCount <= 5 || event.type !== 'delta') {
+      console.log(`[SSE-dispatch #${_dispatchCount}] type=${event.type}`)
+    }
     switch (event.type) {
-      case 'stream_start': callbacks.onStreamStart?.(); break
+      case 'stream_start': _dispatchCount = 0; callbacks.onStreamStart?.(); break
       case 'delta': callbacks.onDelta?.(event.text); break
       case 'thought_delta': callbacks.onThoughtDelta?.(event.text, event.durationMs); break
       case 'message': callbacks.onMessage?.(event.text); break
@@ -417,7 +423,7 @@ export function sendChat(
       const decoder = new TextDecoder()
       let buffer = ''
 
-      const processBufferedEvents = (flushRemainder = false) => {
+      const processBufferedEvents = async (flushRemainder = false) => {
         const blocks = buffer.split(/\r?\n\r?\n/)
         if (!flushRemainder) {
           buffer = blocks.pop() || ''
@@ -425,17 +431,32 @@ export function sendChat(
           buffer = ''
         }
 
-        for (const block of blocks) {
-          dispatchChatStreamEvent(block, callbacks)
+        for (let i = 0; i < blocks.length; i++) {
+          dispatchChatStreamEvent(blocks[i], callbacks)
+          // 当多个 SSE 事件落入同一个 reader.read() 缓冲区时，
+          // 在事件之间让出到宏任务，使 rAF 回调有机会将流式增量
+          // 刷新到 streamingText 并触发 Vue 渲染。
+          // 否则 onDone 会在同一同步块中清除流式状态，流式文本永远不会渲染。
+          if (i < blocks.length - 1) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          }
         }
       }
+
+      let _readCount = 0
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        processBufferedEvents(false)
+        _readCount++
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
+        const blockCount = (chunk.match(/\r?\n\r?\n/g) || []).length
+        if (_readCount <= 5 || _readCount % 10 === 0) {
+          console.log(`[SSE-client] read#${_readCount}: ${chunk.length} bytes, ~${blockCount} events`)
+        }
+        await processBufferedEvents(false)
 
         // await reader.read() 在数据已就绪时通过微任务恢复，不会让出给渲染引擎。
         // 插入一个宏任务断点，确保 rAF 和浏览器渲染有机会执行，使流式内容可见。
@@ -443,7 +464,7 @@ export function sendChat(
       }
 
       buffer += decoder.decode()
-      processBufferedEvents(true)
+      await processBufferedEvents(true)
     })
     .catch((err) => {
       if (err.name !== 'AbortError') callbacks.onError?.(err.message)

@@ -668,6 +668,10 @@ export class Backend extends EventEmitter {
       let content: Content;
       if (this.stream) {
         content = await this.callLLMStream(sessionId, request, modelName, callSignal);
+        // 让 stream:end 的 SSE 数据在 assistant:content 之前到达浏览器，
+        // 使客户端有机会在 onStreamEnd 中 flush 流式文本并触发渲染，
+        // 再收到 onAssistantContent 设置 receivedFinalAssistantPayload。
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
       } else {
         const response = await this.router.chat(request, modelName, callSignal);
         content = response.content;
@@ -816,8 +820,24 @@ export class Backend extends EventEmitter {
         this.emit('stream:chunk', sessionId, chunk.textDelta);
       }
       if (chunk.usageMetadata) usageMetadata = chunk.usageMetadata;
+
+      // 当 LLM 代理将流式响应缓冲后一次性返回时，async generator 的所有 yield
+      // 通过微任务链连续恢复，res.write() 调用不会真正 flush 到 TCP socket。
+      // 插入宏任务断点让事件循环走过 I/O 阶段，确保每个 chunk 的 SSE 数据
+      // 被操作系统发送到客户端，使浏览器端能逐步接收到流式事件。
+      if (deltaParts.length > 0) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
     }
 
+    // 诊断日志：流式 chunk 到达时间分布
+    if (streamOutputChunkCount > 0) {
+      const spread = (streamOutputLastChunkAt ?? 0) - (streamOutputFirstChunkAt ?? 0);
+      logger.info(`[Stream] ${streamOutputChunkCount} chunks, spread=${spread}ms (first→last)`);
+    }
+
+    // 确保最后一个 chunk 的 SSE 数据已刷新到 TCP socket，再发送 stream:end
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
     this.emit('stream:end', sessionId, usageMetadata);
     if (usageMetadata) {
       this.emit('usage', sessionId, usageMetadata);

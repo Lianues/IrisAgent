@@ -240,6 +240,7 @@ export class WebPlatform extends PlatformAdapter {
 
   removePending(sessionId: string): void {
     this.pendingResponses.delete(sessionId);
+    this.sseWriteCount.delete(sessionId);
   }
 
   /** 分发用户消息到 Backend */
@@ -259,10 +260,20 @@ export class WebPlatform extends PlatformAdapter {
 
   // ============ 内部方法 ============
 
+  /** 每个 session 写入的 SSE 事件计数，用于调试流式传输 */
+  private sseWriteCount = new Map<string, number>();
+
   private writeSSE(sessionId: string, data: any): void {
     const res = this.pendingResponses.get(sessionId);
     if (!res || res.writableEnded) return;
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    const count = (this.sseWriteCount.get(sessionId) ?? 0) + 1;
+    this.sseWriteCount.set(sessionId, count);
+    const ok = res.write(`data: ${JSON.stringify(data)}\n\n`);
+    if (data.type === 'delta' && (count <= 3 || count % 20 === 0)) {
+      logger.info(`[SSE #${count}] delta (${data.text?.length ?? 0} chars) write=${ok}`);
+    } else if (data.type !== 'delta') {
+      logger.info(`[SSE #${count}] ${data.type} write=${ok}`);
+    }
   }
 
   private setupRoutes(): void {
