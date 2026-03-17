@@ -4,21 +4,22 @@
   "description": "模块化、可解耦的 AI 聊天框架，支持多平台、多 LLM、工具调用",
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck:ui && npm run build:ui && tsc -p tsconfig.build.json",
+    "build": "npm run typecheck:ui && npm run build:ui && npx tsc -p tsconfig.build.json",
+    "build:compile": "bun run script/build.ts",
     "build:ui": "cd src/platforms/web/web-ui && npm run build",
     "typecheck:ui": "cd src/platforms/web/web-ui && npm run typecheck",
     "lint:ui": "cd src/platforms/web/web-ui && npm run lint",
     "check:ui": "cd src/platforms/web/web-ui && npm run check",
     "dev:ui": "cd src/platforms/web/web-ui && npm run dev",
-    "start": "bun src/index.ts",
-    "dev": "bun src/index.ts",
+    "start": "tsx src/index.ts",
+    "dev": "tsx src/index.ts",
+    "start:bun": "bun src/index.ts",
+    "dev:bun": "bun src/index.ts",
     "setup": "npm install --legacy-peer-deps && cd src/platforms/web/web-ui && npm install",
     "test": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@opentui/core": "latest",
-    "@opentui/react": "latest",
     "@wecom/aibot-node-sdk": "^1.0.2",
     "better-sqlite3": "^12.6.2",
     "cli-highlight": "^2.1.11",
@@ -36,6 +37,8 @@
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
+    "@opentui/core": "latest",
+    "@opentui/react": "latest",
     "libreoffice-convert": "^1.8.1"
   },
   "devDependencies": {

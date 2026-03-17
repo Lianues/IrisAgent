@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+
+/**
+ * Iris npm 启动器
+ *
+ * 纯 Node.js 脚本，负责查找并执行当前平台对应的预编译 Iris 二进制。
+ * 该脚本随 npm 包装器包 (iris-ai) 一起发布，用户通过 npm install -g iris-ai 安装后
+ * 即可直接执行 iris 命令。
+ *
+ * 二进制查找优先级：
+ *   1. IRIS_BIN_PATH 环境变量
+ *   2. postinstall 缓存的 bin/.iris 硬链接
+ *   3. 遍历 node_modules 搜索平台包
+ */
+
+const childProcess = require("child_process")
+const fs = require("fs")
+const path = require("path")
+const os = require("os")
+
+function run(target) {
+  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+    stdio: "inherit",
+  })
+  if (result.error) {
+    console.error(result.error.message)
+    process.exit(1)
+  }
+  const code = typeof result.status === "number" ? result.status : 0
+  process.exit(code)
+}
+
+// 1. 环境变量覆盖
+const envPath = process.env.IRIS_BIN_PATH
+if (envPath) {
+  run(envPath)
+}
+
+const scriptPath = fs.realpathSync(__filename)
+const scriptDir = path.dirname(scriptPath)
+
+// 2. postinstall 缓存
+const cached = path.join(scriptDir, ".iris")
+if (fs.existsSync(cached)) {
+  run(cached)
+}
+
+// 3. 平台检测
+const platformMap = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "windows",
+}
+const archMap = {
+  x64: "x64",
+  arm64: "arm64",
+  arm: "arm",
+}
+
+let platform = platformMap[os.platform()]
+if (!platform) {
+  platform = os.platform()
+}
+let arch = archMap[os.arch()]
+if (!arch) {
+  arch = os.arch()
+}
+const base = "iris-" + platform + "-" + arch
+const binary = platform === "windows" ? "iris.exe" : "iris"
+
+// 4. 搜索 node_modules
+function findBinary(startDir) {
+  let current = startDir
+  for (;;) {
+    const modules = path.join(current, "node_modules")
+    if (fs.existsSync(modules)) {
+      const candidate = path.join(modules, base, "bin", binary)
+      if (fs.existsSync(candidate)) return candidate
+    }
+    const parent = path.dirname(current)
+    if (parent === current) {
+      return
+    }
+    current = parent
+  }
+}
+
+const resolved = findBinary(scriptDir)
+if (!resolved) {
+  console.error(
+    "未找到当前平台的 Iris 二进制。" +
+    " 可尝试手动安装 \"" + base + "\" 包。"
+  )
+  process.exit(1)
+}
+
+run(resolved)

@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * apply_diff 工具渲染器
  */

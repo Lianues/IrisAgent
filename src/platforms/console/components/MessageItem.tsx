@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * 单条消息渲染
  */

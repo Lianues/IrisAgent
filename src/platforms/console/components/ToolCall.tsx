@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * 工具调用卡片
  */

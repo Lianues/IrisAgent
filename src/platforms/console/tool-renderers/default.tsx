@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * 默认工具结果渲染器
  * 将 JSON 压平为一行，最多显示 80 字符。

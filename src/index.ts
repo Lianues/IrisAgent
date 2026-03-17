@@ -207,6 +207,15 @@ async function main() {
         break;
       }
       case 'console': {
+        // @opentui/core 依赖 Bun FFI，仅在 Bun 运行时可用
+        if (typeof (globalThis as any).Bun === 'undefined') {
+          console.error(
+            '[Iris] Console 平台需要 Bun 运行时。\n' +
+            '  - 开发模式请使用: bun src/index.ts\n' +
+            '  - 或切换到其他平台（如 web）'
+          );
+          process.exit(1);
+        }
         const { ConsolePlatform } = await import('./platforms/console');
         platforms.push(new ConsolePlatform(backend, {
           modeName: defaultMode,

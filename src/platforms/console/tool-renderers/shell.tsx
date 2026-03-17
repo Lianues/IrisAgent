@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * shell 工具渲染器
  */

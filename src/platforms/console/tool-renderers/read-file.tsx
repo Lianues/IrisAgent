@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * read_file 工具渲染器
  */

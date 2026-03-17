@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * 底部输入栏 (OpenTUI React)
  *

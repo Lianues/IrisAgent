@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * Markdown 渲染组件 (OpenTUI React)
  *

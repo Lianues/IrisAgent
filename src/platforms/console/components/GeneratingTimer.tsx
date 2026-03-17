@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * 生成计时器
  */

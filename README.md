@@ -16,17 +16,21 @@
 
 ## 快速开始
 
-### 方式一：一键安装（推荐）
+### 方式一：npm 安装（推荐）
 
-无需预装任何运行时环境。安装完成后通过 `iris start` 启动。
+无需安装 Bun 或其他运行时。自动下载当前平台的预编译二进制。
+
+```bash
+npm install -g iris-ai
+iris start
+```
+
+### 方式二：一键安装脚本
 
 **Linux / macOS**
 
 ```bash
-# 一键安装（自动下载 + 配置引导）
 curl -fsSL https://raw.githubusercontent.com/Lianues/Iris/main/deploy/linux/install.sh | bash
-
-# 启动
 iris start
 ```
 
@@ -41,35 +45,39 @@ iris start
 
 **安装流程（Windows / Linux 统一）：**
 
-1. 检测/下载 Node.js（若系统已有则跳过）
-2. 从 GitHub Release 下载预编译包（包含全部依赖）
-3. 运行 **onboard 交互式配置引导**（选择 LLM 提供商、填写 API Key、选择平台）
-4. 生成 `iris` CLI 命令
+1. 从 GitHub Release 下载预编译二进制
+2. 运行 **onboard 交互式配置引导**（选择 LLM 提供商、填写 API Key、选择平台）
+3. 生成 `iris` CLI 命令
 
 安装完成后只需 `iris start` 启动，`iris onboard` 可随时重新配置。
 
 Linux 额外支持 systemd 服务管理（`iris service start/stop/status`）。
 
-支持 Ubuntu、Debian、CentOS、Fedora、Alpine、Arch、Termux (Android) 以及 Windows x64。
+支持 Ubuntu、Debian、CentOS、Fedora、Alpine、Arch、Termux (Android)、macOS 以及 Windows x64。
 
-### 方式二：源码安装（开发者）
-
-需要 [Bun](https://bun.sh) 或 Node.js（≥18）。Console 平台（TUI）需要 Bun（依赖 OpenTUI 的 Bun FFI）。
+### 方式三：源码开发
 
 ```bash
 git clone https://github.com/Lianues/Iris.git
 cd Iris
-
-# ── 使用 Bun ──
-bun install
-bun run setup      # 一键安装全部依赖（含 Web UI）
-bun run dev        # 启动
-
-# ── 或使用 Node.js + npm（无需安装 Bun）──
-npm install
-cd src/platforms/web/web-ui && npm install && cd ../../../..
-npx tsx src/index.ts   # 启动（tsx 会在 npm install 时自动安装）
 ```
+
+**后端开发（Node.js，适用于 web/discord/telegram/wxwork 平台）：**
+
+```bash
+npm install
+npm run setup          # 安装全部依赖（含 Web UI）
+npm run dev            # 启动（tsx src/index.ts）
+```
+
+**全功能开发（含 Console TUI，需要 Bun）：**
+
+```bash
+bun install
+bun run dev:bun        # 启动（bun src/index.ts）
+```
+
+> Console 平台（TUI 界面）依赖 [OpenTUI](https://opentui.com/) 的 Bun FFI，因此仅在 Bun 运行时下可用。其他平台在 Node.js 和 Bun 下均可正常运行。
 
 复制配置模板并编辑：
 
@@ -141,7 +149,7 @@ web:
 
 wxwork:
   botId: your-bot-id
-  secret: your-bot-secret
+  secret: your-boret
   # showToolStatus: false
 
 discord:
@@ -229,7 +237,12 @@ model: gpt-4o-mini
 ## 开发
 
 ```bash
-bun run dev      # 运行
-bun run build    # 构建
-bun run test     # 测试（Vitest）
+# Node.js（后端开发）
+npm run dev              # 启动（无 console 平台）
+npm run build            # 构建
+npm run test             # 测试（Vitest）
+
+# Bun（全功能开发）
+bun run dev:bun          # 启动（含 console TUI）
+bun run build:compile    # 编译为独立二进制
 ```

@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * InputDisplay — 带光标的文本渲染组件
  *

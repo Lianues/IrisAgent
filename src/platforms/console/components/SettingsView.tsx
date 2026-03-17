@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/react */
+
 /**
  * TUI 设置中心 (OpenTUI React)
  */
