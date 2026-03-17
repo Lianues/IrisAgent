@@ -197,6 +197,15 @@ async function main() {
         platforms.push(webPlatform);
         break;
       }
+      case 'wxwork': {
+        const { WXWorkPlatform } = await import('./platforms/wxwork');
+        platforms.push(new WXWorkPlatform(backend, {
+          botId: config.platform.wxwork.botId,
+          secret: config.platform.wxwork.secret,
+          showToolStatus: config.platform.wxwork.showToolStatus,
+        }));
+        break;
+      }
       case 'console': {
         const { ConsolePlatform } = await import('./platforms/console');
         platforms.push(new ConsolePlatform(backend, {

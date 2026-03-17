@@ -10,7 +10,6 @@ import { C } from '../theme';
 
 interface ToolCallProps {
   invocation: ToolInvocation;
-  lineColor?: string;
 }
 
 const TERMINAL_STATUSES = new Set<ToolStatus>(['success', 'warning', 'error']);
@@ -53,7 +52,7 @@ function getArgsSummary(toolName: string, args: Record<string, unknown>): string
   }
 }
 
-export function ToolCall({ invocation, lineColor = C.dim }: ToolCallProps) {
+export function ToolCall({ invocation }: ToolCallProps) {
   const { toolName, status, args, result, error, createdAt, updatedAt } = invocation;
   const isFinal = TERMINAL_STATUSES.has(status);
   const isExecuting = status === 'executing';
@@ -63,18 +62,13 @@ export function ToolCall({ invocation, lineColor = C.dim }: ToolCallProps) {
   const Renderer = isFinal && result != null ? getToolRenderer(toolName) : null;
   const duration = isFinal ? ((updatedAt - createdAt) / 1000).toFixed(1) + 's' : '';
 
-  const nameColor = isFinal ? C.dim : (isAwaitingApproval ? C.warn : C.text);
+  const nameColor = isAwaitingApproval ? C.warn : C.dim;
 
   return (
     <box flexDirection="column">
-      <box>
+      <box flexDirection="row" gap={1}>
         <text>
-          <span fg={lineColor}>{'\u251C\u2500 '}</span>
-          {isFinal ? (
-            <span fg={nameColor}>{toolName}</span>
-          ) : (
-            <strong><span fg={nameColor}>{toolName}</span></strong>
-          )}
+          <span fg={nameColor}>{toolName}</span>
           {argsSummary.length > 0 && <span fg={C.dim}> {argsSummary}</span>}
           {status === 'success' ? <span fg={C.accent}> {'\u2713'}</span> : null}
           {status === 'warning' ? <span fg={C.warn}> !</span> : null}
@@ -86,14 +80,10 @@ export function ToolCall({ invocation, lineColor = C.dim }: ToolCallProps) {
         {isExecuting && <text><Spinner /></text>}
       </box>
       {status === 'error' && error && (
-        <text>
-          <span fg={lineColor}>{'\u2502  '}</span>
-          <span fg={C.error}><em>{'\u21B3'} {error}</em></span>
-        </text>
+        <text fg={C.error}><em>  {error}</em></text>
       )}
       {Renderer && result != null && (
-        <box>
-          <text fg={lineColor}>{'\u2502  '}</text>
+        <box paddingLeft={2}>
           {Renderer({ toolName, args, result }) as React.ReactNode}
         </box>
       )}

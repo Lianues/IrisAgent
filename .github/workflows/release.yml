@@ -8,6 +8,7 @@
 #  产物：
 #  - iris-linux-x64.tar.gz       包含 Iris 主体 + onboard TUI
 #  - iris-linux-arm64.tar.gz     包含 Iris 主体 + onboard TUI
+#  - iris-windows-x64.zip        包含 Iris 主体 + onboard TUI（Windows）
 #
 #  安装后用户只需一个包，iris start / iris onboard 都开箱可用。
 # ==========================================
@@ -24,8 +25,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Iris (${{ matrix.arch }})
+  build-linux:
+    name: Build Iris Linux (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -125,10 +126,98 @@ jobs:
           path: iris-linux-${{ matrix.arch }}.tar.gz
           retention-days: 30
 
+  # ── Windows x64 构建 ─────────────────────
+  build-windows:
+    name: Build Iris Windows (x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      # ── 构建 Iris 主体 ────────────────────
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install web-ui dependencies
+        working-directory: src/platforms/web/web-ui
+        run: npm ci
+
+      - name: Build web-ui
+        run: bun run build:ui
+
+      - name: TypeScript compile
+        run: bun run tsc -p tsconfig.build.json
+
+      # ── 构建 Onboard TUI（Windows x64）────
+      - name: Install onboard dependencies
+        working-directory: onboard
+        run: bun install --frozen-lockfile
+
+      - name: Build onboard binary
+        working-directory: onboard
+        run: |
+          mkdir -p dist
+          bun build src/index.tsx --compile --target=bun-windows-x64 --outfile dist/iris-onboard-windows-x64 --minify
+          dir dist
+
+      # ── 打包 zip（主体 + onboard 一体）───
+      - name: Prepare release zip
+        shell: bash
+        run: |
+          RELEASE_DIR="iris-windows-x64"
+          mkdir -p "$RELEASE_DIR/bin"
+
+          # Iris 运行时文件
+          cp -r dist/                         "$RELEASE_DIR/"
+          cp -r data/configs.example/         "$RELEASE_DIR/data/configs.example/"
+          cp -r deploy/                       "$RELEASE_DIR/deploy/"
+          cp -r src/platforms/web/web-ui/dist/ "$RELEASE_DIR/src/platforms/web/web-ui/dist/" 2>/dev/null || true
+          cp    package.json                  "$RELEASE_DIR/"
+          cp    bun.lock                      "$RELEASE_DIR/"
+          cp    README.md                     "$RELEASE_DIR/"
+
+          # 提示词模板
+          mkdir -p "$RELEASE_DIR/src/prompt/templates"
+          cp -r src/prompt/templates/ "$RELEASE_DIR/src/prompt/templates/" 2>/dev/null || true
+
+          # Onboard 二进制
+          cp onboard/dist/iris-onboard-windows-x64.exe "$RELEASE_DIR/bin/iris-onboard.exe"
+
+          # 仅安装生产依赖
+          cd "$RELEASE_DIR" && bun install --production --frozen-lockfile && cd ..
+
+          # 清理不必要文件
+          rm -rf "$RELEASE_DIR/node_modules/.cache"
+          rm -f  "$RELEASE_DIR/bun.lock"
+          find "$RELEASE_DIR/node_modules" -name "*.ts" -not -name "*.d.ts" -delete 2>/dev/null || true
+          find "$RELEASE_DIR/node_modules" -name "*.map" -delete 2>/dev/null || true
+
+      - name: Create zip
+        shell: pwsh
+        run: Compress-Archive -Path iris-windows-x64 -DestinationPath iris-windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iris-windows-x64
+          path: iris-windows-x64.zip
+          retention-days: 30
+
   # ── 发布 Release ─────────────────────────
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-linux, build-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
@@ -143,6 +232,7 @@ jobs:
           mkdir -p release/
           cp artifacts/iris-linux-x64/*.tar.gz    release/
           cp artifacts/iris-linux-arm64/*.tar.gz   release/
+          cp artifacts/iris-windows-x64/*.zip      release/
           ls -lh release/
 
       - name: Create Release

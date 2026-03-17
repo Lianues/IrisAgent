@@ -24,7 +24,8 @@ Backend 不知道具体平台存在。
 ```text
 src/platforms/
 ├── base.ts              # PlatformAdapter 抽象基类
-├── console/             # 控制台 TUI（Ink / React）
+├── console/             # 控制台 TUI（OpenTUI / React）
+├── wxwork/              # 企业微信智能机器人
 ├── discord/             # Discord Bot
 ├── telegram/            # Telegram Bot
 └── web/                 # Web GUI（HTTP + SSE + Vue）
@@ -83,7 +84,7 @@ documents: Array<{ fileName: string; mimeType: string; data: string }>
 
 ### Console
 
-基于 Ink 5+ / React 18 的 TUI 界面。
+基于 OpenTUI / React 的 TUI 界面。
 
 | 项目 | 说明 |
 |------|------|
@@ -93,6 +94,35 @@ documents: Array<{ fileName: string; mimeType: string; data: string }>
 | 工具状态 | 通过 `tool:update` 事件实时显示 |
 | 指令 | `/new`、`/load`、`/sh <命令>`、`/exit` 等 |
 | 图片输入 | 当前未实现终端内图片上传 |
+
+### WXWork（企业微信）
+
+基于腾讯官方 `@wecom/aibot-node-sdk` 的企业微信智能机器人适配器。
+
+| 项目 | 说明 |
+|------|------|
+| 构造参数 | `(backend, { botId, secret, showToolStatus? })` |
+| sessionId | 私聊：`wxwork-dm-{userId}`；群聊：`wxwork-group-{chatId}` |
+| 流式支持 | 支持，通过 `replyStream` 推送，300ms 节流 |
+| 工具状态 | 通过 `tool:update` 事件实时展示工具执行进度 |
+| 并发控制 | 每个 chatKey 同一时间只处理一条消息（busy 锁） |
+| 消息缓冲 | AI 输出期间用户新消息暂存到缓冲区，完成后自动合并发送 |
+| 工具审批 | 自动批准所有工具调用（企微无交互审批 UI） |
+| 图片输入 | 支持图片消息解析并传入 Backend |
+
+#### 企业微信 Slash 指令
+
+| 指令 | 说明 |
+|------|------|
+| `/stop` | 标记 stopped 并立即关闭流式消息，后续事件忽略 |
+| `/flush` | 中止当前回复 + 立即将缓冲消息发送给 AI |
+| `/session` | 查看/切换历史会话 |
+
+#### 配置
+
+在 `data/configs/platform.yaml` 中设置 `type: wxwork`（或加入多平台数组），并填写 `wxwork.botId` 和 `wxwork.secret`。
+
+在企业微信管理后台 → 应用管理 → 智能机器人 中创建并获取 Bot ID 和 Secret。
 
 ### Discord
 

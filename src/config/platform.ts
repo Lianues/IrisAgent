@@ -10,7 +10,7 @@ import { PlatformConfig } from './types';
 
 type PlatformType = PlatformConfig['types'][number];
 
-const VALID_TYPES = new Set<string>(['console', 'discord', 'telegram', 'web']);
+const VALID_TYPES = new Set<string>(['console', 'discord', 'telegram', 'web', 'wxwork']);
 
 function parseTypes(raw: unknown): PlatformType[] {
   // 数组写法
@@ -41,6 +41,11 @@ export function parsePlatformConfig(raw: any = {}): PlatformConfig {
       host: raw.web?.host ?? '127.0.0.1',
       authToken: raw.web?.authToken,
       managementToken: raw.web?.managementToken,
+    },
+    wxwork: {
+      botId: raw.wxwork?.botId ?? '',
+      secret: raw.wxwork?.secret ?? '',
+      showToolStatus: raw.wxwork?.showToolStatus !== false,
     },
   };
 }

@@ -18,5 +18,5 @@ export function DefaultRenderer({ result }: ToolRendererProps) {
 
   const truncated = text.length > 80 ? text.slice(0, 80) + '...' : text;
 
-  return <text fg="#888"><em> \u21B3 {truncated}</em></text>;
+  return <text fg="#888"><em> ↳ {truncated}</em></text>;
 }

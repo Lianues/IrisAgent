@@ -3,6 +3,8 @@
  *
  * Gemini ↔ OpenAI 格式的完整双向转换。
  * 适用于所有 OpenAI 兼容接口（OpenAI、DeepSeek、本地模型等）。
+ *
+ * 支持 reasoning_content（DeepSeek / KIMI 等模型的 thinking 字段）。
  */
 
 import {
@@ -11,6 +13,7 @@ import {
 } from '../../types';
 import { FormatAdapter, StreamDecodeState } from './types';
 import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
+import { sanitizeSchemaForOpenAI } from './schema-sanitizer';
 
 export class OpenAICompatibleFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -36,6 +39,10 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       const funcRespParts = content.parts.filter(isFunctionResponsePart);
 
       if (content.role === 'model') {
+        // 提取 thinking/reasoning 内容（thought: true 的 text parts）
+        const thoughtParts = content.parts.filter(p => isTextPart(p) && p.thought === true);
+        const reasoningContent = thoughtParts.map(p => (p as any).text || '').join('') || null;
+
         if (funcCallParts.length > 0) {
           const toolCalls = funcCallParts.map((part, i) => {
             if (!isFunctionCallPart(part)) {
@@ -57,13 +64,17 @@ export class OpenAICompatibleFormat implements FormatAdapter {
             if (!isTextPart(p)) throw new Error('unreachable');
             return p.text;
           }).join('') || null;
-          messages.push({ role: 'assistant', content: text, tool_calls: toolCalls });
+          const msg: Record<string, unknown> = { role: 'assistant', content: text, tool_calls: toolCalls };
+          if (reasoningContent) msg.reasoning_content = reasoningContent;
+          messages.push(msg);
        } else {
           const text = textParts.map(p => {
             if (!isTextPart(p)) throw new Error('unreachable');
             return p.text;
           }).join('');
-          messages.push({ role: 'assistant', content: text });
+          const msg: Record<string, unknown> = { role: 'assistant', content: text };
+          if (reasoningContent) msg.reasoning_content = reasoningContent;
+          messages.push(msg);
         }
       } else {
         if (funcRespParts.length > 0) {
@@ -123,7 +134,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       const allDecls = request.tools.flatMap(t => t.functionDeclarations);
       body.tools = allDecls.map(decl => ({
         type: 'function',
-        function: { name: decl.name, description: decl.description, parameters: decl.parameters },
+        function: { name: decl.name, description: decl.description, parameters: sanitizeSchemaForOpenAI(decl.parameters) },
       }));
     }
 
@@ -156,6 +167,11 @@ export class OpenAICompatibleFormat implements FormatAdapter {
 
     const msg = choice.message;
     const parts: Part[] = [];
+
+    // reasoning_content → thought part（DeepSeek / KIMI 等模型的 thinking 输出）
+    if (typeof msg.reasoning_content === 'string' && msg.reasoning_content) {
+      parts.push({ text: msg.reasoning_content, thought: true });
+    }
 
     if (typeof msg.content === 'string') {
       parts.push({ text: msg.content });
@@ -197,6 +213,14 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     const data = raw as any;
     const choice = data.choices?.[0];
     const chunk: LLMStreamChunk = {};
+
+    // reasoning_content 流式增量（DeepSeek / KIMI 等模型的 thinking 输出）
+    if (choice?.delta?.reasoning_content) {
+      chunk.partsDelta = [
+        ...(chunk.partsDelta || []),
+        { text: choice.delta.reasoning_content, thought: true } as any,
+      ];
+    }
 
     if (choice?.delta?.content) {
       chunk.textDelta = choice.delta.content;

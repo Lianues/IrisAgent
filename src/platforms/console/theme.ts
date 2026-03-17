@@ -40,4 +40,17 @@ export const C = {
   roleUser: '#00b894',
   /** 助手角色色 */
   roleAssistant: '#6c5ce7',
+
+  /** 工具执行中背景（冷蓝灰调） */
+  toolPendingBg: '#1a2228',
+  /** 工具成功背景（微绿调） */
+  toolSuccessBg: '#1a2520',
+  /** 工具失败背景（微红调） */
+  toolErrorBg: '#281a1a',
+  /** 工具警告背景（微黄调） */
+  toolWarnBg: '#28251a',
+  /** 指令面板背景 */
+  panelBg: '#1e2228',
+  /** 思考区域背景 */
+  thinkingBg: '#1a1e24',
 } as const;

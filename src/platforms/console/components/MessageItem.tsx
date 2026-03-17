@@ -18,6 +18,7 @@ function getThoughtTailPreview(text: string, maxChars: number): string {
   return `\u2026${latestLine.slice(-(maxChars - 1))}`;
 }
 
+
 function formatElapsedMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
@@ -50,6 +51,45 @@ interface MessageItemProps {
   modelName?: string;
 }
 
+/**
+ * 将 displayParts 中连续的 tool_use 合并为一组，
+ * 其余类型保持原样，返回统一的渲染单元数组。
+ */
+type RenderGroup =
+  | { kind: 'text'; part: MessagePart & { type: 'text' }; index: number }
+  | { kind: 'thought'; part: MessagePart & { type: 'thought' }; index: number }
+  | { kind: 'tools'; tools: ToolInvocation[]; startIndex: number };
+
+function groupParts(parts: MessagePart[]): RenderGroup[] {
+  const groups: RenderGroup[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const part = parts[i];
+    if (part.type === 'tool_use') {
+      // 同一次 API 调用的连续 tool_use 合并为一组（跳过中间的空 text）
+      const allTools: ToolInvocation[] = [];
+      const start = i;
+      while (i < parts.length) {
+        const p = parts[i];
+        if (p.type === 'tool_use') { allTools.push(...p.tools); }
+        else if (p.type === 'text' && !p.text.trim()) { /* 跳过空文本 */ }
+        else { break; }
+        i++;
+      }
+      groups.push({ kind: 'tools', tools: allTools, startIndex: start });
+    } else if (part.type === 'text' && part.text.trim()) {
+      groups.push({ kind: 'text', part: part as MessagePart & { type: 'text' }, index: i });
+      i++;
+    } else if (part.type === 'thought') {
+      groups.push({ kind: 'thought', part: part as MessagePart & { type: 'thought' }, index: i });
+      i++;
+    } else {
+      i++;
+    }
+  }
+  return groups;
+}
+
 export const MessageItem = React.memo(function MessageItem(
   { msg, liveTools, liveParts, isStreaming, modelName }: MessageItemProps
 ) {
@@ -65,6 +105,7 @@ export const MessageItem = React.memo(function MessageItem(
 
   const hasAnyContent = displayParts.length > 0;
   const separatorLen = Math.max(2, termWidth - headerText.length - 2);
+  const groups = groupParts(displayParts);
 
   return (
     <box flexDirection="column" width="100%">
@@ -72,37 +113,38 @@ export const MessageItem = React.memo(function MessageItem(
       <box marginBottom={1}>
         <text>
           <span fg={labelColor}><strong>{headerText}</strong></span>
-          <span fg={C.dim}>{'\u2500'.repeat(separatorLen)}</span>
+          <span fg={labelColor}>{'\u2500'.repeat(separatorLen)}</span>
         </text>
       </box>
 
       <box flexDirection="column" width="100%">
-        {displayParts.map((part, i) => {
-          if (part.type === 'text' && part.text.length > 0) {
-            const isLastPart = i === displayParts.length - 1;
+        {groups.map((group, gi) => {
+          if (group.kind === 'text' && group.part.text.length > 0) {
+            const isLastGroup = gi === groups.length - 1;
             return (
-              <box key={i} marginTop={i > 0 ? 1 : 0}>
+              <box key={group.index} marginTop={gi > 0 ? 1 : 0}>
                 {isUser ? (
-                  <text fg={C.text}>{part.text}</text>
+                  <text fg={C.text}>{group.part.text}</text>
                 ) : (
-                  <MarkdownText text={part.text} showCursor={isLastPart && isStreaming} />
+                  <MarkdownText text={group.part.text} showCursor={isLastGroup && isStreaming} />
                 )}
               </box>
             );
           }
 
-          if (part.type === 'thought') {
-            const previewText = getThoughtTailPreview(part.text, Math.max(24, termWidth - 20));
-            const isLastPart = i === displayParts.length - 1;
-            const prefix = part.durationMs != null ? `thinking   ${formatElapsedMs(part.durationMs)}` : 'thinking';
+          if (group.kind === 'thought') {
+            const previewText = getThoughtTailPreview(group.part.text, Math.max(24, termWidth - 20));
+            const isLastGroup = gi === groups.length - 1;
+            const prefix = group.part.durationMs != null ? `thinking   ${formatElapsedMs(group.part.durationMs)}` : 'thinking';
             return (
-              <box key={i} marginTop={i > 0 ? 1 : 0} flexDirection="column">
-                <text fg={C.primaryLight}><em>{'  \u00b7 ' + prefix}</em></text>
+              <box key={group.index} marginTop={gi > 0 ? 1 : 0} flexDirection="column"
+                   backgroundColor={C.thinkingBg} paddingLeft={1}>
+                <text fg={C.primaryLight}><em>{'\u00b7 ' + prefix}</em></text>
                 <box flexDirection="column">
                   <text fg={C.dim}>
                     <em>
                       {'    '}{previewText ? previewText : '...'}
-                      {isLastPart && isStreaming ? <span bg={C.accent}> </span> : null}
+                      {isLastGroup && isStreaming ? <span bg={C.accent}> </span> : null}
                     </em>
                   </text>
                 </box>
@@ -110,16 +152,19 @@ export const MessageItem = React.memo(function MessageItem(
             );
           }
 
-          if (part.type === 'tool_use') {
+          if (group.kind === 'tools') {
+            const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
+            const isConsecutiveTools = prevGroup?.kind === 'tools';
             return (
-              <box key={i} flexDirection="column" width="100%" marginTop={i > 0 ? 1 : 0}>
-                <text fg={C.dim}><strong>{'  \u00b7 tools'}</strong></text>
-                <box flexDirection="column" paddingLeft={4}>
-                  {part.tools.map(inv => <ToolCall key={inv.id} invocation={inv} lineColor={C.dim} />)}
+              <box key={`tools-${group.startIndex}`} flexDirection="column" width="100%" marginTop={isConsecutiveTools ? 0 : (gi > 0 ? 1 : 0)}>
+                <box flexDirection="column" backgroundColor={C.toolPendingBg} paddingLeft={1}>
+                  <text fg={C.accent}><strong>{'\u00b7 tools'}</strong></text>
+                  {group.tools.map(inv => <ToolCall key={inv.id} invocation={inv} />)}
                 </box>
               </box>
             );
           }
+
           return null;
         })}
 
@@ -127,12 +172,9 @@ export const MessageItem = React.memo(function MessageItem(
         {!isUser && !isStreaming && (msg.tokenIn != null || msg.durationMs != null) && (
           <box marginTop={hasAnyContent ? 1 : 0}>
             <text fg={C.dim}>
-              {'\u00b7 '}
-              {msg.tokenIn != null ? `in: ${msg.tokenIn.toLocaleString()}` : ''}
-              {msg.tokenIn != null && msg.tokenOut != null ? '  ' : ''}
-              {msg.tokenOut != null ? `out: ${msg.tokenOut.toLocaleString()}` : ''}
-              {msg.durationMs != null ? (msg.tokenIn != null || msg.tokenOut != null ? '    ' : '') : ''}
               {msg.durationMs != null ? `${(msg.durationMs / 1000).toFixed(1)}s` : ''}
+              {msg.tokenIn != null ? `  \u2191${msg.tokenIn.toLocaleString()}` : ''}
+              {msg.tokenOut != null ? `  \u2193${msg.tokenOut.toLocaleString()}` : ''}
               {msg.tokenOut != null && msg.streamOutputDurationMs != null
                 ? `   ${formatTokenSpeed(msg.tokenOut, msg.streamOutputDurationMs)}`
                 : ''}

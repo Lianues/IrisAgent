@@ -13,6 +13,7 @@ import {
 import { isDocumentMimeType } from '../vision';
 import { FormatAdapter, StreamDecodeState } from './types';
 import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
+import { sanitizeSchemaForOpenAI } from './schema-sanitizer';
 
 export class OpenAIResponsesFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -129,7 +130,7 @@ export class OpenAIResponsesFormat implements FormatAdapter {
         type: 'function',
         name: decl.name,
         description: decl.description,
-        parameters: decl.parameters,
+        parameters: sanitizeSchemaForOpenAI(decl.parameters),
       }));
     }
 

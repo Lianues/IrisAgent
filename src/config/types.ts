@@ -35,7 +35,7 @@ export interface LLMRegistryConfig {
 
 export interface PlatformConfig {
   /** 启动的平台类型列表（兼容单字符串和数组写法） */
-  types: Array<'console' | 'discord' | 'telegram' | 'web'>;
+  types: Array<'console' | 'discord' | 'telegram' | 'web' | 'wxwork'>;
   discord: { token: string };
   telegram: { token: string };
   web: {
@@ -45,6 +45,12 @@ export interface PlatformConfig {
     authToken?: string;
     /** 管理面令牌（可选，启用后 /api/config 需 X-Management-Token） */
     managementToken?: string;
+  };
+  wxwork: {
+    botId: string;
+    secret: string;
+    /** 是否在流式回复中展示工具执行状态（默认 true） */
+    showToolStatus?: boolean;
   };
 }
 

@@ -345,7 +345,10 @@ export class Backend extends EventEmitter {
     this.currentLLMConfig = config?.currentLLMConfig;
     this.ocrService = config?.ocrService;
 
-    this.toolLoopConfig = { maxRounds: config?.maxToolRounds ?? 200, toolPolicies: config?.toolsConfig?.permissions ?? {} };
+    this.toolLoopConfig = {
+      maxRounds: config?.maxToolRounds ?? 200,
+      toolPolicies: config?.toolsConfig?.permissions ?? {},
+    };
     this.toolLoop = new ToolLoop(tools, prompt, this.toolLoopConfig, toolState);
 
     // 转发工具状态事件

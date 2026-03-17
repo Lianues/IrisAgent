@@ -1,45 +1,109 @@
 # Iris
 
-一个面向多平台的智能代理程序。它支持 Console、Web、Discord、Telegram 等平台，支持工具调用、会话存储、图片输入、OCR 回退、MCP 和记忆能力。
+一个面向多平台的智能代理程序。支持 Console、Web、Discord、Telegram、企业微信等平台，支持工具调用、会话存储、图片输入、OCR 回退、MCP 和记忆能力。
 
 ## 特性
 
-- 多平台：Console / Web / Discord / Telegram
+- 多平台：Console / Web / Discord / Telegram / 企业微信（WXWork）
 - 多模型提供商：Gemini / OpenAI 兼容 / OpenAI Responses / Claude
 - 模型池：通过 `llm.models.<modelName>` 管理多个模型，运行时可切换
 - 工具系统：内置文件、命令、计划、搜索、记忆、子代理等工具
+- MCP：连接外部 MCP 服务器扩展工具能力，支持按 Provider 自动降级 Schema
 - 会话存储：JSON 文件或 SQLite
 - 图片输入：支持 vision 模型直连，也支持 OCR 回退
-- MCP：可连接外部 MCP 服务器扩展工具能力
 - 模式系统：支持自定义模式和系统提示词覆盖
+- TUI 界面：基于 [OpenTUI](https://opentui.com/) + React，支持 Markdown 渲染、工具状态展示、撤销/恢复
 
 ## 快速开始
 
-### 1. 安装依赖
+### 方式一：一键安装（推荐）
+
+无需预装任何运行时环境。安装完成后通过 `iris start` 启动。
+
+**Linux / macOS**
 
 ```bash
-npm install
+# 一键安装（自动下载 + 配置引导）
+curl -fsSL https://raw.githubusercontent.com/Lianues/Iris/main/deploy/linux/install.sh | bash
+
+# 启动
+iris start
 ```
 
-### 2. 准备配置
+**Windows**
 
-#### Windows PowerShell
+从 [GitHub Release](https://github.com/Lianues/Iris/releases) 下载 `iris-windows-x64.zip`，解压后双击 `deploy\windows\install.bat`。
 
-```powershell
+```bat
+REM 启动
+iris start
+```
+
+**安装流程（Windows / Linux 统一）：**
+
+1. 检测/下载 Node.js（若系统已有则跳过）
+2. 从 GitHub Release 下载预编译包（包含全部依赖）
+3. 运行 **onboard 交互式配置引导**（选择 LLM 提供商、填写 API Key、选择平台）
+4. 生成 `iris` CLI 命令
+
+安装完成后只需 `iris start` 启动，`iris onboard` 可随时重新配置。
+
+Linux 额外支持 systemd 服务管理（`iris service start/stop/status`）。
+
+支持 Ubuntu、Debian、CentOS、Fedora、Alpine、Arch、Termux (Android) 以及 Windows x64。
+
+### 方式二：源码安装（开发者）
+
+需要 [Bun](https://bun.sh) 或 Node.js（≥18）。Console 平台（TUI）需要 Bun（依赖 OpenTUI 的 Bun FFI）。
+
+```bash
+git clone https://github.com/Lianues/Iris.git
+cd Iris
+
+# ── 使用 Bun ──
+bun install
+bun run setup      # 一键安装全部依赖（含 Web UI）
+bun run dev        # 启动
+
+# ── 或使用 Node.js + npm（无需安装 Bun）──
+npm install
+cd src/platforms/web/web-ui && npm install && cd ../../../..
+npx tsx src/index.ts   # 启动（tsx 会在 npm install 时自动安装）
+```
+
+复制配置模板并编辑：
+
+```bash
+# macOS / Linux
+cp -r data/configs.example data/configs
+
+# Windows PowerShell
 Copy-Item -Recurse data/configs.example data/configs
 ```
 
-#### macOS / Linux
+### Onboard 交互式配置引导
+
+Iris 提供 TUI 配置引导工具，基于 [OpenTUI](https://opentui.com/) + React 构建：
 
 ```bash
-cp -r data/configs.example data/configs
+# 一键安装时自动运行，也可手动启动
+iris onboard
+# 或直接运行二进制
+./bin/iris-onboard /path/to/iris
 ```
 
-然后至少检查这些文件：
+配置流程：
 
-#### `data/configs/llm.yaml`
+1. **欢迎页** — 介绍 Iris 和配置流程
+2. **选择 LLM 提供商** — Gemini / OpenAI / Claude
+3. **输入 API Key** — 带遮罩的密码输入
+4. **模型配置** — 模型别名、模型 ID、Base URL（提供默认值）
+5. **选择平台** — Console / Web / 企业微信
+6. **确认写入** — 预览配置并写入 `data/configs/*.yaml`
 
-填入你的模型池配置，例如：
+## 配置文件
+
+### `data/configs/llm.yaml`
 
 ```yaml
 defaultModel: gemini_flash
@@ -53,42 +117,66 @@ models:
     supportsVision: true
 ```
 
-说明：
+- `defaultModel`：`models` 下的键名
+- `model`：提供商真实模型 ID
+- `baseUrl`：Gemini 以 `/v1beta` 结尾，OpenAI/Claude 以 `/v1` 结尾
+- `supportsVision`：可选，推荐显式填写，不填写时按模型名启发式判断
 
-- `defaultModel` 填写模型名称，也就是 `models` 下的键
-- `model` 字段填写提供商真实模型 id
-- `/model gemini_flash` 可以在运行时切换当前活动模型
-
-`supportsVision` 说明：
-
-- 可选，推荐显式填写
-- `true`：当前模型支持图片输入，Web 上传的图片会直接发给模型
-- `false`：当前模型不支持图片输入，此时如配置了 `ocr.yaml`，Iris 会先做 OCR，再把提取结果发给当前模型
-- 不填写时，Iris 会按模型名做启发式判断，但对于自定义模型名或代理网关，仍建议手动声明
-
-`baseUrl` 规则：
-
-- Gemini：以 `/v1beta` 结尾
-- OpenAI 兼容、OpenAI Responses、Claude：以 `/v1` 结尾
-- 程序会在这个地址后继续补全具体接口路径
-
-例如 OpenAI Responses：
+### `data/configs/platform.yaml`
 
 ```yaml
-defaultModel: gpt4o
+# 单平台
+type: console
 
-models:
-  gpt4o:
-    provider: openai-responses
-    apiKey: your-api-key-here
-    model: gpt-4o
-    baseUrl: https://api.openai.com/v1
-    supportsVision: true
+# 多平台同时启动
+type: [console, web]
 ```
 
-#### `data/configs/ocr.yaml`（可选）
+各平台配置：
 
-当你的当前模型不支持图片输入，但你又希望 Web 端可以上传图片时，配置一个 OCR 模型：
+```yaml
+web:
+  port: 8192
+  host: 127.0.0.1
+
+wxwork:
+  botId: your-bot-id
+  secret: your-bot-secret
+  # showToolStatus: false
+
+discord:
+  token: your-discord-bot-token
+
+telegram:
+  token: your-telegram-bot-token
+```
+
+### `data/configs/mcp.yaml`（可选）
+
+```yaml
+servers:
+  # 本地进程（stdio）
+  filesystem:
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+
+  # 远程服务器（HTTP）
+  remote_tools:
+    transport: streamable-http
+    url: https://mcp.example.com/sse
+
+  # 企微官方文档 MCP
+  wecom-doc:
+    transport: streamable-http
+    url: "https://qyapi.weixin.qq.com/mcp/robot-doc?apikey=your-mcp-apikey"
+```
+
+MCP 工具的 JSON Schema 会按 Provider 自动降级处理，无需手动适配。详见 [docs/llm.md](docs/llm.md#mcp-工具-schema-降级)。
+
+### `data/configs/ocr.yaml`（可选）
+
+当模型不支持图片输入时，配置 OCR 模型可实现图片上传支持：
 
 ```yaml
 provider: openai-compatible
@@ -97,66 +185,51 @@ baseUrl: https://api.openai.com/v1
 model: gpt-4o-mini
 ```
 
-行为说明：
-
-- 当前模型支持 vision：直接发图片，不走 OCR
-- 当前模型不支持 vision + 已配置 OCR：先 OCR，再把图片内容文本发给当前模型
-- 当前模型不支持 vision + 未配置 OCR：图片仍会保存在会话历史中，但当前模型只能收到“当前无法查看图片”的占位提示
-
-#### `data/configs/platform.yaml`
-
-如果你要启用 Web 端，请改成：
-
-```yaml
-type: web
-web:
-  port: 8192
-  host: 127.0.0.1
-```
-
-如果你只在本机终端使用，可以保持：
-
-```yaml
-type: console
-```
-
-### 3. 启动
-
-```bash
-npm run dev
-```
-
 ## 常用命令
 
 ### Console
 
-- `/new`：新建会话
-- `/load`：加载历史会话
-- `/model`：查看可用模型
-- `/model <modelName>`：切换当前活动模型
-- `/settings`：打开设置中心
-- `/mcp`：直接打开 MCP 设置页
-- `/exit`：退出程序
+| 命令 | 说明 |
+|------|------|
+| `/new` | 新建对话 |
+| `/load` | 加载历史对话 |
+| `/undo` | 撤销最后一条消息 |
+| `/redo` | 恢复已撤销的消息 |
+| `/model` | 查看可用模型 |
+| `/model <name>` | 切换当前模型 |
+| `/sh <cmd>` | 执行 Shell 命令 |
+| `/settings` | 打开设置中心（LLM / System / MCP） |
+| `/mcp` | 直接打开 MCP 管理页 |
+| `/exit` | 退出应用 |
 
-## 配置说明
+### 企业微信
 
-详细配置见：
+| 命令 | 说明 |
+|------|------|
+| `/new` | 新建对话（清空上下文） |
+| `/clear` | 清空当前对话历史 |
+| `/model` | 查看可用模型 |
+| `/model <name>` | 切换模型 |
+| `/session` | 查看历史会话 |
+| `/session <n>` | 切换到第 n 个会话 |
+| `/stop` | 中止当前 AI 回复 |
+| `/flush` | 中止当前回复并立即处理缓冲消息 |
+| `/help` | 显示帮助 |
 
-- [docs/config.md](docs/config.md)
-- [docs/llm.md](docs/llm.md)
-- [docs/core.md](docs/core.md)
-- [docs/tools.md](docs/tools.md)
+## 文档
+
+- [docs/config.md](docs/config.md) — 配置文件总览
+- [docs/llm.md](docs/llm.md) — LLM 格式适配与 MCP Schema 降级
+- [docs/platforms.md](docs/platforms.md) — 各平台适配说明
+- [docs/tools.md](docs/tools.md) — 工具注册与调度
+- [docs/core.md](docs/core.md) — 核心 Backend 逻辑
+- [docs/media.md](docs/media.md) — 文档/图片处理
+- [docs/deploy.md](docs/deploy.md) — Linux 部署指南
 
 ## 开发
 
-### 运行
-
 ```bash
-npm run dev
-```
-
-### 构建
-
-```bash
-npm run build
+bun run dev      # 运行
+bun run build    # 构建
+bun run test     # 测试（Vitest）
 ```

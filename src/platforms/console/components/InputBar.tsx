@@ -70,12 +70,12 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
 
     // 指令面板导航
     if (showCommands && filtered.length > 0) {
-      if (key.name === 'up') { applySelection(selectedIndex - 1); return; }
-      if (key.name === 'down') { applySelection(selectedIndex + 1); return; }
+      if (key.name === 'up') { applySelection(selectedIndex + 1); return; }
+      if (key.name === 'down') { applySelection(selectedIndex - 1); return; }
       if (key.name === 'tab') {
         const current = filtered[selectedIndex];
         if (current) {
-          applySelection(isExactCommandValue(value, current) ? selectedIndex + 1 : selectedIndex);
+          applySelection(isExactCommandValue(value, current) ? selectedIndex - 1 : selectedIndex);
         }
         return;
       }
@@ -110,6 +110,26 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
 
   return (
     <box flexDirection="column">
+      {/* 指令列表（向上展开，位于输入框上方） */}
+      {filtered.length > 0 && (
+        <box flexDirection="column" backgroundColor={C.panelBg} paddingX={1}>
+          {[...filtered].reverse().map((cmd: Command, _i) => {
+            const index = filtered.indexOf(cmd);
+            const padded = cmd.name.padEnd(maxLen);
+            const isSelected = index === selectedIndex;
+            return (
+              <box key={cmd.name} paddingLeft={1} backgroundColor={isSelected ? C.border : undefined}>
+                <text>
+                  <span fg={isSelected ? C.accent : C.dim}>{isSelected ? '▸ ' : '  '}</span>
+                  {isSelected ? <strong><span fg={C.text}>{padded}</span></strong> : <span fg={C.textSec}>{padded}</span>}
+                  <span fg={C.dim}>  {cmd.description}</span>
+                </text>
+              </box>
+            );
+          })}
+        </box>
+      )}
+
       {/* 输入区域 */}
       <box
         flexDirection="row"
@@ -123,25 +143,6 @@ export function InputBar({ disabled, onSubmit }: InputBarProps) {
           placeholder="输入消息…"
         />
       </box>
-
-      {/* 指令列表 */}
-      {filtered.length > 0 && (
-        <box flexDirection="column" paddingLeft={2} marginTop={0}>
-          {filtered.map((cmd: Command, index) => {
-            const padded = cmd.name.padEnd(maxLen);
-            const isSelected = index === selectedIndex;
-            return (
-              <box key={cmd.name} paddingLeft={1}>
-                <text>
-                  <span fg={isSelected ? C.accent : C.dim}>{isSelected ? '\u276F ' : '  '}</span>
-                  {isSelected ? <strong><span fg={C.text}>{padded}</span></strong> : <span fg={C.textSec}>{padded}</span>}
-                  <span fg={C.dim}>  {cmd.description}</span>
-                </text>
-              </box>
-            );
-          })}
-        </box>
-      )}
     </box>
   );
 }

@@ -7,6 +7,7 @@
 
 import { LLMRequest, LLMResponse, LLMStreamChunk } from '../../types';
 import { FormatAdapter, StreamDecodeState } from './types';
+import { sanitizeSchemaForGemini } from './schema-sanitizer';
 
 export class GeminiFormat implements FormatAdapter {
 
@@ -14,6 +15,9 @@ export class GeminiFormat implements FormatAdapter {
   encodeRequest(request: LLMRequest, _stream?: boolean): unknown {
     // 深拷贝并过滤内部字段
     const filtered = filterInternalFields(request);
+
+    // 降级工具 schema（Gemini 对 JSON Schema 支持最严格）
+    sanitizeToolSchemas(filtered, sanitizeSchemaForGemini);
 
     // 针对 Gemini 渠道，将 thoughtSignatures.gemini 映射回 thoughtSignature 字段发送
     mapSignaturesToProvider(filtered);
@@ -154,5 +158,25 @@ function mapSignaturesToProvider(obj: unknown): void {
 
   for (const value of Object.values(record)) {
     mapSignaturesToProvider(value);
+  }
+}
+
+/**
+ * 遍历 Gemini 请求体中的 tools[].functionDeclarations[].parameters，
+ * 用指定的 sanitizer 函数对每个 parameters 做降级处理。
+ */
+function sanitizeToolSchemas(
+  request: unknown,
+  sanitizer: (schema: unknown) => unknown,
+): void {
+  const req = request as Record<string, any>;
+  if (!Array.isArray(req?.tools)) return;
+  for (const toolGroup of req.tools) {
+    if (!Array.isArray(toolGroup?.functionDeclarations)) continue;
+    for (const decl of toolGroup.functionDeclarations) {
+      if (decl.parameters) {
+        decl.parameters = sanitizer(decl.parameters);
+      }
+    }
   }
 }

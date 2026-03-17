@@ -229,23 +229,18 @@ async function executeSingle(
 
   // 检查工具策略
   const policy = toolPolicies[toolName];
-  if (!policy) {
-    const errorMsg = `工具未被允许执行: ${toolName}。请先在 tools.yaml 中配置该工具。`;
-    if (toolState && invocationId) {
-      toolState.transition(invocationId, 'error', { error: errorMsg });
-    }
-    logger.warn(errorMsg);
-    return {
-      functionResponse: {
-        name: toolName,
-        response: { error: errorMsg },
-      },
-    };
-  }
+  // 未配置的工具默认需要确认（autoApprove: false）
+  // 在有 toolState 的平台（Console）会弹出审批，
+  // 不支持交互审批的平台（如 WXWork）应自行监听 tool:update 事件并自动批准。
+  const effectivePolicy: ToolPolicyConfig = policy ?? { autoApprove: false };
 
   if (toolState && invocationId) {
-    if (!shouldAutoApprove(call, policy)) {
-      // 需要用户批准
+    if (!shouldAutoApprove(call, effectivePolicy)) {
+      // ──────────────────────────────────────────────────────────
+      // ⚠️ 审批阻塞点：此处会阻塞直到平台层调用 toolState.transition(id, 'executing')。
+      // 不支持交互审批的平台（如 WXWork）必须在 tool:update 事件中自动批准，
+      // 否则工具执行会永远挂起。参见 WXWorkPlatform.setupBackendListeners()。
+      // ──────────────────────────────────────────────────────────
       toolState.transition(invocationId, 'awaiting_approval');
       const approved = await toolState.waitForApproval(invocationId, signal);
       if (!approved) {

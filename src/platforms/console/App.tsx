@@ -135,6 +135,8 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [settingsInitialSection, setSettingsInitialSection] = useState<'general' | 'mcp'>('general');
   const [modelList, setModelList] = useState<LLMModelInfo[]>([]);
+  const [exitConfirmArmed, setExitConfirmArmed] = useState(false);
+  const [copyMode, setCopyMode] = useState(false);
 
   const { width: termWidth } = useTerminalDimensions();
   const renderer = useRenderer();
@@ -144,9 +146,36 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
   const streamPartsRef = useRef<MessagePart[]>([]);
   const toolInvocationsRef = useRef<ToolInvocation[]>([]);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** endStream 后暂存的流式 parts，等待 finalizeAssistantParts 消费或 setGenerating(false) 兜底提交 */
   const uncommittedStreamPartsRef = useRef<MessagePart[]>([]);
   const lastUsageRef = useRef<UsageMetadata | null>(null);
+
+  const clearExitConfirm = useCallback(() => {
+    if (exitConfirmTimerRef.current) {
+      clearTimeout(exitConfirmTimerRef.current);
+      exitConfirmTimerRef.current = null;
+    }
+    setExitConfirmArmed(false);
+  }, []);
+
+  const armExitConfirm = useCallback(() => {
+    if (exitConfirmTimerRef.current) clearTimeout(exitConfirmTimerRef.current);
+    setExitConfirmArmed(true);
+    exitConfirmTimerRef.current = setTimeout(() => {
+      exitConfirmTimerRef.current = null;
+      setExitConfirmArmed(false);
+    }, 1500);
+  }, []);
+
+  useEffect(() => () => {
+    if (exitConfirmTimerRef.current) clearTimeout(exitConfirmTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!renderer) return;
+    renderer.useMouse = !copyMode;
+  }, [renderer, copyMode]);
 
   // ============ Undo/Redo ============
   const undoRedoRef = useRef<UndoRedoStack>(createUndoRedoStack());
@@ -325,12 +354,21 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
 
   // ============ 键盘输入 ============
   useKeyboard((key) => {
-    if (viewMode === 'settings') return;
-    // Ctrl+C：退出 TUI（跨平台标准行为）
+    // Ctrl+C：连续两次退出，第一次仅确认
     if (key.ctrl && key.name === 'c') {
-      onExit();
+      if (exitConfirmArmed) {
+        clearExitConfirm();
+        onExit();
+      } else {
+        armExitConfirm();
+      }
       return;
     }
+    if (key.name === 'f6') {
+      setCopyMode(prev => !prev);
+      return;
+    }
+    if (viewMode === 'settings') return;
     // ESC：生成中中断 / 子视图返回
     if (key.name === 'escape') {
       if (isGenerating) { onAbort(); return; }
@@ -465,13 +503,13 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
         <box flexDirection="column" flexGrow={1} padding={1} alignItems="center" justifyContent="center">
           <box flexDirection="column" border={false} padding={2} alignItems="center">
             <text fg={C.primary}>
-              <strong>{'╦╦═╗╦╔═╗'}</strong>
+              <strong>{'▀█▀ █▀█ ▀█▀ █▀▀'}</strong>
             </text>
             <text fg={C.primary}>
-              <strong>{'║╠╦╝║╚═╗'}</strong>
+              <strong>{' █  █▀▄  █  ▀▀█'}</strong>
             </text>
             <text fg={C.primary}>
-              <strong>{'╩╩╚═╩╚═╝'}</strong>
+              <strong>{'▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀'}</strong>
             </text>
             <text> </text>
             <text fg={C.dim}>模块化 AI 智能代理框架</text>
@@ -516,19 +554,30 @@ export function App({ onReady, onSubmit, onUndo, onRedo, onClearRedoStack, onToo
             </text>
           </box>
         ) : (
-          <box flexDirection="column" borderStyle="single" borderColor={isGenerating ? C.dim : '#3b3b3b'} padding={1} paddingBottom={0}>
+          <box flexDirection="column" borderStyle="single" borderColor={isGenerating ? C.dim : C.border} padding={1} paddingBottom={0}>
             <InputBar disabled={isGenerating} onSubmit={handleSubmit} />
             <box flexDirection="row" marginTop={1}>
-              <text fg={C.primaryLight}>{modeNameCapitalized}</text>
-              <text fg={C.dim}>   </text>
-              <text fg={C.textSec}>{currentModelName}</text>
-              <text fg={C.dim}>  {currentModelId}</text>
-              <text fg={C.dim}>   ·   ctx: {contextStr}{contextLimitStr}{contextPercent}</text>
+              <box flexGrow={1}>
+                <text>
+                  <span fg={C.primaryLight}><strong>{modeNameCapitalized}</strong></span>
+                  <span fg={C.dim}> · </span>
+                  <span fg={C.textSec}>{currentModelName}</span>
+                </text>
+              </box>
+              <box>
+                <text fg={C.dim}>ctx {contextStr}{contextLimitStr}{contextPercent}</text>
+              </box>
             </box>
           </box>
         )}
         <box flexDirection="row" justifyContent="flex-end" paddingTop={0} paddingRight={1}>
-          <text fg={C.dim}>{isGenerating ? 'esc 中断生成' : 'tab 补全'}  ·  ctrl+c 退出</text>
+          <text fg={exitConfirmArmed ? C.warn : C.dim}>
+            {isGenerating ? 'esc 中断生成' : 'tab 补全'}
+            {'  ·  '}
+            {copyMode ? 'f6 返回滚动模式' : 'f6 复制模式'}
+            {'  ·  '}
+            {exitConfirmArmed ? '再次按 ctrl+c 退出' : 'ctrl+c 连按两次退出'}
+          </text>
         </box>
       </box>
     </box>

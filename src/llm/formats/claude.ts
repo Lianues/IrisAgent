@@ -10,6 +10,7 @@ import {
 } from '../../types';
 import { FormatAdapter, StreamDecodeState } from './types';
 import { consumeCallId, normalizeCallId, resolveCallId } from './tool-call-ids';
+import { sanitizeSchemaForClaude } from './schema-sanitizer';
 
 export class ClaudeFormat implements FormatAdapter {
   constructor(private model: string) {}
@@ -141,7 +142,7 @@ export class ClaudeFormat implements FormatAdapter {
       body.tools = allDecls.map(decl => ({
         name: decl.name,
         description: decl.description,
-        input_schema: decl.parameters,
+        input_schema: sanitizeSchemaForClaude(decl.parameters),
       }));
     }
 

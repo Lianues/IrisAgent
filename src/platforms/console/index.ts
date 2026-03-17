@@ -202,6 +202,8 @@ export class ConsolePlatform extends PlatformAdapter {
       try {
         this.renderer = await createCliRenderer({
           exitOnCtrlC: false, // 由应用自行处理 Ctrl+C
+          useMouse: true, // 默认开启鼠标，支持滚轮滚动；复制时由应用内复制模式临时关闭
+          enableMouseMovement: false,
         });
       } catch (err: unknown) {
         if (err instanceof Error && err.message?.includes('Raw mode')) {

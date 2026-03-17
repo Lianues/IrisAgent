@@ -24,6 +24,8 @@ export function App({ irisDir }: AppProps) {
     modelName: "",
     platform: "console",
     webPort: 8192,
+    wxworkBotId: "",
+    wxworkSecret: "",
   })
 
   const updateConfig = (partial: Partial<OnboardConfig>) => {
@@ -95,8 +97,13 @@ export function App({ irisDir }: AppProps) {
 
       {step === "platform" && (
         <PlatformSelect
-          onSelect={(platform, port) => {
-            updateConfig({ platform, webPort: port })
+          onSelect={(platform, opts) => {
+            updateConfig({
+              platform,
+              webPort: opts.port ?? 8192,
+              wxworkBotId: opts.wxworkBotId ?? "",
+              wxworkSecret: opts.wxworkSecret ?? "",
+            })
             setStep("summary")
           }}
           onBack={() => setStep("model")}

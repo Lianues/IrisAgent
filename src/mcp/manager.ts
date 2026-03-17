@@ -5,10 +5,11 @@
  */
 
 import { MCPConfig } from '../config/types';
-import { ToolDefinition, ParameterSchema } from '../types';
+import { ToolDefinition } from '../types';
 import { MCPClient } from './client';
 import { MCPServerInfo } from './types';
 import { createLogger } from '../logger';
+import { dereferenceSync } from 'dereference-json-schema';
 
 const logger = createLogger('MCPManager');
 
@@ -97,68 +98,36 @@ export class MCPManager {
 }
 
 /**
- * 将 MCP inputSchema（JSON Schema）转换为 Iris ParameterSchema 格式
+ * 将 MCP inputSchema（JSON Schema）转换为 Iris 工具声明的 parameters 格式
+ *
+ * 用 dereference-json-schema 将 $ref 引用内联展开后直接透传，
+ * 保留完整的 JSON Schema 特性（anyOf、additionalProperties 等）。
  */
 function convertInputSchema(schema: Record<string, unknown>): {
   type: 'object';
-  properties: Record<string, ParameterSchema>;
+  properties: Record<string, Record<string, unknown>>;
   required?: string[];
 } | undefined {
-  const props = schema.properties as Record<string, any> | undefined;
+  // 展开所有 $ref 引用
+  let resolved: Record<string, any>;
+  try {
+    resolved = dereferenceSync(schema) as Record<string, any>;
+  } catch {
+    // dereference 失败时（如循环引用），使用原始 schema
+    resolved = schema as Record<string, any>;
+  }
+
+  const props = resolved.properties as Record<string, any> | undefined;
   if (!props || typeof props !== 'object') return undefined;
 
-  const converted: Record<string, ParameterSchema> = {};
-  for (const [key, value] of Object.entries(props)) {
-    converted[key] = convertProperty(value);
-  }
+  // 清理已展开后残留的 $defs/definitions（不需要发给 LLM）
+  const { $defs, definitions, ...clean } = resolved;
 
-  const result: {
+  return clean as {
     type: 'object';
-    properties: Record<string, ParameterSchema>;
+    properties: Record<string, Record<string, unknown>>;
     required?: string[];
-  } = {
-    type: 'object',
-    properties: converted,
   };
-
-  if (Array.isArray(schema.required) && schema.required.length > 0) {
-    result.required = schema.required as string[];
-  }
-
-  return result;
-}
-
-/** 递归转换单个属性 */
-function convertProperty(prop: any): ParameterSchema {
-  if (!prop || typeof prop !== 'object') {
-    return { type: 'string' };
-  }
-
-  const result: ParameterSchema = {
-    type: typeof prop.type === 'string' ? prop.type : 'string',
-  };
-
-  if (prop.description) result.description = String(prop.description);
-  if (Array.isArray(prop.enum)) result.enum = prop.enum.map(String);
-
-  // 数组的 items
-  if (prop.items && typeof prop.items === 'object') {
-    result.items = convertProperty(prop.items);
-  }
-
-  // 对象的 properties
-  if (prop.properties && typeof prop.properties === 'object') {
-    result.properties = {};
-    for (const [key, value] of Object.entries(prop.properties)) {
-      result.properties[key] = convertProperty(value);
-    }
-  }
-
-  if (Array.isArray(prop.required) && prop.required.length > 0) {
-    result.required = prop.required;
-  }
-
-  return result;
 }
 
 /** 将名称中非 [a-zA-Z0-9_] 的字符替换为下划线（兼容 Gemini 函数名规范） */

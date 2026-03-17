@@ -795,7 +795,7 @@ describe('OpenAICompatibleFormat: encodeRequest', () => {
   });
 });
 
-describe('OpenAICompatibleFormat: decodeResponse', () => {
+describe('OpenAICompatibleFormat: decodeResponse (basic)', () => {
   const fmt = new OpenAICompatibleFormat('gpt-4o');
 
   it('解码 tool_calls 响应：callId 保留', () => {
@@ -814,6 +814,311 @@ describe('OpenAICompatibleFormat: decodeResponse', () => {
     const resp = fmt.decodeResponse(raw);
     const fc = resp.content.parts.find(p => 'functionCall' in p) as FunctionCallPart;
     expect(fc.functionCall.callId).toBe('call_dec_001');
+  });
+});
+
+// ============================================================
+//  OpenAI Compatible: reasoning_content 全链路测试
+// ============================================================
+
+describe('OpenAICompatibleFormat: encodeRequest — reasoning_content', () => {
+  const fmt = new OpenAICompatibleFormat('kimi-2.5');
+
+  it('assistant 纯文本消息含 thinking → reasoning_content 被写入', () => {
+    const req = buildRequest([
+      userMsg('hello'),
+      {
+        role: 'model',
+        parts: [
+          { text: 'let me think about this', thought: true },
+          { text: 'here is my answer' },
+        ],
+      },
+      userMsg('thanks'),
+    ], false);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg.reasoning_content).toBe('let me think about this');
+    expect(assistantMsg.content).toBe('here is my answer');
+  });
+
+  it('assistant tool_call 消息含 thinking → reasoning_content 被写入', () => {
+    const req = buildRequest([
+      userMsg('weather?'),
+      modelMixedMsg({
+        thought: { text: 'I should call the weather tool' },
+        toolCalls: [{ name: 'get_weather', args: { city: 'Tokyo' }, callId: 'call_rc_1' }],
+      }),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 25 }, callId: 'call_rc_1' }]),
+    ]);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg.reasoning_content).toBe('I should call the weather tool');
+    expect(assistantMsg.tool_calls).toHaveLength(1);
+    expect(assistantMsg.tool_calls[0].id).toBe('call_rc_1');
+  });
+
+  it('assistant tool_call 消息含 thinking + text → 三个字段都存在', () => {
+    const req = buildRequest([
+      userMsg('help'),
+      modelMixedMsg({
+        thought: { text: 'reasoning about the request' },
+        text: 'Let me look this up',
+        toolCalls: [{ name: 'get_weather', args: { city: 'NY' }, callId: 'call_rc_2' }],
+      }),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 20 }, callId: 'call_rc_2' }]),
+    ]);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg.reasoning_content).toBe('reasoning about the request');
+    expect(assistantMsg.content).toBe('Let me look this up');
+    expect(assistantMsg.tool_calls).toHaveLength(1);
+  });
+
+  it('assistant 消息无 thinking → 不包含 reasoning_content 字段', () => {
+    const req = buildRequest([
+      userMsg('hello'),
+      modelTextMsg('just a reply'),
+      userMsg('ok'),
+    ], false);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg.content).toBe('just a reply');
+    expect(assistantMsg).not.toHaveProperty('reasoning_content');
+  });
+
+  it('assistant tool_call 消息无 thinking → 不包含 reasoning_content 字段', () => {
+    const req = buildRequest([
+      userMsg('test'),
+      modelToolCallMsg([{ name: 'get_weather', args: { city: 'X' }, callId: 'call_no_rc' }]),
+      toolResponseMsg([{ name: 'get_weather', result: 'ok', callId: 'call_no_rc' }]),
+    ]);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg).not.toHaveProperty('reasoning_content');
+  });
+
+  it('多个 thought part 被拼接为单个 reasoning_content', () => {
+    const req = buildRequest([
+      userMsg('hello'),
+      {
+        role: 'model',
+        parts: [
+          { text: 'first thought', thought: true },
+          { text: 'second thought', thought: true },
+          { text: 'visible answer' },
+        ],
+      },
+      userMsg('ok'),
+    ], false);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    expect(assistantMsg.reasoning_content).toBe('first thoughtsecond thought');
+    expect(assistantMsg.content).toBe('visible answer');
+  });
+
+  it('空 thought text → reasoning_content 不被写入（null）', () => {
+    const req = buildRequest([
+      userMsg('hello'),
+      {
+        role: 'model',
+        parts: [
+          { text: '', thought: true },
+          { text: 'answer' },
+        ],
+      },
+    ], false);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    // 空字符串拼接结果为空 → null → 不写入
+    expect(assistantMsg.reasoning_content).toBeFalsy();
+  });
+
+  it('多轮 thinking + 工具调用：每轮 assistant 的 reasoning_content 独立正确', () => {
+    const req = buildRequest([
+      userMsg('start'),
+      // 第一轮：thinking → tool call
+      modelMixedMsg({
+        thought: { text: 'think round 1' },
+        toolCalls: [{ name: 'get_weather', args: { city: 'A' }, callId: 'call_mr1' }],
+      }),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 10 }, callId: 'call_mr1' }]),
+      // 第二轮：thinking → tool call
+      modelMixedMsg({
+        thought: { text: 'think round 2' },
+        toolCalls: [{ name: 'read_file', args: { path: '/x' }, callId: 'call_mr2' }],
+      }),
+      toolResponseMsg([{ name: 'read_file', result: { content: 'data' }, callId: 'call_mr2' }]),
+      // 第三轮：thinking → 最终回复
+      {
+        role: 'model',
+        parts: [
+          { text: 'think round 3', thought: true },
+          { text: 'final answer' },
+        ],
+      },
+    ]);
+    const body = fmt.encodeRequest(req) as any;
+    const assistantMsgs = body.messages.filter((m: any) => m.role === 'assistant');
+    expect(assistantMsgs).toHaveLength(3);
+    expect(assistantMsgs[0].reasoning_content).toBe('think round 1');
+    expect(assistantMsgs[0].tool_calls).toHaveLength(1);
+    expect(assistantMsgs[1].reasoning_content).toBe('think round 2');
+    expect(assistantMsgs[1].tool_calls).toHaveLength(1);
+    expect(assistantMsgs[2].reasoning_content).toBe('think round 3');
+    expect(assistantMsgs[2].content).toBe('final answer');
+  });
+});
+
+describe('OpenAICompatibleFormat: decodeResponse — reasoning_content', () => {
+  const fmt = new OpenAICompatibleFormat('kimi-2.5');
+
+  it('响应含 reasoning_content → 解码为 thought part', () => {
+    const raw = {
+      choices: [{
+        message: {
+          reasoning_content: 'let me think step by step',
+          content: 'the answer is 42',
+        },
+        finish_reason: 'stop',
+      }],
+    };
+    const resp = fmt.decodeResponse(raw);
+    expect(resp.content.parts).toHaveLength(2);
+    const thoughtPart = resp.content.parts[0] as any;
+    expect(thoughtPart.thought).toBe(true);
+    expect(thoughtPart.text).toBe('let me think step by step');
+    const textPart = resp.content.parts[1] as any;
+    expect(textPart.text).toBe('the answer is 42');
+    expect(textPart.thought).toBeUndefined();
+  });
+
+  it('响应含 reasoning_content + tool_calls → thought part 在 functionCall 之前', () => {
+    const raw = {
+      choices: [{
+        message: {
+          reasoning_content: 'I need to check the weather',
+          content: null,
+          tool_calls: [{
+            id: 'call_rc_dec_1', type: 'function',
+            function: { name: 'get_weather', arguments: '{"city":"Tokyo"}' },
+          }],
+        },
+        finish_reason: 'tool_calls',
+      }],
+    };
+    const resp = fmt.decodeResponse(raw);
+    expect(resp.content.parts.length).toBeGreaterThanOrEqual(2);
+    const thoughtPart = resp.content.parts[0] as any;
+    expect(thoughtPart.thought).toBe(true);
+    expect(thoughtPart.text).toBe('I need to check the weather');
+    const fcPart = resp.content.parts.find((p: any) => 'functionCall' in p) as any;
+    expect(fcPart.functionCall.name).toBe('get_weather');
+    expect(fcPart.functionCall.callId).toBe('call_rc_dec_1');
+  });
+
+  it('响应无 reasoning_content → 不产生 thought part', () => {
+    const raw = {
+      choices: [{
+        message: { content: 'just a reply' },
+        finish_reason: 'stop',
+      }],
+    };
+    const resp = fmt.decodeResponse(raw);
+    expect(resp.content.parts).toHaveLength(1);
+    expect((resp.content.parts[0] as any).thought).toBeUndefined();
+  });
+
+  it('reasoning_content 为空字符串 → 不产生 thought part', () => {
+    const raw = {
+      choices: [{
+        message: { reasoning_content: '', content: 'answer' },
+        finish_reason: 'stop',
+      }],
+    };
+    const resp = fmt.decodeResponse(raw);
+    expect(resp.content.parts).toHaveLength(1);
+    expect((resp.content.parts[0] as any).text).toBe('answer');
+    expect((resp.content.parts[0] as any).thought).toBeUndefined();
+  });
+});
+
+describe('OpenAICompatibleFormat: stream decode — reasoning_content', () => {
+  const fmt = new OpenAICompatibleFormat('kimi-2.5');
+
+  it('delta.reasoning_content → thought partsDelta', () => {
+    const state = fmt.createStreamState();
+    const chunk = fmt.decodeStreamChunk({
+      choices: [{ delta: { reasoning_content: 'thinking...' } }],
+    }, state);
+    expect(chunk.partsDelta).toHaveLength(1);
+    const thoughtDelta = chunk.partsDelta![0] as any;
+    expect(thoughtDelta.thought).toBe(true);
+    expect(thoughtDelta.text).toBe('thinking...');
+    // 不应该有 textDelta（textDelta 只包含可见文本）
+    expect(chunk.textDelta).toBeUndefined();
+  });
+
+  it('reasoning_content 后接 content → 分别输出', () => {
+    const state = fmt.createStreamState();
+    // 先收到 reasoning
+    const c1 = fmt.decodeStreamChunk({
+      choices: [{ delta: { reasoning_content: 'step 1' } }],
+    }, state);
+    expect(c1.partsDelta).toHaveLength(1);
+    expect((c1.partsDelta![0] as any).thought).toBe(true);
+
+    // 再收到正文
+    const c2 = fmt.decodeStreamChunk({
+      choices: [{ delta: { content: 'answer text' } }],
+    }, state);
+    expect(c2.textDelta).toBe('answer text');
+  });
+
+  it('delta 同时含 reasoning_content 和 content → 两者都输出', () => {
+    const state = fmt.createStreamState();
+    const chunk = fmt.decodeStreamChunk({
+      choices: [{ delta: { reasoning_content: 'think', content: 'speak' } }],
+    }, state);
+    expect(chunk.partsDelta).toHaveLength(1);
+    expect((chunk.partsDelta![0] as any).thought).toBe(true);
+    expect((chunk.partsDelta![0] as any).text).toBe('think');
+    expect(chunk.textDelta).toBe('speak');
+  });
+
+  it('delta 无 reasoning_content → 不产生 thought partsDelta', () => {
+    const state = fmt.createStreamState();
+    const chunk = fmt.decodeStreamChunk({
+      choices: [{ delta: { content: 'normal text' } }],
+    }, state);
+    expect(chunk.textDelta).toBe('normal text');
+    expect(chunk.partsDelta).toBeUndefined();
+  });
+
+  it('reasoning_content 后接 tool_calls → 两者都正确输出', () => {
+    const state = fmt.createStreamState();
+    // reasoning 阶段
+    const c1 = fmt.decodeStreamChunk({
+      choices: [{ delta: { reasoning_content: 'analyzing...' } }],
+    }, state);
+    expect(c1.partsDelta).toHaveLength(1);
+    expect((c1.partsDelta![0] as any).thought).toBe(true);
+
+    // tool call 分片
+    fmt.decodeStreamChunk({
+      choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_stream_rc', function: { name: 'get_weather', arguments: '{"city":' } }] } }],
+    }, state);
+    fmt.decodeStreamChunk({
+      choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"Tokyo"}' } }] } }],
+    }, state);
+
+    // 结束
+    const cEnd = fmt.decodeStreamChunk({
+      choices: [{ finish_reason: 'tool_calls', delta: {} }],
+    }, state);
+    expect(cEnd.functionCalls).toHaveLength(1);
+    expect(cEnd.functionCalls![0].functionCall.name).toBe('get_weather');
+    expect(cEnd.functionCalls![0].functionCall.callId).toBe('call_stream_rc');
   });
 });
 
@@ -908,6 +1213,141 @@ describe('tool-call-ids', () => {
 // ============================================================
 
 describe('cross-format: abort 后历史的编码安全性', () => {
+  const claudeFmt = new ClaudeFormat('claude-sonnet-4-20250514');
+  const oaiFmt = new OpenAICompatibleFormat('gpt-4o');
+  const respFmt = new OpenAIResponsesFormat('o3');
+  const geminiFmt = new GeminiFormat();
+
+  it('场景1：只有 user 消息 — 所有格式正常编码', () => {
+    const req = buildRequest([userMsg('hello')], false);
+    expect(() => claudeFmt.encodeRequest(req)).not.toThrow();
+    expect(() => oaiFmt.encodeRequest(req)).not.toThrow();
+    expect(() => respFmt.encodeRequest(req)).not.toThrow();
+    expect(() => geminiFmt.encodeRequest(req)).not.toThrow();
+  });
+
+  it('场景2：user + model(text) — 所有格式正常编码', () => {
+    const req = buildRequest([userMsg('hello'), modelTextMsg('partial')], false);
+    expect(() => claudeFmt.encodeRequest(req)).not.toThrow();
+    expect(() => oaiFmt.encodeRequest(req)).not.toThrow();
+    expect(() => respFmt.encodeRequest(req)).not.toThrow();
+    expect(() => geminiFmt.encodeRequest(req)).not.toThrow();
+  });
+
+  it('场景3：完整的 tool call/response 对 — 所有格式 ID 配对', () => {
+    const history = [
+      userMsg('hello'),
+      modelToolCallMsg([{ name: 'get_weather', args: { city: 'X' }, callId: 'call_cross_1' }]),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 15 }, callId: 'call_cross_1' }]),
+    ];
+    const req = buildRequest(history);
+
+    const claudeBody = claudeFmt.encodeRequest(req) as any;
+    expect(claudeBody.messages[1].content.find((b: any) => b.type === 'tool_use').id)
+      .toBe(claudeBody.messages[2].content.find((b: any) => b.type === 'tool_result').tool_use_id);
+
+    const oaiBody = oaiFmt.encodeRequest(req) as any;
+    expect(oaiBody.messages.find((m: any) => m.role === 'assistant' && m.tool_calls).tool_calls[0].id)
+      .toBe(oaiBody.messages.find((m: any) => m.role === 'tool').tool_call_id);
+
+    const respBody = respFmt.encodeRequest(req) as any;
+    expect(respBody.input.find((i: any) => i.type === 'function_call').call_id)
+      .toBe(respBody.input.find((i: any) => i.type === 'function_call_output').call_id);
+  });
+
+  it('场景4：多轮完整对话后 abort — Claude 每对 tool_use/tool_result 匹配', () => {
+    const history = [
+      userMsg('start'),
+      modelToolCallMsg([{ name: 'get_weather', args: {}, callId: 'call_m1' }]),
+      toolResponseMsg([{ name: 'get_weather', result: 'r1', callId: 'call_m1' }]),
+      modelToolCallMsg([{ name: 'read_file', args: {}, callId: 'call_m2' }]),
+      toolResponseMsg([{ name: 'read_file', result: 'r2', callId: 'call_m2' }]),
+      modelTextMsg('final answer'),
+      userMsg('followup'),
+    ];
+    const req = buildRequest(history);
+    const claudeBody = claudeFmt.encodeRequest(req) as any;
+
+    const allToolUseIds: string[] = [];
+    const allToolResultIds: string[] = [];
+    for (const msg of claudeBody.messages) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_use') allToolUseIds.push(block.id);
+        }
+      }
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') allToolResultIds.push(block.tool_use_id);
+        }
+      }
+    }
+    expect(allToolUseIds).toEqual(allToolResultIds);
+  });
+
+  it('场景5：abort 清理后历史含 thinking 的 tool_call — OAI 编码包含 reasoning_content 且 ID 配对', () => {
+    const history: Content[] = [
+      userMsg('hello'),
+      // abort 清理后保留的完整对：thinking + tool_call → tool_response
+      modelMixedMsg({
+        thought: { text: 'I need to check the weather first' },
+        toolCalls: [{ name: 'get_weather', args: { city: 'X' }, callId: 'call_abort_rc' }],
+      }),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 15 }, callId: 'call_abort_rc' }]),
+    ];
+    const req = buildRequest(history);
+    const body = oaiFmt.encodeRequest(req) as any;
+    const assistantMsg = body.messages.find((m: any) => m.role === 'assistant');
+    const toolMsg = body.messages.find((m: any) => m.role === 'tool');
+
+    // reasoning_content 被正确填充
+    expect(assistantMsg.reasoning_content).toBe('I need to check the weather first');
+    // tool_call ID 配对
+    expect(assistantMsg.tool_calls[0].id).toBe(toolMsg.tool_call_id);
+    expect(assistantMsg.tool_calls[0].id).toBe('call_abort_rc');
+  });
+
+  it('场景6：abort 清理后多轮 thinking + tool_call — 每轮 reasoning_content 和 ID 都正确', () => {
+    const history: Content[] = [
+      userMsg('start'),
+      modelMixedMsg({
+        thought: { text: 'round 1 thinking' },
+        toolCalls: [{ name: 'get_weather', args: { city: 'A' }, callId: 'call_ab_r1' }],
+      }),
+      toolResponseMsg([{ name: 'get_weather', result: { temp: 10 }, callId: 'call_ab_r1' }]),
+      modelMixedMsg({
+        thought: { text: 'round 2 thinking' },
+        toolCalls: [{ name: 'read_file', args: { path: '/b' }, callId: 'call_ab_r2' }],
+      }),
+      toolResponseMsg([{ name: 'read_file', result: { content: 'data' }, callId: 'call_ab_r2' }]),
+      // 第三轮被 abort 清理掉了，只剩最终文本回复
+      {
+        role: 'model',
+        parts: [
+          { text: 'round 3 thinking', thought: true },
+          { text: 'final answer' },
+        ],
+      },
+    ];
+    const req = buildRequest(history);
+    const body = oaiFmt.encodeRequest(req) as any;
+    const assistantMsgs = body.messages.filter((m: any) => m.role === 'assistant');
+    const toolMsgs = body.messages.filter((m: any) => m.role === 'tool');
+
+    expect(assistantMsgs).toHaveLength(3);
+    // 第一轮
+    expect(assistantMsgs[0].reasoning_content).toBe('round 1 thinking');
+    expect(assistantMsgs[0].tool_calls[0].id).toBe(toolMsgs[0].tool_call_id);
+    // 第二轮
+    expect(assistantMsgs[1].reasoning_content).toBe('round 2 thinking');
+    expect(assistantMsgs[1].tool_calls[0].id).toBe(toolMsgs[1].tool_call_id);
+    // 第三轮（纯文本）
+    expect(assistantMsgs[2].reasoning_content).toBe('round 3 thinking');
+    expect(assistantMsgs[2].content).toBe('final answer');
+  });
+});
+
+describe('cross-format: abort 后历史的编码安全性 (original)', () => {
   const claudeFmt = new ClaudeFormat('claude-sonnet-4-20250514');
   const oaiFmt = new OpenAICompatibleFormat('gpt-4o');
   const respFmt = new OpenAIResponsesFormat('o3');
