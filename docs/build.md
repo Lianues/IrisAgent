@@ -22,16 +22,12 @@ Iris 的代码按运行时需求分为两部分：
 ```bash
 npm install
 npm run setup          # 安装全部依赖（含 Web UI）
-npm run dev            # 启动（tsx src/index.ts）
+npm run dev            # 启动（按当前平台配置自动选择运行时）
 ```
 
-此模式下 `@opentui/core` 和 `@opentui/react` 作为 `optionalDependencies`，安装失败不影响运行。若配置文件中选择了 console 平台，入口会检测运行时并给出提示：
+此模式下 `@opentui/core` 和 `@opentui/react` 作为 `optionalDependencies`，安装失败不影响运行。若配置文件中选择了 console 平台，启动脚本会自动切换到 Bun 运行时；若系统中未安装 Bun，则给出提示。
 
-```
-[Iris] Console 平台需要 Bun 运行时。
-  - 开发模式请使用: bun src/index.ts
-  - 或切换到其他平台（如 web）
-```
+如果当前是 `web`、`discord`、`telegram`、`wxwork` 等平台，`npm run dev` 仍会继续使用 Node.js + tsx。
 
 ### Bun 模式（全功能开发）
 
@@ -39,15 +35,15 @@ npm run dev            # 启动（tsx src/index.ts）
 
 ```bash
 bun install
-bun run dev:bun        # 启动（bun src/index.ts）
+bun run dev            # 启动（直接使用 Bun 运行时）
 ```
 
 ### npm 脚本一览
 
 | 脚本 | 说明 |
 |------|------|
-| `npm run dev` | Node.js 启动（tsx） |
-| `bun run dev:bun` | Bun 启动（含 console） |
+| `npm run dev` | 开发启动；默认走 Node.js，遇到 console 平台时自动切到 Bun |
+| `bun run dev` | 开发启动；直接走 Bun 运行时 |
 | `npm run build` | TypeScript 编译（排除 console 目录） |
 | `bun run build:compile` | 编译为独立二进制（见下文） |
 | `npm run build:ui` | 构建 Web UI 前端 |

@@ -67,14 +67,14 @@ cd Iris
 ```bash
 npm install
 npm run setup          # 安装全部依赖（含 Web UI）
-npm run dev            # 启动（tsx src/index.ts）
+npm run dev            # 启动（按当前平台配置自动选择运行时）
 ```
 
 **全功能开发（含 Console TUI，需要 Bun）：**
 
 ```bash
 bun install
-bun run dev:bun        # 启动（bun src/index.ts）
+bun run dev            # 启动（直接使用 Bun 运行时）
 ```
 
 > Console 平台（TUI 界面）依赖 [OpenTUI](https://opentui.com/) 的 Bun FFI，因此仅在 Bun 运行时下可用。其他平台在 Node.js 和 Bun 下均可正常运行。
@@ -238,11 +238,11 @@ model: gpt-4o-mini
 
 ```bash
 # Node.js（后端开发）
-npm run dev              # 启动（无 console 平台）
+npm run dev              # 启动（按当前平台配置自动选择运行时）
 npm run build            # 构建
 npm run test             # 测试（Vitest）
 
 # Bun（全功能开发）
-bun run dev:bun          # 启动（含 console TUI）
+bun run dev              # 启动（含 console TUI）
 bun run build:compile    # 编译为独立二进制
 ```
