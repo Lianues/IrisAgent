@@ -127,7 +127,7 @@ export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number 
 
       const loop = new ToolLoop(subTools, subPrompt, {
         maxRounds: typeConfig.maxToolRounds,
-        toolPolicies: deps.getToolPolicies(),
+        toolsConfig: { permissions: deps.getToolPolicies() },
       });
 
       const callLLM: LLMCaller = async (request, modelName) => {

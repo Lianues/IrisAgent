@@ -85,6 +85,12 @@ export interface ToolPolicyConfig {
 }
 
 export interface ToolsConfig {
+  /** 全局：跳过所有审批（一类 + 二类），最高优先级 */
+  autoApproveAll?: boolean;
+  /** 全局：跳过所有一类审批（Y/N 确认） */
+  autoApproveConfirmation?: boolean;
+  /** 全局：跳过所有二类审批（diff 预览） */
+  autoApproveDiff?: boolean;
   /**
    * 按工具名称定义执行策略。
    * 未配置的工具视为不允许执行。

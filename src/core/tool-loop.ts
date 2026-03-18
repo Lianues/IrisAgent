@@ -20,7 +20,7 @@
 import { ToolRegistry } from '../tools/registry';
 import { ToolStateManager } from '../tools/state';
 import { buildExecutionPlan, executePlan } from '../tools/scheduler';
-import { ToolPolicyConfig } from '../config';
+import { ToolsConfig } from '../config';
 import { PromptAssembler } from '../prompt/assembler';
 import { createLogger } from '../logger';
 import {
@@ -37,8 +37,8 @@ export type LLMCaller = (request: LLMRequest, modelName?: string, signal?: Abort
 /** ToolLoop 配置（可变引用，支持热重载） */
 export interface ToolLoopConfig {
   maxRounds: number;
-  /** 按工具名称定义执行策略；未配置的工具默认 autoApprove: false */
-  toolPolicies: Record<string, ToolPolicyConfig>;
+  /** 工具配置（含全局开关和按工具策略） */
+  toolsConfig: ToolsConfig;
 }
 
 /** ToolLoop 执行结果 */
@@ -99,7 +99,7 @@ export class ToolLoop {
       rounds++;
 
       // 组装请求
-      // toolPolicies 仅控制执行策略（autoApprove/deny），不过滤工具声明。
+      // toolsConfig 仅控制执行策略（autoApprove/deny），不过滤工具声明。
       // 所有已注册工具的声明均传给 LLM，未配置 policy 的工具执行时默认需审批。
       const declarations = this.tools.getDeclarations();
       const request = this.prompt.assemble(
@@ -256,10 +256,10 @@ export class ToolLoop {
           'queued',
         ),
       );
-      return executePlan(calls, plan, this.tools, this.toolState, invocations.map(i => i.id), this.config.toolPolicies, signal);
+      return executePlan(calls, plan, this.tools, this.toolState, invocations.map(i => i.id), this.config.toolsConfig, signal);
     }
 
     // 无状态管理：纯执行
-    return executePlan(calls, plan, this.tools, undefined, undefined, this.config.toolPolicies, signal);
+    return executePlan(calls, plan, this.tools, undefined, undefined, this.config.toolsConfig, signal);
   }
 }

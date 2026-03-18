@@ -40,15 +40,25 @@ function normalizeToolPolicy(raw: unknown): ToolPolicyConfig | undefined {
 export function parseToolsConfig(raw: any): ToolsConfig {
   const permissions: Record<string, ToolPolicyConfig> = {};
 
+  const globalConfig: Pick<ToolsConfig, 'autoApproveAll' | 'autoApproveConfirmation' | 'autoApproveDiff'> = {};
+
+  // 保留字段名集合（全局开关，不作为工具名解析）
+  const RESERVED_KEYS = new Set(['autoApproveAll', 'autoApproveConfirmation', 'autoApproveDiff']);
+
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { permissions };
   }
 
+  if (raw.autoApproveAll === true) globalConfig.autoApproveAll = true;
+  if (raw.autoApproveConfirmation === true) globalConfig.autoApproveConfirmation = true;
+  if (raw.autoApproveDiff === true) globalConfig.autoApproveDiff = true;
+
   for (const [toolName, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (RESERVED_KEYS.has(toolName)) continue;
     const policy = normalizeToolPolicy(value);
     if (!policy) continue;
     permissions[toolName] = policy;
   }
 
-  return { permissions };
+  return { ...globalConfig, permissions };
 }

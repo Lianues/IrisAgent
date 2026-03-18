@@ -311,7 +311,7 @@ export class Backend extends EventEmitter {
 
     this.toolLoopConfig = {
       maxRounds: config?.maxToolRounds ?? 200,
-      toolPolicies: config?.toolsConfig?.permissions ?? {},
+      toolsConfig: config?.toolsConfig ?? { permissions: {} },
     };
     this.toolLoop = new ToolLoop(tools, prompt, this.toolLoopConfig, toolState);
 
@@ -525,7 +525,7 @@ export class Backend extends EventEmitter {
 
   /** 获取当前工具执行策略 */
   getToolPolicies(): Record<string, ToolPolicyConfig> {
-    return this.toolLoopConfig.toolPolicies;
+    return this.toolLoopConfig.toolsConfig.permissions;
   }
 
   /**
@@ -583,11 +583,11 @@ export class Backend extends EventEmitter {
   }): void {
     if (opts.stream !== undefined) this.stream = opts.stream;
     if (opts.maxToolRounds !== undefined) this.toolLoopConfig.maxRounds = opts.maxToolRounds;
-    if (opts.toolsConfig !== undefined) this.toolLoopConfig.toolPolicies = opts.toolsConfig.permissions;
+    if (opts.toolsConfig !== undefined) this.toolLoopConfig.toolsConfig = opts.toolsConfig;
     if (opts.systemPrompt !== undefined) this.prompt.setSystemPrompt(opts.systemPrompt);
     if ('currentLLMConfig' in opts) this.currentLLMConfig = opts.currentLLMConfig;
     if ('ocrService' in opts) this.ocrService = opts.ocrService;
-    logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.toolLoopConfig.maxRounds} toolPolicies=${Object.keys(this.toolLoopConfig.toolPolicies).length}`);
+    logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.toolLoopConfig.maxRounds} toolPolicies=${Object.keys(this.toolLoopConfig.toolsConfig.permissions).length}`);
   }
 
   // ============ 核心流程 ============

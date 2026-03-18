@@ -17,7 +17,7 @@ import { ToolRegistry } from './registry';
 import { ToolStateManager } from './state';
 import { FunctionCallPart, FunctionResponsePart } from '../types';
 import { createLogger } from '../logger';
-import { ToolPolicyConfig } from '../config';
+import { ToolPolicyConfig, ToolsConfig } from '../config';
 
 const logger = createLogger('ToolScheduler');
 
@@ -210,7 +210,7 @@ async function executeSingle(
   registry: ToolRegistry,
   toolState?: ToolStateManager,
   invocationId?: string,
-  toolPolicies: Record<string, ToolPolicyConfig> = {},
+  toolsConfig: ToolsConfig = { permissions: {} },
   signal?: AbortSignal,
 ): Promise<FunctionResponsePart> {
   const toolName = call.functionCall.name;
@@ -231,15 +231,19 @@ async function executeSingle(
   }
 
   // 检查工具策略
-  const policy = toolPolicies[toolName];
+  const policy = toolsConfig.permissions[toolName];
   // 未配置的工具默认需要确认（autoApprove: false）
   // 在有 toolState 的平台（Console）会弹出审批，
   // 不支持交互审批的平台（如 WXWork）应自行监听 tool:update 事件并自动批准。
   const effectivePolicy: ToolPolicyConfig = policy ?? { autoApprove: false };
 
+  // 全局开关（最高优先级）
+  const globalSkipConfirmation = toolsConfig.autoApproveAll === true || toolsConfig.autoApproveConfirmation === true;
+  const globalSkipDiff = toolsConfig.autoApproveAll === true || toolsConfig.autoApproveDiff === true;
+
   if (toolState && invocationId) {
     // ── 一类审批：autoApprove 控制，底部 Y/N ──
-    if (!shouldAutoApprove(call, effectivePolicy)) {
+    if (!globalSkipConfirmation && !shouldAutoApprove(call, effectivePolicy)) {
       toolState.transition(invocationId, 'awaiting_approval');
       const approved = await toolState.waitForApproval(invocationId, signal);
       if (!approved) {
@@ -254,7 +258,7 @@ async function executeSingle(
     }
 
     // ── 二类审批：showApprovalView 控制，diff 预览视图（执行前） ──
-    if (shouldShowDiffPreview(call, effectivePolicy)) {
+    if (!globalSkipDiff && shouldShowDiffPreview(call, effectivePolicy)) {
       toolState.transition(invocationId, 'awaiting_apply');
       const applied = await toolState.waitForApply(invocationId, signal);
       if (!applied) {
@@ -321,7 +325,7 @@ export async function executePlan(
   registry: ToolRegistry,
   toolState?: ToolStateManager,
   invocationIds?: string[],
-  toolPolicies: Record<string, ToolPolicyConfig> = {},
+  toolsConfig: ToolsConfig = { permissions: {} },
   signal?: AbortSignal,
 ): Promise<FunctionResponsePart[]> {
   const responseParts: FunctionResponsePart[] = new Array(calls.length);
@@ -353,7 +357,7 @@ export async function executePlan(
 
       const results = await Promise.all(
         batch.indices.map(i =>
-          executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolPolicies, signal)
+          executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal)
         ),
       );
       for (let j = 0; j < batch.indices.length; j++) {
@@ -361,7 +365,7 @@ export async function executePlan(
       }
     } else {
       for (const i of batch.indices) {
-        responseParts[i] = await executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolPolicies, signal);
+        responseParts[i] = await executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal);
       }
     }
   }

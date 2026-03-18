@@ -1,7 +1,20 @@
 # 工具配置
 #
-# 按工具名称配置执行策略。
-# 未在此文件中配置的工具，默认不允许执行。
+# ─── 全局审批开关（最高优先级） ───
+#
+# 全部自动批准（跳过一类 + 二类审批）
+# autoApproveAll: true
+#
+# 仅跳过一类审批（Y/N 确认），二类审批（diff 预览）仍生效
+# autoApproveConfirmation: true
+#
+# 仅跳过二类审批（diff 预览），一类审批（Y/N 确认）仍生效
+# autoApproveDiff: true
+#
+# ─── 按工具配置执行策略 ───
+#
+# 下方按工具名称配置执行策略。
+# 未配置的工具默认需要手动确认。
 #
 # autoApprove: true  -> 工具调用后直接执行
 # autoApprove: false -> 工具执行前需要手动确认
