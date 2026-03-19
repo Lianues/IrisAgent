@@ -7,7 +7,8 @@
  * 支持三种模式：
  *   - 全屏模式（默认）：截取整个屏幕，操作范围为全屏
  *   - 窗口前台模式（bindWindow）：截取指定窗口区域，操作前激活窗口
- *   - 窗口后台模式（bindWindow + backgroundMode）：通过 PostMessage + PrintWindow 在后台操作
+ *   - 窗口后台模式（bindWindow + backgroundMode）：通过 PostMessage + PrintWindow 在后台操作，
+ *     窗口只需显示（不最小化），不需要在前台，可以被其他窗口遮挡
  *
  * 注意事项：
  *   - 通过 SetProcessDPIAware 确保高 DPI 下坐标和截图为物理像素
@@ -94,6 +95,7 @@ public class WinAPI {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT pt);
 
@@ -104,9 +106,6 @@ public class WinAPI {
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint nFlags);
-    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT pt);
-    [DllImport("user32.dll")] public static extern IntPtr ChildWindowFromPointEx(IntPtr hWndParent, POINT pt, uint flags);
-    [DllImport("user32.dll")] public static extern IntPtr ScreenToClient(IntPtr hWnd, ref POINT pt);
 
     // WM 常量
     public const uint WM_LBUTTONDOWN = 0x0201;
@@ -148,7 +147,12 @@ function windowFindScript(title: string, activate: boolean): string {
     ? `[WinAPI]::ShowWindow($_hwnd, 9) | Out-Null
 [WinAPI]::SetForegroundWindow($_hwnd) | Out-Null
 Start-Sleep -Milliseconds 150`
-    : '# 后台模式：不激活窗口';
+    : `# 后台模式：不激活窗口，但确保窗口不是最小化状态
+# IsIconic 检测最小化 → ShowWindow(SW_SHOWNOACTIVATE=4) 恢复但不抢焦点
+if ([WinAPI]::IsIconic($_hwnd)) {
+    [WinAPI]::ShowWindow($_hwnd, 4) | Out-Null
+    Start-Sleep -Milliseconds 150
+}`;
   return `
 $_targetTitle = '${escaped}'
 $_hwnd = [IntPtr]::Zero
@@ -202,7 +206,7 @@ export class WindowsScreenAdapter implements ScreenAdapter {
   }
 
   async bindWindow(windowTitle: string): Promise<void> {
-    const script = PREAMBLE + windowFindScript(windowTitle, true) + '"$ww,$wh"';
+    const script = PREAMBLE + windowFindScript(windowTitle, !this._backgroundMode) + '"$ww,$wh"';
     const output = await this.ps(script);
     const [w, h] = output.trim().split(',').map(Number);
     if (!w || !h) throw new Error(`窗口尺寸异常: ${output.trim()}`);
@@ -227,7 +231,8 @@ $s = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
   async captureScreen(): Promise<Buffer> {
     if (this._windowTitle && this._backgroundMode) {
-      // 后台模式：通过 PrintWindow 请求窗口自绘，不需要窗口在前台
+      // 后台模式：通过 PrintWindow 请求窗口自绘
+      // 窗口只需处于显示状态（不最小化），不需要在前台，可以被其他窗口遮挡
       const script = PREAMBLE + windowFindScript(this._windowTitle, false) + `
 $bmp = New-Object System.Drawing.Bitmap($ww, $wh)
 $g = [System.Drawing.Graphics]::FromImage($bmp)

@@ -63,17 +63,17 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
         // 窗口模式
         const targetWindow = p.targetWindow as string | undefined;
         if (targetWindow && adapter.bindWindow) {
-          log(`正在绑定目标窗口: "${targetWindow}" ...`);
-          await adapter.bindWindow(targetWindow);
-          screenSize = await adapter.getScreenSize();
-          log(`窗口模式已启用，窗口尺寸: ${screenSize[0]}×${screenSize[1]}`);
-
-          // 后台模式
+          // 先设置后台模式，再绑定窗口，这样 bindWindow 不会激活窗口
           const bgMode = p.backgroundMode as boolean | undefined;
           if (bgMode && adapter.setBackgroundMode) {
             adapter.setBackgroundMode(true);
             log('后台操作模式已启用（PostMessage + PrintWindow）');
           }
+
+          log(`正在绑定目标窗口: "${targetWindow}" ...`);
+          await adapter.bindWindow(targetWindow);
+          screenSize = await adapter.getScreenSize();
+          log(`窗口模式已启用，窗口尺寸: ${screenSize[0]}×${screenSize[1]}`);
         }
         log(`屏幕尺寸: ${screenSize[0]}×${screenSize[1]}`);
 

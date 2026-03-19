@@ -264,7 +264,9 @@ headless: false
 
 #### 后台模式
 
-`backgroundMode: true` 在窗口模式基础上，使所有操作通过窗口消息完成，不需要窗口在前台。用户可以同时使用电脑做其他事情，AI 在后台操作目标窗口。
+`backgroundMode: true` 在窗口模式基础上，使所有操作通过窗口消息完成，不需要窗口在前台。窗口只需处于显示状态（不最小化），可以被其他窗口遮挡。如果窗口被最小化，会自动恢复但不激活（不抢焦点）。
+
+用户可以同时使用电脑做其他事情，AI 在后台操作目标窗口。
 
 **实现方式：**
 
@@ -276,13 +278,19 @@ headless: false
 | 按键组合 | `SendKeys` | `PostMessage(WM_KEYDOWN/KEYUP)` |
 | 滚动 | `mouse_event(WHEEL)` | `PostMessage(WM_MOUSEWHEEL)` |
 
-**兼容性：**
+**截图兼容性（PrintWindow）：**
 
 | 应用类型 | 兼容性 | 说明 |
 |---|---|---|
-| 原生 Win32（记事本、资源管理器、计算器） | ✓ | 完全兼容 |
-| WPF / WinForms 应用 | △ | 大部分可用 |
-| GPU 加速窗口（Chrome、Electron、游戏） | ✗ | `PrintWindow` 可能截到黑屏，`PostMessage` 可能不响应 |
+| 原生 Win32 / WPF / WinForms | ✓ | 完全兼容 |
+| GPU 加速窗口（Chrome、Electron、游戏） | ✓ | 窗口处于显示状态即可，不需要在前台 |
+
+**操作兼容性（PostMessage）：**
+
+| 应用类型 | 兼容性 | 说明 |
+|---|---|---|
+| 原生 Win32 / WPF / WinForms | ✓ | 点击、键盘、滚动均正常 |
+| 部分应用 | △ | 可能不响应 PostMessage 的鼠标/键盘消息 |
 | 拖拽操作 | △ | 通过消息模拟，部分应用不支持 |
 
 **配置示例：**

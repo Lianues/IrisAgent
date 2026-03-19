@@ -65,12 +65,12 @@ export interface ScreenAdapter {
    * 启用后台操作模式（仅窗口模式下有效）。
    *
    * 后台模式下：
-   *   - 截图通过 PrintWindow 请求窗口自绘，不需要窗口在前台
+   *   - 截图通过 PrintWindow 请求窗口自绘，窗口只需显示（不最小化），可被遮挡
    *   - 鼠标和键盘通过 PostMessage 直接向窗口句柄发消息
-   *   - 不调用 SetForegroundWindow / ShowWindow
+   *   - 不调用 SetForegroundWindow，不抢焦点
+   *   - 窗口最小化时自动恢复但不激活
    *
    * 限制：
-   *   - 对 DirectX / OpenGL / GPU 加速窗口可能截到黑屏
    *   - 部分应用不响应 PostMessage 的输入消息
    *   - 拖拽操作可能不工作
    */

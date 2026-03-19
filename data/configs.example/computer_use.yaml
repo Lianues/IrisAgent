@@ -106,17 +106,22 @@ headless: false
 
 # 后台操作模式（仅窗口模式下有效，需先设置 targetWindow）。
 # 启用后不需要目标窗口在前台，AI 可以在后台操作窗口。
+# 窗口只需处于显示状态（不最小化），可以被其他窗口遮挡。
+# 如果窗口被最小化，会自动恢复但不激活（不抢焦点）。
 #
 # 实现方式：
-#   截图 → PrintWindow（请求窗口自绘）
+#   截图 → PrintWindow（请求窗口自绘，支持 GPU 加速窗口）
 #   鼠标 → PostMessage(WM_LBUTTONDOWN/UP)
 #   键盘 → PostMessage(WM_KEYDOWN/UP) / WM_CHAR
 #
-# 兼容性：
-#   ✓ 原生 Win32 应用（记事本、资源管理器、计算器等）
-#   △ WPF / WinForms 应用（大部分可用）
-#   ✗ GPU 加速窗口（Chrome、Electron 应用、游戏等）可能截到黑屏或不响应操作
-#   ✗ 拖拽操作可能不工作
+# 截图兼容性（PrintWindow）：
+#   ✓ 原生 Win32 / WPF / WinForms 应用
+#   ✓ GPU 加速窗口（Chrome、Electron、游戏等）— 只要窗口处于显示状态
+#
+# 操作兼容性（PostMessage）：
+#   ✓ 原生 Win32 / WPF / WinForms — 点击、键盘、滚动均正常
+#   △ 部分应用可能不响应 PostMessage 的鼠标/键盘消息
+#   △ 拖拽操作通过消息模拟，部分应用可能不支持
 #
 # 默认 false（前台模式）。
 # backgroundMode: true
