@@ -24,5 +24,6 @@ export function parseComputerUseConfig(raw: any): ComputerUseConfig | undefined 
     searchEngineUrl: typeof raw.searchEngineUrl === 'string' ? raw.searchEngineUrl : undefined,
     highlightMouse: typeof raw.highlightMouse === 'boolean' ? raw.highlightMouse : undefined,
     maxRecentScreenshots: typeof raw.maxRecentScreenshots === 'number' ? raw.maxRecentScreenshots : undefined,
+    targetWindow: typeof raw.targetWindow === 'string' ? raw.targetWindow : undefined,
   };
 }

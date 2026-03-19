@@ -2,9 +2,17 @@
 
 ## 概述
 
-让 LLM 通过截屏、鼠标、键盘等操作控制浏览器，形成「截屏 → 理解 → 操作 → 再截屏」的闭环。
+让 LLM 通过截屏、鼠标、键盘等操作控制浏览器或桌面，形成「截屏 → 理解 → 操作 → 再截屏」的闭环。
 
 实现方式：将 Gemini Computer Use 的预定义函数作为普通 `ToolDefinition` 注册到 `ToolRegistry`，走标准 function calling 路径。不依赖任何特定模型的内置 Computer Use 能力，任何支持工具调用的模型均可使用。
+
+支持两种执行环境：
+
+| 环境 | 说明 | 截图范围 | 操作范围 |
+|---|---|---|---|
+| `browser` | Playwright 控制 Chromium 浏览器 | 浏览器视口 | 仅浏览器内 |
+| `screen` | 系统级截屏 + 输入模拟（全屏模式） | 整个桌面 | 任意应用 |
+| `screen` + `targetWindow` | 系统级截屏 + 输入模拟（窗口模式） | 指定窗口区域 | 仅指定窗口 |
 
 ## 文件结构
 
@@ -14,33 +22,63 @@ src/computer-use/
 ├── types.ts              Computer 抽象接口 + EnvState 类型
 ├── coordinator.ts        坐标反归一化（0-999 ↔ 实际像素）
 ├── tools.ts              13 个预定义函数的工具声明 + handler
+│
+│   ── browser 环境 ──
 ├── browser-env.ts        浏览器环境（IPC 客户端，与 sidecar 通信）
-└── browser-sidecar.ts    Playwright 子进程（独立 Node.js 进程）
+├── browser-sidecar.ts    Playwright 子进程（独立 Node.js 进程）
+│
+│   ── screen 环境 ──
+├── screen-env.ts         桌面环境（IPC 客户端，与 sidecar 通信）
+├── screen-sidecar.ts     系统操作子进程（独立 Node.js 进程）
+└── screen/
+    ├── adapter.ts        ScreenAdapter 平台抽象接口
+    ├── index.ts          平台适配器注册中心（自动检测当前 OS）
+    └── windows.ts        Windows 实现（PowerShell + .NET API）
 ```
 
 ## 架构
 
 ### Sidecar 进程模型
 
-Playwright 在 Bun 运行时下存在兼容性问题。为此，Playwright 运行在独立的 Node.js 子进程中，主进程通过 stdin/stdout NDJSON 协议通信：
+browser 和 screen 环境均采用相同的 Sidecar 进程模型。实际的浏览器控制或系统操作运行在独立 Node.js 子进程中，主进程通过 stdin/stdout NDJSON 通信：
 
 ```
-主进程 (Bun / Node.js)                 Sidecar 子进程 (Node.js)
-┌──────────────────┐                   ┌──────────────────────┐
-│ bootstrap.ts     │──spawn node──────▶│ browser-sidecar.ts   │
-│                  │                   │                      │
-│ browser-env.ts   │◄─ stdout NDJSON ─│  Playwright           │
-│  (IPC 客户端)    │── stdin NDJSON ──▶│  Chromium 浏览器      │
-│                  │                   │                      │
-│ tools.ts         │                   │  截屏 → base64       │
-│ scheduler        │                   │  点击 / 输入 / 滚动   │
-│ tool-loop        │                   │                      │
-└──────────────────┘                   └──────────────────────┘
+主进程 (Bun / Node.js)                     Sidecar 子进程 (Node.js)
+┌──────────────────┐                       ┌──────────────────────────┐
+│ bootstrap.ts     │                       │                          │
+│                  │── spawn node ────────▶│  browser-sidecar.ts     │ browser-env.ts   │◄── stdout NDJSON ────│    Playwright + Chromium  │
+│   (IPC 客户端)   │─── stdin NDJSON ────▶│                          │
+│                  │                       ├──────────────────────────┤
+│       或         │── spawn node ────────▶│  screen-sidecar.ts       │
+│ screen-env.ts    │◄── stdout NDJSON ────│    ScreenAdapter          │
+│   (IPC 客户端)   │─── stdin NDJSON ────▶│    (Windows / macOS / …)  │
+│                  │                       │                          │
+│ tools.ts         │                       │  截屏 → base64           │
+│ scheduler        │                       │  点击 / 输入 / 滚动      │
+│ tool-loop        │                       │                          │
+└──────────────────┘                       └──────────────────────────┘
 ```
 
 - 主进程无论跑在 Bun 还是 Node.js 都不受影响
 - sidecar 始终通过 `node --import tsx` 启动，确保 Playwright 的兼容性
 - 主进程退出时 stdin 关闭，sidecar 自动检测并清理退出
+
+### screen 环境平台适配
+
+screen 环境通过 `ScreenAdapter` 接口抽象平台差异。每个操作系统提供一个实现：
+
+```
+screen/
+├── adapter.ts        接口定义
+├── index.ts          注册中心：getScreenAdapter() 自动选择当前 OS 的实现
+├── windows.ts        Windows：PowerShell + .NET System.Windows.Forms / user32.dll
+├── (macos.ts)        macOS：计划中（screencapture + cliclick / CGEvent）
+└── (linux.ts)        Linux：计划中（scrot/gnome-screenshot + xdotool/ydotool）
+```
+
+新增平台只需：
+1. 创建 `screen/<platform>.ts`，实现 `ScreenAdapter` 接口
+2. 在 `screen/index.ts` 的 `adapters` 数组中注册
 
 ### IPC 协议
 
@@ -183,14 +221,41 @@ headless: false
 |---|---|---|---|
 | `enabled` | `boolean` | `false` | 是否启用 |
 | `environment` | `browser \| screen` | `browser` | 执行环境 |
-| `screenWidth` | `number` | `1440` | 视口宽度（像素） |
-| `screenHeight` | `number` | `900` | 视口高度（像素） |
 | `excludedFunctions` | `string[]` | — | 排除的预定义函数名 |
 | `initialUrl` | `string` | `https://www.google.com` | 启动时打开的页面 |
 | `searchEngineUrl` | `string` | `https://www.google.com` | search 工具的目标 |
+| `maxRecentScreenshots` | `number` | `3` | 发送给 LLM 时保留截图的最近轮次数 |
+
+**browser 环境专用字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `screenWidth` | `number` | `1440` | 视口宽度（像素） |
+| `screenHeight` | `number` | `900` | 视口高度（像素） |
 | `headless` | `boolean` | `false` | 是否无头模式 |
 | `highlightMouse` | `boolean` | `false` | 是否在操作位置显示红色圆圈 |
-| `maxRecentScreenshots` | `number` | `3` | 发送给 LLM 时保留截图的最近轮次数 |
+
+**screen 环境专用字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `targetWindow` | `string` | — | 目标窗口标题（子串匹配），设置后进入窗口模式 |
+
+屏幕尺寸自动检测，无需配置 `screenWidth` / `screenHeight`。
+
+#### 窗口模式
+
+设置 `targetWindow` 后，screen 环境的行为变化：
+
+| 行为 | 全屏模式 | 窗口模式 |
+|---|---|---|
+| 截屏范围 | 整个桌面 | 目标窗口区域 |
+| `screenSize` | 屏幕分辨率 | 窗口尺寸 |
+| 坐标基准 | 屏幕左上角 | 窗口左上角 |
+| 操作前 | 无特殊处理 | 自动激活窗口（`SetForegroundWindow`） |
+
+窗口标题按子串匹配。如果多个窗口匹配，使用第一个找到的可见窗口。
+如果目标窗口被最小化，操作前会自动恢复（`ShowWindow SW_RESTORE`）。
 
 ### `tools.yaml` 审批策略
 
@@ -216,12 +281,19 @@ key_combination:
 
 ## 依赖
 
+**browser 环境：**
+
 | 依赖 | 用途 | 安装方式 |
 |---|---|---|
 | `playwright` | 浏览器自动化 | `npm install playwright` |
 | Chromium 浏览器 | Playwright 控制的浏览器实例 | `npx playwright install chromium` |
 
-Playwright 在 `package.json` 的 `dependencies` 中。Chromium 需要额外下载。未安装时，Computer Use 初始化会失败并给出安装指引，不会阻塞其他功能启动。
+**screen 环境：**
+
+- Windows：无额外依赖，通过 PowerShell 调用 .NET API（System.Windows.Forms / user32.dll）
+- macOS / Linux：待实现
+
+未满足依赖时，Computer Use 初始化会失败并给出提示，不会阻塞其他功能启动。
 
 ## 截图清理
 
@@ -285,9 +357,14 @@ user: [navigate 截图]                     ← screenshotTurns=1, 保留
 ```typescript
 if (config.computerUse?.enabled) {
   try {
-    const { BrowserEnvironment, createComputerUseTools } = await import('./computer-use');
-    const computerEnv = new BrowserEnvironment({ ... });
-    await computerEnv.initialize();    // 启动 sidecar 子进程
+    const { BrowserEnvironment, ScreenEnvironment, createComputerUseTools } = await import('./computer-use');
+    let computerEnv;
+    if (env === 'screen') {
+      computerEnv = new ScreenEnvironment({ ... });
+    } else {
+      computerEnv = new BrowserEnvironment({ ... });
+    }
+    await computerEnv.initialize();    // 启动对应的 sidecar 子进程
     tools.registerAll(createComputerUseTools(computerEnv, config.computerUse.excludedFunctions));
   } catch (err) {
     console.error('[Iris] Computer Use 初始化失败:', err);
@@ -303,5 +380,6 @@ if (config.computerUse?.enabled) {
 | 阶段 | 内容 |
 |---|---|
 | Phase 1（已完成） | 浏览器环境 + Sidecar 进程模型 + 13 个预定义工具 |
-| Phase 2 | 桌面环境（`screen`）：跨平台系统命令实现截屏和输入模拟 |
+| Phase 2（已完成） | 桌面环境（`screen`）：Windows 平台 + ScreenAdapter 模块化架构 |
+| Phase 2.x | screen 环境：macOS 和 Linux 平台适配器 |
 | Phase 3 | 其他 LLM 格式适配（Claude Computer Use、OpenAI 兼容方案） |

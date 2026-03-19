@@ -47,8 +47,9 @@ export function createComputerUseTools(
   computer: Computer,
   excludedFunctions?: string[],
 ): ToolDefinition[] {
-  const [sw, sh] = computer.screenSize();
   const excluded = new Set(excludedFunctions ?? []);
+  /** 每次调用实时获取屏幕/窗口尺寸，适应窗口大小变化 */
+  const sz = () => computer.screenSize();
 
   const all: ToolDefinition[] = [
     // ---- 浏览器导航 ----
@@ -116,10 +117,13 @@ export function createComputerUseTools(
           required: ['x', 'y'],
         },
       },
-      handler: async (args) => toResult(await computer.clickAt(
-        denormalizeX(args.x as number, sw),
-        denormalizeY(args.y as number, sh),
-      )),
+      handler: async (args) => {
+        const [sw, sh] = sz();
+        return toResult(await computer.clickAt(
+          denormalizeX(args.x as number, sw),
+          denormalizeY(args.y as number, sh),
+        ));
+      },
     },
     {
       declaration: {
@@ -134,10 +138,13 @@ export function createComputerUseTools(
           required: ['x', 'y'],
         },
       },
-      handler: async (args) => toResult(await computer.hoverAt(
-        denormalizeX(args.x as number, sw),
-        denormalizeY(args.y as number, sh),
-      )),
+      handler: async (args) => {
+        const [sw, sh] = sz();
+        return toResult(await computer.hoverAt(
+          denormalizeX(args.x as number, sw),
+          denormalizeY(args.y as number, sh),
+        ));
+      },
     },
     {
       declaration: {
@@ -154,12 +161,15 @@ export function createComputerUseTools(
           required: ['x', 'y', 'destination_x', 'destination_y'],
         },
       },
-      handler: async (args) => toResult(await computer.dragAndDrop(
-        denormalizeX(args.x as number, sw),
-        denormalizeY(args.y as number, sh),
-        denormalizeX(args.destination_x as number, sw),
-        denormalizeY(args.destination_y as number, sh),
-      )),
+      handler: async (args) => {
+        const [sw, sh] = sz();
+        return toResult(await computer.dragAndDrop(
+          denormalizeX(args.x as number, sw),
+          denormalizeY(args.y as number, sh),
+          denormalizeX(args.destination_x as number, sw),
+          denormalizeY(args.destination_y as number, sh),
+        ));
+      },
     },
 
     // ---- 键盘操作 ----
@@ -183,13 +193,16 @@ export function createComputerUseTools(
           required: ['x', 'y', 'text'],
         },
       },
-      handler: async (args) => toResult(await computer.typeTextAt(
-        denormalizeX(args.x as number, sw),
-        denormalizeY(args.y as number, sh),
-        args.text as string,
-        (args.press_enter as boolean | undefined) ?? true,
-        (args.clear_before_typing as boolean | undefined) ?? true,
-      )),
+      handler: async (args) => {
+        const [sw, sh] = sz();
+        return toResult(await computer.typeTextAt(
+          denormalizeX(args.x as number, sw),
+          denormalizeY(args.y as number, sh),
+          args.text as string,
+          (args.press_enter as boolean | undefined) ?? true,
+          (args.clear_before_typing as boolean | undefined) ?? true,
+        ));
+      },
     },
     {
       declaration: {
@@ -247,6 +260,7 @@ export function createComputerUseTools(
       handler: async (args) => {
         const direction = args.direction as 'up' | 'down' | 'left' | 'right';
         const rawMagnitude = (args.magnitude as number | undefined) ?? 800;
+        const [sw, sh] = sz();
         // magnitude 也是归一化值，需要按方向反归一化
         const magnitude = (direction === 'up' || direction === 'down')
           ? denormalizeY(rawMagnitude, sh)

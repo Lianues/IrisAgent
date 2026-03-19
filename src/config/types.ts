@@ -183,6 +183,12 @@ export interface ComputerUseConfig {
   /** 浏览器环境：是否高亮鼠标位置 */
   highlightMouse?: boolean;
   /**
+   * screen 环境：目标窗口标题（子串匹配）。
+   * 设置后截屏只截取该窗口区域，操作坐标自动偏移到窗口位置。
+   * 不设置则为全屏模式。
+   */
+  targetWindow?: string;
+  /**
    * 发送给 LLM 时保留截图的最近轮次数。
    * 超出此数量的旧轮次中，Computer Use 工具结果的截图会被剥离以节省 token。
    * 默认 3，与 Gemini 官方示例一致。设为 0 表示不保留任何截图，设为 Infinity 表示全部保留。

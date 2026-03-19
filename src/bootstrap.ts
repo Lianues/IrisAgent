@@ -102,16 +102,27 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ---- 3.2 注册 Computer Use 工具 ----
   if (config.computerUse?.enabled) {
     try {
-      const { BrowserEnvironment, createComputerUseTools } = await import('./computer-use');
-      // Phase 1 仅支持 browser 环境；screen 环境在 Phase 2 实现
-      const computerEnv = new BrowserEnvironment({
-        screenWidth: config.computerUse.screenWidth ?? 1440,
-        screenHeight: config.computerUse.screenHeight ?? 900,
-        headless: config.computerUse.headless,
-        initialUrl: config.computerUse.initialUrl,
-        searchEngineUrl: config.computerUse.searchEngineUrl,
-        highlightMouse: config.computerUse.highlightMouse,
-      });
+      const { BrowserEnvironment, ScreenEnvironment, createComputerUseTools } = await import('./computer-use');
+      const env = config.computerUse.environment ?? 'browser';
+      let computerEnv: import('./computer-use').Computer;
+
+      if (env === 'screen') {
+        computerEnv = new ScreenEnvironment({
+          initialUrl: config.computerUse.initialUrl,
+          searchEngineUrl: config.computerUse.searchEngineUrl,
+          targetWindow: config.computerUse.targetWindow,
+        });
+      } else {
+        computerEnv = new BrowserEnvironment({
+          screenWidth: config.computerUse.screenWidth ?? 1440,
+          screenHeight: config.computerUse.screenHeight ?? 900,
+          headless: config.computerUse.headless,
+          initialUrl: config.computerUse.initialUrl,
+          searchEngineUrl: config.computerUse.searchEngineUrl,
+          highlightMouse: config.computerUse.highlightMouse,
+        });
+      }
+
       await computerEnv.initialize();
       tools.registerAll(createComputerUseTools(computerEnv, config.computerUse.excludedFunctions));
     } catch (err) {

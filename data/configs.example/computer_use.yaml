@@ -4,16 +4,18 @@
 # 工具包括 click_at、type_text_at、scroll_document、navigate 等，
 # 走普通 function calling 路径，任何支持工具调用的模型均可使用。
 #
-# 依赖：浏览器环境需要安装 Playwright
+# 依赖：
+#   browser 环境需要安装 Playwright
 #   npm install playwright
 #   npx playwright install chromium
+#   screen 环境无额外依赖（Windows 通过 PowerShell 调用系统 API）
 
 # 是否启用（默认关闭）
 enabled: false
 
 # 执行环境
-#   browser — Playwright 控制 Chromium 浏览器（当前可用）
-#   screen  — 桌面级截屏 + 输入模拟（计划中）
+#   browser — Playwright 控制 Chromium 浏览器
+#   screen  — 桌面级截屏 + 输入模拟（截取整个屏幕，可操作任意应用）
 environment: browser
 
 # 屏幕 / 浏览器视口尺寸（像素）
@@ -26,10 +28,33 @@ screenHeight: 900
 # excludedFunctions:
 #   - drag_and_drop
 
+# ─── screen 环境专用 ───
+
+# screen 环境下屏幕尺寸自动检测，无需手动配置 screenWidth / screenHeight。
+#
+# 默认为全屏模式（截取整个桌面，操作范围不受限制）。
+# 如需限定在某个应用窗口内，设置 targetWindow 即可。
+#
+# 目标窗口标题（子串匹配）。设置后：
+#   - 截屏只截取该窗口区域
+#   - 鼠标坐标自动偏移到窗口位置
+#   - 操作前自动将窗口置于前台
+#   - screenSize 返回窗口尺寸（LLM 的坐标归一化基于窗口尺寸）
+# 不设置则为全屏模式。
+#
+# 示例：
+#   targetWindow: "记事本"       # 匹配标题包含"记事本"的窗口
+#   targetWindow: "Chrome"       # 匹配标题包含 Chrome 的窗口
+#   targetWindow: "Visual Studio Code"
+# targetWindow:
+#
+# 注意：全屏模式下 AI 的操作范围不受限制，请谨慎使用。
+# 建议将 key_combination 等高风险工具设为 autoApprove: false（在 tools.yaml 中配置）。
+
 # ─── 浏览器环境专用 ───
 
 # 启动时打开的初始页面
-initialUrl: https://www.google.com
+# initialUrl: https://www.google.com
 
 # 搜索引擎首页（search 工具导航的目标）
 # searchEngineUrl: https://www.google.com
