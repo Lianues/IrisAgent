@@ -37,6 +37,7 @@
     "sharp": "^0.34.5",
     "xlsx": "^0.18.5",
     "yaml": "^2.8.2",
+    "ws": "^8.18.0",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
@@ -50,6 +51,7 @@
     "@types/react": ">=19.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
+    "@types/ws": "^8.18.0",
     "vitest": "^3.2.4"
   }
 }

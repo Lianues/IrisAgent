@@ -35,7 +35,7 @@ export interface LLMRegistryConfig {
 
 export interface PlatformConfig {
   /** 启动的平台类型列表（兼容单字符串和数组写法） */
-  types: Array<'console' | 'discord' | 'telegram' | 'web' | 'wxwork' | 'lark'>;
+  types: Array<'console' | 'discord' | 'telegram' | 'web' | 'wxwork' | 'lark' | 'qq'>;
   discord: { token: string };
   telegram: {
     token: string;
@@ -74,6 +74,18 @@ export interface PlatformConfig {
     /** 可选：Webhook 模式消息解密 key；当前预留字段，便于后续扩展。 */
     encryptKey?: string;
     /** 是否在流式回复中展示工具执行状态（默认 true）。 */
+    showToolStatus?: boolean;
+  };
+  qq: {
+    /** NapCat OneBot v11 正向 WebSocket 地址 */
+    wsUrl: string;
+    /** OneBot access_token（可选，用于鉴权） */
+    accessToken?: string;
+    /** 机器人自身 QQ 号（用于群聊 @ 判断） */
+    selfId: string;
+    /** 群聊响应模式：'at' = 只响应 @机器人（默认），'all' = 响应所有消息，'off' = 不响应群聊 */
+    groupMode?: 'at' | 'all' | 'off';
+    /** 是否在回复中展示工具执行状态（默认 true） */
     showToolStatus?: boolean;
   };
 }

@@ -70,6 +70,17 @@ async function main() {
         }));
         break;
       }
+      case 'qq': {
+        const { QQPlatform } = await import('./platforms/qq');
+        platforms.push(new QQPlatform(backend, {
+          wsUrl: config.platform.qq.wsUrl,
+          accessToken: config.platform.qq.accessToken,
+          selfId: config.platform.qq.selfId,
+          groupMode: config.platform.qq.groupMode,
+          showToolStatus: config.platform.qq.showToolStatus,
+        }));
+        break;
+      }
       case 'lark': {
         const { LarkPlatform } = await import('./platforms/lark');
         platforms.push(new LarkPlatform(backend, {
