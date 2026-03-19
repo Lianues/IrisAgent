@@ -19,8 +19,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export interface ScreenEnvConfig {
-  /** 启动时打开的 URL（可选） */
-  initialUrl?: string;
   /** 搜索引擎 URL */
   searchEngineUrl?: string;
   /** 目标窗口标题（子串匹配），不设置则为全屏模式 */
@@ -81,7 +79,6 @@ export class ScreenEnvironment implements Computer {
     });
 
     const result = await this._call('initialize', {
-      initialUrl: this._config.initialUrl,
       searchEngineUrl: this._config.searchEngineUrl,
       targetWindow: this._config.targetWindow,
       backgroundMode: this._config.backgroundMode,

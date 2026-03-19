@@ -77,14 +77,6 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
         }
         log(`屏幕尺寸: ${screenSize[0]}×${screenSize[1]}`);
 
-        // 如果配置了 initialUrl，打开浏览器
-        const initialUrl = p.initialUrl as string | undefined;
-        if (initialUrl) {
-          log(`正在打开 ${initialUrl} ...`);
-          await adapter.openUrl(initialUrl);
-          await sleep(2000);  // 等待浏览器启动
-        }
-
         log('Screen 环境就绪');
         result = { ok: true, screenSize };
         break;

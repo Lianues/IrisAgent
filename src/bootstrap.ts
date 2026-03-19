@@ -109,7 +109,6 @@ export async function bootstrap(): Promise<BootstrapResult> {
 
       if (env === 'screen') {
         computerEnv = new ScreenEnvironment({
-          initialUrl: config.computerUse.initialUrl,
           searchEngineUrl: config.computerUse.searchEngineUrl,
           targetWindow: config.computerUse.targetWindow,
           backgroundMode: config.computerUse.backgroundMode,
