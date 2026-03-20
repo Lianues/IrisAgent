@@ -141,12 +141,22 @@ export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number 
           callLLM,
           { modelName: typeConfig.modelName },
         );
+
+        // loop.run() 可能正常返回但携带 error（如 LLM 调用失败、轮次超限等），
+        // 此时 result.text 通常为空。必须抛出让 scheduler 设置 error 状态，
+        // TUI 才能正确显示 ✗ 和红色错误信息。
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
         logger.info(`子代理完成: type=${typeName}`);
         return { result: result.text };
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         logger.error(`子代理执行失败: ${errorMsg}`);
-        return { error: `子代理执行失败: ${errorMsg}` };
+        // 向上抛出，让 scheduler 统一处理：设置 ToolInvocation 为 error 状态，
+        // 并将错误信息作为 functionResponse 返回给 LLM。
+        throw err instanceof Error ? err : new Error(errorMsg);
       }
     },
   };
