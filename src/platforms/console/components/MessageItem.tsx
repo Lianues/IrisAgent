@@ -140,9 +140,11 @@ export const MessageItem = React.memo(function MessageItem(
           if (group.kind === 'thought') {
             const previewText = getThoughtTailPreview(group.part.text, Math.max(24, termWidth - 20));
             const isLastGroup = gi === groups.length - 1;
+            const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
+            const isAfterTools = prevGroup?.kind === 'tools';
             const prefix = group.part.durationMs != null ? `thinking   ${formatElapsedMs(group.part.durationMs)}` : 'thinking';
             return (
-              <box key={group.index} marginTop={gi > 0 ? 1 : 0} flexDirection="column"
+              <box key={group.index} marginTop={(isAfterTools) ? 0 : (gi > 0 ? 1 : 0)} flexDirection="column"
                    backgroundColor={C.thinkingBg} paddingLeft={1}>
                 <text fg={C.primaryLight}><em>{'\u00b7 ' + prefix}</em></text>
                 <box flexDirection="column">
@@ -160,8 +162,9 @@ export const MessageItem = React.memo(function MessageItem(
           if (group.kind === 'tools') {
             const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
             const isConsecutiveTools = prevGroup?.kind === 'tools';
+            const isAfterThought = prevGroup?.kind === 'thought';
             return (
-              <box key={`tools-${group.startIndex}`} flexDirection="column" width="100%" marginTop={isConsecutiveTools ? 0 : (gi > 0 ? 1 : 0)}>
+              <box key={`tools-${group.startIndex}`} flexDirection="column" width="100%" marginTop={(isConsecutiveTools || isAfterThought) ? 0 : (gi > 0 ? 1 : 0)}>
                 <box flexDirection="column" backgroundColor={C.toolPendingBg} paddingLeft={1}>
                   <text fg={C.accent}><strong>{'\u00b7 tools'}</strong></text>
                   {group.tools.map(inv => <ToolCall key={inv.id} invocation={inv} />)}
