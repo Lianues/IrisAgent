@@ -8,6 +8,8 @@
  */
 
 import { spawn } from 'node:child_process'
+import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
 import { loadConfig } from '../src/config'
 
 type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn' | 'unknown'
@@ -29,6 +31,33 @@ function isCommandNotFound(error: unknown): error is NodeJS.ErrnoException {
     && error !== null
     && 'code' in error
     && (error as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
+/**
+ * 查找本地 tsx 可执行文件路径。
+ * Windows 上 spawn('tsx') 不搜索 node_modules/.bin，
+ * 需要用完整路径或改用 node --import tsx。
+ */
+function findLocalTsx(): string | null {
+  const candidates = [
+    resolve('node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx'),
+    resolve('node_modules', '.bin', 'tsx'),
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  return null
+}
+
+function runShell(command: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, { stdio: 'inherit', env: process.env, shell: true })
+    child.on('error', reject)
+    child.on('exit', (code, signal) => {
+      if (signal) { process.kill(process.pid, signal); return }
+      resolve(code ?? 1)
+    })
+  })
 }
 
 function runCommand(command: string, args: string[]): Promise<number> {
@@ -84,7 +113,15 @@ async function main() {
     }
   }
 
-  process.exit(await runCommand('tsx', ['src/index.ts', ...forwardedArgs]))
+  // 优先使用本地 tsx 可执行文件（解决 Windows portable Node 找不到 tsx 的问题）
+  const localTsx = findLocalTsx()
+  if (localTsx) {
+    // Windows 的 .cmd 文件必须通过 shell 执行
+    process.exit(await runShell(`"${localTsx}" src/index.ts ${forwardedArgs.map(a => `"${a}"`).join(' ')}`))
+  } else {
+    // 回退：用当前 node 进程 + tsx loader
+    process.exit(await runCommand(process.execPath, ['--import', 'tsx', 'src/index.ts', ...forwardedArgs]))
+  }
 }
 
 main().catch((error) => {
