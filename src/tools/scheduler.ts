@@ -19,6 +19,7 @@ import { ToolStateManager } from './state';
 import { FunctionCallPart, FunctionResponsePart, InlineDataPart } from '../types';
 import { createLogger } from '../logger';
 import { ToolPolicyConfig, ToolsConfig } from '../config';
+import type { BeforeToolExecInterceptor } from '../plugins/types';
 
 const logger = createLogger('ToolScheduler');
 
@@ -213,6 +214,7 @@ async function executeSingle(
   invocationId?: string,
   toolsConfig: ToolsConfig = { permissions: {} },
   signal?: AbortSignal,
+  beforeToolExec?: BeforeToolExecInterceptor,
 ): Promise<FunctionResponsePart> {
   const toolName = call.functionCall.name;
 
@@ -278,12 +280,34 @@ async function executeSingle(
   }
   logger.info(`执行工具: ${call.functionCall.name}${invocationId ? ` (${invocationId})` : ''}`);
 
+  // 插件钩子: onBeforeToolExec
+  let effectiveArgs = call.functionCall.args as Record<string, unknown>;
+  if (beforeToolExec) {
+    try {
+      const interception = await beforeToolExec(toolName, effectiveArgs);
+      if (interception) {
+        if (interception.blocked) {
+          if (toolState && invocationId) {
+            toolState.transition(invocationId, 'error', { error: interception.reason });
+          }
+          return {
+            functionResponse: {
+              name: toolName,
+              callId: call.functionCall.callId,
+              response: { error: `[插件拦截] ${interception.reason}` },
+            },
+          };
+        }
+        if (interception.args) {
+          effectiveArgs = interception.args;
+        }
+      }
+    } catch { /* 拦截器错误不阻止执行 */ }
+  }
+
   const execStart = Date.now();
   try {
-    const result = await registry.execute(
-      call.functionCall.name,
-      call.functionCall.args as Record<string, unknown>,
-    );
+    const result = await registry.execute(toolName, effectiveArgs);
     const durationMs = Date.now() - execStart;
 
     // 工具可通过约定字段 __response / __parts 返回带多模态内联数据的结果。
@@ -354,6 +378,7 @@ export async function executePlan(
   invocationIds?: string[],
   toolsConfig: ToolsConfig = { permissions: {} },
   signal?: AbortSignal,
+  beforeToolExec?: BeforeToolExecInterceptor,
 ): Promise<FunctionResponsePart[]> {
   const responseParts: FunctionResponsePart[] = new Array(calls.length);
 
@@ -384,7 +409,7 @@ export async function executePlan(
 
       const results = await Promise.all(
         batch.indices.map(i =>
-          executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal)
+          executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal, beforeToolExec)
         ),
       );
       for (let j = 0; j < batch.indices.length; j++) {
@@ -392,7 +417,7 @@ export async function executePlan(
       }
     } else {
       for (const i of batch.indices) {
-        responseParts[i] = await executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal);
+        responseParts[i] = await executeSingle(calls[i], registry, toolState, invocationIds?.[i], toolsConfig, signal, beforeToolExec);
       }
     }
   }

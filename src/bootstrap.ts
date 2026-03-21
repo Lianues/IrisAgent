@@ -196,20 +196,20 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // ---- 3.5a. 创建工具状态管理器 ----
   const toolState = new ToolStateManager();
 
-  // ---- 3.6 加载插件 ----
+  // ---- 3.5b. 配置提示词（提前创建，供插件操作 systemParts） ----
+  const prompt = new PromptAssembler();
+  prompt.setSystemPrompt(config.system.systemPrompt || DEFAULT_SYSTEM_PROMPT);
+
+  // ---- 3.6 加载插件（插件可通过 ctx 访问 tools/modes/prompt） ----
   let pluginManager: PluginManager | undefined;
   if (config.plugins?.length) {
     pluginManager = new PluginManager();
     await pluginManager.loadAll(
       config.plugins,
-      { tools, modes: modeRegistry },
+      { tools, modes: modeRegistry, prompt },
       config,
     );
   }
-
-  // ---- 4. 配置提示词 ----
-  const prompt = new PromptAssembler();
-  prompt.setSystemPrompt(config.system.systemPrompt || DEFAULT_SYSTEM_PROMPT);
 
   // ---- 5. 创建 Backend ----
   const hasSubAgents = subAgentTypes.getAll().length > 0;
@@ -244,6 +244,17 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // 将插件钩子注入 Backend
   if (pluginManager && pluginManager.size > 0) {
     backend.setPluginHooks(pluginManager.getHooks());
+
+    // 通知插件系统初始化完成，传递完整内部 API
+    await pluginManager.notifyReady({
+      backend,
+      router,
+      storage,
+      memory,
+      tools,
+      modes: modeRegistry,
+      prompt,
+    });
   }
 
   return {

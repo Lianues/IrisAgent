@@ -376,6 +376,27 @@ export class Backend extends EventEmitter {
   /** 设置插件钩子（由 bootstrap 在插件加载后调用） */
   setPluginHooks(hooks: PluginHook[]): void {
     this.pluginHooks = hooks;
+
+    // 将 onBeforeToolExec 钩子组合为拦截器，注入到工具循环配置
+    const execHooks = hooks.filter(h => h.onBeforeToolExec);
+    if (execHooks.length > 0) {
+      this.toolLoopConfig.beforeToolExec = async (toolName, args) => {
+        let currentArgs = args;
+        for (const hook of execHooks) {
+          try {
+            const result = await hook.onBeforeToolExec!({ toolName, args: currentArgs });
+            if (result) {
+              if (result.blocked) return result;
+              if (result.args) currentArgs = result.args;
+            }
+          } catch (err) {
+            logger.warn(`插件钩子 "${hook.name}" onBeforeToolExec 执行失败:`, err);
+          }
+        }
+        if (currentArgs !== args) return { blocked: false as const, args: currentArgs };
+        return undefined;
+      };
+    }
   }
 
   /** 发送消息，触发完整的 LLM + 工具循环 */
@@ -625,6 +646,21 @@ export class Backend extends EventEmitter {
   /** 获取路由器引用 */
   getRouter(): LLMRouter {
     return this.router;
+  }
+
+  /** 获取记忆层引用 */
+  getMemory(): MemoryProvider | undefined {
+    return this.memory;
+  }
+
+  /** 获取提示词组装器引用 */
+  getPrompt(): PromptAssembler {
+    return this.prompt;
+  }
+
+  /** 获取模式注册表引用 */
+  getModeRegistry(): ModeRegistry | undefined {
+    return this.modeRegistry;
   }
 
   /** 获取当前活动模型名称 */

@@ -22,6 +22,7 @@ import { ToolStateManager } from '../tools/state';
 import { buildExecutionPlan, executePlan } from '../tools/scheduler';
 import { ToolsConfig } from '../config';
 import { PromptAssembler } from '../prompt/assembler';
+import type { BeforeToolExecInterceptor } from '../plugins/types';
 import { createLogger } from '../logger';
 import {
   Content, Part, LLMRequest, extractText, isFunctionCallPart,
@@ -43,6 +44,8 @@ export interface ToolLoopConfig {
   retryOnError?: boolean;
   /** 自动重试最大次数（默认 3） */
   maxRetries?: number;
+  /** 插件工具执行前拦截器（由 Backend 从插件钩子组合生成） */
+  beforeToolExec?: BeforeToolExecInterceptor;
 }
 
 /** ToolLoop 执行结果 */
@@ -250,10 +253,10 @@ export class ToolLoop {
           'queued',
         ),
       );
-      return executePlan(calls, plan, this.tools, this.toolState, invocations.map(i => i.id), this.config.toolsConfig, signal);
+      return executePlan(calls, plan, this.tools, this.toolState, invocations.map(i => i.id), this.config.toolsConfig, signal, this.config.beforeToolExec);
     }
 
     // 无状态管理：纯执行
-    return executePlan(calls, plan, this.tools, undefined, undefined, this.config.toolsConfig, signal);
+    return executePlan(calls, plan, this.tools, undefined, undefined, this.config.toolsConfig, signal, this.config.beforeToolExec);
   }
 }

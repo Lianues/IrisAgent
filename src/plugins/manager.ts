@@ -12,8 +12,9 @@ import { createLogger } from '../logger';
 import { dataDir } from '../paths';
 import type { ToolRegistry } from '../tools/registry';
 import type { ModeRegistry } from '../modes/registry';
-import type{ AppConfig } from '../config/types';
-import type { IrisPlugin, PluginEntry, PluginHook, PluginInfo, LoadedPlugin } from './types';
+import type { PromptAssembler } from '../prompt/assembler';
+import type { AppConfig } from '../config/types';
+import type { IrisPlugin, PluginEntry, PluginHook, PluginInfo, LoadedPlugin, IrisAPI } from './types';
 import { PluginContextImpl } from './context';
 
 const logger = createLogger('PluginManager');
@@ -26,11 +27,11 @@ export class PluginManager {
 
   /**
    * 加载所有配置中启用的插件。
-   * 在 bootstrap 中调用，位于 ToolRegistry/ModeRegistry 创建之后、Backend 创建之前。
+   * 在 bootstrap 中调用，位于 ToolRegistry/ModeRegistry/PromptAssembler 创建之后、Backend 创建之前。
    */
   async loadAll(
     entries: PluginEntry[],
-    registries: { tools: ToolRegistry; modes: ModeRegistry },
+    internals: { tools: ToolRegistry; modes: ModeRegistry; prompt: PromptAssembler },
     appConfig: AppConfig,
   ): Promise<void> {
     for (const entry of entries) {
@@ -40,7 +41,7 @@ export class PluginManager {
       }
 
       try {
-        await this.load(entry, registries, appConfig);
+        await this.load(entry, internals, appConfig);
       } catch (err) {
         logger.error(`插件 "${entry.name}" 加载失败:`, err);
       }
@@ -55,7 +56,7 @@ export class PluginManager {
   /** 加载并激活单个插件 */
   async load(
     entry: PluginEntry,
-    registries: { tools: ToolRegistry; modes: ModeRegistry },
+    internals: { tools: ToolRegistry; modes: ModeRegistry; prompt: PromptAssembler },
     appConfig: AppConfig,
   ): Promise<void> {
     if (this.plugins.has(entry.name)) {
@@ -63,32 +64,44 @@ export class PluginManager {
       return;
     }
 
-    // 1. 解析并加载插件模块
     const plugin = await this.resolvePlugin(entry);
-
-    // 2. 加载插件配置（插件目录 config.yaml + plugins.yaml 中的覆盖）
     const pluginConfig = this.loadPluginConfig(entry);
 
-    // 3. 创建插件上下文
     const context = new PluginContextImpl(
       entry.name,
-      registries.tools,
-      registries.modes,
+      internals.tools,
+      internals.modes,
       appConfig,
+      internals.prompt,
       pluginConfig,
     );
 
-    // 4. 激活插件
     await plugin.activate(context);
 
-    // 5. 保存已加载插件
     this.plugins.set(entry.name, {
       entry,
       plugin,
       hooks: context.getHooks(),
+      readyCallbacks: context.getReadyCallbacks(),
     });
 
     logger.info(`插件 "${plugin.name}@${plugin.version}" 已激活`);
+  }
+
+  /**
+   * 通知所有插件 Backend 已创建完成。
+   * 依次调用各插件通过 ctx.onReady() 注册的回调，传递完整的内部 API。
+   */
+  async notifyReady(api: IrisAPI): Promise<void> {
+    for (const [name, loaded] of this.plugins) {
+      for (const callback of loaded.readyCallbacks) {
+        try {
+          await callback(api);
+        } catch (err) {
+          logger.error(`插件 "${name}" onReady 回调执行失败:`, err);
+        }
+      }
+    }
   }
 
   /** 停用所有插件并清空 */
@@ -132,28 +145,20 @@ export class PluginManager {
 
   // ============ 私有方法 ============
 
-  /** 根据配置条目解析插件模块 */
   private async resolvePlugin(entry: PluginEntry): Promise<IrisPlugin> {
     const type = entry.type ?? 'local';
-
-    if (type === 'npm') {
-      return this.loadNpmPlugin(entry.name);
-    }
-
+    if (type === 'npm') return this.loadNpmPlugin(entry.name);
     return this.loadLocalPlugin(entry.name);
   }
 
-  /** 从本地目录加载插件 */
   private async loadLocalPlugin(name: string): Promise<IrisPlugin> {
     const pluginDir = path.join(pluginsDir, name);
     if (!fs.existsSync(pluginDir)) {
       throw new Error(`插件目录不存在: ${pluginDir}`);
     }
 
-    // 按优先级查找入口文件
     const candidates = ['index.ts', 'index.js', 'index.mjs'];
     let entryFile: string | undefined;
-
     for (const candidate of candidates) {
       const filePath = path.join(pluginDir, candidate);
       if (fs.existsSync(filePath)) {
@@ -163,9 +168,7 @@ export class PluginManager {
     }
 
     if (!entryFile) {
-      throw new Error(
-        `插件 "${name}" 缺少入口文件（index.ts 或 index.js）: ${pluginDir}`,
-      );
+      throw new Error(`插件 "${name}" 缺少入口文件（index.ts 或 index.js）: ${pluginDir}`);
     }
 
     const mod = await import(entryFile);
@@ -174,51 +177,31 @@ export class PluginManager {
     return plugin as IrisPlugin;
   }
 
-  /** 从 npm 包加载插件 */
   private async loadNpmPlugin(name: string): Promise<IrisPlugin> {
     const packageName = `iris-plugin-${name}`;
-
     try {
       const mod = await import(packageName);
       const plugin = mod.default ?? mod;
       this.validatePlugin(plugin, name);
-   return plugin as IrisPlugin;
+      return plugin as IrisPlugin;
     } catch (err) {
-      throw new Error(
-        `npm 插件 "${packageName}" 加载失败。请确认已安装该包。原始错误: ${err}`,
-      );
+      throw new Error(`npm 插件 "${packageName}" 加载失败。请确认已安装该包。原始错误: ${err}`);
     }
   }
 
-  /** 校验插件对象格式 */
   private validatePlugin(plugin: unknown, name: string): void {
     if (!plugin || typeof plugin !== 'object') {
       throw new Error(`插件 "${name}" 导出格式无效：应导出一个对象`);
     }
-
     const p = plugin as Record<string, unknown>;
-
-    if (typeof p.name !== 'string' || !p.name) {
-      throw new Error(`插件 "${name}" 缺少 name 字段`);
-    }
-
-    if (typeof p.version !== 'string' || !p.version) {
-      throw new Error(`插件 "${name}" 缺少 version 字段`);
-    }
-
-    if (typeof p.activate !== 'function') {
-      throw new Error(`插件 "${name}" 缺少 activate 方法`);
-    }
+    if (typeof p.name !== 'string' || !p.name) throw new Error(`插件 "${name}" 缺少 name 字段`);
+    if (typeof p.version !== 'string' || !p.version) throw new Error(`插件 "${name}" 缺少 version 字段`);
+    if (typeof p.activate !== 'function') throw new Error(`插件 "${name}" 缺少 activate 方法`);
   }
 
-  /**
-   * 加载插件的配置。
-   * 合并优先级：插件目录 config.yaml（默认值）← plugins.yaml 中的 config（覆盖）
-   */
   private loadPluginConfig(entry: PluginEntry): Record<string, unknown> | undefined {
     let baseConfig: Record<string, unknown> | undefined;
 
-    // 读取插件目录下的 config.yaml
     const configPath = path.join(pluginsDir, entry.name, 'config.yaml');
     if (fs.existsSync(configPath)) {
       try {
@@ -232,11 +215,9 @@ export class PluginManager {
       }
     }
 
-    // 合并 plugins.yaml 中的覆盖配置
     if (entry.config) {
       return { ...(baseConfig ?? {}), ...entry.config };
     }
-
     return baseConfig;
   }
 }
