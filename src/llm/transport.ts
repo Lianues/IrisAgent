@@ -7,13 +7,6 @@
 
 import { logRequest, logResponse } from '../logger/request-logger';
 
-let loggingEnabled = false;
-
-/** 启用/禁用请求日志 */
-export function setRequestLogging(enabled: boolean) {
-  loggingEnabled = enabled;
-}
-
 export interface EndpointConfig {
   /** 非流式请求 URL */
   url: string;
@@ -67,13 +60,19 @@ function combineSignals(externalSignal: AbortSignal | undefined, timeoutMs: numb
   return controller.signal;
 }
 
-/** 发送 HTTP 请求，返回原始 Response */
+/**
+ * 发送 HTTP 请求，返回原始 Response。
+ *
+ * @param loggingDir  日志目录。传入时启用请求/响应日志，不传则不记录。
+ *                    每个 Provider 实例持有自己的日志目录，互不影响。
+ */
 export async function sendRequest(
   endpoint: EndpointConfig,
   body: unknown,
   stream: boolean,
   timeout?: number,
   signal?: AbortSignal,
+  loggingDir?: string,
 ): Promise<Response> {
   const url = stream ? (endpoint.streamUrl ?? endpoint.url) : endpoint.url;
   const effectiveTimeout = timeout ?? (stream ? DEFAULT_STREAM_TIMEOUT : DEFAULT_TIMEOUT);
@@ -85,8 +84,8 @@ export async function sendRequest(
   };
 
   let timestamp: string | undefined;
-  if (loggingEnabled) {
-    timestamp = logRequest({ url, method: 'POST', headers, body });
+  if (loggingDir) {
+    timestamp = logRequest(loggingDir, { url, method: 'POST', headers, body });
   }
 
   const res = await fetch(url, {
@@ -96,15 +95,15 @@ export async function sendRequest(
     signal: combineSignals(signal, effectiveTimeout),
   });
 
-  if (!loggingEnabled || !timestamp) return res;
+  if (!loggingDir || !timestamp) return res;
 
   // 记录响应
   if (stream) {
-    return wrapStreamForLogging(res, timestamp);
+    return wrapStreamForLogging(res, timestamp, loggingDir);
   }
   // 非流式：clone 后后台读取并记录
   const clone = res.clone();
-  clone.text().then(text => logResponse(timestamp!, text, false)).catch(() => {});
+  clone.text().then(text => logResponse(loggingDir, timestamp!, text, false)).catch(() => {});
   return res;
 }
 
@@ -113,7 +112,7 @@ export async function sendRequest(
  *
  * 使用 TransformStream 作为透明代理，流结束时将收集到的全部 SSE 文本写入文件。
  */
-function wrapStreamForLogging(res: Response, timestamp: string): Response {
+function wrapStreamForLogging(res: Response, timestamp: string, logsDir: string): Response {
   const body = res.body;
   if (!body) return res;
 
@@ -126,7 +125,7 @@ function wrapStreamForLogging(res: Response, timestamp: string): Response {
       controller.enqueue(chunk);
     },
     flush() {
-      try { logResponse(timestamp, chunks.join(''), true); } catch { /* ignore */ }
+      try { logResponse(logsDir, timestamp, chunks.join(''), true); } catch { /* ignore */ }
     },
   });
 

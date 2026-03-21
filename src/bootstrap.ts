@@ -11,9 +11,8 @@
 
 import type { Computer } from './computer-use/types';
 import { loadConfig, findConfigFile, AppConfig } from './config';
-import { setRequestLogging } from './llm/transport';
-import { setLogsDir } from './logger/request-logger';
 import type { AgentPaths } from './paths';
+import { logsDir as globalLogsDir } from './paths';
 import { createLLMRouter } from './llm/factory';
 import { LLMRouter } from './llm/router';
 import { JsonFileStorage } from './storage/json-file';
@@ -74,16 +73,16 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   const configDir = findConfigFile(agentPaths?.configDir);
   const config = loadConfig(agentPaths?.configDir, agentPaths);
 
-  // 多 Agent 模式：将日志目录指向 agent 专属路径
-  if (agentPaths?.logsDir) {
-    setLogsDir(agentPaths.logsDir);
-  }
-
-  // ---- 0. 配置日志 ----
-  setRequestLogging(!!config.system.logRequests);
-
-  // ---- 1. 创建 LLM 路由器 ----
+  // ---- 0. 创建 LLM 路由器 ----
   const router = createLLMRouter(config.llm);
+
+  // ---- 0.5 配置请求日志（每个 Provider 实例独立，避免多 Agent 间互相覆盖） ----
+  if (config.system.logRequests) {
+    const effectiveLogsDir = agentPaths?.logsDir || globalLogsDir;
+    for (const model of router.listModels()) {
+      router.resolve(model.modelName).setLogging(effectiveLogsDir);
+    }
+  }
 
   // ---- 2. 创建存储 ----
   let storage: StorageProvider;

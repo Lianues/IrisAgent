@@ -50,6 +50,8 @@ function mergeRequestBody(baseBody: unknown, overrideBody?: Record<string, unkno
 
 export class LLMProvider {
   private providerName: string;
+  /** 日志目录。有值时启用请求/响应日志，每个 Provider 实例独立。 */
+  private loggingDir?: string;
 
   constructor(
     private format: FormatAdapter,
@@ -60,17 +62,22 @@ export class LLMProvider {
     this.providerName = providerName ?? 'LLMProvider';
   }
 
+  /** 启用请求日志，日志写入指定目录 */
+  setLogging(logsDir: string): void {
+    this.loggingDir = logsDir;
+  }
+
   /** 非流式调用 */
   async chat(request: LLMRequest, signal?: AbortSignal): Promise<LLMResponse> {
     const body = mergeRequestBody(this.format.encodeRequest(request, false), this.requestBodyOverrides);
-    const res = await sendRequest(this.endpoint, body, false, undefined, signal);
+    const res = await sendRequest(this.endpoint, body, false, undefined, signal, this.loggingDir);
     return processResponse(res, this.format);
   }
 
   /** 流式调用 */
   async *chatStream(request: LLMRequest, signal?: AbortSignal): AsyncGenerator<LLMStreamChunk> {
     const body = mergeRequestBody(this.format.encodeRequest(request, true), this.requestBodyOverrides);
-    const res = await sendRequest(this.endpoint, body, true, undefined, signal);
+    const res = await sendRequest(this.endpoint, body, true, undefined, signal, this.loggingDir);
     yield* processStreamResponse(res, this.format);
   }
 
