@@ -39,6 +39,7 @@ import { PromptAssembler } from './prompt/assembler';
 import { DEFAULT_SYSTEM_PROMPT } from './prompt/templates/default';
 import { Backend } from './core/backend';
 import type { StorageProvider } from './storage/base';
+import { PluginManager } from './plugins';
 
 export interface BootstrapResult {
   backend: Backend;
@@ -56,6 +57,8 @@ export interface BootstrapResult {
   computerEnv?: Computer;
   /** 初始化过程中的警告信息（TUI 启动后展示给用户） */
   initWarnings: string[];
+  /** 插件管理器（未配置插件时为 undefined） */
+  pluginManager: PluginManager | undefined;
 }
 
 /** Bootstrap 选项（多 Agent 模式传入） */
@@ -193,6 +196,17 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // ---- 3.5a. 创建工具状态管理器 ----
   const toolState = new ToolStateManager();
 
+  // ---- 3.6 加载插件 ----
+  let pluginManager: PluginManager | undefined;
+  if (config.plugins?.length) {
+    pluginManager = new PluginManager();
+    await pluginManager.loadAll(
+      config.plugins,
+      { tools, modes: modeRegistry },
+      config,
+    );
+  }
+
   // ---- 4. 配置提示词 ----
   const prompt = new PromptAssembler();
   prompt.setSystemPrompt(config.system.systemPrompt || DEFAULT_SYSTEM_PROMPT);
@@ -227,6 +241,11 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     }));
   }
 
+  // 将插件钩子注入 Backend
+  if (pluginManager && pluginManager.size > 0) {
+    backend.setPluginHooks(pluginManager.getHooks());
+  }
+
   return {
     backend,
     config,
@@ -239,5 +258,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     agentName: agentLabel,
     computerEnv,
     initWarnings,
+    pluginManager,
   };
 }

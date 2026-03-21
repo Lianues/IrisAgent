@@ -21,6 +21,7 @@ export const CONFIG_SECTION_KEYS = [
   'modes',
   'sub_agents',
   'computer_use',
+  'plugins',
 ] as const;
 
 export type ConfigSectionKey = typeof CONFIG_SECTION_KEYS[number];

@@ -1,0 +1,32 @@
+# =========================================================
+# 插件配置
+#
+# 配置要加载的 Iris 插件。
+# 插件可以扩展工具、模式、钩子等功能。
+#
+# 插件来源：
+#   - local（默认）：从 ~/.iris/plugins/<name>/ 目录加载
+#   - npm：从 npm 包 iris-plugin-<name> 加载
+#
+# 插件目录结构：
+#   ~/.iris/plugins/
+#     my-plugin/
+#       index.ts          # 入口文件（必须 export default 一个 IrisPlugin）
+#       config.yaml       # 插件默认配置（可选）
+# ============================================================
+
+# plugins:
+#   # 本地插件示例
+#   - name: my-tool
+#     enabled: true
+#     config:
+#       apiKey: "sk-xxx"
+#
+#   # npm 包插件示例
+#   - name: rag
+#     type: npm
+#     enabled: true
+#
+#   # 禁用某个插件
+#   - name: some-plugin
+#     enabled: false

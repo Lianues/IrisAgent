@@ -295,6 +295,8 @@ export interface AppConfig {
   subAgents?: SubAgentsConfig;
   /** Computer Use 配置（可选，对应 computer_use.yaml） */
   computerUse?: ComputerUseConfig;
+  /** 插件配置（可选，对应 plugins.yaml） */
+  plugins?: Array<{ name: string; type?: 'local' | 'npm'; enabled?: boolean; config?: Record<string, unknown> }>;
 }
 
 /** 子代理类型定义（配置文件格式） */

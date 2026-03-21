@@ -17,6 +17,7 @@ import { spawnSync } from 'child_process';
 import type { LLMConfig, ToolsConfig, ToolPolicyConfig } from '../config/types';
 import { LLMRouter } from '../llm/router';
 import { supportsVision as llmSupportsVision, isDocumentMimeType, supportsNativePDF, supportsNativeOffice } from '../llm/vision';
+import type { PluginHook } from '../plugins/types';
 import { StorageProvider, SessionMeta } from '../storage/base';
 import { ToolRegistry } from '../tools/registry';
 import { ToolStateManager } from '../tools/state';
@@ -329,6 +330,9 @@ export class Backend extends EventEmitter {
   /** 每个 session 的 redo 栈。每组元素都是一次 undo 移除的完整 Content 组。 */
   private redoHistory = new Map<string, Content[][]>();
 
+  /** 插件钩子列表 */
+  private pluginHooks: PluginHook[] = [];
+
   constructor(
     router: LLMRouter,
     storage: StorageProvider,
@@ -369,6 +373,11 @@ export class Backend extends EventEmitter {
 
   // ============ 公共 API（平台层调用） ============
 
+  /** 设置插件钩子（由 bootstrap 在插件加载后调用） */
+  setPluginHooks(hooks: PluginHook[]): void {
+    this.pluginHooks = hooks;
+  }
+
   /** 发送消息，触发完整的 LLM + 工具循环 */
   async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[]): Promise<void> {
     const startTime = Date.now();
@@ -376,6 +385,16 @@ export class Backend extends EventEmitter {
     this.activeAbortControllers.set(sessionId, abortController);
 
     try {
+      // 插件钩子: onBeforeChat（可修改用户消息文本）
+      for (const hook of this.pluginHooks) {
+        try {
+          const hookResult = await hook.onBeforeChat?.({ sessionId, text });
+          if (hookResult) text = hookResult.text;
+        } catch (err) {
+          logger.warn(`插件钩子 "${hook.name}" onBeforeChat 执行失败:`, err);
+        }
+      }
+
       const storedUserParts = await this.buildStoredUserParts(text, images, documents);
       const llmUserParts = this.preparePartsForLLM(storedUserParts);
       await this.handleMessage(sessionId, storedUserParts, llmUserParts, abortController.signal);
@@ -877,9 +896,22 @@ export class Backend extends EventEmitter {
     // 8. 管理会话元数据
     await this.updateSessionMeta(sessionId, storedUserParts, false);
 
-    // 9. 非流式模式：发送最终文本
-    if ((!this.stream || appendedFallbackModel) && result.text) {
-      this.emit('response', sessionId, result.text);
+    // 9. 插件钩子: onAfterChat（可修改最终响应文本）
+    let finalText = result.text;
+    if (finalText) {
+      for (const hook of this.pluginHooks) {
+        try {
+          const hookResult = await hook.onAfterChat?.({ sessionId, content: finalText });
+          if (hookResult) finalText = hookResult.content;
+        } catch (err) {
+          logger.warn(`插件钩子 "${hook.name}" onAfterChat 执行失败:`, err);
+        }
+      }
+    }
+
+    // 10. 非流式模式：发送最终文本
+    if ((!this.stream || appendedFallbackModel) && finalText) {
+      this.emit('response', sessionId, finalText);
     }
     this.emit('done', sessionId, durationMs);
 

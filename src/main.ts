@@ -64,3 +64,5 @@ if (sidecarIndex >= 0) {
     await import('./index');
   }
 }
+
+export {};

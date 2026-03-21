@@ -14,6 +14,7 @@
  *   mcp.yaml      - MCP 配置（可选）
  *   modes.yaml    - 模式配置（可选）
  *   sub_agents.yaml - 子代理配置（可选）
+ *   plugins.yaml  - 插件配置（可选）
  */
 
 import * as fs from 'fs';
@@ -33,6 +34,7 @@ import { parseModeConfig } from './mode';
 import { parseSubAgentsConfig } from './sub_agents';
 import { parseComputerUseConfig } from './computer-use';
 import { loadRawConfigDir } from './raw';
+import { parsePluginsConfig } from './plugins';
 
 export type {
   AppConfig,
@@ -111,6 +113,7 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
     modes: parseModeConfig(data.modes),
     subAgents: parseSubAgentsConfig(data.sub_agents),
     computerUse: parseComputerUseConfig(data.computer_use),
+    plugins: parsePluginsConfig(data.plugins),
   };
 }
 
