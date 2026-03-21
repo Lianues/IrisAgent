@@ -286,6 +286,7 @@ async function updateRenderedText() {
   if (renderRichText) {
     renderedText.value = renderRichText(props.text)
     await nextTick()
+    if (disposed || taskVersion !== renderTaskVersion) return
     void hydrateRenderedContent(messageEl.value)
     return
   }
@@ -297,6 +298,7 @@ async function updateRenderedText() {
     if (disposed || taskVersion !== renderTaskVersion) return
     renderedText.value = renderer(props.text)
     await nextTick()
+    if (disposed || taskVersion !== renderTaskVersion) return
     void hydrateRenderedContent(messageEl.value)
   } catch (error) {
     console.error('加载富文本渲染器失败:', error)

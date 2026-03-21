@@ -29,19 +29,30 @@ function clearToolState() {
   toolInvocations.value = []
 }
 
+/** 正在处理中的审批/应用请求 ID，防止重复提交 */
+const inflightIds = new Set<string>()
+
 async function approve(id: string, approved: boolean) {
+  if (inflightIds.has(id)) return
+  inflightIds.add(id)
   try {
     await api.approveTool(id, approved)
   } catch (err) {
     console.error('[useToolApproval] approve failed:', err)
+  } finally {
+    inflightIds.delete(id)
   }
 }
 
 async function apply(id: string, applied: boolean) {
+  if (inflightIds.has(id)) return
+  inflightIds.add(id)
   try {
     await api.applyTool(id, applied)
   } catch (err) {
     console.error('[useToolApproval] apply failed:', err)
+  } finally {
+    inflightIds.delete(id)
   }
 }
 
