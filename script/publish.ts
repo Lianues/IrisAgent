@@ -9,7 +9,7 @@
  *   dist/bin/iris-linux-x64/      → npm publish (平台包)
  *   dist/bin/iris-darwin-arm64/    → npm publish (平台包)
  *   dist/bin/iris-windows-x64/    → npm publish (平台包)
- *   dist/bin/iris-ai/             → npm publish (包装器包)
+ *   dist/bin/irises/             → npm publish (包装器包)
  *
  * 用法：
  *   bun run script/publish.ts
@@ -54,11 +54,18 @@ if (Object.keys(binaries).length === 0) {
 console.log("待发布的平台包:", binaries)
 
 const version = Object.values(binaries)[0]
-const wrapperName = "iris-ai"
+const wrapperName = "irises"
 
 // 生成 npm 包装器
 const wrapperDir = path.join(distBinDir, wrapperName)
 fs.mkdirSync(path.join(wrapperDir, "bin"), { recursive: true })
+
+// 复制 data/ 目录（配置模板和示例文件）
+const dataSrc = path.join(dir, "data")
+const dataDest = path.join(wrapperDir, "data")
+if (fs.existsSync(dataSrc)) {
+  fs.cpSync(dataSrc, dataDest, { recursive: true })
+}
 
 // 复制启动器脚本
 const launcherSrc = path.join(dir, "bin", "iris")

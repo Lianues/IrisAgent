@@ -1,14 +1,18 @@
 /**
  * 浏览器执行环境（Sidecar 模式）
  *
- * Playwright 运行在独立的 Node.js 子进程（browser-sidecar.ts）中，
+ * Playwright 运行在独立的子进程（browser-sidecar.ts）中，
  * 主进程通过 stdin/stdout NDJSON 与其通信。
- * 这样主进程无论跑在 Bun 还是 Node.js 都不受影响。
+ *
+ * 启动策略：
+ *   1. 编译模式：用 process.execPath --sidecar browser 自举运行
+ *   2. 开发模式：bun 直接运行 .ts，回退 node --import tsx
  */
 
 import { spawn, type ChildProcess } from 'child_process';
 import * as readline from 'readline';
 import * as path from 'path';
+import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createLogger } from '../logger';
 import type { Computer, EnvState } from './types';
@@ -50,13 +54,12 @@ export class BrowserEnvironment implements Computer {
   }
 
   async initialize(): Promise<void> {
-    logger.info('正在启动 sidecar 子进程...');
+    logger.info('正在启动 browser sidecar 子进程...');
 
-    const sidecarPath = path.resolve(__dirname, 'browser-sidecar.ts');
+    const { cmd, args } = resolveSidecarCommand('browser', 'browser-sidecar.ts');
 
-    // 用 node + tsx loader 启动 sidecar，确保始终在 Node.js 中运行
-    this._child = spawn('node', ['--import', 'tsx', sidecarPath], {
-      stdio: ['pipe', 'pipe', 'inherit'],
+    this._child = spawn(cmd, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
       cwd: process.cwd(),
       env: { ...process.env },
     });
@@ -76,10 +79,16 @@ export class BrowserEnvironment implements Computer {
       }
     });
 
+    // 收集 stderr 用于诊断，不直接输出到主进程
+    let stderrBuf = '';
+    this._child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString();
+    });
+
     // 子进程异常退出时拒绝所有待处理的请求
     this._child.on('exit', (code) => {
       for (const [, { reject }] of this._pending) {
-        reject(new Error(`sidecar 进程退出 (code=${code})`));
+        reject(new Error(`browser sidecar 进程退出 (code=${code})${stderrBuf ? '\n' + stderrBuf : ''}`));
       }
       this._pending.clear();
     });
@@ -185,7 +194,7 @@ export class BrowserEnvironment implements Computer {
   /** 发送 IPC 请求并等待响应 */
   private _call(method: string, params?: Record<string, unknown>): Promise<any> {
     if (!this._child?.stdin) {
-      return Promise.reject(new Error('sidecar 未启动'));
+      return Promise.reject(new Error('browser sidecar 未启动'));
     }
     const id = this._nextId++;
     return new Promise((resolve, reject) => {
@@ -194,4 +203,29 @@ export class BrowserEnvironment implements Computer {
       this._child!.stdin!.write(msg);
     });
   }
+}
+
+// ============ Sidecar 启动策略 ============
+
+/**
+ * 根据运行环境确定 sidecar 启动命令。
+ *
+ * 编译模式（.ts 源文件不存在）：用当前二进制自身 + --sidecar 参数
+ * 开发模式：优先 bun，回退 node --import tsx
+ */
+function resolveSidecarCommand(type: string, sidecarFile: string): { cmd: string; args: string[] } {
+  const sidecarTs = path.resolve(__dirname, sidecarFile);
+
+  if (!fs.existsSync(sidecarTs)) {
+    // 编译模式：源文件不存在，用自身二进制启动 sidecar
+    return { cmd: process.execPath, args: ['--sidecar', type] };
+  }
+
+  // 开发模式：优先用 bun（原生支持 TS）
+  if ((globalThis as any).Bun) {
+    return { cmd: 'bun', args: [sidecarTs] };
+  }
+
+  // 回退 node + tsx
+  return { cmd: 'node', args: ['--import', 'tsx', sidecarTs] };
 }

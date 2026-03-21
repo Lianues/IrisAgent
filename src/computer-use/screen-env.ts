@@ -1,14 +1,18 @@
 /**
  * Screen 执行环境（Sidecar 模式）
  *
- * 系统级截屏和输入模拟运行在独立的 Node.js 子进程（screen-sidecar.ts）中，
+ * 系统级截屏和输入模拟运行在独立的子进程（screen-sidecar.ts）中，
  * 主进程通过 stdin/stdout NDJSON 与其通信。
- * 与 browser-env.ts 采用相同的 IPC 模式。
+ *
+ * 启动策略：
+ *   1. 编译模式：用 process.execPath --sidecar screen 自举运行
+ *   2. 开发模式：bun 直接运行 .ts，回退 node --import tsx
  */
 
 import { spawn, type ChildProcess } from 'child_process';
 import * as readline from 'readline';
 import * as path from 'path';
+import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createLogger } from '../logger';
 import type { Computer, EnvState, WindowInfo } from './types';
@@ -52,10 +56,10 @@ export class ScreenEnvironment implements Computer {
   async initialize(): Promise<void> {
     logger.info('正在启动 screen sidecar 子进程...');
 
-    const sidecarPath = path.resolve(__dirname, 'screen-sidecar.ts');
+    const { cmd, args } = resolveSidecarCommand('screen', 'screen-sidecar.ts');
 
-    this._child = spawn('node', ['--import', 'tsx', sidecarPath], {
-      stdio: ['pipe', 'pipe', 'inherit'],
+    this._child = spawn(cmd, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
       cwd: process.cwd(),
       env: { ...process.env },
     });
@@ -74,9 +78,15 @@ export class ScreenEnvironment implements Computer {
       }
     });
 
+    // 收集 stderr 用于诊断，不直接输出到主进程
+    let stderrBuf = '';
+    this._child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString();
+    });
+
     this._child.on('exit', (code) => {
       for (const [, { reject }] of this._pending) {
-        reject(new Error(`screen sidecar 进程退出 (code=${code})`));
+        reject(new Error(`screen sidecar 进程退出 (code=${code})${stderrBuf ? '\n' + stderrBuf : ''}`));
       }
       this._pending.clear();
     });
@@ -222,4 +232,29 @@ export class ScreenEnvironment implements Computer {
       this._child!.stdin!.write(msg);
     });
   }
+}
+
+// ============ Sidecar 启动策略 ============
+
+/**
+ * 根据运行环境确定 sidecar 启动命令。
+ *
+ * 编译模式（.ts 源文件不存在）：用当前二进制自身 + --sidecar 参数
+ * 开发模式：优先 bun，回退 node --import tsx
+ */
+function resolveSidecarCommand(type: string, sidecarFile: string): { cmd: string; args: string[] } {
+  const sidecarTs = path.resolve(__dirname, sidecarFile);
+
+  if (!fs.existsSync(sidecarTs)) {
+    // 编译模式：源文件不存在，用自身二进制启动 sidecar
+    return { cmd: process.execPath, args: ['--sidecar', type] };
+  }
+
+  // 开发模式：优先用 bun（原生支持 TS）
+  if ((globalThis as any).Bun) {
+    return { cmd: 'bun', args: [sidecarTs] };
+  }
+
+  // 回退 node + tsx
+  return { cmd: 'node', args: ['--import', 'tsx', sidecarTs] };
 }

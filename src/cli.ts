@@ -41,6 +41,7 @@ Iris CLI - AI Agent 命令行接口
   iris -p <prompt>              执行提示词
   iris "<prompt>"               位置参数传入提示词
   echo "<prompt>" | iris        管道传入提示词
+  iris serve                    启动平台服务（Web/Telegram 等）
 
 参数:
   -p, --prompt <text>           提示词文本

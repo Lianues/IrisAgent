@@ -43,7 +43,7 @@
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
-    "@opentui/core": "latest",
+    "@opentui/core": "^0.1.88",
     "@opentui/react": "latest",
     "libreoffice-convert": "^1.8.1"
   },

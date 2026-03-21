@@ -5,9 +5,8 @@
  * 支持 PDF / DOCX / PPTX / XLSX(XLS) 与常见文本/代码文件格式。
  */
 
-import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
 import JSZip from 'jszip';
+import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
@@ -287,6 +286,7 @@ function looksLikeBinaryBuffer(buffer: Buffer): boolean {
 // ============ PDF ============
 
 async function processPdf(buffer: Buffer, fileName: string): Promise<ExtractedDocument> {
+  const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     const textResult = await parser.getText();

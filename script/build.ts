@@ -6,6 +6,12 @@
  * 使用 bun build --compile 为每个目标平台生成独立可执行文件。
  * 产物内嵌 Bun 运行时 + opentui 原生库 + 全部依赖，无需外部运行时。
  *
+ * 产物结构：
+ *   dist/bin/iris-{platform}-{arch}/
+ *     bin/iris(.exe)       编译后的二进制
+ *     data/                配置模板和示例文件
+ *     package.json         平台包描述
+ *
  * 用法：
  *   bun run script/build.ts            # 编译所有平台
  *   bun run script/build.ts --single   # 仅编译当前平台
@@ -50,7 +56,12 @@ if (targets.length === 0) {
 // 清理旧产物
 const distBinDir = path.join(dir, "dist", "bin")
 if (fs.existsSync(distBinDir)) {
-  fs.rmSync(distBinDir, { recursive: true, force: true })
+  try {
+    fs.rmSync(distBinDir, { recursive: true, force: true })
+  } catch (err: any) {
+    // Windows 下目录可能被其他进程占用，跳过清理继续编译（覆盖写入）
+    console.warn(`警告: 无法清理旧产物目录 (${err.code || err.message})，将覆盖写入`)
+  }
 }
 
 // 确保安装所有平台的 opentui 原生依赖
@@ -69,7 +80,9 @@ for (const item of targets) {
 
   try {
     await Bun.build({
-      entrypoints: ["./src/index.ts"],
+      entrypoints: ["./src/main.ts"],
+      // Playwright 内部可选依赖，编译时无法解析，运行时不影响核心功能
+      external: ["chromium-bidi", "electron"],
       compile: {
         target: `bun-${item.os}-${item.arch}` as any,
         outfile: `dist/bin/${name}/bin/iris`,
@@ -79,6 +92,14 @@ for (const item of targets) {
       },
     })
 
+    // 复制 data/ 目录（配置模板和示例文件）
+    const dataSrc = path.join(dir, "data")
+    const dataDest = path.join(outDir, "data")
+    if (fs.existsSync(dataSrc)) {
+      fs.cpSync(dataSrc, dataDest, { recursive: true })
+      console.log(`  ✓ data/ copied`)
+    }
+
     // 生成平台包 package.json
     fs.writeFileSync(
       path.join(outDir, "package.json"),
@@ -87,6 +108,9 @@ for (const item of targets) {
           name,
           version,
           description: `Prebuilt ${platformName}-${item.arch} binary for Iris`,
+          bin: {
+            iris: item.os === "win32" ? "./bin/iris.exe" : "./bin/iris",
+          },
           os: [item.os],
           cpu: [item.arch],
           license: pkg.license ?? "MIT",
