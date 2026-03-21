@@ -30,6 +30,7 @@ export interface BrowserEnvConfig {
 export class BrowserEnvironment implements Computer {
   private _config: BrowserEnvConfig;
   private _screenSize: [number, number];
+  screenDescription: string;
   private _child: ChildProcess | null = null;
   private _rl: readline.Interface | null = null;
   private _nextId = 1;
@@ -41,6 +42,7 @@ export class BrowserEnvironment implements Computer {
   constructor(config: BrowserEnvConfig) {
     this._config = config;
     this._screenSize = [config.screenWidth, config.screenHeight];
+    this.screenDescription = `浏览器 (${config.screenWidth}×${config.screenHeight})`;
   }
 
   screenSize(): [number, number] {

@@ -93,4 +93,10 @@ export interface ScreenAdapter {
    * 仅 Windows 平台实现。
    */
   bindWindowByHwnd?(hwnd: string): Promise<void>;
+
+  /**
+   * 绑定窗口后的信息。未绑定时为 undefined。
+   * bindWindow / bindWindowByHwnd 成功后设置。
+   */
+  readonly boundWindowInfo?: { hwnd: string; title: string; className: string };
 }

@@ -266,6 +266,13 @@ export class WindowsScreenAdapter implements ScreenAdapter {
   readonly platform = 'windows';
   private _windowSelector?: WindowSelector;
   private _backgroundMode = false;
+  private _boundWindowInfo?: { hwnd: string; title: string; className: string };
+
+  /**
+   * 绑定窗口后的信息（hwnd / title / className）。
+   * 仅在 bindWindow / bindWindowByHwnd 成功后有值。
+   */
+  get boundWindowInfo() { return this._boundWindowInfo; }
 
   isSupported(): boolean {
     return process.platform === 'win32';
@@ -285,17 +292,31 @@ export class WindowsScreenAdapter implements ScreenAdapter {
 
   async bindWindow(selector: string | WindowSelector): Promise<void> {
     const sel = normalizeSelector(selector);
-    // 输出 HWND 和窗口尺寸，格式: "0x001A0B2C,1920,1080"
+    // 输出 HWND、窗口尺寸、标题、类名，格式: "0x001A0B2C,1920,1080,标题,类名"
     const script = PREAMBLE + windowFindScript(sel, !this._backgroundMode)
-      + '"$(' + "'0x' + $_hwnd.ToString('X')" + '),$ww,$wh"';
+      + `
+$_bindHwnd = '0x' + $_hwnd.ToString('X')
+$_bindTitle = New-Object System.Text.StringBuilder 256
+[WinAPI]::GetWindowText($_hwnd, $_bindTitle, 256) | Out-Null
+$_bindClass = New-Object System.Text.StringBuilder 256
+[WinAPI]::GetClassName($_hwnd, $_bindClass, 256) | Out-Null
+"$_bindHwnd,$ww,$wh,$($_bindTitle.ToString()),$($_bindClass.ToString())"
+`;
     const output = await this.ps(script);
-    const parts = output.trim().split(',');
-    const hwnd = parts[0];
-    const w = Number(parts[1]);
-    const h = Number(parts[2]);
+    // 用逗号分割，但标题里可能含逗号，所以只 split 前 3 段，剩余的归标题和类名
+    const firstComma = output.indexOf(',');
+    const secondComma = output.indexOf(',', firstComma + 1);
+    const thirdComma = output.indexOf(',', secondComma + 1);
+    const lastComma = output.lastIndexOf(',');
+    const hwnd = output.substring(0, firstComma).trim();
+    const w = Number(output.substring(firstComma + 1, secondComma));
+    const h = Number(output.substring(secondComma + 1, thirdComma));
+    const title = output.substring(thirdComma + 1, lastComma).trim();
+    const className = output.substring(lastComma + 1).trim();
     if (!hwnd || !w || !h) throw new Error(`窗口绑定异常: ${output.trim()}`);
     // 锁定到 HWND，后续操作不再按选择器重新搜索
     this._windowSelector = { hwnd };
+    this._boundWindowInfo = { hwnd, title, className };
   }
 
   async bindWindowByHwnd(hwnd: string): Promise<void> {
@@ -326,12 +347,23 @@ if ($_hr -eq 0) {
     $wx = $_rect.Left; $wy = $_rect.Top
     $ww = $_rect.Right - $_rect.Left; $wh = $_rect.Bottom - $_rect.Top
 }
-"$ww,$wh"
+$_bindTitle = New-Object System.Text.StringBuilder 256
+[WinAPI]::GetWindowText($_hwnd, $_bindTitle, 256) | Out-Null
+$_bindClass = New-Object System.Text.StringBuilder 256
+[WinAPI]::GetClassName($_hwnd, $_bindClass, 256) | Out-Null
+"$ww,$wh,$($_bindTitle.ToString()),$($_bindClass.ToString())"
 `;
     const output = await this.ps(script);
-    const [w, h] = output.trim().split(',').map(Number);
+    const firstComma = output.indexOf(',');
+    const secondComma = output.indexOf(',', firstComma + 1);
+    const lastComma = output.lastIndexOf(',');
+    const w = Number(output.substring(0, firstComma).trim());
+    const h = Number(output.substring(firstComma + 1, secondComma));
+    const title = output.substring(secondComma + 1, lastComma).trim();
+    const className = output.substring(lastComma + 1).trim();
     if (!w || !h) throw new Error(`窗口尺寸异常: ${output.trim()}`);
     this._windowSelector = { hwnd };
+    this._boundWindowInfo = { hwnd, title, className };
   }
 
   async getScreenSize(): Promise<[number, number]> {
@@ -707,7 +739,7 @@ $results | ConvertTo-Json -Compress -Depth 2
   private async ps(script: string): Promise<string> {
     const { stdout } = await exec('powershell', [
       '-NoProfile', '-NonInteractive', '-Command', script,
-    ], { timeout: 15_000 });
+    ], { timeout: 15_000, maxBuffer: 50 * 1024 * 1024 });
     return stdout;
   }
 

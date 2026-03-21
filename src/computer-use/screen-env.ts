@@ -31,6 +31,7 @@ export interface ScreenEnvConfig {
 export class ScreenEnvironment implements Computer {
   private _config: ScreenEnvConfig;
   private _screenSize: [number, number] = [1920, 1080];
+  screenDescription: string = '桌面全屏';
   readonly initWarnings: string[] = [];
   private _child: ChildProcess | null = null;
   private _rl: readline.Interface | null = null;
@@ -93,6 +94,8 @@ export class ScreenEnvironment implements Computer {
     if (Array.isArray(result.warnings)) {
       this.initWarnings.push(...result.warnings);
     }
+    // 根据绑定结果更新截图目标描述
+    this._updateScreenDescription(result.windowInfo);
   }
 
   async dispose(): Promise<void> {
@@ -179,7 +182,20 @@ export class ScreenEnvironment implements Computer {
     if (result.screenSize) {
       this._screenSize = result.screenSize;
     }
+    this._updateScreenDescription(result.windowInfo);
   }
+
+  private _updateScreenDescription(windowInfo: any): void {
+    if (windowInfo && windowInfo.hwnd) {
+      const [w, h] = this._screenSize;
+      const bg = this._config.backgroundMode ? '后台模式' : '前台模式';
+      this.screenDescription = `窗口${bg}: ${windowInfo.title} [HWND=${windowInfo.hwnd}, 类名=${windowInfo.className}] (${w}×${h})`;
+    } else {
+      const [w, h] = this._screenSize;
+      this.screenDescription = `桌面全屏 (${w}×${h})`;
+    }
+  }
+
 
   // ============ 内部 IPC ============
 

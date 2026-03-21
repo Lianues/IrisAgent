@@ -300,12 +300,14 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
       case 'scrollAt': {
         await doHighlightMouse(p.x as number, p.y as number);
         await page.mouse.move(p.x as number, p.y as number);
+        // magnitude 单位：滚轮格数。Playwright wheel() 参数单位为像素，1 格 ≈ 100px。
+        const pxPerNotch = 100;
         let dx = 0, dy = 0;
         switch (p.direction as string) {
-          case 'up':    dy = -(p.magnitude as number); break;
-          case 'down':  dy = (p.magnitude as number);  break;
-          case 'left':  dx = -(p.magnitude as number); break;
-          case 'right': dx = (p.magnitude as number);  break;
+          case 'up':    dy = -(p.magnitude as number) * pxPerNotch; break;
+          case 'down':  dy = (p.magnitude as number) * pxPerNotch;  break;
+          case 'left':  dx = -(p.magnitude as number) * pxPerNotch; break;
+          case 'right': dx = (p.magnitude as number) * pxPerNotch;  break;
         }
         await page.mouse.wheel(dx, dy);
         result = await captureState();

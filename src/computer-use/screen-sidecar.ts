@@ -77,7 +77,8 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
           try {
             await adapter.bindWindow(targetWindow);
             screenSize = await adapter.getScreenSize();
-            log(`窗口模式已启用，窗口尺寸: ${screenSize[0]}×${screenSize[1]}`);
+            const wi = adapter.boundWindowInfo;
+            log(`窗口模式已启用: ${wi?.title ?? '?'} [${wi?.hwnd}]，尺寸: ${screenSize[0]}×${screenSize[1]}`);
           } catch (e: any) {
             const msg = `窗口绑定失败: ${e?.message ?? e}，已回退到全屏模式。可用 /window 手动绑定。`;
             log(msg);
@@ -87,7 +88,7 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
         log(`屏幕尺寸: ${screenSize[0]}×${screenSize[1]}`);
 
         log('Screen 环境就绪');
-        result = { ok: true, screenSize, warnings };
+        result = { ok: true, screenSize, warnings, windowInfo: adapter.boundWindowInfo ?? null };
         break;
       }
 
@@ -114,8 +115,9 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
         if (!hwnd) throw new Error('未指定窗口 HWND');
         await adapter.bindWindowByHwnd(hwnd);
         screenSize = await adapter.getScreenSize();
-        log(`已切换到窗口: HWND=${hwnd}，窗口尺寸: ${screenSize[0]}×${screenSize[1]}`);
-        result = { ok: true, screenSize };
+        const wi = adapter.boundWindowInfo;
+        log(`已切换到窗口: ${wi?.title ?? '?'} [${hwnd}]，尺寸: ${screenSize[0]}×${screenSize[1]}`);
+        result = { ok: true, screenSize, windowInfo: wi ?? null };
         break;
       }
 
@@ -242,12 +244,13 @@ async function handleRequest(req: { id: number; method: string; params?: Record<
       case 'scrollAt': {
         if (!adapter) throw new Error('adapter 未初始化');
         let dx = 0, dy = 0;
-        const mag = (p.magnitude as number) || 300;
+        // magnitude 单位：滚轮格数（notch），1 格 = WHEEL_DELTA(120)
+        const notches = (p.magnitude as number) || 3;
         switch (p.direction as string) {
-          case 'up':    dy = -mag; break;
-          case 'down':  dy = mag;  break;
-          case 'left':  dx = -mag; break;
-          case 'right': dx = mag;  break;
+          case 'up':    dy = -notches; break;
+          case 'down':  dy = notches;  break;
+          case 'left':  dx = -notches; break;
+          case 'right': dx = notches;  break;
         }
         await adapter.scroll(p.x as number, p.y as number, dx, dy);
         result = await captureState();

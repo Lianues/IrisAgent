@@ -7,7 +7,7 @@
  * 坐标约定：LLM 输出 0-999 归一化坐标，handler 内部完成反归一化。
  */
 
-import { ToolDefinition } from '../types';
+import { ToolDefinition, FunctionDeclaration } from '../types';
 import type { CUToolPolicy } from '../config/types';
 import type { Computer, EnvState } from './types';
 import { denormalizeX, denormalizeY } from './coordinator';
@@ -102,10 +102,17 @@ export function createComputerUseTools(
   const all: ToolDefinition[] = [
     // ---- 截图与导航 ----
     {
-      declaration: {
-        name: 'get_screenshot',
-        description: '获取当前屏幕截图。用于查看当前屏幕内容、确认操作结果、或在开始操作前了解当前界面状态。',
-      },
+      declaration: (() => {
+        const decl: FunctionDeclaration = {
+          name: 'get_screenshot',
+          description: '',
+        };
+        Object.defineProperty(decl, 'description', {
+          get: () => `获取当前屏幕截图。当前截图目标: ${computer.screenDescription}。用于查看当前屏幕内容、确认操作结果、或在开始操作前了解当前界面状态。`,
+          enumerable: true,
+        });
+        return decl;
+      })(),
       handler: async () => toResult(await computer.openWebBrowser()),
     },
     {
@@ -296,7 +303,8 @@ export function createComputerUseTools(
         name: 'scroll_at',
         description: [
           '在指定位置按方向滚动指定幅度。',
-          '坐标和幅度均为0-999 的归一化值。默认幅度 800。',
+          'x、y 为 0-999 的归一化坐标。',
+          'amount 为滚动格数（鼠标滚轮格数），默认 3。',
         ].join(''),
         parameters: {
           type: 'object',
@@ -304,24 +312,20 @@ export function createComputerUseTools(
             x: { type: 'number', description: 'X 坐标 (0-999)' },
             y: { type: 'number', description: 'Y 坐标 (0-999)' },
             direction: { type: 'string', description: '滚动方向: up / down / left / right' },
-            magnitude: { type: 'number', description: '滚动幅度 (0-999)，默认 800' },
+            amount: { type: 'number', description: '滚动格数（鼠标滚轮格数），默认 3' },
           },
           required: ['x', 'y', 'direction'],
         },
       },
       handler: async (args) => {
         const direction = args.direction as 'up' | 'down' | 'left' | 'right';
-        const rawMagnitude = (args.magnitude as number | undefined) ?? 800;
+        const amount = (args.amount as number | undefined) ?? 3;
         const [sw, sh] = sz();
-        // magnitude 也是归一化值，需要按方向反归一化
-        const magnitude = (direction === 'up' || direction === 'down')
-          ? denormalizeY(rawMagnitude, sh)
-          : denormalizeX(rawMagnitude, sw);
         return toResult(await computer.scrollAt(
           denormalizeX(args.x as number, sw),
           denormalizeY(args.y as number, sh),
           direction,
-          magnitude,
+          amount,
         ));
       },
     },

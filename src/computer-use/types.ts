@@ -36,6 +36,12 @@ export interface EnvState {
 export interface Computer {
   /** 返回屏幕尺寸 [width, height]（像素） */
   screenSize(): [number, number];
+  /**
+   * 当前截图目标描述（写入 get_screenshot 工具定义，供 LLM 了解当前操作环境）。
+   * 初始化和窗口绑定时更新。
+   * 例如："浏览器 (1440×900)" 或 "窗口: 命令提示符 [HWND=0x00120ABC, 类名=ConsoleWindowClass] (1200×800)"
+   */
+  screenDescription: string;
 
   /** 初始化环境 */
   initialize(): Promise<void>;
@@ -63,6 +69,7 @@ export interface Computer {
 
   // ---- 滚动 ----
   scrollDocument(direction: 'up' | 'down' | 'left' | 'right'): Promise<EnvState>;
+  /** magnitude 单位：滚轮格数（notch）。各环境内部自行换算为实际值。 */
   scrollAt(x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', magnitude: number): Promise<EnvState>;
 
   // ---- 等待 ----
