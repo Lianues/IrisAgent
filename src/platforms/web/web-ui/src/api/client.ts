@@ -17,6 +17,19 @@ interface ErrorResponseBody {
   code?: string
 }
 
+// ============ Agent 上下文 ============
+
+/** 当前选中的 Agent 名称（由 useAgents composable 设置） */
+let _currentAgentName: string | null = null
+
+export function setCurrentAgentName(name: string | null): void {
+  _currentAgentName = name
+}
+
+export function getCurrentAgentName(): string | null {
+  return _currentAgentName
+}
+
 // ============ 通用 ============
 
 /** 是否为管理接口 */
@@ -71,6 +84,11 @@ function applyStoredTokens(url: string, headers?: HeadersInit): Record<string, s
     }
   }
 
+  // 多 Agent 模式：注入当前 Agent 名称
+  if (_currentAgentName) {
+    merged['X-Agent-Name'] = _currentAgentName
+  }
+
   return merged
 }
 
@@ -102,6 +120,13 @@ async function request(url: string, init?: RequestInit): Promise<Response> {
   }
 
   return res
+}
+
+// ============ Agent 列表 ============
+
+export async function getAgents(): Promise<{ agents: Array<{ name: string; description?: string }> }> {
+  const res = await request('/api/agents')
+  return res.json()
 }
 
 // ============ REST ============

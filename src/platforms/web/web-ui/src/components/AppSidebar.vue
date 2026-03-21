@@ -13,6 +13,8 @@
       </button>
     </div>
 
+    <AgentSelector @switch="handleAgentSwitch" />
+
     <nav class="sidebar-nav">
       <RouterLink class="sidebar-nav-link" to="/" @click="emit('toggle')">
         <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.chat" /></span>
@@ -151,6 +153,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import { ICONS } from '../constants/icons'
+import AgentSelector from './AgentSelector.vue'
+import { useAgents } from '../composables/useAgents'
 import { useSessions } from '../composables/useSessions'
 import { getStatus } from '../api/client'
 import type { SessionSummary, StatusInfo } from '../api/types'
@@ -323,6 +327,12 @@ function clearSessionActionError() {
   sessionActionError.value = ''
 }
 
+function handleAgentSwitch() {
+  // Agent 切换后重新加载会话列表并清空当前会话
+  newChat()
+  loadSessions()
+}
+
 async function handleNewChat() {
   sessionActionError.value = ''
   armedDeleteSessionId.value = null
@@ -383,7 +393,8 @@ function handleOpenManagementToken() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSessions(), loadAccessRequirements()])
+  const { loadAgents } = useAgents()
+  await Promise.all([loadAgents(), loadSessions(), loadAccessRequirements()])
   refreshAccessState()
   unsubscribeManagementToken = subscribeManagementTokenChange(handleCredentialStorageChange)
   unsubscribeAuthToken = subscribeAuthTokenChange(handleCredentialStorageChange)

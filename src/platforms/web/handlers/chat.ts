@@ -394,9 +394,12 @@ export function createChatHandler(platform: WebPlatform) {
       if (!res.writableEnded) res.write(': heartbeat\n\n');
     }, 15000);
 
+    // 解析 agent 名称
+    const agentName = typeof req.headers['x-agent-name'] === 'string' ? req.headers['x-agent-name'] : undefined;
+
     try {
       // 触发消息处理（Orchestrator 会通过 sendMessage/sendMessageStream 回调写入 SSE）
-      await platform.dispatchMessage(sessionId, message, images, documents);
+      await platform.dispatchMessage(sessionId, message, images, documents, agentName);
       // 发送完成事件
       if (!res.writableEnded) {
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);

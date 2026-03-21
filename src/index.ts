@@ -21,6 +21,8 @@ import type { AgentDefinition } from './agents';
 interface CreatePlatformsOptions {
   /** 排除 console 平台（多 Agent 模式下由选择循环单独处理） */
   excludeConsole?: boolean;
+  /** 排除 web 平台（多 Agent 模式下由共享 WebPlatform 处理） */
+  excludeWeb?: boolean;
 }
 
 /**
@@ -40,6 +42,7 @@ async function createPlatforms(
 
   for (const platformType of config.platform.types) {
     if (options?.excludeConsole && platformType === 'console') continue;
+    if (options?.excludeWeb && platformType === 'web') continue;
 
     switch (platformType) {
       case 'discord': {
@@ -187,15 +190,55 @@ async function runMultiAgent(): Promise<void> {
     bootstrapCache.set(def.name, result);
   }
 
-  // 2. 启动所有 agent 的非 Console 平台
+  // 2. 创建共享 WebPlatform（所有 agent 共用一个 HTTP 端口）+ 其他非 Console 平台
   const allNonConsolePlatforms: PlatformAdapter[] = [];
-  const allWebPlatformRefs: WebPlatformType[] = [];
+  let sharedWebPlatform: WebPlatformType | undefined;
 
+  // 找到第一个配置了 web 平台的 agent，用其端口/认证配置创建共享 WebPlatform
+  for (const [name, result] of bootstrapCache) {
+    if (result.config.platform.types.includes('web')) {
+      const { WebPlatform } = await import('./platforms/web');
+      const currentModel = result.router.getCurrentModelInfo();
+      sharedWebPlatform = new WebPlatform(result.backend, {
+        port: result.config.platform.web.port,
+        host: result.config.platform.web.host,
+        authToken: result.config.platform.web.authToken,
+        managementToken: result.config.platform.web.managementToken,
+        configPath: result.configDir,
+        provider: currentModel.provider,
+        modelId: currentModel.modelId,
+        streamEnabled: result.config.system.stream,
+      });
+      break;
+    }
+  }
+
+  // 将所有 agent 注册到共享 WebPlatform
+  if (sharedWebPlatform) {
+    // 先清空默认的 'default' agent（构造函数创建的）
+    // 然后逐个添加真正的 agent
+    for (const [name, result] of bootstrapCache) {
+      const currentModel = result.router.getCurrentModelInfo();
+      const displayName = name === '__global__' ? '全局 AI' : (agentDefs.find(d => d.name === name)?.description);
+      sharedWebPlatform.addAgent(name, result.backend, {
+        port: result.config.platform.web.port,
+        host: result.config.platform.web.host,
+        authToken: result.config.platform.web.authToken,
+        managementToken: result.config.platform.web.managementToken,
+        configPath: result.configDir,
+        provider: currentModel.provider,
+        modelId: currentModel.modelId,
+        streamEnabled: result.config.system.stream,
+      }, displayName, () => result.getMCPManager(), (mgr?) => result.setMCPManager(mgr));
+    }
+    allNonConsolePlatforms.push(sharedWebPlatform);
+  }
+
+  // 创建其他非 Console/非 Web 平台
   for (const def of agentDefs) {
     const result = bootstrapCache.get(def.name)!;
-    const { platforms, webPlatformRef } = await createPlatforms(result, { excludeConsole: true });
+    const { platforms } = await createPlatforms(result, { excludeConsole: true, excludeWeb: true });
     allNonConsolePlatforms.push(...platforms);
-    if (webPlatformRef) allWebPlatformRefs.push(webPlatformRef);
   }
 
   if (allNonConsolePlatforms.length > 0) {
