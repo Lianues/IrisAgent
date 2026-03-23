@@ -38,7 +38,9 @@
       <router-view v-slot="{ Component, route }">
         <Transition name="view-fade" mode="out-in">
           <div class="app-view-host" :key="route.fullPath">
-            <component :is="Component" />
+            <KeepAlive include="TerminalView">
+              <component :is="Component" />
+            </KeepAlive>
           </div>
         </Transition>
       </router-view>
@@ -55,11 +57,16 @@
     />
 
     <ConfirmDialog />
+
+    <Transition name="fade-veil">
+      <MatrixRain v-if="matrixRainActive" :active="true" @complete="matrixRainActive = false" />
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from 'vue'
+import { defineAsyncComponent, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import AppIcon from './components/AppIcon.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
@@ -67,10 +74,25 @@ import { ICONS } from './constants/icons'
 
 const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
 const ManagementTokenDialog = defineAsyncComponent(() => import('./components/ManagementTokenDialog.vue'))
+const MatrixRain = defineAsyncComponent(() => import('./components/MatrixRain.vue'))
+
+const router = useRouter()
 
 const sidebarOpen = ref(false)
 const settingsOpen = ref(false)
 const managementTokenOpen = ref(false)
+const matrixRainActive = ref(false)
+
+// 仅在进入终端视图时触发代码雨（离开时不播放，避免疲劳）
+watch(
+  () => router.currentRoute.value,
+  (to, from) => {
+    if (!from || !to) return
+    if (to.meta?.terminal && !from.meta?.terminal) {
+      matrixRainActive.value = true
+    }
+  },
+)
 
 function handleOpenSettings() {
   settingsOpen.value = true

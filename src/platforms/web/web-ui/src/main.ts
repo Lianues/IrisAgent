@@ -12,6 +12,7 @@ const router = createRouter({
   routes: [
     { path: '/', component: () => import('./views/ChatView.vue') },
     { path: '/deploy', component: () => import('./views/DeployView.vue') },
+    { path: '/terminal', component: () => import('./views/TerminalView.vue'), meta: { terminal: true } },
   ],
 })
 

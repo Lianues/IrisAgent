@@ -18,6 +18,7 @@ export const ICONS = {
   sidebar: {
     chat: 'chat',
     deploy: 'rocket_launch',
+    terminal: 'terminal',
     empty: 'auto_awesome',
     key: 'key',
   },

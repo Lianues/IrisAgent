@@ -90,7 +90,8 @@
 .deploy-form,
 .deploy-output,
 .settings-panel,
-.deploy-confirm {
+.deploy-confirm,
+.terminal-frame {
   position: relative;
   isolation: isolate;
 }
@@ -99,7 +100,8 @@
 .deploy-form::before,
 .deploy-output::before,
 .settings-panel::before,
-.deploy-confirm::before {
+.deploy-confirm::before,
+.terminal-frame::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -114,7 +116,8 @@
 .deploy-form > *,
 .deploy-output > *,
 .settings-panel > *,
-.deploy-confirm > * {
+.deploy-confirm > *,
+.terminal-frame > * {
   position: relative;
   z-index: 1;
 }

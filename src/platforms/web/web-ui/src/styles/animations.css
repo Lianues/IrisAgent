@@ -138,7 +138,8 @@
   .thinking-dots span,
   .btn-send-spinner span,
   .agent-card-enter-active,
-  .agent-card-leave-active {
+  .agent-card-leave-active,
+  .matrix-rain {
     animation: none !important;
     transition-duration: 0.01ms !important;
   }

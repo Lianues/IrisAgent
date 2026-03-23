@@ -7,6 +7,10 @@ export default defineConfig({
     // 开发时代理 API 请求到后端
     proxy: {
       '/api': 'http://localhost:8192',
+      '/ws': {
+        target: 'http://localhost:8192',
+        ws: true,
+      },
     },
   },
   build: {
@@ -53,6 +57,10 @@ export default defineConfig({
 
           if (normalizedId.includes('/node_modules/markdown-it/') || normalizedId.includes('/node_modules/dompurify/')) {
             return 'vendor-markdown'
+          }
+
+          if (normalizedId.includes('/node_modules/@xterm/')) {
+            return 'vendor-xterm'
           }
 
           if (normalizedId.includes('/node_modules/vue/') || normalizedId.includes('/node_modules/@vue/')) {

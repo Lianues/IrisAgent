@@ -16,6 +16,7 @@
 @import './settings.css';
 @import './deploy.css';
 @import './dialogs.css';
+@import './terminal.css';
 
 /* Motion & Adaptation */
 @import './animations.css';

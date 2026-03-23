@@ -28,6 +28,7 @@ import { applyRuntimeConfigReload } from '../../config/runtime';
 import { projectRoot, dataDir, configDir, isCompiledBinary } from '../../paths';
 import { Content, Part, isThoughtTextPart } from '../../types';
 import { formatContent, formatMessages } from './message-format';
+import { createTerminalHandler, type TerminalHandler } from './handlers/terminal';
 
 const logger = createLogger('WebPlatform');
 
@@ -107,6 +108,9 @@ export class WebPlatform extends PlatformAdapter {
   /** 启动时生成的一次性部署令牌 */
   private deployToken: string;
 
+  /** 终端 WebSocket 处理器 */
+  private terminalHandler: TerminalHandler;
+
   constructor(backend: Backend, config: WebPlatformConfig) {
     super();
     this.config = config;
@@ -121,6 +125,7 @@ export class WebPlatform extends PlatformAdapter {
     });
     this.setupRoutes();
     this.deployToken = crypto.randomBytes(16).toString('hex');
+    this.terminalHandler = createTerminalHandler();
   }
 
   /** 添加 Agent（多 Agent 模式使用）。首次调用时移除构造函数创建的 'default' 占位 */
@@ -222,15 +227,41 @@ export class WebPlatform extends PlatformAdapter {
         }
       });
 
+      // WebSocket upgrade — 终端连接
+      this.server.on('upgrade', (req, socket, head) => {
+        const upgradeUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+        if (upgradeUrl.pathname === '/ws/terminal') {
+          // Auth 检查（WebSocket 无法携带自定义 header，通过 query 传递 token）
+          if (this.config.authToken) {
+            const token = upgradeUrl.searchParams.get('token') ?? '';
+            if (token !== this.config.authToken) {
+              socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+          }
+          this.terminalHandler.handleUpgrade(req, socket, head);
+        } else {
+          socket.destroy();
+        }
+      });
+
       this.server.listen(this.config.port, this.config.host, () => {
         logger.info(`Web GUI 已启动: http://${this.config.host}:${this.config.port}`);
         logger.info(`部署令牌（一键部署需要）: ${this.deployToken}`);
+        if (this.terminalHandler.available) {
+          logger.info('终端 WebSocket 已就绪: /ws/terminal');
+        } else {
+          logger.warn('node-pty 不可用，终端功能已禁用');
+        }
         resolve();
       });
     });
   }
 
   async stop(): Promise<void> {
+    this.terminalHandler.killAll();
+
     for (const [, res] of this.pendingResponses) {
       if (!res.writableEnded) res.end();
     }

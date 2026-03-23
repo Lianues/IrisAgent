@@ -1,0 +1,209 @@
+/* Terminal — View, Frame, Topbar, Status */
+
+.terminal-area {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--chat-surface-max-width);
+  margin: 0 auto;
+}
+
+.terminal-frame {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  background: var(--surface-shell);
+  border: 1px solid var(--shell-stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 30px 74px rgba(4, 8, 20, 0.34);
+  backdrop-filter: blur(var(--backdrop-blur-shell));
+  overflow: hidden;
+  transition:
+    transform var(--transition-medium),
+    box-shadow var(--transition-medium),
+    border-color var(--transition-medium),
+    background var(--transition-slow);
+}
+
+/* ---- Topbar ---- */
+
+.terminal-topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: var(--panel-padding-y) var(--panel-padding-x) calc(var(--panel-padding-y) - 6px);
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.05);
+}
+
+.terminal-topbar-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.terminal-kicker {
+  color: var(--accent-cyan);
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.terminal-topbar h2 {
+  font-size: 1.28rem;
+  letter-spacing: -0.03em;
+}
+
+.terminal-topbar-aside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Status Badge ---- */
+
+.terminal-status {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.terminal-status.connected {
+  color: var(--success);
+  background: rgba(89, 214, 154, 0.12);
+}
+
+.terminal-status.disconnected {
+  color: var(--error);
+  background: rgba(255, 124, 124, 0.12);
+}
+
+/* ---- Reconnect / action button ---- */
+
+.topbar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.topbar-icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.terminal-status.connecting {
+  color: var(--accent-cyan);
+  background: rgba(116, 215, 255, 0.12);
+}
+
+/* ---- Terminal Body (container + overlay host) ---- */
+
+.terminal-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.terminal-container {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 4px;
+  background: var(--bg-canvas);
+}
+
+/* xterm.js 终端填满容器 */
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-container .xterm-viewport {
+  border-radius: 0;
+}
+
+.terminal-container .xterm-screen {
+  padding: 4px 8px;
+}
+
+/* ---- Error Bar ---- */
+
+.terminal-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px var(--panel-padding-x);
+  background: rgba(255, 124, 124, 0.08);
+  border-top: 1px solid rgba(255, 124, 124, 0.15);
+  color: var(--error);
+  font-size: 0.82rem;
+}
+
+.terminal-error-action {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 124, 124, 0.2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--error);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.terminal-error-action:hover {
+  background: rgba(255, 124, 124, 0.12);
+  border-color: rgba(255, 124, 124, 0.3);
+}
+
+/* ---- Connecting Overlay ---- */
+
+.terminal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-canvas);
+  z-index: 2;
+}
+
+.terminal-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.terminal-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid rgba(var(--tint-rgb), 0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: terminalSpin 0.8s linear infinite;
+}
+
+@keyframes terminalSpin {
+  to { transform: rotate(360deg); }
+}

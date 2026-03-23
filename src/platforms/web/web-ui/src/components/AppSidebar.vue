@@ -31,6 +31,14 @@
           <strong>部署生成器</strong>
         </span>
       </RouterLink>
+
+      <RouterLink class="sidebar-nav-link" to="/terminal" @click="emit('toggle')">
+        <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.terminal" /></span>
+        <span class="sidebar-nav-copy">
+          <span class="sidebar-nav-label">Terminal</span>
+          <strong>TUI 终端</strong>
+        </span>
+      </RouterLink>
     </nav>
 
     <div class="sidebar-route-context">
@@ -111,6 +119,16 @@
             </button>
           </div>
         </div>
+      </div>
+
+      <div class="sidebar-context-card" v-else-if="route.path === '/terminal'">
+        <span class="sidebar-context-kicker">Terminal Session</span>
+        <h3>终端使用说明</h3>
+        <ul class="sidebar-context-list">
+          <li>此终端连接到服务器的 shell 环境</li>
+          <li>可以运行命令行工具和脚本</li>
+          <li>会话在页面刷新后不会保留</li>
+        </ul>
       </div>
 
       <div class="sidebar-context-card" v-else>
