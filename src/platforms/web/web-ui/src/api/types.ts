@@ -54,6 +54,7 @@ export interface MessageMeta {
   durationMs?: number
   streamOutputDurationMs?: number
   modelName?: string
+  isError?: boolean
 }
 
 /** 一条完整消息 */
@@ -141,17 +142,6 @@ export interface UsageMetadata {
   promptTokenCount?: number
   candidatesTokenCount?: number
   totalTokenCount?: number
-}
-
-/** 聊天输入区快捷建议 */
-export interface ChatSuggestion {
-  label: string
-  text: string
-}
-
-/** 快捷建议响应 */
-export interface ChatSuggestionsResponse {
-  suggestions: ChatSuggestion[]
 }
 
 /** 设置中心模型候选项 */

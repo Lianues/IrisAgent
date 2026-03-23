@@ -11,6 +11,8 @@
       @toggle="sidebarOpen = false"
       @open-settings="handleOpenSettings"
       @open-management-token="handleOpenManagementToken"
+      @open-computer-use="handleOpenComputerUse"
+      @open-platform-config="handleOpenPlatformConfig"
     />
 
     <div class="app-main">
@@ -50,6 +52,14 @@
       <SettingsPanel v-if="settingsOpen" @close="settingsOpen = false" />
     </Transition>
 
+    <Transition name="panel-modal">
+      <ComputerUsePanel v-if="computerUseOpen" @close="computerUseOpen = false" />
+    </Transition>
+
+    <Transition name="panel-modal">
+      <PlatformConfigPanel v-if="platformConfigOpen" @close="platformConfigOpen = false" />
+    </Transition>
+
     <ManagementTokenDialog
       v-if="managementTokenOpen"
       @close="managementTokenOpen = false"
@@ -65,14 +75,17 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import AppIcon from './components/AppIcon.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import { ICONS } from './constants/icons'
+import { onOpenSettingsRequest } from './composables/useAppActions'
 
 const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
+const ComputerUsePanel = defineAsyncComponent(() => import('./components/ComputerUsePanel.vue'))
+const PlatformConfigPanel = defineAsyncComponent(() => import('./components/PlatformConfigPanel.vue'))
 const ManagementTokenDialog = defineAsyncComponent(() => import('./components/ManagementTokenDialog.vue'))
 const MatrixRain = defineAsyncComponent(() => import('./components/MatrixRain.vue'))
 
@@ -80,6 +93,8 @@ const router = useRouter()
 
 const sidebarOpen = ref(false)
 const settingsOpen = ref(false)
+const computerUseOpen = ref(false)
+const platformConfigOpen = ref(false)
 const managementTokenOpen = ref(false)
 const matrixRainActive = ref(false)
 
@@ -96,6 +111,42 @@ watch(
 
 function handleOpenSettings() {
   settingsOpen.value = true
+  sidebarOpen.value = false
+}
+
+const unsubSettings = onOpenSettingsRequest((section?: string) => {
+  handleOpenSettings()
+  if (section) {
+    const scrollToSection = () => {
+      const el = document.getElementById(`settings-section-${section}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        return
+      }
+      // 异步组件可能还未渲染完成，用 MutationObserver 等待目标元素出现
+      const observer = new MutationObserver(() => {
+        const target = document.getElementById(`settings-section-${section}`)
+        if (target) {
+          observer.disconnect()
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
+      // 安全兜底：3 秒后自动断开
+      setTimeout(() => observer.disconnect(), 3000)
+    }
+    nextTick(scrollToSection)
+  }
+})
+onBeforeUnmount(unsubSettings)
+
+function handleOpenComputerUse() {
+  computerUseOpen.value = true
+  sidebarOpen.value = false
+}
+
+function handleOpenPlatformConfig() {
+  platformConfigOpen.value = true
   sidebarOpen.value = false
 }
 

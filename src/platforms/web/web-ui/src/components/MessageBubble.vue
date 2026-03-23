@@ -2,7 +2,7 @@
   <div class="message-stack message-stack-bubble" :class="[`message-stack-${role}`, { streaming }]">
     <div class="message-meta-row">
       <div class="message-meta-group">
-        <div class="message-meta-badge" :class="`message-meta-badge-${role}`">
+        <div class="message-meta-badge" :class="[`message-meta-badge-${role}`, { 'message-meta-badge-error': isErrorMessage, 'message-meta-badge-ok': role === 'model' && !isErrorMessage }]">
           <AppIcon :name="roleIcon" class="message-meta-icon" />
           <span>{{ roleLabel }}</span>
         </div>
@@ -131,6 +131,7 @@ const emit = defineEmits<{
 const canDeleteMessage = computed(() => !props.streaming && typeof props.messageIndex === 'number' && props.messageIndex >= 0)
 const roleLabel = computed(() => getRoleLabel(props.role))
 const roleIcon = computed(() => (props.role === 'user' ? ICONS.common.send : ICONS.common.sparkle))
+const isErrorMessage = computed(() => props.meta?.isError || (props.role === 'model' && props.text.trimStart().startsWith('错误:')))
 
 // ---- 相对时间（使用共享时钟，避免每个气泡都创建定时器） ----
 import { useSharedNow } from '../composables/useSharedNow'

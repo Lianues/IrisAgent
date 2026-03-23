@@ -594,6 +594,7 @@ export function useChat() {
           messages.value.push({
             role: 'model',
             parts: [{ type: 'text', text: `错误: ${msg}` }],
+            meta: { isError: true },
           })
         }
 

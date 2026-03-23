@@ -6,7 +6,7 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
-import { Backend, type ImageInput } from '../../../core/backend';
+import type { ImageInput } from '../../../core/backend';
 import type { DocumentInput } from '../../../media/document-extract.js';
 import { isSupportedDocumentMime } from '../../../media/document-extract.js';
 import { CHAT_ATTACHMENT_LIMITS, formatAttachmentBytes } from '../chat-attachments';
@@ -320,21 +320,6 @@ async function parseChatRequest(req: http.IncomingMessage): Promise<ParsedChatRe
   }
 
   throw new ChatRequestError(415, '仅支持 application/json 或 multipart/form-data 请求');
-}
-
-export function createChatSuggestionsHandler(backend: Backend) {
-  return async (req: http.IncomingMessage, res: http.ServerResponse) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const sessionId = url.searchParams.get('sessionId');
-
-    try {
-      const suggestions = await backend.generateChatSuggestions(sessionId && sessionId.trim() ? sessionId.trim() : null);
-      sendJSON(res, 200, { suggestions });
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '生成建议失败';
-      sendJSON(res, 500, { error: errorMsg });
-    }
-  };
 }
 
 export function createChatHandler(platform: WebPlatform) {

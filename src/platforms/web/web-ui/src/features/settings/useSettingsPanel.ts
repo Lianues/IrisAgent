@@ -1044,7 +1044,7 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
   const streamHint = computed(() => {
     return config.stream
       ? '回复会实时逐字显示，更适合长内容阅读。'
-      : '回复会完整生成后一次性返回，更适合稳定复制。'
+      : '回复会完整生成后一次性返回。'
   })
 
   function onKeydown(e: KeyboardEvent) {

@@ -225,7 +225,8 @@
           </div>
           <div class="thinking-copy">请稍候，Iris 正在整理上下文。</div>
           <div v-if="retryInfo" class="retry-info">
-            ⟳ 重试中 ({{ retryInfo.attempt }}/{{ retryInfo.maxRetries }}) · {{ truncateRetryError(retryInfo.error) }}
+            <span class="retry-badge">重试 {{ retryInfo.attempt }}/{{ retryInfo.maxRetries }}</span>
+            <span class="retry-error">{{ truncateRetryError(retryInfo.error) }}</span>
           </div>
         </div>
       </div>

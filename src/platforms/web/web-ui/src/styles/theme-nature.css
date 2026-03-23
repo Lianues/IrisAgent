@@ -232,7 +232,6 @@
   color: #047857;
 }
 
-:root[data-theme="light"] .input-quick-chip,
 :root[data-theme="light"] .tool-copy-btn,
 :root[data-theme="light"] .input-attachment-summary {
   background: #f8faf9;

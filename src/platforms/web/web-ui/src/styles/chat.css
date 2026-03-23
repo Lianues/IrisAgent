@@ -576,6 +576,18 @@
   color: var(--text-primary);
 }
 
+.message-meta-badge-ok,
+:root[data-theme] .message-meta-badge-model.message-meta-badge-ok {
+  color: var(--success, #2ed573);
+}
+
+.message-meta-badge-error,
+:root[data-theme] .message-meta-badge-model.message-meta-badge-error {
+  background: rgba(255, 71, 87, 0.10);
+  border-color: rgba(255, 71, 87, 0.25);
+  color: var(--error, #ff4757);
+}
+
 .message-meta-icon,
 .message-action-icon,
 .tool-copy-icon,
@@ -771,11 +783,31 @@
 }
 
 .retry-info {
-  margin-top: 6px;
-  color: #fdcb6e;
-  font-size: 0.8rem;
-  font-weight: 500;
-  animation: thinkingPulse 1.8s ease-in-out infinite;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.retry-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(var(--tint-rgb), 0.10);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.retry-error {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== Thought Block (思维链展示) ===== */
@@ -1026,16 +1058,22 @@
 }
 
 .topbar-model-select {
-  max-width: max-content;
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 
 .topbar-model-select .app-select-trigger {
   background: var(--surface-glass);
   border-color: var(--border-soft);
   font-size: 0.78rem;
-  height: 32px;
-  padding: 0 10px;
+  min-height: 32px;
+  height: auto;
+  padding: 4px 8px 4px 12px;
+}
+
+.topbar-model-select .app-select-trigger-value {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .chat-topbar-aside {

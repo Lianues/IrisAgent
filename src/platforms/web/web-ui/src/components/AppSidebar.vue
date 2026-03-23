@@ -158,6 +158,16 @@
         <span>访问凭证</span>
       </button>
 
+      <button class="btn-settings" type="button" @click="handleOpenComputerUse">
+        <AppIcon :name="ICONS.sidebar.computerUse" />
+        <span>Computer Use</span>
+      </button>
+
+      <button class="btn-settings" type="button" @click="handleOpenPlatformConfig">
+        <AppIcon :name="ICONS.sidebar.platform" />
+        <span>平台配置</span>
+      </button>
+
       <button class="btn-settings" type="button" @click="handleOpenSettings">
         <AppIcon :name="ICONS.common.settings" />
         <span>设置中心</span>
@@ -187,6 +197,8 @@ const emit = defineEmits<{
   (e: 'toggle'): void
   (e: 'open-settings'): void
   (e: 'open-management-token'): void
+  (e: 'open-computer-use'): void
+  (e: 'open-platform-config'): void
 }>()
 
 const route = useRoute()
@@ -407,6 +419,16 @@ function handleOpenSettings() {
 
 function handleOpenManagementToken() {
   emit('open-management-token')
+  emit('toggle')
+}
+
+function handleOpenComputerUse() {
+  emit('open-computer-use')
+  emit('toggle')
+}
+
+function handleOpenPlatformConfig() {
+  emit('open-platform-config')
   emit('toggle')
 }
 

@@ -36,44 +36,6 @@
         </div>
       </div>
 
-      <div v-if="showQuickPromptBar" class="input-quick-actions">
-        <div class="input-quick-prompt-list" :class="{ disabled: !quickPromptsEnabled }">
-          <button
-            v-for="prompt in quickPrompts"
-            :key="prompt.text"
-            class="input-quick-chip"
-            :class="{ disabled: !quickPromptsEnabled }"
-            type="button"
-            :disabled="!quickPromptsEnabled"
-            :aria-disabled="!quickPromptsEnabled"
-            @click="applyQuickPrompt(prompt.text)"
-          >
-            {{ prompt.label }}
-          </button>
-        </div>
-        <span
-          v-if="quickPromptsEnabled && quickPromptsLoading"
-          class="input-quick-status"
-          aria-live="polite"
-        >
-          <span class="input-quick-status-dot" aria-hidden="true"></span>
-          正在生成建议...
-        </span>
-        <button
-          class="input-quick-switch"
-          :class="{ active: quickPromptsEnabled }"
-          type="button"
-          role="switch"
-          :aria-checked="quickPromptsEnabled"
-          @click="toggleQuickPrompts"
-        >
-          <span class="input-quick-switch-track" aria-hidden="true">
-            <span class="input-quick-switch-thumb"></span>
-          </span>
-          <span class="input-quick-switch-label">{{ quickPromptsEnabled ? '建议已开' : '建议已关' }}</span>
-        </button>
-      </div>
-
       <div v-if="hasAttachments" class="input-attachment-summary">
         <span>{{ attachmentSummary }}</span>
         <button class="input-clear-attachments" type="button" :disabled="interactionDisabled" @click="clearAttachments">
@@ -186,7 +148,6 @@ import CommandAutocomplete from './CommandAutocomplete.vue'
 import { ICONS } from '../constants/icons'
 import { useSessions } from '../composables/useSessions'
 import { SUPPORTED_UPLOAD_ACCEPT, useChatAttachments } from '../composables/useChatAttachments'
-import { useChatQuickPrompts } from '../composables/useChatQuickPrompts'
 
 const props = defineProps<{ disabled: boolean }>()
 const emit = defineEmits<{ send: [text: string, images?: ChatImageAttachment[], documents?: ChatDocumentAttachment[]] }>()
@@ -234,23 +195,6 @@ const {
 } = useChatAttachments({
   disabled,
   fileInputEl,
-})
-
-const {
-  quickPromptsLoading,
-  quickPromptsEnabled,
-  quickPrompts,
-  showQuickPromptBar,
-  applyQuickPrompt,
-  toggleQuickPrompts,
-} = useChatQuickPrompts({
-  currentSessionId,
-  disabled,
-  interactionDisabled,
-  text,
-  hasAttachments,
-  clearError,
-  focusComposer,
 })
 
 const canSend = computed(() => {
