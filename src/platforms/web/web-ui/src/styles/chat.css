@@ -545,15 +545,32 @@
 
 .doc-preview-content {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 16px 20px;
+  padding: 0;
   margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+pre.doc-preview-content {
+  padding: 16px 20px;
   font-family: 'Fira Code', 'Consolas', monospace;
   font-size: 0.82rem;
-  line-height: 1.6;
-  color: var(--text-secondary);
   white-space: pre-wrap;
-  word-break: break-word;
+}
+
+/* 文档预览内的代码块：允许内容展开，滚动由 doc-preview-content 管理 */
+.doc-preview-content .message-code-shell {
+  overflow: visible;
+  margin: 0;
+}
+
+.doc-preview-content .message-code-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .doc-preview-enter-active,
