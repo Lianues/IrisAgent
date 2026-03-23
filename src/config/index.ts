@@ -20,6 +20,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { configDir as globalConfigDir, dataDir, projectRoot } from '../paths';
+import { EMBEDDED_CONFIG_DEFAULTS } from './embedded-defaults';
 import type { AgentPaths } from '../paths';
 import { AppConfig } from './types';
 import { parseLLMConfig } from './llm';
@@ -83,13 +84,26 @@ export function findConfigFile(customConfigDir?: string): string {
     }
 
     console.log('[Iris] 请编辑配置文件（至少填写 LLM API Key）后重新启动。');
+    process.exit(0);
     return targetDir;
   }
 
-  throw new Error(
-    `未找到配置目录。请将配置文件放置到 ${targetDir}/ 目录。\n`
-    + '可从项目的 data/configs.example/ 复制模板。',
-  );
+  // 3. 兜底：使用内嵌默认配置初始化（编译后二进制且 data/ 不可用时）
+  console.log('[Iris] 未找到配置模板目录，使用内嵌默认配置初始化...');
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const [filename, content] of Object.entries(EMBEDDED_CONFIG_DEFAULTS)) {
+    fs.writeFileSync(path.join(targetDir, filename), content, 'utf-8');
+  }
+
+  // 初始化全局配置时，同时尝试拷贝 agents 数据（若源文件可用）
+  if (!customConfigDir) {
+    initAgentsData(projectRoot, dataDir);
+  }
+
+  console.log(`[Iris] 已初始化配置目录: ${targetDir}`);
+  console.log('[Iris] 请编辑配置文件（至少填写 LLM API Key）后重新启动。');
+  process.exit(0);
+  return targetDir;
 }
 
 /**
@@ -120,20 +134,24 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
 
 /**
  * 将配置目录重置为默认值。
- * 从 data/configs.example/ 递归复制覆盖 ~/.iris/configs/ 中的所有文件。
+ * 优先从 data/configs.example/ 复制，不可用时使用内嵌默认配置。
  */
 export function resetConfigToDefaults(): { success: boolean; message: string } {
-  const exampleDir = path.join(projectRoot, 'data/configs.example');
-  if (!fs.existsSync(exampleDir) || !fs.statSync(exampleDir).isDirectory()) {
-    return { success: false, message: '未找到默认配置模板目录。' };
-  }
-
   // 确保目标目录存在
   if (!fs.existsSync(globalConfigDir)) {
     fs.mkdirSync(globalConfigDir, { recursive: true });
   }
 
-  fs.cpSync(exampleDir, globalConfigDir, { recursive: true });
+  const exampleDir = path.join(projectRoot, 'data/configs.example');
+  if (fs.existsSync(exampleDir) && fs.statSync(exampleDir).isDirectory()) {
+    fs.cpSync(exampleDir, globalConfigDir, { recursive: true });
+    return { success: true, message: `配置已重置为默认值: ${globalConfigDir}` };
+  }
+
+  // 兜底：使用内嵌默认配置
+  for (const [filename, content] of Object.entries(EMBEDDED_CONFIG_DEFAULTS)) {
+    fs.writeFileSync(path.join(globalConfigDir, filename), content, 'utf-8');
+  }
   return { success: true, message: `配置已重置为默认值: ${globalConfigDir}` };
 }
 

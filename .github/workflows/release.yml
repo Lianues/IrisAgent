@@ -69,14 +69,14 @@ jobs:
         if: matrix.platform != 'windows'
         run: |
           cd dist/bin/iris-${{ matrix.platform }}-${{ matrix.arch }}
-          tar czf "$GITHUB_WORKSPACE/iris-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" bin/
+          tar czf "$GITHUB_WORKSPACE/iris-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" bin/ data/
           echo "Archive size: $(du -sh $GITHUB_WORKSPACE/iris-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz | cut -f1)"
 
       - name: Archive (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/bin/iris-windows-${{ matrix.arch }}/bin/*" -DestinationPath "iris-windows-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "dist/bin/iris-windows-${{ matrix.arch }}/bin/*","dist/bin/iris-windows-${{ matrix.arch }}/data/*" -DestinationPath "iris-windows-${{ matrix.arch }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

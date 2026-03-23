@@ -19,6 +19,7 @@
 
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 
 /** 数据根目录（启动时确定的绝对路径） */
@@ -45,8 +46,31 @@ export const sessionDbPath = path.join(dataDir, 'iris.db');
 export const memoryDbPath = path.join(dataDir, 'memory.db');
 
 /** 项目根目录（用于定位 data/configs.example/ 等内置资源） */
-const __filename = fileURLToPath(import.meta.url);
-export const projectRoot = path.resolve(path.dirname(__filename), '..');
+const __filename_paths = fileURLToPath(import.meta.url);
+
+function resolveProjectRoot(): string {
+  // 1. 源码 / bun run 开发模式：import.meta.url 直接定位
+  const srcRoot = path.resolve(path.dirname(__filename_paths), '..');
+  if (fs.existsSync(path.join(srcRoot, 'data'))) {
+    return srcRoot;
+  }
+
+  // 2. 编译后二进制：import.meta.url 指向虚拟路径 (/$bunfs/)，
+  //    实际二进制位于 <dist>/bin/iris，data/ 在 <dist>/data/
+  try {
+    const realBinary = fs.realpathSync(process.execPath);
+    const binParent = path.resolve(path.dirname(realBinary), '..');
+    if (fs.existsSync(path.join(binParent, 'data'))) {
+      return binParent;
+    }
+  } catch {
+    // ignore — realpathSync 可能在某些环境下失败
+  }
+
+  return srcRoot;
+}
+
+export const projectRoot = resolveProjectRoot();
 
 // ============ 多 Agent 路径支持 ============
 
