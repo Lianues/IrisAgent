@@ -61,13 +61,13 @@ export function HintBar({ isGenerating, copyMode, exitConfirmArmed }: HintBarPro
   const cwd = process.cwd();
 
   // 计算右侧提示文本的显示宽度
-  const hintStr = [
-    isGenerating ? 'esc 中断生成' : 'ctrl+j 换行',
-    '  \u00b7  ',
-    copyMode ? 'f6 返回滚动模式' : 'f6 复制模式',
-    '  \u00b7  ',
-    exitConfirmArmed ? '再次按 ctrl+c 退出' : 'ctrl+c 连按两次退出',
-  ].join('');
+  const hintStr = exitConfirmArmed
+    ? '再次按 ctrl+c 退出'
+    : [
+        isGenerating ? 'esc 中断生成' : 'ctrl+j 换行',
+        '  \u00b7  ',
+        copyMode ? 'f6 返回滚动模式' : 'f6 复制模式',
+      ].join('');
   const hintWidth = getTextWidth(hintStr);
 
   const termWidth = process.stdout.columns || 80;
@@ -76,25 +76,22 @@ export function HintBar({ isGenerating, copyMode, exitConfirmArmed }: HintBarPro
   const gap = 3; // CWD 与提示文本之间的最小间距
   const availableForCwd = usableWidth - hintWidth - gap;
 
-  // 空间不足 8 列时不显示 CWD
-  const displayCwd = availableForCwd >= 8 ? truncatePath(cwd, availableForCwd) : '';
+  const displayCwd = truncatePath(cwd, Math.max(availableForCwd, 20));
 
   return (
     <box flexDirection="row" paddingTop={0} paddingRight={1}>
-      {displayCwd ? (
-        <box flexGrow={1}>
-          <text fg={C.dim}>{displayCwd}</text>
-        </box>
+      <box flexGrow={1}>
+        <text fg={C.dim}>{displayCwd}</text>
+      </box>
+      {exitConfirmArmed ? (
+        <text fg={C.warn}>再次按 ctrl+c 退出</text>
       ) : (
-        <box flexGrow={1} />
+        <text fg={C.dim}>
+          {isGenerating ? 'esc 中断生成' : 'ctrl+j 换行'}
+          {'  \u00b7  '}
+          {copyMode ? 'f6 返回滚动模式' : 'f6 复制模式'}
+        </text>
       )}
-      <text fg={exitConfirmArmed ? C.warn : C.dim}>
-        {isGenerating ? 'esc 中断生成' : 'ctrl+j 换行'}
-        {'  \u00b7  '}
-        {copyMode ? 'f6 返回滚动模式' : 'f6 复制模式'}
-        {'  \u00b7  '}
-        {exitConfirmArmed ? '再次按 ctrl+c 退出' : 'ctrl+c 连按两次退出'}
-      </text>
     </box>
   );
 }
