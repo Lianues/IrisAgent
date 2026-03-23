@@ -19,6 +19,7 @@ import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { IrisPlugin, PluginEntry, PluginHook, PluginInfo, LoadedPlugin, IrisAPI } from './types';
 import { PluginContextImpl } from './context';
 import { PreBootstrapContextImpl } from './prebootstrap-context';
+import { PluginCommandRegistry } from './command-registry';
 
 const logger = createLogger('PluginManager');
 
@@ -38,6 +39,7 @@ function byPriorityDesc<T extends { priority?: number }>(items: T[]): T[] {
 export class PluginManager {
   private plugins = new Map<string, LoadedPlugin>();
   private prepared: PreparedPlugin[] = [];
+  private _commandRegistry = new PluginCommandRegistry();
 
   /**
    * 预加载所有配置中启用的插件。
@@ -164,6 +166,11 @@ export class PluginManager {
     return hooks.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   }
 
+  /** 获取自定义命令注册表 */
+  getCommandRegistry(): PluginCommandRegistry {
+    return this._commandRegistry;
+  }
+
   /** 列出已加载的插件信息 */
   listPlugins(): PluginInfo[] {
     return Array.from(this.plugins.values()).map(({ entry, plugin, hooks }) => ({
@@ -205,6 +212,11 @@ export class PluginManager {
     );
 
     await prepared.plugin.activate(context);
+
+    // 收集插件注册的命令
+    for (const cmd of context.getCommands()) {
+      this._commandRegistry.register(cmd);
+    }
 
     this.plugins.set(prepared.entry.name, {
       entry: prepared.entry,

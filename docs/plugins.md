@@ -17,15 +17,24 @@
 - 注册自定义平台
 - 动态注册 / 移除 LLM 模型
 - 访问 Backend、LLM Router、Storage 等所有内部对象
+- monkey-patch 任意内部方法（patchMethod / patchPrototype）
+- 注册自定义 slash 命令（所有平台通用）
+- 向 Web 平台注册自定义 HTTP 路由
+- 插件间通信（共享事件总线 + 插件管理器引用）
+- 通过 Backend EventEmitter 发射和监听自定义事件
 
 ## 文件结构
 
 ```
 src/plugins/
-├── types.ts       类型定义（IrisPlugin / PluginContext / IrisAPI / PluginHook 等）
-├── context.ts     PluginContextImpl（每个插件获得的独立上下文实例）
-├── manager.ts     PluginManager（发现、加载、激活、停用）
-└── index.ts       统一导出
+├── types.ts                类型定义（IrisPlugin / PluginContext / IrisAPI / PluginHook 等）
+├── context.ts              PluginContextImpl（每个插件获得的独立上下文实例）
+├── manager.ts              PluginManager（发现、加载、激活、停用）
+├── patch.ts                通用 monkey-patch 工具（patchMethod / patchPrototype）
+├── event-bus.ts            插件间共享事件总线
+├── command-registry.ts     自定义 slash 命令注册表
+├── prebootstrap-context.ts PreBootstrap 阶段上下文
+└── index.ts                统一导出
 ```
 
 ---
@@ -177,6 +186,9 @@ interface PluginContext {
   // 提示词操作
   addSystemPromptPart(part: Part): void;
   removeSystemPromptPart(part: Part): void;
+
+  // 自定义命令
+  registerCommand(command: PluginCommand): void;
 
   // 延迟初始化
   onReady(callback: (api: IrisAPI) => void | Promise<void>): void;
@@ -442,6 +454,14 @@ interface IrisAPI {
   computerEnv?: Computer;    // Computer Use 环境实例
   ocrService?: OCRProvider;  // OCR 服务
   extensions: BootstrapExtensionRegistry; // 启动扩展注册表
+
+  // --- 高级能力 ---
+  pluginManager: PluginManager;       // 插件管理器（查询其他插件信息）
+  eventBus: PluginEventBus;           // 插件间共享事件总线
+  commands: PluginCommandRegistry;    // 自定义命令注册表
+  patchMethod: typeof patchMethod;    // 安全替换对象方法
+  patchPrototype: typeof patchPrototype; // 安全替换类原型方法
+  registerWebRoute?: (method, path, handler) => void; // 向 Web 平台注册路由
 }
 ```
 
@@ -477,6 +497,139 @@ ctx.onReady((api) => {
 ```
 
 通过 `IrisAPI`，插件可以做到任何事情：监听事件、调用方法、读写存储、切换模型、注册新模型、修改提示词、访问 MCP / OCR / Computer Use 运行时对象，也可以继续查看和修改启动扩展注册表。
+
+---
+
+## 自定义命令
+
+插件可以注册自定义 slash 命令。命令在所有平台通用。Console 平台在处理用户输入时会优先检查插件命令注册表。
+
+```typescript
+ctx.registerCommand({
+  name: '/stats',
+  description: '查看会话统计信息',
+  handler: async (args, context) => {
+    const history = await api.storage.getHistory(context.sessionId);
+    return `当前会话共 ${history.length} 条消息`;
+  },
+});
+```
+
+命令注册后，用户在任何平台输入 `/stats` 即可触发。handler 返回的字符串会显示给用户。
+
+```typescript
+interface PluginCommand {
+  name: string;         // 命令名（含 / 前缀）
+  description: string;  // 帮助文本
+  handler: (args: string, context: CommandContext) => Promise<string | undefined> | string | undefined;
+}
+
+interface CommandContext {
+  sessionId: string;    // 当前会话 ID
+  platform: string;     // 平台类型（'console' / 'web' / 'telegram' 等）
+}
+```
+
+---
+
+## monkey-patch：patchMethod / patchPrototype
+
+插件可以直接替换任意对象上的方法。`patchMethod` 返回一个 dispose 函数，调用后恢复原始方法。支持链式叠加：多个插件可以对同一方法依次 patch，形成洋葱式调用链。
+
+```typescript
+ctx.onReady((api) => {
+  // 替换 Backend.chat 方法
+  const dispose = api.patchMethod(api.backend, 'chat', async (original, sessionId, text, images, documents) => {
+    console.log(`[my-plugin] chat called: session=${sessionId}`);
+
+    // 完全自定义处理
+    if (text.startsWith('!echo ')) {
+      api.backend.emit('assistant:text', sessionId, text.slice(6));
+      return;
+    }
+
+    // 或者调用原始方法
+    return original(sessionId, text, images, documents);
+  });
+
+  // 如果需要恢复原始方法
+  // dispose();
+});
+```
+
+通过 `patchMethod`，插件可以替换任意内部方法，包括但不限于：
+
+- `backend.chat` — 完全接管对话流程
+- `backend.getHistory` — 拦截历史读取
+- `backend.addMessage` — 拦截消息写入
+- `storage.addMessage` / `storage.getHistory` — 拦截存储层
+- `router` 上的任意方法 — 拦截 LLM 调用
+
+---
+
+## 自定义 Web HTTP 路由
+
+在 Web 平台运行时，插件可以注册自定义 HTTP 端点。`registerWebRoute` 在 WebPlatform 创建后才可用。
+
+```typescript
+ctx.onReady((api) => {
+  if (api.registerWebRoute) {
+    // 注册一个 GET 端点
+    api.registerWebRoute('GET', '/api/plugin/status', async (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', plugin: 'my-plugin' }));
+    });
+
+    // 注册一个 POST 端点，带路径参数
+    api.registerWebRoute('POST', '/api/plugin/action/:actionId', async (req, res, params) => {
+      const actionId = params.actionId;
+      // 处理请求...
+    });
+  }
+});
+```
+
+---
+
+## 插件间通信
+
+### 事件总线
+
+`eventBus` 是一个独立的 EventEmitter，供插件之间发送和接收消息：
+
+```typescript
+ctx.onReady((api) => {
+  // 插件 A：发射事件
+  api.eventBus.fire('my-plugin:data-ready', { key: 'value' });
+
+  // 插件 B：监听事件
+  api.eventBus.on('my-plugin:data-ready', (data) => {
+    console.log('收到数据:', data);
+  });
+});
+```
+
+### 查询其他插件
+
+```typescript
+ctx.onReady((api) => {
+  const plugins = api.pluginManager.listPlugins();
+  console.log('已加载的插件:', plugins.map(p => p.name));
+});
+```
+
+### 通过 Backend 发射自定义事件
+
+Backend 继承自 EventEmitter，插件可以直接用它发射和监听自定义事件：
+
+```typescript
+ctx.onReady((api) => {
+  api.backend.emit('custom:my-event', { foo: 'bar' });
+  api.backend.on('custom:my-event', (data) => {
+    console.log('自定义事件:', data);
+  });
+});
+```
 
 ---
 
@@ -531,18 +684,25 @@ bootstrap()
   │
   ├─→ [PluginManager.activateAll()]   ← 插件在这里激活
   │     ├─→ 创建 PluginContext（含 tools/modes/prompt/router）
-  │     └─→ plugin.activate(ctx)
+  │     ├─→ plugin.activate(ctx)
+  │     └─→ 收集插件注册的自定义命令
   │
   ├─→ 创建 Backend
+  ├─→ 创建事件总线
   ├─→ 注入钩子 + LLM/Tool 拦截器
   │
   ├─→ [PluginManager.notifyReady()]   ← 插件 onReady 回调
-  │     └─→ callback(IrisAPI)
+  │     └─→ callback(IrisAPI)         ← 完整 API 包含 patchMethod / eventBus / commands
   │
   ▼
   返回 BootstrapResult
-```
-
+      │
+      ├─→ 创建平台
+      │     ├─→ WebPlatform → 绑定 registerWebRoute 到 IrisAPI
+      │     └─→ ConsolePlatform → 注入 commandRegistry
+      │
+      ▼
+    平台启动
 ```
 
 ---
@@ -551,12 +711,12 @@ bootstrap()
 
 | 维度 | MCP | 插件系统 |
 |------|-----|---------|
-| 扩展范围 | 仅工具 | 工具 + 模式 + 钩子 + 内部 API |
+| 扩展范围 | 仅工具 | 工具 + 模式 + 钩子 + 内部 API + 方法替换 + 命令 + 路由 |
 | 运行方式 | 子进程 / 远程 | 同进程 |
 | 协议 | MCP 标准协议 | Iris 内部接口 |
-| 权限 | 仅工具调用 | 完整访问所有内部对象，且可拦截 LLM / Tool 主链路 |
+| 权限 | 仅工具调用 | 完整访问所有内部对象，可替换任意方法，可注册命令和路由 |
 
-两者共存。只加工具用 MCP 就够了。要修改消息流程、拦截工具、操作提示词、监听事件，用插件。
+两者共存。只加工具用 MCP 就够了。要修改消息流程、拦截工具、操作提示词、监听事件、替换内部行为，用插件。
 
 ---
 
@@ -568,8 +728,8 @@ import type { IrisPlugin } from 'iris';
 
 const plugin: IrisPlugin = {
   name: 'security-guard',
-  version: '1.0.0',
-  description: '安全策略插件：审计日志 + 命令拦截 + 响应追踪',
+  version: '2.0.0',
+  description: '安全策略插件：审计日志 + 命令拦截 + 响应追踪 + 自定义命令',
 
   activate(ctx) {
     const logger = ctx.getLogger();
@@ -599,15 +759,40 @@ const plugin: IrisPlugin = {
       text: '安全规则：禁止执行任何删除系统文件的命令。',
     });
 
-    // 4. onReady：监听 Backend 事件
+    // 4. 注册自定义命令
+    ctx.registerCommand({
+      name: '/audit',
+      description: '查看安全审计日志',
+      handler: (args) => {
+        return '最近 10 条审计日志：\n...';
+      },
+    });
+
+    // 5. onReady：高级功能
     ctx.onReady((api) => {
+      // 监听 Backend 事件
       api.backend.on('done', (sessionId, durationMs) => {
         logger.info(`[audit] session=${sessionId} duration=${durationMs}ms`);
       });
 
-      api.backend.on('error', (sessionId, errorMsg) => {
-        logger.error(`[audit] session=${sessionId} error=${errorMsg}`);
+      // monkey-patch chat 方法：加入自定义逻辑
+      api.patchMethod(api.backend, 'chat', async (original, sessionId, text, images, docs) => {
+        logger.info(`[audit] chat start: session=${sessionId}`);
+        const result = await original(sessionId, text, images, docs);
+        logger.info(`[audit] chat end: session=${sessionId}`);
+        return result;
       });
+
+      // 注册 Web API 端点
+      if (api.registerWebRoute) {
+        api.registerWebRoute('GET', '/api/audit/logs', async (_req, res) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ logs: [] }));
+        });
+      }
+
+      // 插件间通信
+      api.eventBus.fire('security-guard:ready', { version: '2.0.0' });
     });
 
     logger.info('安全策略插件已激活');
@@ -624,9 +809,11 @@ export default plugin;
 1. 在 `~/.iris/plugins/` 下创建插件目录
 2. 创建 `index.ts`，导出一个 `IrisPlugin` 对象
 3. 在 `activate()` 中使用 `ctx` 注册功能
-4. 可选：通过 `ctx.onReady()` 获取 Backend 等内部对象
-5. 在 `~/.iris/configs/plugins.yaml` 中添加插件条目
-6. 重启 Iris
+4. 可选：通过 `ctx.registerCommand()` 注册自定义命令
+5. 可选：通过 `ctx.onReady()` 获取 Backend 等内部对象
+6. 可选：通过 `api.patchMethod()` 替换内部方法
+7. 在 `~/.iris/configs/plugins.yaml` 中添加插件条目
+8. 重启 Iris
 
 ## npm 包插件
 
@@ -649,5 +836,8 @@ plugins:
 - `onAfterToolExec` / `onBeforeLLMCall` / `onAfterLLMCall` 钩子抛错时也不会中断主流程
 - 插件注册的工具名不应与内置工具或 MCP 工具重名，否则会覆盖
 - `wrapTool` 是永久修改，不可撤销
+- `patchMethod` 返回 dispose 函数，可以恢复原始方法
+- `patchPrototype` 影响类的所有实例，请谨慎使用
+- `registerWebRoute` 仅在 Web 平台运行时可用，使用前需检查是否为 undefined
 - `onReady` 回调在 `activate()` 之后执行，此时所有插件已加载完成
-- 插件通过 `PluginContext` 和 `IrisAPI` 可以做到任何事情，包括动态注册模型、拦截 LLM 请求/响应、修改工具结果、操作内部状态，请确保插件代码可信
+- 插件通过 `PluginContext` 和 `IrisAPI` 可以做到任何事情，包括替换内部方法、注册命令、注册路由、发射自定义事件。请确保插件代码可信

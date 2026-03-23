@@ -33,7 +33,7 @@ async function createPlatforms(
   result: BootstrapResult,
   options?: CreatePlatformsOptions,
 ): Promise<{ platforms: PlatformAdapter[]; webPlatformRef?: WebPlatformType }> {
-  const { backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, platformRegistry, agentName } = result;
+  const { backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, platformRegistry, agentName, commandRegistry, eventBus } = result;
 
   const platforms: PlatformAdapter[] = [];
   let webPlatformRef: WebPlatformType | undefined;
@@ -58,10 +58,16 @@ async function createPlatforms(
       extensions: result.extensions,
       computerEnv,
       initWarnings,
+      commandRegistry,
+      eventBus,
     });
 
     if (platformType === 'web') {
       webPlatformRef = platform as WebPlatformType;
+    }
+    if (platformType === 'web' && webPlatformRef) {
+      // 将 WebPlatform.registerRoute 绑定到 IrisAPI.registerWebRoute
+      result.bindWebRouteRegistration(webPlatformRef.registerRoute.bind(webPlatformRef));
     }
     platforms.push(platform);
   }

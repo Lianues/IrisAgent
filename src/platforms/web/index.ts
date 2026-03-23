@@ -582,6 +582,14 @@ export class WebPlatform extends PlatformAdapter {
     }
   }
 
+  /**
+   * 向 Web 服务注册自定义 HTTP 路由。
+   * 供插件通过 IrisAPI.registerWebRoute 调用。
+   */
+  registerRoute(method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>): void {
+    this.router.add(method.toUpperCase(), path, handler);
+  }
+
   private setupRoutes(): void {
     const { configPath } = this.config;
 

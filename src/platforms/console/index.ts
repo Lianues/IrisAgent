@@ -20,6 +20,7 @@ import { MessagePart } from './components/MessageItem';
 import { ConsoleSettingsController, ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './settings';
 import type { LLMModelInfo } from '../../llm/router';
 import type { BootstrapExtensionRegistry } from '../../bootstrap/extensions';
+import type { PluginCommandRegistry } from '../../plugins/command-registry';
 
 function createToolInvocationFromFunctionCall(
   part: any,
@@ -158,11 +159,14 @@ export interface ConsolePlatformOptions {
   /** 初始化过程中的警告信息（TUI 启动后展示） */
   initWarnings?: string[];
   extensions?: Pick<BootstrapExtensionRegistry, 'llmProviders' | 'ocrProviders'>;
+  /** 插件自定义命令注册表 */
+  commandRegistry?: PluginCommandRegistry;
 }
 
 export class ConsolePlatform extends PlatformAdapter {
   private sessionId: string;
   private modeName?: string;
+  private commandRegistry?: PluginCommandRegistry;
   private modelId: string;
   private modelName: string;
   private contextWindow?: number;
@@ -193,6 +197,7 @@ export class ConsolePlatform extends PlatformAdapter {
     this.onSwitchAgent = options.onSwitchAgent;
     this.computerEnv = options.computerEnv;
     this.initWarnings = options.initWarnings ?? [];
+    this.commandRegistry = options.commandRegistry;
     this.settingsController = new ConsoleSettingsController({
       backend,
       configDir: options.configDir,
@@ -508,6 +513,22 @@ export class ConsolePlatform extends PlatformAdapter {
   }
 
   private async handleInput(text: string): Promise<void> {
+    // 优先检查插件自定义命令
+    if (this.commandRegistry && text.trim().startsWith('/')) {
+      const result = await this.commandRegistry.tryExecute(text, {
+        sessionId: this.sessionId,
+        platform: 'console',
+      });
+      if (result?.matched) {
+        if (result.output) {
+          this.appHandle?.addMessage('user', text);
+          // 将命令输出以系统消息展示
+          this.appHandle?.addMessage('assistant', result.output);
+        }
+        return;
+      }
+    }
+
     this.appHandle?.addMessage('user', text);
     this.appHandle?.setGenerating(true);
     this.currentToolIds.clear();

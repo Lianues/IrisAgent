@@ -42,6 +42,10 @@ import type { StorageProvider } from './storage/base';
 import { PluginManager } from './plugins';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from './bootstrap/extensions';
 import type { PlatformRegistry } from './platforms/registry';
+import { PluginEventBus } from './plugins/event-bus';
+import { patchMethod, patchPrototype } from './plugins/patch';
+import type { PluginCommandRegistry } from './plugins/command-registry';
+import type { IrisAPI } from './plugins/types';
 
 export interface BootstrapResult {
   backend: Backend;
@@ -65,6 +69,12 @@ export interface BootstrapResult {
   extensions: BootstrapExtensionRegistry;
   /** 平台注册表（内置 + 插件注册） */
   platformRegistry: PlatformRegistry;
+  /** 插件间共享事件总线 */
+  eventBus: PluginEventBus;
+  /** 自定义命令注册表 */
+  commandRegistry: PluginCommandRegistry | undefined;
+  /** 绑定 Web 路由注册到 IrisAPI（在 WebPlatform 创建后调用） */
+  bindWebRouteRegistration: (register: (method: string, path: string, handler: any) => void) => void;
 }
 
 /** Bootstrap 选项（多 Agent 模式传入） */
@@ -266,11 +276,20 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   }));
 
   // 将插件钩子注入 Backend
+  const eventBus = new PluginEventBus();
+  const commandRegistry = pluginManager?.getCommandRegistry();
+
+  // 用一个可变引用存放 registerWebRoute，以便在 WebPlatform 创建后绑定到 IrisAPI
+  const irisApiRef: Partial<IrisAPI> = {};
+  const bindWebRouteRegistration = (register: (method: string, path: string, handler: any) => void) => {
+    irisApiRef.registerWebRoute = register;
+  };
+
   if (pluginManager && pluginManager.size > 0) {
     backend.setPluginHooks(pluginManager.getHooks());
 
     // 通知插件系统初始化完成，传递完整内部 API
-    await pluginManager.notifyReady({
+    const irisAPI: IrisAPI = {
       backend,
       router,
       storage,
@@ -283,7 +302,14 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       computerEnv,
       ocrService,
       extensions,
-    });
+      pluginManager,
+      eventBus,
+      commands: pluginManager.getCommandRegistry(),
+      patchMethod,
+      patchPrototype,
+      get registerWebRoute() { return irisApiRef.registerWebRoute; },
+    };
+    await pluginManager.notifyReady(irisAPI);
   }
 
   return {
@@ -301,5 +327,8 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     pluginManager,
     extensions,
     platformRegistry: extensions.platforms,
+    eventBus,
+    commandRegistry,
+    bindWebRouteRegistration,
   };
 }

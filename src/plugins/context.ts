@@ -12,12 +12,14 @@ import type { ToolRegistry } from '../tools/registry';
 import type { ModeRegistry } from '../modes/registry';
 import type { PromptAssembler } from '../prompt/assembler';
 import type { LLMRouter } from '../llm/router';
-import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI } from './types';
+import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI, PluginCommand } from './types';
+import type { PluginCommandRegistry } from './command-registry';
 import { createLogger } from '../logger';
 
 export class PluginContextImpl implements PluginContext {
   private hooks: PluginHook[] = [];
   private readyCallbacks: Array<(api: IrisAPI) => void | Promise<void>> = [];
+  private commandCallbacks: PluginCommand[] = [];
 
   constructor(
     private pluginName: string,
@@ -92,6 +94,10 @@ export class PluginContextImpl implements PluginContext {
     this.readyCallbacks.push(callback);
   }
 
+  registerCommand(command: PluginCommand): void {
+    this.commandCallbacks.push(command);
+  }
+
   // ---- 工具方法 ----
 
   getConfig(): Readonly<AppConfig> {
@@ -119,5 +125,10 @@ export class PluginContextImpl implements PluginContext {
   /** 获取插件注册的 onReady 回调 */
   getReadyCallbacks(): Array<(api: IrisAPI) => void | Promise<void>> {
     return this.readyCallbacks;
+  }
+
+  /** 获取插件注册的命令 */
+  getCommands(): PluginCommand[] {
+    return this.commandCallbacks;
   }
 }

@@ -8,6 +8,10 @@
 import type { ToolDefinition, ToolHandler, Part, Content, LLMRequest } from '../types';
 import type { ModeDefinition } from '../modes/types';
 import type { AppConfig } from '../config/types';
+import type { PatchDisposer } from './patch';
+import type { PluginEventBus } from './event-bus';
+import type { PluginCommandRegistry, PluginCommand, CommandContext } from './command-registry';
+import type { PluginManager } from './manager';
 import type { ToolRegistry } from '../tools/registry';
 import type { ModeRegistry } from '../modes/registry';
 import type { PromptAssembler } from '../prompt/assembler';
@@ -92,6 +96,31 @@ export interface IrisAPI {
   ocrService?: OCRProvider;
   /** 启动扩展注册表（Provider / Platform 工厂） */
   extensions: BootstrapExtensionRegistry;
+
+  // ---- 插件高级能力 ----
+
+  /** 插件管理器（可查询其他插件信息） */
+  pluginManager: PluginManager;
+  /** 插件间共享事件总线 */
+  eventBus: PluginEventBus;
+  /** 自定义命令注册表 */
+  commands: PluginCommandRegistry;
+
+  /**
+   * 安全地替换任意对象上的方法。返回 dispose 函数，调用后恢复原始方法。
+   * 支持链式叠加，多个插件可以对同一方法依次 patch。
+   *
+   * @example
+   *   const dispose = api.patchMethod(api.backend, 'chat', async (original, sid, text) => {
+   *     console.log('before chat');
+   *     return original(sid, text);
+   *   });
+   */
+  patchMethod: typeof import('./patch').patchMethod;
+  /** 替换类原型上的方法，影响所有实例 */
+  patchPrototype: typeof import('./patch').patchPrototype;
+  /** 向 Web 平台注册自定义 HTTP 路由（仅 Web 平台运行时可用） */
+  registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => void;
 }
 
 // ============ 预启动上下文 ============
@@ -187,6 +216,9 @@ export interface PluginContext {
   onReady(callback: (api: IrisAPI) => void | Promise<void>): void;
 
   // ---- 工具方法 ----
+
+  /** 注册自定义 slash 命令（所有平台通用） */
+  registerCommand(command: PluginCommand): void;
 
   /** 获取当前应用配置（只读） */
   getConfig(): Readonly<AppConfig>;
@@ -381,3 +413,8 @@ export interface PluginInfo {
   priority: number;
   hookCount: number;
 }
+
+
+// re-export 供外部直接从 types 导入
+export type { PluginCommand, CommandContext } from './command-registry';
+export type { PatchDisposer } from './patch';
