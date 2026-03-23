@@ -1068,37 +1068,111 @@
   cursor: zoom-in;
 }
 
-.iris-lightbox {
+/* ---- Lightbox 图片查看器 ---- */
+
+.lightbox-overlay {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
-  max-width: 100vw;
-  max-height: 100vh;
-  display: none;
+  z-index: 2000;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-}
-
-.iris-lightbox[open] {
-  display: flex;
-}
-
-.iris-lightbox::backdrop {
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(8px);
+  cursor: zoom-out;
 }
 
-.iris-lightbox-img {
+.lightbox-img {
   max-width: 90vw;
-  max-height: 90vh;
+  max-height: 80vh;
   object-fit: contain;
   border-radius: 8px;
-  cursor: zoom-out;
+  cursor: default;
+  transition: transform 200ms ease;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.lightbox-toolbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lightbox-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+
+.lightbox-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.lightbox-toolbar button:active {
+  transform: scale(0.9);
+}
+
+.lightbox-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.lightbox-error {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+.lightbox-enter-active,
+.lightbox-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.lightbox-enter-from,
+.lightbox-leave-to {
+  opacity: 0;
 }
 
 /* ==========================================

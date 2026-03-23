@@ -469,6 +469,116 @@
   color: var(--text-tertiary);
 }
 
+.doc-bubble.clickable {
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.doc-bubble.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.doc-bubble.clickable:active {
+  transform: scale(0.98);
+}
+
+.doc-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.doc-preview-card {
+  display: flex;
+  flex-direction: column;
+  width: min(90vw, 640px);
+  max-height: 80vh;
+  border-radius: 16px;
+  background: var(--surface-elevated, #1a2040);
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.doc-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.08);
+}
+
+.doc-preview-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-preview-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.doc-preview-close:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: var(--text-primary);
+}
+
+.doc-preview-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+  margin: 0;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.doc-preview-enter-active,
+.doc-preview-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.doc-preview-enter-active .doc-preview-card,
+.doc-preview-leave-active .doc-preview-card {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.doc-preview-enter-from,
+.doc-preview-leave-to {
+  opacity: 0;
+}
+
+.doc-preview-enter-from .doc-preview-card {
+  transform: scale(0.95) translateY(10px);
+}
+
+.doc-preview-leave-to .doc-preview-card {
+  transform: scale(0.97);
+}
+
 .message p {
   margin: 0.45em 0;
 }

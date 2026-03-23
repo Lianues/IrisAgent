@@ -1,5 +1,6 @@
 /* Input Area & Command Autocomplete */
 .input-area {
+  position: relative;
   padding: 0 24px 24px;
 }
 
@@ -415,8 +416,9 @@
 .command-autocomplete {
   position: absolute;
   bottom: 100%;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100% - 48px), var(--conversation-max-width));
   margin-bottom: 4px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-strong);

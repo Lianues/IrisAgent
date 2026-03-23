@@ -98,6 +98,7 @@
               :mime-type="part.mimeType"
               :data="part.data"
               :file-name="part.fileName"
+              :text="part.text"
             />
 
             <div

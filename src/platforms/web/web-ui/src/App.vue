@@ -67,6 +67,7 @@
     />
 
     <ConfirmDialog />
+    <ImageLightbox />
 
     <Transition name="fade-veil">
       <MatrixRain v-if="matrixRainActive" :active="true" @complete="matrixRainActive = false" />
@@ -80,6 +81,7 @@ import { useRouter } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import AppIcon from './components/AppIcon.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import ImageLightbox from './components/ImageLightbox.vue'
 import { ICONS } from './constants/icons'
 import { onOpenSettingsRequest } from './composables/useAppActions'
 

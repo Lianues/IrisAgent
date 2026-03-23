@@ -10,6 +10,13 @@
       @change="handleFileSelection"
     />
 
+    <CommandAutocomplete
+      ref="autocompleteRef"
+      :input="text"
+      :visible="showAutocomplete"
+      @select="handleAutocompleteSelect"
+    />
+
     <div
       class="input-shell"
       :class="{ 'drag-active': dragActive, 'input-shell-busy': interactionDisabled }"
@@ -79,13 +86,6 @@
           </button>
         </div>
       </div>
-
-      <CommandAutocomplete
-        ref="autocompleteRef"
-        :input="text"
-        :visible="showAutocomplete"
-        @select="handleAutocompleteSelect"
-      />
 
       <div class="input-box">
         <textarea

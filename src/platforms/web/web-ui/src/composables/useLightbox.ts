@@ -1,45 +1,17 @@
-let dialog: HTMLDialogElement | null = null
-let img: HTMLImageElement | null = null
+import { ref } from 'vue'
 
-function clearImage(): void {
-  if (img) {
-    img.src = ''
-    img.alt = ''
-  }
-}
-
-function ensureDialog(): HTMLDialogElement {
-  if (dialog) return dialog
-
-  dialog = document.createElement('dialog')
-  dialog.className = 'iris-lightbox'
-
-  img = document.createElement('img')
-  img.className = 'iris-lightbox-img'
-  dialog.appendChild(img)
-
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog || e.target === img) {
-      closeLightbox()
-    }
-  })
-
-  dialog.addEventListener('close', clearImage)
-
-  document.body.appendChild(dialog)
-  return dialog
-}
+export const lightboxOpen = ref(false)
+export const lightboxSrc = ref('')
+export const lightboxAlt = ref('')
 
 export function openLightbox(src: string, alt?: string): void {
-  const d = ensureDialog()
-  if (img) {
-    img.src = src
-    img.alt = alt ?? ''
-  }
-  d.showModal()
+  lightboxSrc.value = src
+  lightboxAlt.value = alt ?? ''
+  lightboxOpen.value = true
 }
 
 export function closeLightbox(): void {
-  if (!dialog) return
-  dialog.close()
+  lightboxOpen.value = false
+  lightboxSrc.value = ''
+  lightboxAlt.value = ''
 }
