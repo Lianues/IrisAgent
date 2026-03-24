@@ -72,7 +72,7 @@ export async function applyRuntimeConfigReload(
   const currentModel = newRouter.getCurrentModelInfo();
 
   context.backend.reloadLLM(newRouter);
-  // 解析 system 配置（提取 skills 和 skillPreamble，避免重复调用 parseSystemConfig）
+  // 解析 system 配置（提取技能定义，避免重复调用 parseSystemConfig）
   const systemConfig = parseSystemConfig(mergedConfig.system, dataDir);
   context.backend.reloadConfig({
     stream: mergedConfig.system?.stream,
@@ -83,9 +83,8 @@ export async function applyRuntimeConfigReload(
     systemPrompt: mergedConfig.system?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
     currentLLMConfig: newRouter.getCurrentConfig(),
     ocrService: await createReloadOCRProvider(context, ocrConfig),
-    // 热重载 Skill 定义和引导词模板
+    // 热重载 Skill 定义
     skills: systemConfig.skills,
-    skillPreamble: systemConfig.skillPreamble,
   });
 
   const tools = context.backend.getTools();

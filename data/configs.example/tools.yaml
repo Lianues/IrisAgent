@@ -65,6 +65,9 @@ find_files:
   autoApprove: true
 list_files:
   autoApprove: true
+read_skill:
+  # Skill 读取工具是只读操作，建议默认直接执行
+  autoApprove: true
 
 # 修改类工具：默认需要确认
 write_file:
@@ -186,7 +189,7 @@ shell:
 sub_agent:
   autoApprove: false
 
-toggle_skills:
+read_skill:
   autoApprove: true
 
 # ─────────────────────────────────────────────────────────────

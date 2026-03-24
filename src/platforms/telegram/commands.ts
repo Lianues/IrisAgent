@@ -21,7 +21,7 @@ export const TELEGRAM_BOT_COMMANDS = [
   { command: 'flush', description: '立即处理缓冲中的消息' },
   { command: 'undo', description: '撤销上一轮对话' },
   { command: 'redo', description: '恢复撤销的对话' },
-  { command: 'skill', description: '查看或切换 Skill' },
+  { command: 'skill', description: '查看 Skill 列表或详情' },
   { command: 'mode', description: '查看或切换 Mode（提示词模式）' },
   { command: 'help', description: '显示帮助' },
 ];

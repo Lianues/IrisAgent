@@ -28,6 +28,8 @@ export function parseSystemConfig(raw: any = {}, dataDir?: string): SystemConfig
         name,
         description: typeof (v as any).description === 'string' ? (v as any).description : undefined,
         content: (v as any).content as string,
+        // 说明：内联 Skill 没有真实的 SKILL.md 文件，因此生成稳定的路径标识供 read_skill 工具使用。
+        path: `inline:${name}`,
         enabled: (v as any).enabled === true,
       }));
   }
@@ -52,8 +54,7 @@ export function parseSystemConfig(raw: any = {}, dataDir?: string): SystemConfig
     systemPrompt: raw.systemPrompt ?? '',
     maxToolRounds: raw.maxToolRounds ?? 200,
     stream: raw.stream ?? true,
-    // skillPreamble: Skill 注入引导词模板，支持 {{SKILL}} 占位符。
-    // 仅在用户显式配置时传入，undefined 表示使用内置默认引导词。
+    // 兼容旧配置：保留 skillPreamble 字段解析，但运行时不再使用。
     skillPreamble: typeof raw.skillPreamble === 'string' ? raw.skillPreamble : undefined,
     retryOnError: raw.retryOnError ?? true,
     maxRetries: raw.maxRetries ?? 3,
