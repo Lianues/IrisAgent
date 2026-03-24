@@ -34,9 +34,11 @@
       </div>
 
       <div class="input-meta">
-        <div>
-          <div class="input-title">继续当前工作流</div>
-          <div class="input-hint">Enter 发送 · Shift + Enter 换行</div>
+        <div class="input-meta-left">
+          <AppIcon :name="ICONS.common.bolt" class="input-meta-icon" />
+          <span class="input-title">继续当前工作流</span>
+          <span class="input-meta-sep">•</span>
+          <span class="input-hint">Enter 发送 · Shift + Enter 换行</span>
         </div>
         <div class="input-status-badge" :class="{ busy: interactionDisabled }">
           {{ statusBadgeText }}
@@ -88,47 +90,53 @@
       </div>
 
       <div class="input-box">
-        <textarea
-          ref="inputEl"
-          v-model="text"
-          placeholder="给 Iris 发送消息..."
-          rows="1"
-          :disabled="interactionDisabled"
-          @keydown.enter.exact="handleEnterKey"
-          @keydown.up="handleArrowKey($event, -1)"
-          @keydown.down="handleArrowKey($event, 1)"
-          @keydown.tab="handleTabKey"
-          @keydown.escape="autocompleteDismissed = true"
-          @input="onInput"
-          @paste="handlePaste"
-        ></textarea>
-
-        <div class="input-actions">
+        <div class="input-textarea-wrap" :class="{ expanded }">
+          <textarea
+            ref="inputEl"
+            v-model="text"
+            placeholder="给 Iris 发送消息..."
+            rows="1"
+            :disabled="interactionDisabled"
+            @keydown="handleKeydown"
+            @keydown.enter.exact="handleEnterKey"
+            @keydown.up="handleArrowKey($event, -1)"
+            @keydown.down="handleArrowKey($event, 1)"
+            @keydown.tab="handleTabKey"
+            @keydown.escape="autocompleteDismissed = true"
+            @input="onInput"
+            @paste="handlePaste"
+          ></textarea>
           <button
-            class="btn-attach"
+            class="btn-expand-toggle"
+            type="button"
+            title="展开/收起 (Ctrl+Shift+E)"
+            @click="toggleExpand"
+          >
+            <AppIcon :name="expanded ? ICONS.common.collapseDown : ICONS.common.expandUp" />
+          </button>
+          <button
+            class="btn-attach-inline"
             type="button"
             :disabled="interactionDisabled || !canAddMoreFiles"
             @click="openFilePicker"
           >
-            <AppIcon :name="ICONS.common.attach" class="btn-attach-icon" />
-            <span>{{ attachButtonLabel }}</span>
-          </button>
-
-          <button
-            class="btn-send"
-            :class="{ sending: interactionDisabled }"
-            :disabled="interactionDisabled || !canSend"
-            @click="handleSend"
-          >
-            <span class="btn-send-label">{{ sendButtonText }}</span>
-            <span v-if="interactionDisabled" class="btn-send-spinner" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-            <AppIcon v-else :name="ICONS.common.send" class="btn-send-icon" />
+            <AppIcon :name="ICONS.common.attach" />
           </button>
         </div>
+
+        <button
+          class="btn-send"
+          :class="{ sending: interactionDisabled }"
+          :disabled="interactionDisabled || !canSend"
+          @click="handleSend"
+        >
+          <span v-if="interactionDisabled" class="btn-send-spinner" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+          <AppIcon v-else :name="ICONS.common.send" class="btn-send-icon" />
+        </button>
       </div>
 
       <div class="input-upload-hint">
@@ -156,6 +164,7 @@ const { currentSessionId } = useSessions()
 
 const disabled = computed(() => props.disabled)
 const text = ref('')
+const expanded = ref(false)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const autocompleteRef = ref<InstanceType<typeof CommandAutocomplete> | null>(null)
@@ -229,6 +238,57 @@ function resetComposer() {
   })
 }
 
+function toggleExpand() {
+  const ta = inputEl.value
+  if (!ta) { expanded.value = !expanded.value; return }
+
+  const collapsing = expanded.value // true = we are about to collapse
+  const from = ta.offsetHeight
+
+  // When collapsing, temporarily override max-height so CSS doesn't clamp mid-animation
+  if (collapsing) {
+    ta.style.maxHeight = from + 'px'
+  }
+
+  expanded.value = !expanded.value
+
+  nextTick(() => {
+    const maxH = expanded.value ? window.innerHeight * 0.5 - 40 : 200
+    // Measure target: briefly set auto to get natural scroll height
+    const savedMax = ta.style.maxHeight
+    ta.style.transition = 'none'
+    ta.style.height = 'auto'
+    ta.style.maxHeight = 'none'
+    const natural = ta.scrollHeight
+    const to = Math.min(natural, maxH)
+
+    // Set starting position
+    ta.style.height = from + 'px'
+    ta.style.maxHeight = savedMax || ''
+    // Force reflow
+    void ta.offsetHeight
+
+    // Start animation
+    ta.style.transition = 'height 0.28s cubic-bezier(0.22, 1, 0.36, 1)'
+    ta.style.maxHeight = 'none'
+    ta.style.height = to + 'px'
+
+    const onEnd = () => {
+      ta.style.transition = ''
+      ta.style.maxHeight = ''
+      ta.removeEventListener('transitionend', onEnd)
+    }
+    ta.addEventListener('transitionend', onEnd)
+  })
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+    e.preventDefault()
+    toggleExpand()
+  }
+}
+
 function handleEnterKey(event: KeyboardEvent) {
   if (event.isComposing) {
     return
@@ -286,8 +346,9 @@ function onInput() {
 
 function autoResize() {
   if (inputEl.value) {
+    const maxH = expanded.value ? window.innerHeight * 0.5 - 40 : 200
     inputEl.value.style.height = 'auto'
-    inputEl.value.style.height = Math.min(inputEl.value.scrollHeight, 200) + 'px'
+    inputEl.value.style.height = Math.min(inputEl.value.scrollHeight, maxH) + 'px'
   }
 }
 </script>

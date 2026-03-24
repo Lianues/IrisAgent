@@ -33,6 +33,7 @@
 
 .deploy-form {
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .deploy-output {

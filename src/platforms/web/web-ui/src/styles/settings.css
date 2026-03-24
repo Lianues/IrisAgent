@@ -87,6 +87,7 @@
 .settings-body {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: calc(var(--panel-padding-y) - 2px) var(--panel-padding-x) var(--panel-padding-y);
   display: flex;
   flex-direction: column;
