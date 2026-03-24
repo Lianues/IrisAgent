@@ -149,6 +149,28 @@ export interface ToolsConfig {
   disabledTools?: string[];
 }
 
+/** Skill 定义（按需加载的提示词模块） */
+export interface SkillDefinition {
+  /**
+   * Skill 名称。
+   * 命名规则：仅允许 ASCII 字母、数字、下划线、连字符，最长 64 字符。
+   * 正则：^[a-zA-Z0-9_-]{1,64}$
+   */
+  name: string;
+  /** Skill 描述 */
+  description?: string;
+  /** Skill 提示词内容（通过 read_skill 工具按需返回） */
+  content: string;
+  /**
+   * Skill 的路径标识。
+   * 对文件系统 Skill，这是 SKILL.md 的绝对路径；
+   * 对 system.yaml 内联 Skill，这是形如 inline:<name> 的稳定标识。
+   */
+  path: string;
+  /** @deprecated 不再使用，保留仅为兼容旧配置 */
+  enabled?: boolean;
+}
+
 export interface SystemConfig {
   systemPrompt: string;
   maxToolRounds: number;
@@ -163,6 +185,19 @@ export interface SystemConfig {
   defaultMode?: string;
   /** 是否记录 LLM 请求日志到文件，默认 false */
   logRequests?: boolean;
+  /** Skill 定义列表（可选） */
+  skills?: SkillDefinition[];
+  /**
+   * @deprecated 旧版 Skill 拼接注入引导词模板。
+   *
+   * 该字段仅为兼容旧配置保留，当前 Skill 已改为通过 read_skill 工具按需读取，
+   * 不再拼接到用户消息末尾，因此此字段不再生效。
+   *
+   * 历史格式中用 {{SKILL}} 占位符标记 Skill 内容的插入位置。
+   *
+   * 读取旧配置时仍接受该字段，但运行时忽略。
+   */
+  skillPreamble?: string;
 }
 
 export interface MemoryConfig {

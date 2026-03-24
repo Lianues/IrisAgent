@@ -14,7 +14,7 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
-import type { LLMConfig, ToolsConfig, ToolPolicyConfig } from '../config/types';
+import type { LLMConfig, ToolsConfig, ToolPolicyConfig, SkillDefinition } from '../config/types';
 import { LLMRouter } from '../llm/router';
 import { supportsVision as llmSupportsVision, isDocumentMimeType, supportsNativePDF, supportsNativeOffice } from '../llm/vision';
 import type { PluginHook } from '../plugins/types';
@@ -185,6 +185,8 @@ export interface BackendConfig {
   summaryModelName?: string;
   /** 上下文压缩提示词配置 */
   summaryConfig?: SummaryConfig;
+  /** Skill 定义列表 */
+  skills?: SkillDefinition[];
 }
 
 export interface BackendEvents {
@@ -258,6 +260,13 @@ export class Backend extends EventEmitter {
 
   /** 插件钩子列表 */
   private pluginHooks: PluginHook[] = [];
+  /** Skill 定义列表 */
+  private skills: SkillDefinition[] = [];
+  /**
+   * Skill 目录变化时的回调。
+   * 由外部（bootstrap）设置，用于在 Skill 热重载后重建 read_skill 工具声明。
+   */
+  private _onSkillsChanged?: () => void;
 
   constructor(
     router: LLMRouter,
@@ -286,6 +295,11 @@ export class Backend extends EventEmitter {
     this.maxRecentScreenshots = config?.maxRecentScreenshots ?? 3;
     this.summaryModelName = config?.summaryModelName;
     this.summaryConfig = config?.summaryConfig;
+
+    // 初始化 Skill 定义列表。Skill 内容改为通过 read_skill 工具按需读取，不再维护启用状态。
+    if (config?.skills) {
+      this.skills = config.skills;
+    }
 
     this.toolLoopConfig = {
       maxRounds: config?.maxToolRounds ?? 200,
@@ -708,6 +722,54 @@ export class Backend extends EventEmitter {
     return this.modeRegistry;
   }
 
+  // ============ Skill 管理 ============
+
+  /** 注册 Skill 列表变化回调（用于热重载后重建 read_skill 工具声明） */
+  setOnSkillsChanged(callback: () => void): void {
+    this._onSkillsChanged = callback;
+  }
+
+  /** 列出所有已定义的 Skill 摘要。这里只返回最小必要信息，完整内容由 read_skill 工具按 path 读取。 */
+  listSkills(): { name: string; path: string; description?: string }[] {
+    return this.skills.map(s => ({
+      name: s.name,
+      path: s.path,
+      description: s.description,
+    }));
+  }
+
+  /** 按 path 标识查找 Skill。供 read_skill 工具按需读取完整 Skill 内容。 */
+  getSkillByPath(skillPath: string): SkillDefinition | undefined {
+    return this.skills.find(s => s.path === skillPath);
+  }
+
+  // ============ Mode 管理 ============
+
+  /** 列出所有已注册的 Mode */
+  listModes(): { name: string; description?: string; current: boolean }[] {
+    if (!this.modeRegistry) return [];
+    return this.modeRegistry.getAll().map(m => ({
+      name: m.name,
+      description: m.description,
+      current: m.name === this.defaultMode,
+    }));
+  }
+
+  /** 切换当前 Mode，返回是否成功（Mode 不存在时返回 false） */
+  switchMode(name: string): boolean {
+    if (!this.modeRegistry) return false;
+    const mode = this.modeRegistry.get(name);
+    if (!mode) return false;
+    this.defaultMode = name;
+    logger.info(`Mode 已切换: ${name}`);
+    return true;
+  }
+
+  /** 获取当前 Mode 名称 */
+  getCurrentMode(): string | undefined {
+    return this.defaultMode;
+  }
+
   /** 获取当前活动模型名称 */
   getCurrentModelName(): string {
     return this.router.getCurrentModelName();
@@ -796,6 +858,7 @@ export class Backend extends EventEmitter {
     currentLLMConfig?: LLMConfig;
     ocrService?: OCRProvider;
     maxRecentScreenshots?: number;
+    skills?: SkillDefinition[];
   }): void {
     if (opts.stream !== undefined) this.stream = opts.stream;
     if (opts.maxToolRounds !== undefined) this.toolLoopConfig.maxRounds = opts.maxToolRounds;
@@ -806,6 +869,11 @@ export class Backend extends EventEmitter {
     if ('currentLLMConfig' in opts) this.currentLLMConfig = opts.currentLLMConfig;
     if ('ocrService' in opts) this.ocrService = opts.ocrService;
     if (opts.maxRecentScreenshots !== undefined) this.maxRecentScreenshots = opts.maxRecentScreenshots;
+    if (opts.skills !== undefined) {
+      this.skills = opts.skills;
+      // Skill 列表变化后，通知外部重建 read_skill 工具声明。
+      this._onSkillsChanged?.();
+    }
     logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.toolLoopConfig.maxRounds} toolPolicies=${Object.keys(this.toolLoopConfig.toolsConfig.permissions).length}`);
   }
 
@@ -891,6 +959,9 @@ export class Backend extends EventEmitter {
     const history = this.prepareHistoryForLLM(storedHistory);
     const isNewSession = storedHistory.length === 0;
     const userText = extractText(llmUserParts);
+
+    // Skill 已改为通过 read_skill 工具按需读取。
+    // 因此这里直接保留用户原始消息，不再把 Skill 内容拼接进当前轮输入。
     history.push({ role: 'user', parts: llmUserParts });
 
     // 2. 构建 per-request 额外上下文

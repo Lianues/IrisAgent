@@ -77,6 +77,8 @@ shell:
   autoApprove: false
 sub_agent:
   autoApprove: false
+read_skill:
+  autoApprove: true
 `,
 
   'memory.yaml': `# 记忆配置

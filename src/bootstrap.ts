@@ -38,6 +38,7 @@ import { SubAgentTypeRegistry, buildSubAgentGuidance, createSubAgentTool } from 
 import { ModeRegistry, DEFAULT_MODE, DEFAULT_MODE_NAME } from './modes';
 import { PromptAssembler } from './prompt/assembler';
 import { createHistorySearchTool } from './tools/internal/history_search';
+import { createReadSkillTool } from './tools/internal/read_skill';
 import { DEFAULT_SYSTEM_PROMPT } from './prompt/templates/default';
 import { Backend } from './core/backend';
 import type { StorageProvider } from './storage/base';
@@ -259,6 +260,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     maxRecentScreenshots: config.computerUse?.maxRecentScreenshots,
     summaryModelName: config.llm.summaryModelName,
     summaryConfig: config.summary,
+    skills: config.system.skills,
   }, memory, modeRegistry);
 
   // 注册子代理工具（需要 backend 引用；无类型定义时跳过）
@@ -277,6 +279,24 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     getStorage: () => backend.getStorage(),
     getSessionId: () => backend.getActiveSessionId(),
   }));
+
+  // 注册 Skill 读取工具。
+  // 说明：即使启动时没有 Skill，也保留回调，便于运行时热重载新增 Skill 后自动出现 read_skill 工具。
+  const rebuildSkillsTool = () => {
+    const skillsList = backend.listSkills();
+    tools.unregister('read_skill');
+    if (skillsList.length > 0) {
+      tools.register(createReadSkillTool({
+        getBackend: () => backend,
+      }));
+    }
+  };
+
+  // 初始注册
+  rebuildSkillsTool();
+
+  // 注册回调：Skill 列表变化时自动重建 read_skill 工具声明
+  backend.setOnSkillsChanged(rebuildSkillsTool);
 
   // 将插件钩子注入 Backend
   const eventBus = new PluginEventBus();

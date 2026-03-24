@@ -22,6 +22,7 @@ import {
   TelegramConfig,
   TelegramPendingMessage,
   TelegramSessionTarget,
+  buildTelegramSessionTarget,
 } from './types';
 import type { ToolAttachment } from '../../types';
 
@@ -64,7 +65,12 @@ interface TelegramChatState {
   pendingMessages: TelegramPendingMessage[];
   stopped: boolean;
   lastInboundMessageId?: number;
-  lastBotMessageId?: number;  // 用于 undo/redo 时处理平台侧最后一条机器人消息的 UI 状态
+  /**
+   * bot 消息 ID 栈（LIFO）。
+   * 每次 bot 发消息时 push，每次 undo 时 pop。
+   * 支持连续 undo 逐条编辑/删除对应的 bot 消息。
+   */
+  botMessageIdStack: number[];
   /** 流式输出状态，非流式模式时为 null */
   stream: TelegramStreamState | null;
 }
@@ -98,6 +104,7 @@ export class TelegramPlatform extends PlatformAdapter {
   async start(): Promise<void> {
     this.setupBackendListeners();
     this.client.onMessage((ctx) => this.handleMessage(ctx));
+    this.client.onCallbackQuery((ctx) => this.handleCallbackQuery(ctx));
     await this.client.start();
     logger.info('Telegram 平台已启动');
   }
@@ -135,6 +142,7 @@ export class TelegramPlatform extends PlatformAdapter {
         target,
         pendingMessages: [],
         stopped: false,
+        botMessageIdStack: [],
         stream: null,
       };
       this.chatStates.set(target.chatKey, cs);
@@ -307,7 +315,8 @@ export class TelegramPlatform extends PlatformAdapter {
         cs.target,
         this.messageBuilder.buildThinkingText(),
       );
-      cs.lastBotMessageId = messageId; // 记录用于 undo
+      // 将 bot 消息 ID 压入栈，支持后续 undo 时的 UI 处理
+      cs.botMessageIdStack.push(messageId);
       cs.stream = {
         placeholderMessageId: messageId,
         buffer: '',
@@ -352,30 +361,41 @@ export class TelegramPlatform extends PlatformAdapter {
 
   // ---- 发送消息 ----
 
-  private async sendToChat(cs: TelegramChatState, text: string): Promise<void> {
+  /**
+   * 向聊天室发送消息。
+   * @param cs 聊天状态
+   * @param text 消息内容
+   * @param options 发送选项。trackMessage 为 false 时，该消息不会进入 botMessageIdStack，不参与 undo 时的 UI 撤销逻辑。
+   */
+  private async sendToChat(cs: TelegramChatState, text: string, options?: { trackMessage?: boolean }): Promise<void> {
     const msgId = await this.client.sendMessageReturningId(cs.target, text);
-    cs.lastBotMessageId = msgId; // 记录用于 undo
+    // 默认追踪 bot 消息 ID，用于 undo 时逐条编辑/删除
+    if (options?.trackMessage !== false) {
+      cs.botMessageIdStack.push(msgId);
+    }
   }
 
   /**
    * undo 时处理 bot 消息的 UI 标记（编辑为"已撤销"或删除）。
-   * 从 undo 命令处理中提取出来，保持命令逻辑简洁。
+   * 采用栈结构支持连续撤销：从栈顶弹出一个消息 ID 进行处理。
    */
   private async markBotMessageAsUndone(cs: TelegramChatState): Promise<void> {
-    if (cs.lastBotMessageId) {
+    const messageId = cs.botMessageIdStack.pop();
+    if (messageId != null) {
       try {
-        await this.client.editText(cs.target, cs.lastBotMessageId, '~~已撤销~~');
+        await this.client.editText(cs.target, messageId, '~~已撤销~~');
       } catch (e) {
-        logger.warn(`Telegram 消息编辑为已撤销失败 (${cs.lastBotMessageId})，尝试删除:`, e);
+        logger.warn(`Telegram 消息编辑为已撤销失败 (${messageId})，尝试删除:`, e);
         try {
-          await this.client.deleteMessage(cs.target, cs.lastBotMessageId);
+          await this.client.deleteMessage(cs.target, messageId);
         } catch (err) {
           logger.warn(`Telegram deleteMessage 也失败了:`, err);
         }
       }
-      cs.lastBotMessageId = undefined;
     } else {
-      await this.sendToChat(cs, '✅ 上一轮对话已撤销。');
+      // 栈为空，没有可操作的 bot 消息（例如已被撤销完，或者是非 LLM 回复的消息）
+      // 发送提示但不追踪到栈中，避免干扰正常的回复追踪
+      await this.sendToChat(cs, '✅ 上一轮对话已撤销。', { trackMessage: false });
     }
   }
 
@@ -450,6 +470,76 @@ export class TelegramPlatform extends PlatformAdapter {
     }
   }
 
+  /**
+   * 处理 inline keyboard 按钮点击。
+   * callback_data 格式：`命令:参数`，例如 `model:gpt-4`、`session:3`、`skill:code-review`、`mode:code`。
+   */
+  private async handleCallbackQuery(ctx: any): Promise<void> {
+    try {
+      const data = ctx.callbackQuery?.data as string | undefined;
+      const chat = ctx.callbackQuery?.message?.chat;
+      const messageId = ctx.callbackQuery?.message?.message_id;
+      const callbackQueryId = ctx.callbackQuery?.id;
+      const threadId = ctx.callbackQuery?.message?.message_thread_id;
+
+      if (!data || !chat || !messageId || !callbackQueryId) return;
+
+      const target = buildTelegramSessionTarget({
+        chatId: chat.id,
+        isPrivate: chat.type === 'private',
+        threadId: typeof threadId === 'number' ? threadId : undefined,
+      });
+
+      const colonIdx = data.indexOf(':');
+      if (colonIdx < 0) return;
+      const command = data.substring(0, colonIdx);
+      const arg = data.substring(colonIdx + 1);
+
+      let resultText = '';
+
+      switch (command) {
+        case 'model': {
+          try {
+            const result = this.backend.switchModel(arg);
+            resultText = `✅ 模型已切换为 ${result.modelName} → ${result.modelId}`;
+          } catch {
+            resultText = `❌ 未找到模型 "${arg}"。`;
+          }
+          break;
+        }
+
+        case 'session': {
+          const index = parseInt(arg, 10);
+          const metas = await this.backend.listSessionMetas();
+          if (isNaN(index) || index < 1 || index > metas.length) {
+            resultText = `❌ 会话编号无效。`;
+          } else {
+            const meta = metas[index - 1];
+            this.activeSessions.set(target.chatKey, meta.id);
+            resultText = `✅ 已切换到会话：${meta.title || '(无标题)'}`;
+          }
+          break;
+        }
+
+        case 'mode': {
+          const ok = this.backend.switchMode(arg);
+          resultText = ok ? `✅ 已切换到 Mode "${arg}"。` : `❌ 未找到 Mode "${arg}"。`;
+          break;
+        }
+
+        default:
+          resultText = `❌ 未知操作: ${command}`;
+      }
+
+      // 编辑原消息为结果文本（去掉 inline keyboard）
+      await this.client.editText(target, messageId, resultText);
+      // 回答 callback query
+      await this.client.answerCallbackQuery(callbackQueryId);
+    } catch (err) {
+      logger.error('处理 callback query 时出错:', err);
+    }
+  }
+
   // ---- Slash 命令 ----
 
   private async handleCommand(text: string, cs: TelegramChatState): Promise<boolean> {
@@ -483,10 +573,17 @@ export class TelegramPlatform extends PlatformAdapter {
           }
         } else {
           const models = this.backend.listModels();
-          const lines = models.map((m) =>
-            `${m.current ? '👉 ' : '   '}${m.modelName} → ${m.modelId}`
+          // 构建 inline keyboard：每个模型一个按钮，每行一个
+          const keyboard = models.map(m => [{
+            text: `${m.current ? '👉 ' : ''}${m.modelName}`,
+            callback_data: `model:${m.modelName}`,
+          }]);
+          const currentModel = models.find(m => m.current);
+          await this.client.sendMessageWithKeyboard(
+            cs.target,
+            `🤖 当前模型：${currentModel?.modelName ?? '未知'}\n选择要切换的模型：`,
+            keyboard,
           );
-          await reply(`当前可用模型：\n${lines.join('\n')}\n\n切换模型请发送 /model 模型名`);
         }
         return true;
       }
@@ -514,14 +611,16 @@ export class TelegramPlatform extends PlatformAdapter {
             return true;
           }
           const display = metas.slice(0, 20);
-          const lines = display.map((m, i) => {
-            const date = m.updatedAt
-              ? new Date(m.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-              : '未知时间';
-            const current = m.id === cs.sessionId ? ' 👈' : '';
-            return `${i + 1}. ${m.title || '(无标题)'}  ${date}${current}`;
-          });
-          await reply(`📋 历史会话\n\n${lines.join('\n')}\n\n发送 /session 编号 切换`);
+          // 构建 inline keyboard：每个会话一个按钮
+          const keyboard = display.map((m, i) => [{
+            text: `${m.id === cs.sessionId ? '👉 ' : ''}${m.title || '(无标题)'}`,
+            callback_data: `session:${i + 1}`,
+          }]);
+          await this.client.sendMessageWithKeyboard(
+            cs.target,
+            '📋 选择要切换的会话：',
+            keyboard,
+          );
         }
         return true;
       }
@@ -591,6 +690,69 @@ export class TelegramPlatform extends PlatformAdapter {
 
         // 平台 UI 只回放最终可见文本，不重新调 LLM。
         await this.replayRedoResult(cs, redoResult.assistantText);
+        return true;
+      }
+
+      case 'skill':
+      case 'skills': {
+        const skills = this.backend.listSkills();
+        if (skills.length === 0) {
+          await reply('ℹ️ 未配置任何 Skill。请在 system.yaml 中添加。');
+          return true;
+        }
+
+        if (cmd.args) {
+          const skill = skills.find((item) => item.name === cmd.args);
+          if (!skill) {
+            await reply(`❌ 未找到 Skill "${cmd.args}"。发送 /skill 查看可用列表。`);
+          } else {
+            await reply([
+              `🧩 Skill：${skill.name}`,
+              skill.description ? `说明：${skill.description}` : undefined,
+              `路径：${skill.path}`,
+              '提示：在当前架构下，Skill 通过 read_skill 工具按需读取，不再支持在 Telegram 中切换启用状态。',
+            ].filter(Boolean).join('\n'));
+          }
+        } else {
+          await reply([
+            '🧩 已配置的 Skill：',
+            ...skills.map((skill) => [
+              `- ${skill.name}`,
+              skill.description ? `  说明：${skill.description}` : undefined,
+              `  路径：${skill.path}`,
+            ].filter(Boolean).join('\n')),
+            '',
+            '提示：发送 /skill <name> 可查看单个 Skill 的路径详情。Skill 内容会由模型通过 read_skill 工具按需读取。',
+          ].join('\n'));
+        }
+        return true;
+      }
+
+      case 'mode':
+      case 'modes': {
+        const modes = this.backend.listModes();
+        if (modes.length === 0) {
+          await reply('ℹ️ 未配置任何 Mode。请在 modes.yaml 中添加。');
+          return true;
+        }
+        if (cmd.args) {
+          const ok = this.backend.switchMode(cmd.args);
+          if (!ok) {
+            await reply(`❌ 未找到 Mode "${cmd.args}"。发送 /mode 查看可用列表。`);
+          } else {
+            await reply(`✅ 已切换到 Mode "${cmd.args}"。`);
+          }
+        } else {
+          const keyboard = modes.map(m => [{
+            text: `${m.current ? '👉 ' : ''}${m.name}${m.description ? ` — ${m.description}` : ''}`,
+            callback_data: `mode:${m.name}`,
+          }]);
+          await this.client.sendMessageWithKeyboard(
+            cs.target,
+            '🎭 选择要切换的 Mode：',
+            keyboard,
+          );
+        }
         return true;
       }
 

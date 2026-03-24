@@ -60,7 +60,7 @@ export class TelegramClient {
 
     // 启动后立即向 Telegram 服务端注册命令菜单，覆盖旧 bot 遗留的 slash command。
     // 原因：Telegram 的 setMyCommands 是全量覆盖语义——不主动调用就永远保留上次注册的列表。
-    // 老 bot 或旧框架曾注册过一批命令（如 /skill /status /approve 等），
+    // 老 bot 或旧框架曾注册过一批命令（如旧版 /skill 切换、/status、/approve 等），
     // 必须在启动时用当前命令列表覆盖，否则用户看到的菜单与实际支持的命令不一致。
     try {
       await this.bot.api.setMyCommands(TELEGRAM_BOT_COMMANDS);
@@ -85,6 +85,35 @@ export class TelegramClient {
     }
     const msg = await this.bot.api.sendMessage(target.chatId, text, extra);
     return msg.message_id;
+  }
+
+  /**
+   * 发送带 inline keyboard 的消息，返回 message_id。
+   * 用于 /model、/session、/mode 命令的列表展示。
+   */
+  async sendMessageWithKeyboard(
+    target: TelegramSessionTarget,
+    text: string,
+    keyboard: Array<Array<{ text: string; callback_data: string }>>,
+  ): Promise<number> {
+    const extra: Record<string, unknown> = {
+      reply_markup: { inline_keyboard: keyboard },
+    };
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    const msg = await this.bot.api.sendMessage(target.chatId, text, extra);
+    return msg.message_id;
+  }
+
+  /** 注册 callback_query 处理器 */
+  onCallbackQuery(handler: (ctx: any) => void): void {
+    this.bot.on('callback_query:data', handler);
+  }
+
+  /** 回答 callback_query（消除 loading 动画） */
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    await this.bot.api.answerCallbackQuery(callbackQueryId, text ? { text } : {});
   }
 
   async sendText(target: TelegramSessionTarget, text: string, options: TelegramSendTextOptions = {}): Promise<void> {
