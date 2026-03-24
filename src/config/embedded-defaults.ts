@@ -77,7 +77,7 @@ shell:
   autoApprove: false
 sub_agent:
   autoApprove: false
-toggle_skills:
+read_skill:
   autoApprove: true
 `,
 

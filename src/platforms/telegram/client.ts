@@ -60,7 +60,7 @@ export class TelegramClient {
 
     // 启动后立即向 Telegram 服务端注册命令菜单，覆盖旧 bot 遗留的 slash command。
     // 原因：Telegram 的 setMyCommands 是全量覆盖语义——不主动调用就永远保留上次注册的列表。
-    // 老 bot 或旧框架曾注册过一批命令（如 /skill /status /approve 等），
+    // 老 bot 或旧框架曾注册过一批命令（如旧版 /skill 切换、/status、/approve 等），
     // 必须在启动时用当前命令列表覆盖，否则用户看到的菜单与实际支持的命令不一致。
     try {
       await this.bot.api.setMyCommands(TELEGRAM_BOT_COMMANDS);
@@ -89,7 +89,7 @@ export class TelegramClient {
 
   /**
    * 发送带 inline keyboard 的消息，返回 message_id。
-   * 用于 /model、/session、/mode、/skill 命令的列表展示。
+   * 用于 /model、/session、/mode 命令的列表展示。
    */
   async sendMessageWithKeyboard(
     target: TelegramSessionTarget,

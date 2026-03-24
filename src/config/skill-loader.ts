@@ -52,7 +52,7 @@ function parseSkillMd(filePath: string, dirName: string): SkillDefinition | unde
         console.warn(`[Iris] Skill 目录名 "${name}" 不合法（需匹配 ${SKILL_NAME_RE}），已跳过: ${filePath}`);
         return undefined;
       }
-      return { name, content };
+      return { name, content, path: filePath };
     }
 
     const frontmatterText = fmMatch[1];
@@ -78,6 +78,7 @@ function parseSkillMd(filePath: string, dirName: string): SkillDefinition | unde
       name,
       description: fields.description || undefined,
       content,
+      path: filePath,
       enabled: fields.enabled === 'true',
     };
   } catch {

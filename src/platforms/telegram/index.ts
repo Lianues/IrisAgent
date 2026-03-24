@@ -527,16 +527,6 @@ export class TelegramPlatform extends PlatformAdapter {
           break;
         }
 
-        case 'skill': {
-          const result = this.backend.toggleSkill(arg);
-          if (result === undefined) {
-            resultText = `❌ 未找到 Skill "${arg}"。`;
-          } else {
-            resultText = `✅ Skill "${arg}" 已${result ? '启用' : '禁用'}。`;
-          }
-          break;
-        }
-
         default:
           resultText = `❌ 未知操作: ${command}`;
       }
@@ -710,23 +700,30 @@ export class TelegramPlatform extends PlatformAdapter {
           await reply('ℹ️ 未配置任何 Skill。请在 system.yaml 中添加。');
           return true;
         }
+
         if (cmd.args) {
-          const result = this.backend.toggleSkill(cmd.args);
-          if (result === undefined) {
+          const skill = skills.find((item) => item.name === cmd.args);
+          if (!skill) {
             await reply(`❌ 未找到 Skill "${cmd.args}"。发送 /skill 查看可用列表。`);
           } else {
-            await reply(`✅ Skill "${cmd.args}" 已${result ? '启用' : '禁用'}。`);
+            await reply([
+              `🧩 Skill：${skill.name}`,
+              skill.description ? `说明：${skill.description}` : undefined,
+              `路径：${skill.path}`,
+              '提示：在当前架构下，Skill 通过 read_skill 工具按需读取，不再支持在 Telegram 中切换启用状态。',
+            ].filter(Boolean).join('\n'));
           }
         } else {
-          const keyboard = skills.map(s => [{
-            text: `${s.enabled ? '✅' : '⬜'} ${s.name}${s.description ? ` — ${s.description}` : ''}`,
-            callback_data: `skill:${s.name}`,
-          }]);
-          await this.client.sendMessageWithKeyboard(
-            cs.target,
-            '🧩 点击切换 Skill 的启用状态：',
-            keyboard,
-          );
+          await reply([
+            '🧩 已配置的 Skill：',
+            ...skills.map((skill) => [
+              `- ${skill.name}`,
+              skill.description ? `  说明：${skill.description}` : undefined,
+              `  路径：${skill.path}`,
+            ].filter(Boolean).join('\n')),
+            '',
+            '提示：发送 /skill <name> 可查看单个 Skill 的路径详情。Skill 内容会由模型通过 read_skill 工具按需读取。',
+          ].join('\n'));
         }
         return true;
       }
