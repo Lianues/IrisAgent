@@ -1,6 +1,6 @@
 # 平台配置
 
-# 类型: console | discord | telegram | web | wxwork | lark
+# 类型: console | discord | telegram | web | weixin | wxwork | lark | qq
 # 支持单平台或多平台同时启动：
 #   type: console            # 单平台
 #   type: [console, web]     # 多平台同时启动
@@ -57,3 +57,15 @@ lark:
   # verificationToken: your-verification-token
   # 可选：Webhook 模式用的加密 key（WebSocket 模式不需要）
   # encryptKey: your-encrypt-key
+
+weixin:
+  # 普通微信（WeChat），基于腾讯官方 ilink 协议
+  # 首次启动时会自动弹出二维码，用微信扫码即可完成登录
+  # 登录成功后 Token 自动缓存到 data/configs/weixin-auth.json，无需手动配置
+  #
+  # 可选：手动指定 Bot Token（如从其他实例迁移）
+  # botToken: your-bot-token
+  # 可选：覆盖 API 基地址
+  # baseUrl: https://ilinkai.weixin.qq.com
+  # 是否在回复中展示工具执行状态（默认 true）
+  # showToolStatus: false

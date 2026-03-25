@@ -33,6 +33,11 @@ const PLATFORMS = [
     desc: "企业微信智能机器人，WebSocket 长连接模式",
   },
   {
+    value: "weixin",
+    label: "微信 (WeChat)",
+    desc: "普通微信，腾讯官方 ilink 协议，启动时将自动扫码登录",
+  },
+  {
     value: "qq",
     label: "QQ (NapCat)",
     desc: "个人 QQ 账号，通过 NapCat OneBot v11 协议对接",
@@ -42,7 +47,7 @@ const PLATFORMS = [
 type SubStep = "select" | "webPort" | "wxworkBotId" | "wxworkSecret" | "telegramToken" | "larkAppId" | "larkAppSecret" | "qqWsUrl" | "qqSelfId"
 
 interface PlatformSelectProps {
-  onSelect: (platform: "console" | "web" | "wxwork" | "telegram" | "lark" | "qq", opts: {
+  onSelect: (platform: "console" | "web" | "wxwork" | "telegram" | "lark" | "weixin" | "qq", opts: {
     port?: number
     wxworkBotId?: string
     wxworkSecret?: string
@@ -257,6 +262,8 @@ export function PlatformSelect({ onSelect, onSkip, onBack }: PlatformSelectProps
         setSubStep("telegramToken")
       } else if (selected === "lark") {
         setSubStep("larkAppId")
+      } else if (selected === "weixin") {
+        onSelect("weixin", {})
       } else if (selected === "qq") {
         setSubStep("qqWsUrl")
       } else {

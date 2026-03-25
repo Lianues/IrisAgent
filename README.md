@@ -1,10 +1,10 @@
 # Iris
 
-一个面向多平台的智能代理程序。支持 Console、Web、Discord、Telegram、企业微信、飞书、QQ 等平台，支持工具调用、会话存储、图片输入、OCR 回退、Computer Use、MCP 和记忆能力。
+一个面向多平台的智能代理程序。支持 Console、Web、Discord、Telegram、微信、企业微信、飞书、QQ 等平台，支持工具调用、会话存储、图片输入、OCR 回退、Computer Use、MCP 和记忆能力。
 
 ## 特性
 
-- 多平台：Console / Web / Discord / Telegram / 企业微信（WXWork）/ 飞书（Lark）/ QQ（NapCat）
+- 多平台：Console / Web / Discord / Telegram / 微信（WeChat）/ 企业微信（WXWork）/ 飞书（Lark）/ QQ（NapCat）
 - 多模型提供商：Gemini / OpenAI 兼容 / OpenAI Responses / Claude
 - 模型池：通过 `llm.models.<modelName>` 管理多个模型，运行时可切换
 - 工具系统：内置文件、命令、计划、搜索、记忆、子代理等工具

@@ -92,6 +92,12 @@ export function parsePlatformConfig(raw: any = {}): PlatformConfig {
       showToolStatus: source.lark?.showToolStatus !== false,
       pairing: parsePairingOverride(source.lark?.pairing),
     },
+    weixin: {
+      botToken: source.weixin?.botToken ?? '',
+      baseUrl: source.weixin?.baseUrl,
+      showToolStatus: source.weixin?.showToolStatus !== false,
+      pairing: parsePairingOverride(source.weixin?.pairing),
+    },
     qq: {
       wsUrl: source.qq?.wsUrl ?? 'ws://127.0.0.1:3001',
       accessToken: source.qq?.accessToken,

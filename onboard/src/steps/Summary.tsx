@@ -77,6 +77,8 @@ export function Summary({ config, skippedSteps, onConfirm, onBack }: SummaryProp
         return "飞书 (Lark)"
       case "qq":
         return "QQ (NapCat)"
+      case "weixin":
+        return "微信 (WeChat)"
       default:
         return "Console (TUI)"
     }

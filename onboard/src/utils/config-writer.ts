@@ -18,7 +18,7 @@ export interface OnboardConfig {
   model: string
   baseUrl: string
   modelName: string
-  platform: "console" | "web" | "wxwork" | "telegram" | "lark" | "qq"
+  platform: "console" | "web" | "wxwork" | "telegram" | "lark" | "qq" | "weixin"
   webPort: number
   /** 企业微信 Bot ID（platform === 'wxwork' 时使用） */
   wxworkBotId: string
@@ -34,6 +34,8 @@ export interface OnboardConfig {
   qqWsUrl: string
   /** QQ 机器人自身 QQ 号（platform === 'qq' 时使用） */
   qqSelfId: string
+  /** 微信 Bot Token（已改为启动时扫码，此处保留字段仅为兼容） */
+  weixinBotToken?: string
 }
 
 /** 各步骤的跳过状态 */
@@ -207,6 +209,15 @@ export function writeConfigs(irisDir: string, config: OnboardConfig, skippedStep
         ...existingQQ,
         wsUrl: config.qqWsUrl,
         selfId: config.qqSelfId,
+      }
+    }
+    if (config.platform === "weixin") {
+      // 保留已有的 weixin 配置（showToolStatus 等）
+      const existingWeixin = (existingPlatform.weixin && typeof existingPlatform.weixin === "object")
+        ? existingPlatform.weixin as Record<string, unknown>
+        : {}
+      platformConfig.weixin = {
+        ...existingWeixin,
       }
     }
     writeYaml(platformPath, platformConfig, "平台配置")

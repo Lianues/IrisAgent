@@ -131,6 +131,15 @@ export function createDefaultPlatformRegistry(): PlatformRegistry {
     });
   });
 
+  registry.register('weixin', async ({ backend, config }) => {
+    const { WeixinPlatform } = await import('./weixin');
+    return new WeixinPlatform(backend, {
+      botToken: config.platform.weixin.botToken,
+      baseUrl: config.platform.weixin.baseUrl,
+      showToolStatus: config.platform.weixin.showToolStatus,
+    });
+  });
+
   registry.register('console', async ({ backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, agentName, onSwitchAgent, extensions }) => {
     if (typeof (globalThis as { Bun?: unknown }).Bun === 'undefined') {
       console.error(

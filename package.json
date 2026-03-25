@@ -47,7 +47,8 @@
   "optionalDependencies": {
     "@opentui/core": "^0.1.88",
     "@opentui/react": "latest",
-    "libreoffice-convert": "^1.8.1"
+    "libreoffice-convert": "^1.8.1",
+    "silk-wasm": "^3.7.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

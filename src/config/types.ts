@@ -98,6 +98,16 @@ export interface PlatformConfig {
     /** 对码配置（已与全局合并，由 parsePlatformConfig 填充默认值） */
     pairing?: PairingConfig;
   };
+  weixin: {
+    /** ilink Bot Token（扫码登录后获取） */
+    botToken?: string;
+    /** 可选：覆盖 API 基地址（默认 https://ilinkai.weixin.qq.com） */
+    baseUrl?: string;
+    /** 是否在回复中展示工具执行状态（默认 true） */
+    showToolStatus?: boolean;
+    /** 对码配置（已与全局合并，由 parsePlatformConfig 填充默认值） */
+    pairing?: PairingConfig;
+  };
   qq: {
     /** NapCat OneBot v11 正向 WebSocket 地址 */
     wsUrl: string;

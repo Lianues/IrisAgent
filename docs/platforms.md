@@ -26,6 +26,7 @@ src/platforms/
 ├── (cli.ts)             # CLI headless 模式（非平台适配器，直接调用 Backend）
 ├── base.ts              # PlatformAdapter 抽象基类
 ├── console/             # 控制台 TUI（OpenTUI / React）
+├── weixin/              # 普通微信（ilink 长轮询）
 ├── lark/                # 飞书机器人（WebSocket 长连接）
 ├── wxwork/              # 企业微信智能机器人
 ├── qq/                  # QQ 个人账号（NapCat / OneBot v11）
@@ -98,6 +99,61 @@ documents: Array<{ fileName: string; mimeType: string; data: string }>
 | 指令 | `/new`、`/load`、`/sh <命令>`、`/undo`、`/redo`、`/agent`、`/exit` 等 |
 | 图片输入 | 当前未实现终端内图片上传 |
 | 撤销/重做 | 调用 Backend `undo('last-visible-message')` 与 `redo()` |
+
+### Weixin（微信）
+
+基于腾讯微信团队官方 ilink 协议的普通微信适配器。使用 HTTP 长轮询模式，首次启动自动扫码登录。
+
+| 项目 | 说明 |
+|------|------|
+| 构造参数 | `(backend, { botToken?, baseUrl?, showToolStatus? })` |
+| sessionId | `weixin-{userId}` |
+| 通信方式 | HTTP Long-polling（`getUpdates`），非 WebSocket |
+| 流式支持 | 协议支持，但微信不支持消息编辑，因此累积后一次性发送 |
+| 工具状态 | 通过 `tool:update` 事件累积，随最终回复一起发送 |
+| 并发控制 | 每个用户同一时间只处理一条消息（busy 锁） |
+| 消息缓冲 | AI 输出期间用户新消息暂存到缓冲区，完成后自动合并发送 |
+| Markdown | 不支持，自动转换为纯文本 |
+| 输入状态 | 支持，通过 `sendTyping` + `typing_ticket` 显示"正在输入" |
+| 图片输入 | 支持（CDN 加密传输，AES-128-ECB） |
+| 登录方式 | 扫码登录，Token 自动缓存到 `data/configs/weixin-auth.json` |
+
+#### 微信 Slash 指令
+
+| 指令 | 说明 |
+|------|------|
+| `/new` | 新建对话（清空上下文） |
+| `/stop` | 中止当前 AI 回复 |
+| `/flush` | 中止当前回复 + 立即将缓冲消息发送给 AI |
+| `/model` | 查看或切换模型 |
+| `/help` | 显示帮助 |
+
+#### 配置
+
+在 `data/configs/platform.yaml` 中设置 `type: weixin`（或加入多平台数组）。
+
+首次启动时无需手动配置凭证，Iris 会自动弹出二维码链接，用微信扫码即可完成登录。登录成功后 Token 自动缓存，后续启动无需再次扫码。
+
+```yaml
+type: weixin
+
+weixin:
+  # 可选：手动指定 Bot Token
+  # botToken: your-bot-token
+  # 可选：覆盖 API 基地址
+  # baseUrl: https://ilinkai.weixin.qq.com
+  # showToolStatus: true
+```
+
+#### 与企业微信（WXWork）的区别
+
+| | 微信（Weixin） | 企业微信（WXWork） |
+|---|---|---|
+| 平台 | 普通微信 | 企业微信 |
+| 协议 | ilink HTTP 长轮询 | WebSocket（@wecom/aibot-node-sdk） |
+| 登录 | 扫码登录 | Bot ID + Secret |
+| Markdown | 不支持 | 部分支持 |
+| 媒体传输 | CDN + AES-128-ECB | SDK 封装 |
 
 ### WXWork（企业微信）
 
