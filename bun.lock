@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "iris",
+      "name": "irisagent",
       "dependencies": {
         "@larksuiteoapi/node-sdk": "^1.59.0",
         "@modelcontextprotocol/sdk": "^1.27.1",

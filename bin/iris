@@ -65,7 +65,7 @@ let arch = archMap[os.arch()]
 if (!arch) {
   arch = os.arch()
 }
-const base = "iris-" + platform + "-" + arch
+const base = "irisagent-" + platform + "-" + arch
 const binary = platform === "windows" ? "iris.exe" : "iris"
 
 // 4. 搜索 node_modules

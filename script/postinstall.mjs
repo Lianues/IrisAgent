@@ -27,7 +27,7 @@ function detectPlatformAndArch() {
 
 function findBinary() {
   const { platform, arch } = detectPlatformAndArch()
-  const packageName = `iris-${platform}-${arch}`
+  const packageName = `irisagent-${platform}-${arch}`
   const binaryName = platform === "windows" ? "iris.exe" : "iris"
 
   try {

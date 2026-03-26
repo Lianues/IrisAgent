@@ -1,4 +1,4 @@
-# Iris
+# IrisAgent
 
 一个面向多平台的智能代理程序。支持 Console、Web、Discord、Telegram、微信、企业微信、飞书、QQ 等平台，支持工具调用、会话存储、图片输入、OCR 回退、Computer Use、MCP 和记忆能力。
 
@@ -37,7 +37,7 @@ iris start
 
 **Windows**
 
-从 [GitHub Release](https://github.com/Lianues/IrisAgent/releases) 下载 `iris-windows-x64.zip`，解压后双击 `deploy\windows\install.bat`。
+从 [GitHub Release](https://github.com/Lianues/IrisAgent/releases) 下载 `irisagent-windows-x64.zip`，解压后双击 `deploy\windows\install.bat`。
 
 ```bat
 REM 启动

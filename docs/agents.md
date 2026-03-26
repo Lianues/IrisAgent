@@ -130,10 +130,10 @@ src/agents/
 
 ```bash
 # 指定 Agent 运行
-iris-cli --agent my-agent -p "你好"
+iris --agent my-agent -p "你好"
 
 # 多 Agent 模式下不指定 --agent，默认使用第一个 Agent
-iris-cli -p "你好"
+iris -p "你好"
 ```
 
 ---

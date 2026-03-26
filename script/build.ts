@@ -7,7 +7,7 @@
  * 产物内嵌 Bun 运行时 + opentui 原生库 + 全部依赖，无需外部运行时。
  *
  * 产物结构：
- *   dist/bin/iris-{platform}-{arch}/
+ *   dist/bin/irisagent-{platform}-{arch}/
  *     bin/iris(.exe)       编译后的二进制
  *     data/                配置模板和示例文件
  *     package.json         平台包描述
@@ -72,7 +72,7 @@ const binaries: Record<string, string> = {}
 
 for (const item of targets) {
   const platformName = item.os === "win32" ? "windows" : item.os
-  const name = `iris-${platformName}-${item.arch}`
+  const name = `irisagent-${platformName}-${item.arch}`
   console.log(`\n=== Building ${name} ===`)
 
   const outDir = path.join(distBinDir, name)

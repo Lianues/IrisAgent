@@ -156,28 +156,28 @@ npm run build:compile -- --single
 
 | 目标 | 产物路径 |
 |------|----------|
-| `linux-x64` | `dist/bin/iris-linux-x64/bin/iris` |
-| `linux-arm64` | `dist/bin/iris-linux-arm64/bin/iris` |
-| `darwin-arm64` | `dist/bin/iris-darwin-arm64/bin/iris` |
-| `darwin-x64` | `dist/bin/iris-darwin-x64/bin/iris` |
-| `win32-x64` | `dist/bin/iris-windows-x64/bin/iris.exe` |
+| `linux-x64` | `dist/bin/irisagent-linux-x64/bin/iris` |
+| `linux-arm64` | `dist/bin/irisagent-linux-arm64/bin/iris` |
+| `darwin-arm64` | `dist/bin/irisagent-darwin-arm64/bin/iris` |
+| `darwin-x64` | `dist/bin/irisagent-darwin-x64/bin/iris` |
+| `win32-x64` | `dist/bin/irisagent-windows-x64/bin/iris.exe` |
 
 ### 产物结构
 
 ```
 dist/bin/
-├── iris-linux-x64/
+├── irisagent-linux-x64/
 │   ├── bin/iris              ← 单文件可执行二进制
 │   ├── data/                 ← 配置模板和示例文件
 │   │   ├── configs.example/  ← 首次运行时复制到 ~/.iris/configs/
 │   │   ├── agents.example/   ← 首次运行时复制到 ~/.iris/agents/
 │   │   └── agents.yaml.example
 │   └── package.json          ← npm 平台包元数据（bin/os/cpu 字段）
-├── iris-darwin-arm64/
+├── irisagent-darwin-arm64/
 │   ├── bin/iris
 │   ├── data/
 │   └── package.json
-├── iris-windows-x64/
+├── irisagent-windows-x64/
 │   ├── bin/iris.exe
 │   ├── data/
 │   └── package.json
@@ -192,7 +192,7 @@ dist/bin/
 
 ```json
 {
-  "name": "iris-windows-x64",
+  "name": "irisagent-windows-x64",
   "version": "1.0.0",
   "bin": {
     "iris": "./bin/iris.exe"
@@ -260,11 +260,11 @@ irisagent (包装器包，npm install -g irisagent)
 ├── data/                     ← 配置模板和示例文件
 ├── postinstall.mjs           ← 安装后自动链接平台二进制
 └── optionalDependencies:
-     ├── iris-linux-x64       ← npm 按当前 os/cpu 只安装匹配的包
-     ├── iris-linux-arm64
-     ├── iris-darwin-arm64
-     ├── iris-darwin-x64
-     └── iris-windows-x64
+     ├── irisagent-linux-x64       ← npm 按当前 os/cpu 只安装匹配的包
+     ├── irisagent-linux-arm64
+     ├── irisagent-darwin-arm64
+     ├── irisagent-darwin-x64
+     └── irisagent-windows-x64
 ```
 
 ### 启动器 `bin/iris`
@@ -304,9 +304,9 @@ bun run script/publish.ts --tag preview  # 发布到 preview 标签
 bun run build:compile -- --single
 
 # 打包并全局安装
-cd dist/bin/iris-windows-x64      # 或对应的平台目录
+cd dist/bin/irisagent-windows-x64      # 或对应的平台目录
 npm pack
-npm install -g ./iris-windows-x64-1.0.0.tgz
+npm install -g ./irisagent-windows-x64-1.0.0.tgz
 
 # 测试
 iris --help
@@ -317,7 +317,7 @@ iris                              # 启动平台服务
 卸载：
 
 ```bash
-npm uninstall -g iris-windows-x64
+npm uninstall -g irisagent-windows-x64
 ```
 
 ## CI/CD

@@ -281,7 +281,7 @@ resolve_download_url() {
 download_and_extract() {
     step "下载 Iris 预编译包"
 
-    local tarball="iris-linux-${ARCH}.tar.gz"
+    local tarball="irisagent-linux-${ARCH}.tar.gz"
     local url
     url=$(resolve_download_url "$tarball")
 

@@ -68,31 +68,31 @@ jobs:
       - name: Archive (Linux/macOS)
         if: matrix.platform != 'windows'
         run: |
-          cd dist/bin/iris-${{ matrix.platform }}-${{ matrix.arch }}
-          tar czf "$GITHUB_WORKSPACE/iris-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" bin/ data/
-          echo "Archive size: $(du -sh $GITHUB_WORKSPACE/iris-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz | cut -f1)"
+          cd dist/bin/irisagent-${{ matrix.platform }}-${{ matrix.arch }}
+          tar czf "$GITHUB_WORKSPACE/irisagent-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" bin/ data/
+          echo "Archive size: $(du -sh $GITHUB_WORKSPACE/irisagent-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz | cut -f1)"
 
       - name: Archive (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/bin/iris-windows-${{ matrix.arch }}/bin/*","dist/bin/iris-windows-${{ matrix.arch }}/data/*" -DestinationPath "iris-windows-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "dist/bin/irisagent-windows-${{ matrix.arch }}/bin/*","dist/bin/irisagent-windows-${{ matrix.arch }}/data/*" -DestinationPath "irisagent-windows-${{ matrix.arch }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iris-${{ matrix.platform }}-${{ matrix.arch }}
+          name: irisagent-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            iris-*.tar.gz
-            iris-*.zip
+            irisagent-*.tar.gz
+            irisagent-*.zip
           retention-days: 30
 
       # 上传 npm 平台包产物（供 publish job 使用）
       - name: Upload npm package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: npm-iris-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/bin/iris-${{ matrix.platform }}-${{ matrix.arch }}/
+          name: npm-irisagent-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/bin/irisagent-${{ matrix.platform }}-${{ matrix.arch }}/
           retention-days: 7
 
   # ── 发布 GitHub Release ───────────────
@@ -107,7 +107,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-          pattern: iris-*
+          pattern: irisagent-*
           merge-multiple: false
 
       - name: Prepare release files
@@ -151,19 +151,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist/bin/
-          pattern: npm-iris-*
+          pattern: npm-irisagent-*
           merge-multiple: false
 
       - name: Flatten artifact directories
         run: |
           cd dist/bin
-          for d in npm-iris-*/; do
+          for d in npm-irisagent-*/; do
             pkg_name=$(basename "$d" | sed 's/^npm-//')
             if [ ! -d "$pkg_name" ]; then
               mv "$d" "$pkg_name"
             fi
           done
-          rm -rf npm-iris-*
+          rm -rf npm-irisagent-*
           ls -la
 
       - name: Publish
