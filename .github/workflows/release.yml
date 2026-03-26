@@ -43,7 +43,8 @@ jobs:
             runner: macos-latest
           - platform: darwin
             arch: x64
-            runner: macos-13
+            runner: macos-latest
+            cross: true
           - platform: windows
             arch: x64
             runner: windows-latest
@@ -72,7 +73,12 @@ jobs:
       - name: Build Web UI
         run: npm run build:ui
 
-      - name: Build binary (current platform)
+      - name: Build binary (cross-compile)
+        if: matrix.cross == true
+        run: bun run build:compile -- --target ${{ matrix.platform }}-${{ matrix.arch }}
+
+      - name: Build binary (native)
+        if: matrix.cross != true
         run: bun run build:compile -- --single
 
       - name: Archive (Linux/macOS)

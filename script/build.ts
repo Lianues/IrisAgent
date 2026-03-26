@@ -52,9 +52,20 @@ const allTargets: Target[] = [
 ]
 
 const singleFlag = process.argv.includes("--single")
-const targets = singleFlag
-  ? allTargets.filter((target) => target.os === process.platform && target.arch === process.arch)
-  : allTargets
+const targetArgIndex = process.argv.indexOf("--target")
+const targetArgValue = targetArgIndex >= 0 ? process.argv[targetArgIndex + 1] : null
+
+let targets: Target[]
+if (targetArgValue) {
+  // --target darwin-x64 形式，指定单个平台交叉编译
+  const [os, arch] = targetArgValue.split("-")
+  const osName = os === "windows" ? "win32" : os
+  targets = allTargets.filter((t) => t.os === osName && t.arch === arch)
+} else if (singleFlag) {
+  targets = allTargets.filter((target) => target.os === process.platform && target.arch === process.arch)
+} else {
+  targets = allTargets
+}
 
 if (targets.length === 0) {
   console.error(`当前平台 ${process.platform}-${process.arch} 不在支持的目标列表中`)
