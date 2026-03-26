@@ -3,7 +3,7 @@
 #
 #  触发条件：
 #  1. push 以 v* 开头的 tag（如 v1.0.0）→ 自动创建 Release 并上传产物 + 发布到 npm
-#  2. 手动触发 workflow_dispatch（仅构建，不发 Release）
+#  2. 手动触发 workflow_dispatch → 可选是否发布（需填写版本号）
 #
 #  构建方式：
 #  使用 bun build --compile 为每个平台编译独立二进制。
@@ -26,6 +26,11 @@ on:
         description: '是否发布到 GitHub Release 和 npm'
         type: boolean
         default: false
+        required: false
+      version:
+        description: '发布版本号（仅 publish 勾选时需要，如 v1.0.0）'
+        type: string
+        default: ''
         required: false
 
 permissions:
@@ -126,6 +131,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.version }}"
+            if [[ -z "$TAG" ]]; then
+              echo "::error::手动发布时必须填写版本号（如 v1.0.0）"
+              exit 1
+            fi
+            # 补全 v 前缀
+            if [[ "$TAG" != v* ]]; then
+              TAG="v${TAG}"
+            fi
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "手动触发，使用版本号: ${TAG}"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "Tag 触发，使用: ${GITHUB_REF#refs/tags/}"
+          fi
+
+      - name: Create tag (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.tag.outputs.tag }}" -m "Release ${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -144,6 +177,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
           body_path: RELEASE_NOTES.md
           generate_release_notes: true
           files: release/*
