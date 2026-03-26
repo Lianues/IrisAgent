@@ -12,6 +12,7 @@ import { useContextUsage } from './useContextUsage'
 import * as api from '../api/client'
 import type { ChatDocumentAttachment, ChatImageAttachment, Message, MessagePart } from '../api/types'
 import { hasToolParts } from '../utils/message'
+import { useMessageQueue } from './useMessageQueue'
 
 /** 当前会话的消息列表 */
 const messages = ref<Message[]>([])
@@ -305,6 +306,8 @@ watch(currentSessionId, async (id) => {
 })
 
 export function useChat() {
+  const { dequeue } = useMessageQueue()
+
   /** 提交流式文本到消息列表 */
   function isCurrentViewBoundToActiveRequest(): boolean {
     return activeRequestToken !== null && currentSessionId.value === activeRequestSessionId
@@ -497,6 +500,18 @@ export function useChat() {
         if (isStale()) return
         retryInfo.value = { attempt, maxRetries, error }
       },
+      onAutoCompact(summary) {
+        if (isStale()) return
+        if (isCurrentViewBoundToActiveRequest()) {
+          messages.value.push({
+            role: 'model',
+            parts: [
+              { type: 'function_call', name: 'compact_context', args: { action: 'auto_compress' } },
+              { type: 'function_response', name: 'compact_context', response: { ok: true, summary } },
+            ],
+          })
+        }
+      },
       onStreamStart() {
         if (isStale()) return
         receivedFinalAssistantPayload = false
@@ -584,6 +599,12 @@ export function useChat() {
           void loadMessagesForSession(finishedSessionId, true)
         }
         void loadSessions()
+
+        // 自动出队下一条排队消息
+        const nextQueued = dequeue()
+        if (nextQueued) {
+          queueMicrotask(() => sendMessage(nextQueued.text))
+        }
       },
       onError(msg) {
         if (isStale()) return

@@ -513,3 +513,196 @@
 :root[data-theme="light"] .input-shell {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(245, 247, 252, 0.9));
 }
+
+/* ==========================================
+ *  Compact Button
+ * ========================================== */
+.btn-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(var(--tint-rgb), 0.06);
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-compact:hover:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.12);
+  color: var(--accent);
+  border-color: rgba(var(--tint-rgb), 0.18);
+}
+
+.btn-compact:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-compact-icon {
+  font-size: 0.8rem;
+}
+
+/* ==========================================
+ *  Send Button — enqueue variant
+ * ========================================== */
+.btn-send.enqueue {
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent) 100%);
+}
+
+/* ==========================================
+ *  Message Queue Bar
+ * ========================================== */
+.message-queue-bar {
+  position: relative;
+  width: min(100%, var(--conversation-max-width));
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.queue-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+}
+
+.queue-bar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.queue-bar-icon {
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+.queue-bar-clear {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.queue-bar-clear:hover {
+  color: var(--error);
+}
+
+.queue-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 0 4px 8px;
+}
+
+.queue-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid rgba(var(--tint-rgb), 0.07);
+  transition: opacity var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+  cursor: default;
+}
+
+/* ---- Drag handle ---- */
+.queue-bar-item-handle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: 1rem;
+  opacity: 0.5;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.queue-bar-item:hover .queue-bar-item-handle {
+  opacity: 1;
+  color: var(--text-secondary);
+}
+
+.queue-bar-item-handle:active {
+  cursor: grabbing;
+}
+
+/* ---- Drag index badge ---- */
+.queue-bar-item-index {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ---- Drag states ---- */
+.queue-bar-item.dragging {
+  opacity: 0.35;
+}
+
+.queue-bar-item.drag-over-above {
+  border-top: 2px solid var(--accent);
+  padding-top: 5px;
+}
+
+.queue-bar-item.drag-over-below {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 5px;
+}
+
+.queue-bar-item-text {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-bar-item-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  font-size: 0.85rem;
+}
+
+.queue-bar-item-remove:hover {
+  color: var(--error);
+  background: rgba(255, 100, 100, 0.1);
+}
+
+/* Queue bar transition */
+.queue-bar-enter-active,
+.queue-bar-leave-active {
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+.queue-bar-enter-from,
+.queue-bar-leave-to {
+  transform: translateY(8px);
+  opacity: 0;
+}

@@ -309,4 +309,6 @@ export interface ChatCallbacks {
   onToolUpdate?: (invocations: ToolInvocation[]) => void
   onUsage?: (usage: UsageMetadata) => void
   onRetry?: (attempt: number, maxRetries: number, error: string) => void
+  onAutoCompact?: (summary: string) => void
+  onUserToken?: (tokenCount: number) => void
 }

@@ -168,6 +168,12 @@
   box-shadow: 0 22px 40px rgba(4, 8, 20, 0.2);
 }
 
+.tool-workflow-card.running {
+  border-color: rgba(251, 191, 36, 0.18);
+  box-shadow: 0 18px 34px rgba(4, 8, 20, 0.16), 0 0 0 1px rgba(251, 191, 36, 0.06);
+  animation: toolCardBorderGlow 2.4s ease-in-out infinite;
+}
+
 .tool-workflow-card.compact,
 .tool-workflow-card.collapsing {
   width: fit-content;

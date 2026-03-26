@@ -540,6 +540,12 @@ export class WebPlatform extends PlatformAdapter {
     const onRetry = (sid: string, attempt: number, maxRetries: number, error: string) => {
       this.writeSSE(sid, { type: 'retry', attempt, maxRetries, error });
     };
+    const onAutoCompact = (sid: string, summaryText: string) => {
+      this.writeSSE(sid, { type: 'auto_compact', summary: summaryText });
+    };
+    const onUserToken = (sid: string, tokenCount: number) => {
+      this.writeSSE(sid, { type: 'user_token', tokenCount });
+    };
 
     backend.on('response', onResponse);
     backend.on('stream:start', onStreamStart);
@@ -552,6 +558,8 @@ export class WebPlatform extends PlatformAdapter {
     backend.on('tool:update', onToolUpdate);
     backend.on('usage', onUsage);
     backend.on('retry', onRetry);
+    backend.on('auto-compact', onAutoCompact);
+    backend.on('user:token', onUserToken);
 
     // 记录清理函数，热重载时精确移除这些监听器而不影响其他平台
     if (agentName) {
@@ -567,6 +575,8 @@ export class WebPlatform extends PlatformAdapter {
         backend.off('tool:update', onToolUpdate);
         backend.off('usage', onUsage);
         backend.off('retry', onRetry);
+        backend.off('auto-compact', onAutoCompact);
+        backend.off('user:token', onUserToken);
       });
     }
   }
@@ -891,6 +901,23 @@ export class WebPlatform extends PlatformAdapter {
         sendJSON(res, 200, result);
       } catch (err: unknown) {
         sendJSON(res, 500, { error: err instanceof Error ? err.message : '命令执行失败' });
+      }
+    });
+
+    // 上下文压缩 API
+    this.router.post('/api/compact', async (req, res) => {
+      try {
+        const { backend } = this.resolveAgent(req);
+        const body = await readBody(req);
+        const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+        if (!sessionId) {
+          sendJSON(res, 400, { error: '缺少 sessionId 参数' });
+          return;
+        }
+        const summary = await backend.summarize(sessionId);
+        sendJSON(res, 200, { ok: true, summary });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : '压缩失败' });
       }
     });
 

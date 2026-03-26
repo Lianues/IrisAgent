@@ -36,11 +36,21 @@
       <div class="input-meta">
         <div class="input-meta-left">
           <AppIcon :name="ICONS.common.bolt" class="input-meta-icon" />
-          <span class="input-title">继续当前工作流</span>
+          <span class="input-title">{{ isBusy ? '排队发送模式' : '继续当前工作流' }}</span>
           <span class="input-meta-sep">•</span>
-          <span class="input-hint">Enter 发送 · Shift + Enter 换行</span>
+          <span class="input-hint">Enter {{ isBusy ? '排队' : '发送' }} · Shift + Enter 换行</span>
         </div>
-        <div class="input-status-badge" :class="{ busy: interactionDisabled }">
+        <button
+          class="btn-compact"
+          type="button"
+          title="压缩上下文 (/compact)"
+          :disabled="!currentSessionId || isBusy"
+          @click="$emit('compact')"
+        >
+          <AppIcon :name="ICONS.common.compress" class="btn-compact-icon" />
+          <span>Compact</span>
+        </button>
+        <div class="input-status-badge" :class="{ busy: isBusy }">
           {{ statusBadgeText }}
         </div>
       </div>
@@ -94,9 +104,9 @@
           <textarea
             ref="inputEl"
             v-model="text"
-            placeholder="给 Iris 发送消息..."
+            :placeholder="isBusy ? '输入消息排队发送...' : '给 Iris 发送消息...'"
             rows="1"
-            :disabled="interactionDisabled"
+            :disabled="attachmentsProcessing"
             @keydown="handleKeydown"
             @keydown.enter.exact="handleEnterKey"
             @keydown.up="handleArrowKey($event, -1)"
@@ -126,16 +136,11 @@
 
         <button
           class="btn-send"
-          :class="{ sending: interactionDisabled }"
-          :disabled="interactionDisabled || !canSend"
+          :class="{ sending: attachmentsProcessing, enqueue: isBusy && canSend }"
+          :disabled="attachmentsProcessing || !canSend"
           @click="handleSend"
         >
-          <span v-if="interactionDisabled" class="btn-send-spinner" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
-          <AppIcon v-else :name="ICONS.common.send" class="btn-send-icon" />
+          <AppIcon :name="isBusy ? ICONS.common.schedule : ICONS.common.send" class="btn-send-icon" />
         </button>
       </div>
 
@@ -157,12 +162,20 @@ import { ICONS } from '../constants/icons'
 import { useSessions } from '../composables/useSessions'
 import { SUPPORTED_UPLOAD_ACCEPT, useChatAttachments } from '../composables/useChatAttachments'
 
-const props = defineProps<{ disabled: boolean }>()
-const emit = defineEmits<{ send: [text: string, images?: ChatImageAttachment[], documents?: ChatDocumentAttachment[]] }>()
+const props = defineProps<{
+  disabled: boolean
+  queueSize?: number
+}>()
+const emit = defineEmits<{
+  send: [text: string, images?: ChatImageAttachment[], documents?: ChatDocumentAttachment[]]
+  enqueue: [text: string]
+  compact: []
+}>()
 
 const { currentSessionId } = useSessions()
 
-const disabled = computed(() => props.disabled)
+/** AI 正在生成中（sending=true），但不应阻止用户输入 */
+const isBusy = computed(() => props.disabled)
 const text = ref('')
 const expanded = ref(false)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
@@ -171,7 +184,7 @@ const autocompleteRef = ref<InstanceType<typeof CommandAutocomplete> | null>(nul
 /** ESC 强制隐藏补全，输入变化时自动重置 */
 const autocompleteDismissed = ref(false)
 const showAutocomplete = computed(() =>
-  !autocompleteDismissed.value && text.value.trimStart().startsWith('/') && !disabled.value,
+  !autocompleteDismissed.value && text.value.trimStart().startsWith('/') && !attachmentsProcessing.value,
 )
 
 const {
@@ -202,7 +215,7 @@ const {
   buildOutgoingImages,
   buildOutgoingDocuments,
 } = useChatAttachments({
-  disabled,
+  disabled: isBusy,
   fileInputEl,
 })
 
@@ -212,13 +225,13 @@ const canSend = computed(() => {
 })
 
 const sendButtonText = computed(() => {
-  if (disabled.value) return '生成中...'
+  if (isBusy.value) return '排队'
   if (attachmentsProcessing.value) return '处理中...'
   return '发送'
 })
 
 const statusBadgeText = computed(() => {
-  if (disabled.value) return 'Iris 正在整理回复'
+  if (isBusy.value) return 'Iris 正在整理回复'
   if (attachmentsProcessing.value) return '正在处理附件'
   return '已连接工作流上下文'
 })
@@ -304,8 +317,26 @@ function handleEnterKey(event: KeyboardEvent) {
 }
 
 function handleSend() {
-  if (!canSend.value || interactionDisabled.value) return
+  if (!canSend.value || attachmentsProcessing.value) return
 
+  // 生成期间：斜杠命令仍立即执行，普通文本入队
+  if (isBusy.value) {
+    const trimmed = text.value.trim()
+    if (!trimmed) return
+    // 斜杠命令不排队，直接发送给 ChatView 立即处理
+    if (trimmed.startsWith('/')) {
+      emit('send', trimmed)
+      text.value = ''
+      nextTick(() => { if (inputEl.value) inputEl.value.style.height = 'auto' })
+      return
+    }
+    emit('enqueue', trimmed)
+    text.value = ''
+    nextTick(() => { if (inputEl.value) inputEl.value.style.height = 'auto' })
+    return
+  }
+
+  // 正常发送（可含附件）
   const outgoingImages = buildOutgoingImages()
   const outgoingDocs = buildOutgoingDocuments()
 

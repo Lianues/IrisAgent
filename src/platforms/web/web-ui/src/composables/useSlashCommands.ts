@@ -11,6 +11,7 @@ import { useSessions } from './useSessions'
 import { useAgents } from './useAgents'
 import { requestOpenSettings } from './useAppActions'
 import * as api from '../api/client'
+import { useMessageQueue } from './useMessageQueue'
 
 export interface SlashCommand {
   name: string
@@ -22,6 +23,8 @@ export interface SlashCommand {
 const commands: SlashCommand[] = [
   { name: '/new', description: '创建新会话', usage: '/new', hasArg: false },
   { name: '/load', description: '加载历史对话', usage: '/load [ID]', hasArg: true },
+  { name: '/compact', description: '压缩上下文（总结历史消息）', usage: '/compact', hasArg: false },
+  { name: '/queue', description: '查看/管理排队消息', usage: '/queue [clear]', hasArg: true },
   { name: '/undo', description: '撤销上一条消息', usage: '/undo', hasArg: false },
   { name: '/redo', description: '重做上一条撤销', usage: '/redo', hasArg: false },
   { name: '/model', description: '切换模型', usage: '/model <name>', hasArg: true },
@@ -177,6 +180,63 @@ async function executeCommand(text: string, ctx: CommandContext) {
       } catch (err) {
         pushSystemMessage(ctx, `重置配置失败: ${err instanceof Error ? err.message : String(err)}`)
       }
+      break
+    }
+
+    case '/compact': {
+      if (!ctx.currentSessionId.value) {
+        pushSystemMessage(ctx, '当前没有活跃会话，无法压缩上下文。')
+        return
+      }
+      const loadingMsg: Message = {
+        role: 'model',
+        parts: [{ type: 'function_call', name: 'compact_context', args: { action: 'compress' } }],
+      }
+      ctx.messages.value.push(loadingMsg)
+      const removeLoading = () => {
+        const idx = ctx.messages.value.indexOf(loadingMsg)
+        if (idx >= 0) ctx.messages.value.splice(idx, 1)
+      }
+      try {
+        const result = await api.compactContext(ctx.currentSessionId.value)
+        removeLoading()
+        const response = result.ok
+          ? { ok: true, summary: result.summary ?? '上下文已压缩' }
+          : { ok: false, error: result.error }
+        ctx.messages.value.push({
+          role: 'model',
+          parts: [
+            { type: 'function_call', name: 'compact_context', args: { action: 'compress' } },
+            { type: 'function_response', name: 'compact_context', response },
+          ],
+        })
+      } catch (err) {
+        removeLoading()
+        ctx.messages.value.push({
+          role: 'model',
+          parts: [
+            { type: 'function_call', name: 'compact_context', args: { action: 'compress' } },
+            { type: 'function_response', name: 'compact_context', response: { ok: false, error: err instanceof Error ? err.message : String(err) } },
+          ],
+        })
+      }
+      break
+    }
+
+    case '/queue': {
+      const { queue, clear } = useMessageQueue()
+      if (arg === 'clear') {
+        const count = queue.value.length
+        clear()
+        pushSystemMessage(ctx, count > 0 ? `已清空 ${count} 条排队消息。` : '队列已为空。')
+        return
+      }
+      if (queue.value.length === 0) {
+        pushSystemMessage(ctx, '队列为空，无待发送消息。')
+        return
+      }
+      const lines = queue.value.map((m, i) => `${i + 1}. ${m.text.replace(/\n/g, ' ↵ ').slice(0, 60)}`)
+      pushSystemMessage(ctx, `排队消息 (${queue.value.length} 条)：\n\n${lines.join('\n')}`)
       break
     }
 

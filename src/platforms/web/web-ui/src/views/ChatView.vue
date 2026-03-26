@@ -63,7 +63,19 @@
         @clear-message-action-error="clearMessageActionError"
         @delete="deleteMessage"
       />
-      <ChatInput :disabled="sending" @send="handleSend" />
+      <MessageQueueBar
+        :queue="queue"
+        @remove="handleQueueRemove"
+        @clear="handleQueueClear"
+        @reorder="handleQueueReorder"
+      />
+      <ChatInput
+        :disabled="sending"
+        :queue-size="queueSize"
+        @send="handleSend"
+        @enqueue="handleEnqueue"
+        @compact="handleCompact"
+      />
       <ToolApprovalBar />
       <DiffApprovalDialog />
     </section>
@@ -76,9 +88,12 @@ import { useChat } from '../composables/useChat'
 import { useContextUsage } from '../composables/useContextUsage'
 import { useSlashCommands } from '../composables/useSlashCommands'
 import { useSessions } from '../composables/useSessions'
+import { useMessageQueue } from '../composables/useMessageQueue'
 import * as api from '../api/client'
+import type { Message } from '../api/types'
 import MessageList from '../components/MessageList.vue'
 import ChatInput from '../components/ChatInput.vue'
+import MessageQueueBar from '../components/MessageQueueBar.vue'
 import ToolApprovalBar from '../components/ToolApprovalBar.vue'
 import DiffApprovalDialog from '../components/DiffApprovalDialog.vue'
 import AppSelect from '../components/AppSelect.vue'
@@ -87,6 +102,7 @@ const { currentSessionId } = useSessions()
 const { messages, messagesLoading, messagesError, messageActionError, sending, streamingText, isStreaming, streamingThought, streamingThoughtDurationMs, armedDeleteMessageIndex, deletingMessageIndex, retryInfo, clearMessageActionError, currentSessionSending, sendMessage, retryLastMessage, deleteMessage, reloadMessages, undoLastMessage, redoLastMessage } = useChat()
 const { totalTokenCount, contextWindow, usageLabel, usagePercent, setContextWindow } = useContextUsage()
 const { isSlashCommand, executeCommand } = useSlashCommands()
+const { queue, enqueue, remove: queueRemove, clear: queueClear, reorder: queueReorder, size: queueSize } = useMessageQueue()
 
 // ---- 模型选择器 ----
 const currentModelName = ref<string | null>(null)
@@ -150,5 +166,63 @@ function handleSend(text: string, images?: any[], documents?: any[]) {
     return
   }
   sendMessage(text, images, documents)
+}
+
+// ---- 消息队列 ----
+function handleEnqueue(text: string) {
+  enqueue(text)
+}
+
+function handleQueueRemove(id: string) {
+  queueRemove(id)
+}
+
+function handleQueueClear() {
+  queueClear()
+}
+
+function handleQueueReorder(fromIndex: number, toIndex: number) {
+  queueReorder(fromIndex, toIndex)
+}
+
+// ---- 上下文压缩 ----
+
+function buildCompactCallMsg(): Message {
+  return {
+    role: 'model',
+    parts: [{ type: 'function_call', name: 'compact_context', args: { action: 'compress' } }],
+  }
+}
+
+function buildCompactResultMsg(response: Record<string, unknown>): Message {
+  return {
+    role: 'model',
+    parts: [
+      { type: 'function_call', name: 'compact_context', args: { action: 'compress' } },
+      { type: 'function_response', name: 'compact_context', response },
+    ],
+  }
+}
+
+async function handleCompact() {
+  if (!currentSessionId.value || sending.value) return
+  const loadingMsg = buildCompactCallMsg()
+  messages.value.push(loadingMsg)
+  const removeLoading = () => {
+    const idx = messages.value.indexOf(loadingMsg)
+    if (idx >= 0) messages.value.splice(idx, 1)
+  }
+  try {
+    const result = await api.compactContext(currentSessionId.value)
+    removeLoading()
+    if (result.ok) {
+      messages.value.push(buildCompactResultMsg({ ok: true, summary: result.summary ?? '上下文已压缩' }))
+    } else {
+      messages.value.push(buildCompactResultMsg({ ok: false, error: result.error }))
+    }
+  } catch (err) {
+    removeLoading()
+    messages.value.push(buildCompactResultMsg({ ok: false, error: err instanceof Error ? err.message : String(err) }))
+  }
 }
 </script>

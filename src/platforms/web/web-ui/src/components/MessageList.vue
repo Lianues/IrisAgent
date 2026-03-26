@@ -125,7 +125,7 @@
         >
           <button
             class="tool-workflow-card"
-            :class="{ expanded: isToolGroupExpanded(item.key), compact: isToolGroupCompact(item.key), collapsing: isToolGroupCollapsing(item.key) }"
+            :class="{ expanded: isToolGroupExpanded(item.key), compact: isToolGroupCompact(item.key), collapsing: isToolGroupCollapsing(item.key), running: isToolGroupRunning(item.key) }"
             type="button"
             @click="toggleToolGroup(item.key)"
             :ref="(el) => setToolWorkflowCardEl(item.key, el)"

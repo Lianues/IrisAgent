@@ -422,6 +422,17 @@ export async function listModels(): Promise<{ models: Array<{ modelName: string;
   return res.json()
 }
 
+// ============ 上下文压缩 ============
+
+export async function compactContext(sessionId: string): Promise<{ ok: boolean; summary?: string; error?: string }> {
+  const res = await request('/api/compact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId }),
+  })
+  return res.json()
+}
+
 // ============ SSE 聊天 ============
 
 let _dispatchCount = 0
@@ -453,6 +464,8 @@ function dispatchChatStreamEvent(rawBlock: string, callbacks: ChatCallbacks): vo
       case 'tool_update': callbacks.onToolUpdate?.(event.invocations); break
       case 'usage': callbacks.onUsage?.(event.usage); break
       case 'retry': callbacks.onRetry?.(event.attempt, event.maxRetries, event.error); break
+      case 'auto_compact': callbacks.onAutoCompact?.(event.summary); break
+      case 'user_token': callbacks.onUserToken?.(event.tokenCount); break
     }
   } catch {
     // 忽略解析错误（如心跳）

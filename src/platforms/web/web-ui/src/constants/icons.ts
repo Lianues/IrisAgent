@@ -17,6 +17,9 @@ export const ICONS = {
     sparkle: 'auto_awesome',
     expandUp: 'expand_less',
     collapseDown: 'expand_more',
+    compress: 'compress',
+    schedule: 'schedule',
+    dragHandle: 'drag_indicator',
   },
   sidebar: {
     chat: 'chat',
