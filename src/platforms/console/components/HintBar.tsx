@@ -6,6 +6,7 @@ import { getTextWidth } from '../text-layout';
 
 interface HintBarProps {
   isGenerating: boolean;
+  queueSize?: number;
   copyMode: boolean;
   exitConfirmArmed: boolean;
 }
@@ -22,7 +23,7 @@ function truncatePath(fullPath: string, maxWidth: number): string {
 
   const sep = fullPath.includes('\\') ? '\\' : '/';
   const parts = fullPath.split(sep).filter(Boolean);
-  const prefix = /^[/\\]/.test(fullPath) ? sep : '';
+  const prefix = /^[\/\\]/.test(fullPath) ? sep : '';
 
   if (parts.length <= 1) return hardTruncate(fullPath, maxWidth);
 
@@ -57,17 +58,23 @@ function hardTruncate(text: string, maxWidth: number): string {
 
 /* ---------- 组件 ---------- */
 
-export function HintBar({ isGenerating, copyMode, exitConfirmArmed }: HintBarProps) {
+export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }: HintBarProps) {
   const cwd = process.cwd();
+  const hasQueue = (queueSize ?? 0) > 0;
 
-  // 计算右侧提示文本的显示宽度
-  const hintStr = exitConfirmArmed
-    ? '再次按 ctrl+c 退出'
-    : [
-        isGenerating ? 'esc 中断生成' : 'ctrl+j 换行',
-        '  \u00b7  ',
-        copyMode ? 'f6 返回滚动模式' : 'f6 复制模式',
-      ].join('');
+  // 计算右侧提示文本
+  let hintStr: string;
+  if (exitConfirmArmed) {
+    hintStr = '再次按 ctrl+c 退出';
+  } else {
+    const parts: string[] = [];
+    parts.push(isGenerating ? 'esc 中断生成' : 'ctrl+j 换行');
+    if (isGenerating && hasQueue) {
+      parts.push(`/queue 管理队列(${queueSize})`);
+    }
+    parts.push(copyMode ? 'f6 返回滚动模式' : 'f6 复制模式');
+    hintStr = parts.join('  \u00b7  ');
+  }
   const hintWidth = getTextWidth(hintStr);
 
   const termWidth = process.stdout.columns || 80;
@@ -88,6 +95,12 @@ export function HintBar({ isGenerating, copyMode, exitConfirmArmed }: HintBarPro
       ) : (
         <text fg={C.dim}>
           {isGenerating ? 'esc 中断生成' : 'ctrl+j 换行'}
+          {isGenerating && hasQueue ? (
+            <>
+              {'  \u00b7  '}
+              <span fg={C.warn}>{`/queue 管理队列(${queueSize})`}</span>
+            </>
+          ) : null}
           {'  \u00b7  '}
           {copyMode ? 'f6 返回滚动模式' : 'f6 复制模式'}
         </text>

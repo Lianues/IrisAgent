@@ -9,9 +9,10 @@ interface StatusBarProps {
   modelName: string;
   contextTokens: number;
   contextWindow?: number;
+  queueSize?: number;
 }
 
-export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow }: StatusBarProps) {
+export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize }: StatusBarProps) {
   const resolvedModeName = modeName ?? 'normal';
   const modeNameCapitalized = resolvedModeName.charAt(0).toUpperCase() + resolvedModeName.slice(1);
   const contextStr = contextTokens > 0 ? contextTokens.toLocaleString() : '-';
@@ -29,6 +30,12 @@ export function StatusBar({ agentName, modeName, modelName, contextTokens, conte
           <span fg={C.primaryLight}><strong>{modeNameCapitalized}</strong></span>
           <span fg={C.dim}> · </span>
           <span fg={C.textSec}>{modelName}</span>
+          {queueSize != null && queueSize > 0 ? (
+            <>
+              <span fg={C.dim}> · </span>
+              <span fg={C.warn}>📨 {queueSize} queued</span>
+            </>
+          ) : null}
         </text>
       </box>
       <box>

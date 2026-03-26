@@ -17,7 +17,9 @@ interface BottomPanelProps {
   pendingApprovals: ToolInvocation[];
   approvalChoice: ApprovalChoice;
   isGenerating: boolean;
+  queueSize: number;
   onSubmit: (text: string) => void;
+  onPrioritySubmit: (text: string) => void;
   agentName?: string;
   modeName?: string;
   modelName: string;
@@ -36,7 +38,9 @@ export function BottomPanel({
   pendingApprovals,
   approvalChoice,
   isGenerating,
+  queueSize,
   onSubmit,
+  onPrioritySubmit,
   agentName,
   modeName,
   modelName,
@@ -46,6 +50,9 @@ export function BottomPanel({
   exitConfirmArmed,
   hasComputerUse,
 }: BottomPanelProps) {
+  // 输入框仅在审批/确认对话框期间完全禁用
+  const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
+
   return (
     <box flexDirection="column" flexShrink={0} paddingX={1} paddingBottom={1} paddingTop={hasMessages ? 1 : 0}>
       {pendingConfirm ? (
@@ -60,23 +67,32 @@ export function BottomPanel({
         <box
           flexDirection="column"
           borderStyle="single"
-          borderColor={isGenerating ? C.dim : C.border}
+          borderColor={isGenerating ? C.warn : C.border}
           padding={1}
           paddingBottom={0}
         >
-          <InputBar disabled={isGenerating} onSubmit={onSubmit} hasComputerUse={hasComputerUse} />
+          <InputBar
+            disabled={inputDisabled}
+            isGenerating={isGenerating}
+            queueSize={queueSize}
+            onSubmit={onSubmit}
+            onPrioritySubmit={onPrioritySubmit}
+            hasComputerUse={hasComputerUse}
+          />
           <StatusBar
             agentName={agentName}
             modeName={modeName}
             modelName={modelName}
             contextTokens={contextTokens}
             contextWindow={contextWindow}
+            queueSize={queueSize}
           />
         </box>
       )}
 
       <HintBar
         isGenerating={isGenerating}
+        queueSize={queueSize}
         copyMode={copyMode}
         exitConfirmArmed={exitConfirmArmed}
       />

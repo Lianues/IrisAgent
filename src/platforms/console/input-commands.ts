@@ -21,6 +21,7 @@ export const COMMANDS: Command[] = [
   { name: '/compact',  description: '压缩上下文（总结历史消息）' },
   { name: '/window',   description: '查看或切换绑定窗口（Computer Use）' },
   { name: '/agent',    description: '切换 Agent（多 Agent 模式）' },
+  { name: '/queue',    description: '查看/管理排队消息' },
   { name: '/exit',     description: '退出应用' },
 ];
 

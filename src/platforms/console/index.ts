@@ -2,6 +2,9 @@
  * Console 平台适配器 (OpenTUI React)
  *
  * 通过 Backend 事件驱动全屏 TUI 界面。
+ *
+ * 支持消息排队发送：AI 生成期间用户可以继续输入并提交消息，
+ * 提交的消息会被加入队列，等当前响应完成后自动发送下一条。
  */
 
 import React from 'react';
@@ -509,16 +512,31 @@ export class ConsolePlatform extends PlatformAdapter {
     }
   }
 
+  /**
+   * 处理用户输入：发送消息给 Backend，并在完成后自动排流队列中的下一条消息。
+   *
+   * 流程：
+   * 1. 设置生成状态 → 发送消息 → 等待完成
+   * 2. 检查队列：如果有下一条，重复步骤 1（abort 仅中断当前生成，不影响队列排流）
+   * 3. 队列排空或被 abort 后，取消生成状态
+   */
   private async handleInput(text: string): Promise<void> {
-    this.appHandle?.addMessage('user', text);
     this.appHandle?.setGenerating(true);
-    this.currentToolIds.clear();
 
-    try {
-      await this.backend.chat(this.sessionId, text, undefined, undefined, 'console');
-    } finally {
-      this.appHandle?.commitTools();
-      this.appHandle?.setGenerating(false);
+    let currentText: string | undefined = text;
+    while (currentText) {
+      this.appHandle?.addMessage('user', currentText);
+      this.currentToolIds.clear();
+      try {
+        await this.backend.chat(this.sessionId, currentText, undefined, undefined, 'console');
+      } finally {
+        this.appHandle?.commitTools();
+      }
+
+      // 从队列取下一条消息
+      currentText = this.appHandle?.drainQueue();
     }
+
+    this.appHandle?.setGenerating(false);
   }
 }

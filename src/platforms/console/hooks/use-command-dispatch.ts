@@ -55,6 +55,10 @@ interface UseCommandDispatchOptions {
   setConfirmChoice: SetConfirmChoice;
   setSettingsInitialSection: SetSettingsInitialSection;
   modelState: Pick<UseModelStateReturn, 'updateModel'>;
+  /** 清空消息队列（/new、/load 时调用） */
+  queueClear: () => void;
+  /** 当前队列长度 */
+  queueSize: number;
 }
 
 function resetRedo(undoRedoRef: MutableRefObject<UndoRedoStack>, onClearRedoStack: () => void) {
@@ -91,6 +95,8 @@ export function useCommandDispatch({
   setConfirmChoice,
   setSettingsInitialSection,
   modelState,
+  queueClear,
+  queueSize,
 }: UseCommandDispatchOptions) {
   return useCallback((text: string) => {
     if (text === '/exit') {
@@ -112,6 +118,7 @@ export function useCommandDispatch({
 
     if (text === '/new') {
       resetRedo(undoRedoRef, onClearRedoStack);
+      queueClear();
       setMessages([]);
       commitTools();
       onNewSession();
@@ -143,6 +150,7 @@ export function useCommandDispatch({
     }
 
     if (text === '/load') {
+      queueClear();
       onListSessions().then((metas) => {
         setSessionList(metas);
         setSelectedIndex(0);
@@ -159,7 +167,6 @@ export function useCommandDispatch({
           appendCommandMessage(
             setMessages,
             result.message + (result.success ? '\n重启应用后生效。' : ''),
-            { isError: !result.success },
           );
         },
       });
@@ -170,6 +177,23 @@ export function useCommandDispatch({
     if (text === '/settings' || text === '/mcp') {
       setSettingsInitialSection(text === '/mcp' ? 'mcp' : 'general');
       setViewMode('settings');
+      return;
+    }
+
+    // ── /queue 命令 ────────────────────────────────────────
+    if (text === '/queue') {
+      if (queueSize === 0) {
+        appendCommandMessage(setMessages, '队列为空，无待发送消息。');
+        return;
+      }
+      setSelectedIndex(0);
+      setViewMode('queue-list');
+      return;
+    }
+    if (text === '/queue clear') {
+      const count = queueSize;
+      queueClear();
+      appendCommandMessage(setMessages, count > 0 ? `已清空 ${count} 条排队消息。` : '队列已为空。');
       return;
     }
 
@@ -258,6 +282,8 @@ export function useCommandDispatch({
     onSwitchModel,
     onSummarize,
     onUndo,
+    queueClear,
+    queueSize,
     setConfirmChoice,
     setMessages,
     setModelList,

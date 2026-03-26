@@ -29,11 +29,19 @@ export interface AppHandle {
   setUsage(usage: UsageMetadata): void;
   setRetryInfo(info: RetryInfo | null): void;
   finalizeResponse(durationMs: number): void;
+  /**
+   * 从消息队列中出队下一条消息。
+   * 由 App 组件通过 drainCallbackRef 注册实际实现。
+   * 返回下一条消息的文本，队列为空时返回 undefined。
+   */
+  drainQueue(): string | undefined;
 }
 
 interface UseAppHandleOptions {
   onReady: (handle: AppHandle) => void;
   undoRedoRef: MutableRefObject<UndoRedoStack>;
+  /** App 组件设置的队列出队回调，drainQueue 时调用 */
+  drainCallbackRef: MutableRefObject<(() => string | undefined) | null>;
 }
 
 export interface UseAppHandleReturn {
@@ -49,7 +57,7 @@ export interface UseAppHandleReturn {
   commitTools: () => void;
 }
 
-export function useAppHandle({ onReady, undoRedoRef }: UseAppHandleOptions): UseAppHandleReturn {
+export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppHandleOptions): UseAppHandleReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -250,10 +258,13 @@ export function useAppHandle({ onReady, undoRedoRef }: UseAppHandleOptions): Use
       setRetryInfo(info) {
         setRetryInfo(info);
       },
+      drainQueue() {
+        return drainCallbackRef.current?.() ?? undefined;
+      },
     };
 
     onReady(handle);
-  }, [commitTools, onReady, undoRedoRef]);
+  }, [commitTools, drainCallbackRef, onReady, undoRedoRef]);
 
   return {
     messages,

@@ -5,6 +5,9 @@
  *
  * 使用自定义 useTextInput + InputDisplay 实现带光标的输入，
  * 与 onboard 风格一致。
+ *
+ * 当 AI 正在生成时，输入栏仍然可用：用户可以提前输入消息，
+ * 提交后消息将被放入排队队列，待当前生成完成后自动发送。
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,12 +22,16 @@ import { getTextWidth } from '../text-layout';
 
 interface InputBarProps {
   disabled: boolean;
+  isGenerating: boolean;
+  queueSize: number;
   onSubmit: (text: string) => void;
+  /** 强制优先发送：中断当前生成，在队列最前面插入并立即发送 */
+  onPrioritySubmit: (text: string) => void;
   /** Computer Use 是否启用（用于条件显示 /window 指令） */
   hasComputerUse?: boolean;
 }
 
-export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, hasComputerUse }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
@@ -49,16 +56,21 @@ export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) 
 
   const value = inputState.value;
 
+  // 输入是否完全被禁止（仅在审批/确认对话框等场景）
+  const inputDisabled = disabled;
+  // 输入是否可用但处于排队模式（生成中但无审批/确认阻断）
+  const isQueueMode = !disabled && isGenerating;
+
   const exactMatchIndex = useMemo(() => {
     return visibleCommands.findIndex((cmd) => isExactCommandValue(value, cmd));
   }, [value, visibleCommands]);
 
   const commandQuery = useMemo(() => {
-    if (disabled) return '';
+    if (inputDisabled) return '';
     if (!value.startsWith('/')) return '';
     if (/\s/.test(value) && exactMatchIndex < 0) return '';
     return value;
-  }, [disabled, value, exactMatchIndex]);
+  }, [inputDisabled, value, exactMatchIndex]);
 
   const showCommands = commandQuery.length > 0;
 
@@ -89,7 +101,7 @@ export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) 
   };
 
   useKeyboard((key) => {
-    if (disabled) return;
+    if (inputDisabled) return;
 
     // 粘贴保护：粘贴事件处理期间忽略所有键盘事件
     if (pasteGuardRef.current) return;
@@ -117,7 +129,19 @@ export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) 
       }
     }
 
-    // Enter → 提交 / 粘贴时插入换行
+    // Ctrl+S → 强制优先发送（中断当前生成，跳过队列立即发送）
+    if (key.ctrl && key.name === 's') {
+      if (!isQueueMode) return;
+      const text = value.trim();
+      if (!text) return;
+      onPrioritySubmit(text);
+      inputActions.setValue('');
+      setSelectedIndex(0);
+      return;
+    }
+
+
+    // Enter → 提交（生成中自动入队）/ 粘贴时插入换行
     if (key.name === 'enter' || key.name === 'return') {
       // 快速输入中（疑似粘贴）：将 Enter 当作换行符插入，保留原始换行
       if (rapidKeyCountRef.current >= 3) {
@@ -132,14 +156,18 @@ export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) 
       return;
     }
 
-    // 委托给 useTextInput 处理其他按键
+    // 功能键不应作为文本输入（Esc 由 useAppKeyboard 处理 abort/视图切换，
+    // 此处若不拦截，其单字节序列 0x1B 会被 useTextInput 当作可打印字符插入）
+    if (key.name === 'escape') return;
+
+    // 委托给 useTextInput 处理其余按键
     inputActions.handleKey(key);
   });
 
   // 处理粘贴事件：保留换行符，支持多行粘贴；
   // 同时设置 pasteGuard 屏蔽粘贴期间泄露的 key 事件。
   usePaste((text) => {
-    if (disabled) return;
+    if (inputDisabled) return;
     pasteGuardRef.current = true;
     const cleaned = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
     if (cleaned) {
@@ -173,21 +201,37 @@ export function InputBar({ disabled, onSubmit, hasComputerUse }: InputBarProps) 
 
   const needsInputScroll = visualLineCount > MAX_VISIBLE_INPUT_LINES;
 
+  // 提示符样式和 placeholder 根据状态变化
+  const promptColor = inputDisabled ? C.dim : isQueueMode ? C.warn : C.accent;
+  const promptChar = isQueueMode ? '\u23F3 ' : '\u276F ';
+  const placeholder = isQueueMode ? '输入消息（将排队发送）…' : '输入消息…';
+
   const inputRow = (
     <box flexDirection="row" border={false}>
-      <text fg={disabled ? C.dim : C.accent}><strong>{'\u276F '} </strong></text><InputDisplay
+      <text fg={promptColor}><strong>{promptChar} </strong></text><InputDisplay
         value={value}
         cursor={inputState.cursor}
         availableWidth={availableWidth}
-        isActive={!disabled}
+        isActive={!inputDisabled}
         cursorVisible={cursorVisible}
-        placeholder="输入消息…"
+        placeholder={placeholder}
       />
     </box>
   );
 
   return (
     <box flexDirection="column">
+      {/* 生成中提示栏：队列信息 + 强制发送快捷键 */}
+      {isQueueMode && (
+        <box paddingLeft={1} paddingBottom={0}>
+          {queueSize > 0 ? (
+            <text fg={C.warn}>{`📨 ${queueSize} 条排队中  `}<span fg={C.dim}>/queue 管理  </span></text>
+          ) : null}
+          <text fg={C.dim}>Ctrl+S </text>
+          <text fg={C.textSec}>立即发送</text>
+        </box>
+      )}
+
       {/* 指令列表（向上展开，位于输入框上方） */}
       {filtered.length > 0 && (
         <box flexDirection="column" backgroundColor={C.panelBg} paddingX={1}>

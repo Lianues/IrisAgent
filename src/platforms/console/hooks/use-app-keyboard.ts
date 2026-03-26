@@ -3,6 +3,7 @@ import type { LLMModelInfo } from '../../../llm/router';
 import type { WindowInfo } from '../../../computer-use/types';
 import type { SessionMeta } from '../../../storage/base';
 import type { ToolInvocation } from '../../../types';
+import type { TextInputState, TextInputActions } from './use-text-input';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ApprovalChoice, ConfirmChoice, PendingConfirm, SwitchModelResult, ViewMode } from '../app-types';
 import type { ChatMessage } from '../components/MessageItem';
@@ -10,6 +11,7 @@ import { clearRedo, type UndoRedoStack } from '../undo-redo';
 import type { UseModelStateReturn } from './use-model-state';
 import { appendCommandMessage } from '../message-utils';
 import { filterWindows } from '../components/WindowListView';
+import type { QueuedMessage } from './use-message-queue';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
@@ -61,6 +63,17 @@ interface UseAppKeyboardOptions {
   windowSearchText: string;
   setWindowSearchText: SetState<string>;
   onSwitchWindow?: (hwnd: string) => Promise<{ ok: boolean; message: string }>;
+  // 队列管理
+  queue: QueuedMessage[];
+  queueRemove: (id: string) => boolean;
+  queueMoveUp: (id: string) => boolean;
+  queueMoveDown: (id: string) => boolean;
+  queueEdit: (id: string, newText: string) => boolean;
+  queueClear: () => void;
+  queueEditingId: string | null;
+  setQueueEditingId: SetState<string | null>;
+  queueEditState: TextInputState;
+  queueEditActions: TextInputActions;
 }
 
 function closeConfirm(
@@ -103,6 +116,16 @@ export function useAppKeyboard({
   windowSearchText,
   setWindowSearchText,
   onSwitchWindow,
+  queue,
+  queueRemove,
+  queueMoveUp,
+  queueMoveDown,
+  queueEdit,
+  queueClear,
+  queueEditingId,
+  setQueueEditingId,
+  queueEditState,
+  queueEditActions,
 }: UseAppKeyboardOptions) {
   useKeyboard((key) => {
     if (key.ctrl && key.name === 'c') {
@@ -128,6 +151,16 @@ export function useAppKeyboard({
     }
 
     if (key.name === 'escape') {
+      if (viewMode === 'queue-list') {
+        // 如果正在编辑，先取消编辑
+        if (queueEditingId) {
+          setQueueEditingId(null);
+          queueEditActions.setValue('');
+          return;
+        }
+        setViewMode('chat');
+        return;
+      }
       if (isGenerating) {
         onAbort();
         return;
@@ -136,6 +169,99 @@ export function useAppKeyboard({
         setViewMode('chat');
         return;
       }
+      return;
+    }
+
+    // ── 队列列表视图键盘处理 ──────────────────────────
+    if (viewMode === 'queue-list') {
+      // 队列已空，任意键返回
+      if (queue.length === 0) {
+        setViewMode('chat');
+        return;
+      }
+
+      // 编辑模式
+      if (queueEditingId) {
+        // Ctrl+J / Ctrl+Enter → 插入换行
+        if (key.ctrl && (key.name === 'j' || key.name === 'return' || key.name === 'enter')) {
+          queueEditActions.insert('\n');
+          return;
+        }
+        // Enter → 确认编辑
+        if (!key.ctrl && (key.name === 'enter' || key.name === 'return')) {
+          const trimmed = queueEditState.value.trim();
+          if (trimmed) {
+            queueEdit(queueEditingId, trimmed);
+          }
+          setQueueEditingId(null);
+          queueEditActions.setValue('');
+          return;
+        }
+        // 其余按键全部委托给 useTextInput（光标移动、删除、字符输入等）
+        queueEditActions.handleKey(key);
+        return;
+      }
+
+      // 非编辑模式的键盘处理
+
+      // ↑/↓ 导航选择
+      if (!key.shift && !key.ctrl && key.name === 'up') {
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      if (!key.shift && !key.ctrl && key.name === 'down') {
+        setSelectedIndex((prev) => Math.min(queue.length - 1, prev + 1));
+        return;
+      }
+
+      // Ctrl/Shift+↑/↓ 移动消息位置
+      if ((key.shift || key.ctrl) && key.name === 'up') {
+        const selected = queue[selectedIndex];
+        if (selected && queueMoveUp(selected.id)) {
+          setSelectedIndex((prev) => Math.max(0, prev - 1));
+        }
+        return;
+      }
+      if ((key.shift || key.ctrl) && key.name === 'down') {
+        const selected = queue[selectedIndex];
+        if (selected && queueMoveDown(selected.id)) {
+          setSelectedIndex((prev) => Math.min(queue.length - 1, prev + 1));
+        }
+        return;
+      }
+
+      // e 编辑
+      if (key.name === 'e') {
+        const selected = queue[selectedIndex];
+        if (selected) {
+          setQueueEditingId(selected.id);
+          // 初始化文本输入，光标置于末尾
+          queueEditActions.setValue(selected.text);
+        }
+        return;
+      }
+
+      // d / Delete 删除
+      if (key.name === 'd' || key.name === 'delete') {
+        const selected = queue[selectedIndex];
+        if (selected) {
+          queueRemove(selected.id);
+          setSelectedIndex((prev) => Math.min(prev, queue.length - 2));
+          if (queue.length <= 1) {
+            setViewMode('chat');
+          }
+        }
+        return;
+      }
+
+      // c 清空全部
+      if (key.name === 'c') {
+        queueClear();
+        setViewMode('chat');
+        appendCommandMessage(setMessages, '队列已清空。');
+        return;
+      }
+
       return;
     }
 
