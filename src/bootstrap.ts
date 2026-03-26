@@ -48,7 +48,7 @@ import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } fro
 import type { PlatformRegistry } from './platforms/registry';
 import { PluginEventBus } from './plugins/event-bus';
 import { patchMethod, patchPrototype } from './plugins/patch';
-import type { IrisAPI } from './plugins/types';
+import type { IrisAPI, InlinePluginEntry } from './plugins/types';
 
 export interface BootstrapResult {
   backend: Backend;
@@ -84,6 +84,8 @@ export interface BootstrapOptions {
   agentName?: string;
   /** Agent 专属路径集（不提供则使用全局默认路径） */
   agentPaths?: AgentPaths;
+  /** 运行时直接注入的内联插件 */
+  inlinePlugins?: InlinePluginEntry[];
 }
 
 export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapResult> {
@@ -95,10 +97,11 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   const extensions = createBootstrapExtensionRegistry();
 
   // ---- 0. 预加载插件 + PreBootstrap 阶段 ----
+  const inlinePlugins = options?.inlinePlugins ?? [];
   let pluginManager: PluginManager | undefined;
-  if (config.plugins?.length) {
+  if (config.plugins?.length || inlinePlugins.length > 0) {
     pluginManager = new PluginManager();
-    await pluginManager.prepareAll(config.plugins, config);
+    await pluginManager.prepareAll(config.plugins ?? [], config, inlinePlugins);
     await pluginManager.runPreBootstrap(config, extensions);
   }
 
@@ -316,10 +319,17 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // 将插件钩子注入 Backend
   const eventBus = new PluginEventBus();
 
-  // 用一个可变引用存放 registerWebRoute，以便在 WebPlatform 创建后绑定到 IrisAPI
-  const irisApiRef: Partial<IrisAPI> = {};
+  // 记录插件注册的 Web 路由；若 WebPlatform 尚未创建，先缓存，绑定后统一补注册。
+  const webRouteRegistrations: Array<{ method: string; path: string; handler: (req: any, res: any, params: Record<string, string>) => Promise<void> }> = [];
+  let webRouteRegistrar: ((method: string, path: string, handler: any) => void) | undefined;
+  const registerDeferredWebRoute = (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => {
+    const record = { method: method.toUpperCase(), path, handler };
+    webRouteRegistrations.push(record);
+    webRouteRegistrar?.(record.method, record.path, record.handler);
+  };
   const bindWebRouteRegistration = (register: (method: string, path: string, handler: any) => void) => {
-    irisApiRef.registerWebRoute = register;
+    webRouteRegistrar = register;
+    for (const route of webRouteRegistrations) register(route.method, route.path, route.handler);
   };
 
   if (pluginManager && pluginManager.size > 0) {
@@ -343,7 +353,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       eventBus,
       patchMethod,
       patchPrototype,
-      get registerWebRoute() { return irisApiRef.registerWebRoute; },
+      registerWebRoute: registerDeferredWebRoute,
     };
     await pluginManager.notifyReady(irisAPI);
   }

@@ -218,6 +218,7 @@ async function runMultiAgent(): Promise<void> {
   // 将所有 agent 注册到共享 WebPlatform
   if (sharedWebPlatform) {
     // 先清空默认的 'default' agent（构造函数创建的）
+    const registerSharedWebRoute = sharedWebPlatform.registerRoute.bind(sharedWebPlatform);
     // 然后逐个添加真正的 agent
     for (const [name, result] of bootstrapCache) {
       const currentModel = result.router.getCurrentModelInfo();
@@ -244,6 +245,7 @@ async function runMultiAgent(): Promise<void> {
         (env?) => { _cuEnv = env; },
         name,
       );
+      result.bindWebRouteRegistration(registerSharedWebRoute);
     }
     allNonConsolePlatforms.push(sharedWebPlatform);
 
@@ -258,11 +260,16 @@ async function runMultiAgent(): Promise<void> {
   }
 
   // 创建其他非 Console/非 Web 平台
-  for (const def of agentDefs) {
-    const result = bootstrapCache.get(def.name)!;
-    const { platforms, platformMap } = await createPlatforms(result, { excludeConsole: true, excludeWeb: true });
-    allNonConsolePlatforms.push(...platforms);
-    // 通知该 Agent 的插件平台已创建完成
+  for (const [name, result] of bootstrapCache) {
+    const platformMap = new Map<string, PlatformAdapter>();
+    if (sharedWebPlatform) {
+      platformMap.set('web', sharedWebPlatform);
+    }
+    if (name !== '__global__') {
+      const created = await createPlatforms(result, { excludeConsole: true, excludeWeb: true });
+      allNonConsolePlatforms.push(...created.platforms);
+      created.platformMap.forEach((platform, type) => platformMap.set(type, platform));
+    }
     if (result.pluginManager) {
       await result.pluginManager.notifyPlatformsReady(platformMap);
     }

@@ -425,7 +425,7 @@ export interface AppConfig {
   /** Computer Use 配置（可选，对应 computer_use.yaml） */
   computerUse?: ComputerUseConfig;
   /** 插件配置（可选，对应 plugins.yaml） */
-  plugins?: Array<{ name: string; type?: 'local' | 'npm'; enabled?: boolean; priority?: number; config?: Record<string, unknown> }>;
+  plugins?: Array<{ name: string; type?: 'local' | 'npm' | 'inline'; enabled?: boolean; priority?: number; config?: Record<string, unknown> }>;
   /** 上下文压缩配置（对应 summary.yaml） */
   summary: SummaryConfig;
 }

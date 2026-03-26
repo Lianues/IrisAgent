@@ -9,6 +9,7 @@ export type {
   PluginContext,
   PluginHook,
   PluginLogger,
+  InlinePluginEntry,
   PluginEntry,
   PluginInfo,
   ToolExecInterception,

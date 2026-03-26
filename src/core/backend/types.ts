@@ -117,6 +117,8 @@ export interface BackendEvents {
   'usage': (sessionId: string, usage: UsageMetadata) => void;
   /** LLM 调用重试（attempt 从 1 开始，maxRetries 为允许的最大重试次数） */
   'retry': (sessionId: string, attempt: number, maxRetries: number, error: string) => void;
+  /** 用户输入折算后的 token 数（估算值） */
+  'user:token': (sessionId: string, tokenCount: number) => void;
   /** 当前用户回合完成（统一耗时来源） */
   'done': (sessionId: string, durationMs: number) => void;
   /** 一轮模型输出完成后的完整内容（结构化） */

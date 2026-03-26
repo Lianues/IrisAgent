@@ -16,7 +16,7 @@ import type { PromptAssembler } from '../prompt/assembler';
 import type { AppConfig } from '../config/types';
 import type { LLMRouter } from '../llm/router';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
-import type { IrisPlugin, PluginEntry, PluginHook, PluginInfo, LoadedPlugin, IrisAPI } from './types';
+import type { IrisPlugin, PluginEntry, InlinePluginEntry, PluginHook, PluginInfo, LoadedPlugin, IrisAPI } from './types';
 import { PluginContextImpl } from './context';
 import { PreBootstrapContextImpl } from './prebootstrap-context';
 import type { PlatformAdapter } from '../platforms/base';
@@ -46,7 +46,7 @@ export class PluginManager {
    * 预加载所有配置中启用的插件。
    * 在 bootstrap 中调用，位于配置解析之后、核心对象创建之前。
    */
-  async prepareAll(entries: PluginEntry[], appConfig: AppConfig): Promise<void> {
+  async prepareAll(entries: PluginEntry[], _appConfig: AppConfig, inlineEntries: InlinePluginEntry[] = []): Promise<void> {
     this.prepared = [];
 
     for (const entry of byPriorityDesc(entries)) {
@@ -63,6 +63,27 @@ export class PluginManager {
         logger.error(`插件 "${entry.name}" 预加载失败:`, err);
       }
     }
+
+    for (const inlineEntry of byPriorityDesc(inlineEntries)) {
+      const pluginName = inlineEntry.plugin?.name || '<inline>';
+      if (inlineEntry.enabled === false) {
+        logger.info(`内联插件 "${pluginName}" 已禁用，跳过`);
+        continue;
+      }
+
+      try {
+        this.validatePlugin(inlineEntry.plugin, pluginName);
+        this.prepared.push({
+          entry: { name: inlineEntry.plugin.name, type: 'inline', enabled: true, priority: inlineEntry.priority, config: inlineEntry.config },
+          plugin: inlineEntry.plugin,
+          pluginConfig: inlineEntry.config,
+        });
+      } catch (err) {
+        logger.error(`内联插件 "${pluginName}" 预加载失败:`, err);
+      }
+    }
+
+    this.prepared.sort((a, b) => (b.entry.priority ?? 0) - (a.entry.priority ?? 0));
 
     const loaded = this.prepared.length;
     if (loaded > 0) {
@@ -123,8 +144,9 @@ export class PluginManager {
     entries: PluginEntry[],
     internals: { tools: ToolRegistry; modes: ModeRegistry; prompt: PromptAssembler; router: LLMRouter },
     appConfig: AppConfig,
+    inlineEntries: InlinePluginEntry[] = [],
   ): Promise<void> {
-    await this.prepareAll(entries, appConfig);
+    await this.prepareAll(entries, appConfig, inlineEntries);
     await this.activateAll(internals, appConfig);
   }
 

@@ -21,6 +21,7 @@
 - 平台创建后回调（onPlatformsReady）——可 patchMethod 修改任意平台行为
 - 向 Web 平台注册自定义 HTTP 路由
 - 插件间通信（共享事件总线 + 插件管理器引用）
+- 运行时直接注入内联插件（inline plugin）
 - 通过 Backend EventEmitter 发射和监听自定义事件
 
 ## 文件结构
@@ -86,6 +87,59 @@ plugins:
 
 ---
 
+配置合并规则：
+
+1. 若本地插件目录下存在 `config.yaml`，先读取它作为基础配置
+2. 再用 `plugins.yaml` 中该插件条目的 `config` 覆盖同名字段
+3. 当前实现是**浅合并**，不是深度合并
+
+例如：
+
+```yaml
+# ~/.iris/plugins/demo/config.yaml
+http:
+  timeout: 3000
+  headers:
+    x-token: a
+```
+
+```yaml
+# ~/.iris/configs/plugins.yaml
+plugins:
+  - name: demo
+    config:
+      http:
+        timeout: 5000
+```
+
+最终 `http.headers` 不会保留，而是整个 `http` 对象被替换为 `{ timeout: 5000 }`。
+
+### 内联插件（runtime inline plugin）
+
+除 `local` 和 `npm` 外，插件系统还支持**运行时直接注入**的内联插件。它不从 `plugins.yaml` 读取，而是在调用 `bootstrap()` 时通过 `inlinePlugins` 传入。`PluginInfo.type` 中的 `inline` 就表示这种来源。
+
+```typescript
+const inlinePlugin: IrisPlugin = {
+  name: 'runtime-audit',
+  version: '1.0.0',
+  activate(ctx) {
+    ctx.getLogger().info('inline plugin loaded');
+  },
+};
+
+await bootstrap({
+  inlinePlugins: [
+    {
+      plugin: inlinePlugin,
+      priority: 100,
+      config: { enabledRules: ['shell-audit'] },
+    },
+  ],
+});
+```
+
+---
+
 ## 插件接口：IrisPlugin
 
 ```typescript
@@ -119,6 +173,9 @@ interface PreBootstrapContext {
   registerMemoryProvider(type: string, factory: MemoryFactory): void;
   registerOCRProvider(name: string, factory: OCRFactory): void;
   registerPlatform(name: string, factory: PlatformFactory): void;
+  getExtensions(): BootstrapExtensionRegistry;
+  getLogger(tag?: string): PluginLogger;
+  getPluginConfig<T = Record<string, unknown>>(): T | undefined;
 }
 ```
 
@@ -155,6 +212,50 @@ plugin.preBootstrap = (ctx) => {
   });
 };
 ```
+
+### 获取底层扩展注册表：getExtensions()
+
+如果便捷方法还不够，可以通过 `getExtensions()` 直接拿到完整的 `BootstrapExtensionRegistry`。
+
+```typescript
+plugin.preBootstrap = (ctx) => {
+  const extensions = ctx.getExtensions();
+
+  // 查看当前已注册的 LLM provider
+  const names = extensions.llmProviders.list();
+
+  // 判断某个 provider 是否存在
+  if (extensions.llmProviders.has('gemini')) {
+    const geminiFactory = extensions.llmProviders.get('gemini');
+    // 可以基于旧工厂包装出一个新工厂
+  }
+
+  // 移除一个已注册的 provider
+  extensions.llmProviders.unregister('legacy-provider');
+};
+```
+
+几个注册表的通用方法如下：
+
+| 方法 | 说明 |
+|------|------|
+| `register(name, factory)` | 注册工厂 |
+| `unregister(name)` | 移除工厂 |
+| `get(name)` | 获取工厂 |
+| `has(name)` | 判断是否存在 |
+| `list()` | 列出所有已注册名称 |
+
+其中：
+
+- `llmProviders` / `storageProviders` / `memoryProviders` / `ocrProviders` 使用同一套命名工厂注册表
+- `platforms` 是 `PlatformRegistry`，也支持 `register / unregister / get / has / list`
+
+### PreBootstrap 阶段的日志与配置
+
+`PreBootstrapContext` 也支持：
+
+- `getLogger(tag?)`：获取插件日志器
+- `getPluginConfig()`：读取插件配置（本地 `config.yaml` 与 `plugins.yaml` 中 `config` 的合并结果；内联插件则读取运行时传入的 `config`）
 
 ---
 
@@ -268,7 +369,7 @@ ctx.wrapTool('write_file', async (original, args) => {
 
 ## 钩子系统
 
-通过 `ctx.addHook()` 注册。当前提供七个钩子点。每个 hook 可带 `priority`，数值越大越先执行：
+通过 `ctx.addHook()` 注册。当前提供八个钩子点。每个 hook 可带 `priority`，数值越大越先执行：
 
 ### onBeforeChat
 
@@ -459,7 +560,7 @@ interface IrisAPI {
   eventBus: PluginEventBus;           // 插件间共享事件总线
   patchMethod: typeof patchMethod;    // 安全替换对象方法
   patchPrototype: typeof patchPrototype; // 安全替换类原型方法
-  registerWebRoute?: (method, path, handler) => void; // 向 Web 平台注册路由
+  registerWebRoute?: (method, path, handler) => void; // 向 Web 平台注册路由；若 Web 尚未创建会先排队，绑定后自动注册
 }
 ```
 
@@ -495,6 +596,34 @@ ctx.onReady((api) => {
 ```
 
 通过 `IrisAPI`，插件可以做到任何事情：监听事件、调用方法、读写存储、切换模型、注册新模型、修改提示词、访问 MCP / OCR / Computer Use 运行时对象，也可以继续查看和修改启动扩展注册表。
+
+## Backend 事件参考
+
+`api.backend` 继承自 `EventEmitter`。插件可以通过 `on / off / once` 监听内部事件。
+
+| 事件名 | 参数 | 说明 |
+|------|------|------|
+| `response` | `(sessionId, text)` | 非流式最终回复 |
+| `stream:start` | `(sessionId)` | 流式输出开始 |
+| `stream:parts` | `(sessionId, parts)` | 流式结构化 part 增量 |
+| `stream:chunk` | `(sessionId, chunk)` | 流式文本块 |
+| `stream:end` | `(sessionId, usage?)` | 流式输出结束 |
+| `tool:update` | `(sessionId, invocations)` | 工具状态变化 |
+| `error` | `(sessionId, error)` | 当前回合出错 |
+| `usage` | `(sessionId, usage)` | LLM token 用量 |
+| `retry` | `(sessionId, attempt, maxRetries, error)` | LLM 调用重试 |
+| `user:token` | `(sessionId, tokenCount)` | 用户输入的估算 token 数 |
+| `done` | `(sessionId, durationMs)` | 当前回合结束 |
+| `assistant:content` | `(sessionId, content)` | 一轮模型输出完成后的完整结构化内容 |
+| `auto-compact` | `(sessionId, summaryText)` | 自动上下文压缩完成 |
+| `attachments` | `(sessionId, attachments)` | 工具执行产生的附件 |
+
+其中最常用的是：
+
+- `tool:update`：观察工具执行进度
+- `assistant:content`：拿到最终结构化内容
+- `usage` / `user:token`：做统计或计费
+- `done` / `error`：做回合级审计
 
 ---
 
@@ -586,7 +715,9 @@ ctx.onReady((api) => {
 
 ## 自定义 Web HTTP 路由
 
-在 Web 平台运行时，插件可以注册自定义 HTTP 端点。`registerWebRoute` 在 WebPlatform 创建后才可用。
+在 Web 平台运行时，插件可以注册自定义 HTTP 端点。
+
+现在可以直接在 `onReady()` 中调用 `registerWebRoute`。如果 WebPlatform 尚未创建，插件注册的路由会先进入队列，等 Web 平台绑定完成后自动补注册。也可以在 `onPlatformsReady()` 中调用，它会立即生效。
 
 ```typescript
 ctx.onReady((api) => {
@@ -605,6 +736,11 @@ ctx.onReady((api) => {
   }
 });
 ```
+
+多 Agent 模式下，Web 平台是共享的，自定义路由也处于同一个全局命名空间。建议插件统一使用唯一前缀，例如：
+
+- `/api/plugins/security-guard/...`
+- `/api/plugins/acme-rag/...`
 
 ---
 
@@ -690,7 +826,7 @@ Backend.chat()
 bootstrap()
   │
   ├─→ 解析配置
-  ├─→ [PluginManager.prepareAll()]    ← 预加载插件
+  ├─→ [PluginManager.prepareAll()]    ← 预加载本地 / npm / 内联插件
   ├─→ [plugin.preBootstrap()]         ← 修改配置 / 注册 Provider / 注册平台
   ├─→ 创建 LLM Router
   ├─→ 创建 Storage / Memory / OCR
@@ -715,7 +851,7 @@ bootstrap()
   返回 BootstrapResult
       │
       ├─→ 创建平台
-      │     ├─→ WebPlatform → 绑定 registerWebRoute 到 IrisAPI
+      │     ├─→ WebPlatform → 绑定 registerWebRoute，并补注册之前排队的路由
       │     └─→ ...
       │
       ├─→ [PluginManager.notifyPlatformsReady()]  ← 插件 onPlatformsReady 回调
@@ -855,14 +991,19 @@ plugins:
 
 ## 注意事项
 
+- `preBootstrap` / `activate` / `onReady` / `onPlatformsReady` 抛出的错误都会被捕获并记录，不会让整个系统直接崩溃
 - 插件 handler 抛出的错误会被 ToolLoop 捕获，不会崩溃
 - 钩子中抛出的错误会被捕获并记录日志，不会中断流程
 - `onBeforeToolExec` 拦截器中抛出的错误不会阻止工具执行
 - `onAfterToolExec` / `onBeforeLLMCall` / `onAfterLLMCall` 钩子抛错时也不会中断主流程
 - 插件注册的工具名不应与内置工具或 MCP 工具重名，否则会覆盖
+- 插件优先级对 `prepareAll`、`preBootstrap`、`activate`、`onReady`、`onPlatformsReady` 与 hook 链都生效；数值越大越先执行
 - `wrapTool` 是永久修改，不可撤销
 - `patchMethod` 返回 dispose 函数，可以恢复原始方法
 - `patchPrototype` 影响类的所有实例，请谨慎使用
-- `registerWebRoute` 仅在 Web 平台运行时可用，使用前需检查是否为 undefined
+- `registerWebRoute` 只在启用了 Web 平台时才会真正生效；如果在 `onReady` 时平台尚未创建，系统会先缓存，等 Web 平台创建后自动补注册
+- 多 Agent 模式下，自定义 Web 路由共享同一个路由表，请主动使用唯一前缀，避免冲突
 - `onReady` 回调在 `activate()` 之后执行，此时所有插件已加载完成
+- `PluginInfo.type` 中的 `inline` 表示运行时注入插件，不是 `plugins.yaml` 中可填写的 `type` 值
+- `plugins.yaml` 中 `config` 与插件目录 `config.yaml` 之间是浅合并，不是深合并
 - 插件通过 `PluginContext` 和 `IrisAPI` 可以做到任何事情，包括替换内部方法、注册命令、注册路由、发射自定义事件。请确保插件代码可信

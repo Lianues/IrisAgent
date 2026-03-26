@@ -117,7 +117,7 @@ export interface IrisAPI {
   patchMethod: typeof import('./patch').patchMethod;
   /** 替换类原型上的方法，影响所有实例 */
   patchPrototype: typeof import('./patch').patchPrototype;
-  /** 向 Web 平台注册自定义 HTTP 路由（仅 Web 平台运行时可用） */
+  /** 向 Web 平台注册自定义 HTTP 路由。若 Web 平台尚未创建，将在绑定后自动补注册。 */
   registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => void;
 }
 
@@ -388,10 +388,22 @@ export interface PluginLogger {
 /** 插件配置条目（对应 plugins.yaml 中的一项） */
 export interface PluginEntry {
   name: string;
-  type?: 'local' | 'npm';
+  type?: 'local' | 'npm' | 'inline';
   enabled?: boolean;
   /** 插件优先级。数值越大越先加载、越先执行。默认 0。 */
   priority?: number;
+  config?: Record<string, unknown>;
+}
+
+/** 运行时直接注入的内联插件 */
+export interface InlinePluginEntry {
+  /** 插件对象本身 */
+  plugin: IrisPlugin;
+  /** 是否启用，默认 true */
+  enabled?: boolean;
+  /** 优先级。数值越大越先执行。默认 0。 */
+  priority?: number;
+  /** 运行时传入的插件配置 */
   config?: Record<string, unknown>;
 }
 

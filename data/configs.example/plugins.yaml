@@ -13,6 +13,14 @@
 #   - 数值越大越先执行
 #   - 影响 preBootstrap、activate、hook 链执行顺序
 #
+# config:
+#   - 会与插件目录中的 config.yaml 做浅合并
+#   - 同名字段以这里的值为准
+#
+# inline 插件：
+#   - 只支持在运行时通过 bootstrap({ inlinePlugins }) 注入
+#   - 不能在 plugins.yaml 中直接声明
+#
 # 插件目录结构：
 #   ~/.iris/plugins/
 #     my-plugin/
