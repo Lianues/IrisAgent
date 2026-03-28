@@ -71,7 +71,7 @@ RUN bun run script/build.ts --single
 FROM node:22-slim AS production
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends tini libvips42 && \
+    apt-get install -y --no-install-recommends tini && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     groupadd -g 1000 iris && \
     useradd -u 1000 -g iris -m -s /bin/sh iris

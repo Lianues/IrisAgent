@@ -292,7 +292,7 @@ jobs:
         id: version
         run: echo "tag=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      # Production image (Node 22 Alpine, ~300 MB)
+      # Production image (Node 22 Debian slim)
       - name: Build & push production image
         uses: docker/build-push-action@v6
         with:
@@ -306,7 +306,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Computer Use image (Ubuntu + Playwright, ~800 MB)
+      # Computer Use image (Ubuntu + Playwright)
       - name: Build & push computer-use image
         uses: docker/build-push-action@v6
         with:
