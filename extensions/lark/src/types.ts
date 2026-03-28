@@ -1,3 +1,13 @@
+import type {
+  DocumentInput as SDKDocumentInput,
+  ImageInput as SDKImageInput,
+  IrisBackendLike as SDKIrisBackendLike,
+  IrisModelInfoLike as SDKIrisModelInfoLike,
+  IrisPlatformFactoryContextLike as SDKIrisPlatformFactoryContextLike,
+  IrisSessionMetaLike as SDKIrisSessionMetaLike,
+  IrisToolInvocationLike as SDKIrisToolInvocationLike,
+} from '@iris/extension-sdk';
+
 export interface LarkConfig {
   appId: string;
   appSecret: string;
@@ -192,59 +202,10 @@ export interface LarkSendMediaOptions {
   replyInThread?: boolean;
 }
 
-export interface ImageInputLike {
-  mimeType: string;
-  data: string;
-}
-
-export interface DocumentInputLike {
-  fileName: string;
-  mimeType: string;
-  data: string;
-}
-
-export interface IrisModelInfoLike {
-  current?: boolean;
-  modelName: string;
-  modelId: string;
-}
-
-export interface IrisSessionMetaLike {
-  id: string;
-  title?: string;
-  updatedAt?: string | number | Date;
-}
-
-export interface IrisToolInvocationLike {
-  id: string;
-  toolName: string;
-  status: string;
-  args: Record<string, unknown>;
-  createdAt: number;
-}
-
-export interface IrisBackendLike {
-  on(event: string, listener: (...args: any[]) => void): this;
-  chat(sessionId: string, text: string, images?: ImageInputLike[], documents?: DocumentInputLike[], platform?: string): Promise<unknown>;
-  isStreamEnabled(): boolean;
-  approveTool?(id: string, approved: boolean): void;
-  clearSession?(sessionId: string): Promise<void>;
-  switchModel?(modelName: string, platform?: string): { modelName: string; modelId: string };
-  listModels?(): IrisModelInfoLike[];
-  listSessionMetas?(): Promise<IrisSessionMetaLike[]>;
-  abortChat?(sessionId: string): void;
-  undo?(sessionId: string, scope: string): Promise<{ assistantText?: string } | null>;
-  redo?(sessionId: string): Promise<{ assistantText?: string } | null>;
-}
-
-export interface IrisPlatformFactoryContextLike {
-  backend: IrisBackendLike;
-  config?: {
-    platform?: {
-      lark?: Partial<LarkConfig>;
-      [key: string]: unknown;
-    };
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
+export type ImageInputLike = SDKImageInput;
+export type DocumentInputLike = SDKDocumentInput;
+export type IrisModelInfoLike = SDKIrisModelInfoLike;
+export type IrisSessionMetaLike = SDKIrisSessionMetaLike;
+export type IrisToolInvocationLike = SDKIrisToolInvocationLike;
+export type IrisBackendLike = SDKIrisBackendLike;
+export type IrisPlatformFactoryContextLike = SDKIrisPlatformFactoryContextLike;

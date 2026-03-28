@@ -5,6 +5,8 @@
  * 目的：为后续把单文件适配器拆分成多模块做准备，避免状态结构继续散落在 index.ts 中。
  */
 
+import type { PairingConfig } from '@iris/extension-sdk/pairing';
+
 export const TELEGRAM_MESSAGE_MAX_LENGTH = 4096;
 
 export interface TelegramConfig {
@@ -17,7 +19,7 @@ export interface TelegramConfig {
   /** 群聊中是否要求显式 @ 机器人后才响应，默认 true。 */
   groupMentionRequired?: boolean;
   /** 对码配置（从全局配置与分平台覆盖合并后传入） */
-  pairing?: import('../../../src/platforms/pairing/types').PairingConfig;
+  pairing?: PairingConfig;
 }
 
 export interface TelegramPhotoRef {

@@ -5,11 +5,14 @@
 当前阶段的约定如下：
 
 1. `plugin` 与原先的 `channel` 都统一收敛到 extension 概念下。
-2. 平台 extension 的运行时入口应指向自包含产物（例如 `dist/index.mjs`），不应依赖 Iris 内部源码路径，也不应依赖项目根目录 `node_modules`。
+2. 平台 extension 的运行时入口应指向自包含产物（例如 `dist/index.mjs`），不应依赖 Iris 内部源码路径。
 3. 运行时只扫描本地 extension 目录；安装命令会把远程仓库中的 `extensions/<folder>/` 下载到本地。
 4. 源码运行时会扫描仓库根目录 `./extensions/`，也会扫描用户目录 `~/.iris/extensions/`。
 5. 不再需要维护 `extensions/registry.json`。
 6. 发行包内嵌哪些 extension，由 `extensions/embedded.json` 控制。
+7. extension 与宿主之间的公共边界，统一通过 `packages/extension-sdk/` 暴露。
+8. extension 自己使用的第三方依赖，必须声明在 extension 自己的 `package.json` 中。
+9. 外部 extension 建议放在独立仓库维护，并保留自己的锁文件；不要再假设会复用宿主仓库根目录的依赖树。
 
 ## 仓库内示例
 
@@ -27,6 +30,24 @@
 ## embedded.json
 
 `extensions/embedded.json` 是发行包内嵌 extension 的白名单。只有这个文件里列出的 extension，才会在 `script/build.ts` 中被预先打包，并复制进最终产物的 `extensions/` 目录。当前内嵌的是 `lark` 和 `telegram`；`discord`、`qq`、`wxwork` 和 `weixin` 不在白名单内，属于可选 extension。
+
+## SDK 与依赖边界
+
+extension 开发应遵守下面几条：
+
+- 公共类型、`PlatformAdapter`、`splitText`、logger、pairing 等能力，统一从 `@iris/extension-sdk` 获取。
+- 不要再直接 import 宿主内部源码，例如：`../../../src/core/backend`、`../../../src/types`、`../../../src/platforms/pairing`。
+- extension 使用到的第三方库，必须写到 extension 自己的 `package.json`。
+- 如果 extension 单独放在外部仓库，应在那个仓库里维护 `package-lock.json` / `bun.lock` / `pnpm-lock.yaml`。
+
+当前仓库内置的 SDK 源码位于：
+
+- `packages/extension-sdk/`
+
+仓库测试会检查两件事：
+
+- extension 源码不能直接 import 宿主 `src/**`
+- extension 使用到的第三方依赖必须在自己的 `package.json` 中声明
 
 ## manifest.json 结构
 

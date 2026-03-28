@@ -10,16 +10,15 @@
  * 让 LLM 能"看到"图片和"读取"文件内容。
  */
 
+import { createExtensionLogger, type DocumentInput, type ImageInput } from '@iris/extension-sdk';
 import type { TelegramClient } from './client';
-import type { ImageInput, DocumentInput } from '../../../src/core/backend';
-import { createLogger } from './logger';
 import type {
   TelegramPhotoRef,
   TelegramDocumentRef,
   TelegramVoiceRef,
 } from './types';
 
-const logger = createLogger('TelegramMedia');
+const logger = createExtensionLogger('TelegramExtension', 'TelegramMedia');
 
 export class TelegramMediaService {
   /**

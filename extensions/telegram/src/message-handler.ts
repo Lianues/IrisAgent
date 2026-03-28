@@ -7,7 +7,7 @@
  */
 
 import type { Context } from 'grammy';
-import { createLogger } from './logger';
+import { createExtensionLogger } from '@iris/extension-sdk';
 import {
   ParsedTelegramMessage,
   TelegramConfig,
@@ -18,7 +18,7 @@ import {
   buildTelegramSessionTarget,
 } from './types';
 
-const logger = createLogger('TelegramMessageHandler');
+const logger = createExtensionLogger('TelegramExtension', 'TelegramMessageHandler');
 
 type TelegramEntityLike = { type?: string; offset?: number; length?: number };
 type TelegramPhotoLike = {

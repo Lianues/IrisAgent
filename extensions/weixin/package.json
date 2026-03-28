@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm"
+  },
+  "optionalDependencies": {
+    "silk-wasm": "^3.7.1"
   }
 }

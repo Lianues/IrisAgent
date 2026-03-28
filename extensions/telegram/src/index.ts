@@ -8,34 +8,16 @@
  *   - 并发控制：ChatState + busy 锁 + pendingMessages 缓冲。
  */
 
-import { PlatformAdapter } from './base';
-import type { ImageInput, DocumentInput } from '../../../src/core/backend';
-import { createLogger } from './logger';
-import { PairingGuard, PairingStore } from '../../../src/platforms/pairing';
+import { PairingGuard, PairingStore } from '@iris/extension-sdk/pairing';
+import { PlatformAdapter, createExtensionLogger, getPlatformConfig, type DocumentInput, type ImageInput, type IrisBackendLike, type IrisPlatformFactoryContextLike, type ToolAttachment } from '@iris/extension-sdk';
 import { TelegramClient } from './client';
 import { TelegramCommandRouter } from './commands';
 import { TelegramMediaService } from './media';
 import { TelegramMessageBuilder, formatTelegramToolLine } from './message-builder';
 import { TelegramMessageHandler } from './message-handler';
-import {
-  ParsedTelegramMessage,
-  TelegramConfig,
-  TelegramPendingMessage,
-  TelegramSessionTarget,
-  buildTelegramSessionTarget,
-} from './types';
-import type { ToolAttachment } from '../../../src/types';
+import { ParsedTelegramMessage, TelegramConfig, TelegramPendingMessage, TelegramSessionTarget, buildTelegramSessionTarget } from './types';
 
-interface TelegramPlatformFactoryContextLike {
-  backend: any;
-  config: {
-    platform?: {
-      telegram?: Partial<TelegramConfig>;
-    };
-  };
-}
-
-const logger = createLogger('Telegram');
+const logger = createExtensionLogger('TelegramExtension', 'Telegram');
 
 /** 流式编辑节流间隔（ms）。Telegram 对 editMessageText 有频率限制，1500ms 较安全。 */
 const STREAM_THROTTLE_MS = 1500;
@@ -102,7 +84,7 @@ export class TelegramPlatform extends PlatformAdapter {
   /** Phase 7：去重集合上次清理时间 */
   private lastDedupCleanup = Date.now();
 
-  constructor(private readonly backend: any, private readonly config: TelegramConfig) {
+  constructor(private readonly backend: IrisBackendLike, private readonly config: TelegramConfig) {
     super();
     this.client = new TelegramClient(config);
     this.messageHandler = new TelegramMessageHandler(config);
@@ -962,8 +944,8 @@ function hasTelegramUnsupportedMedia(message: ParsedTelegramMessage): boolean {
   return Boolean(message.photo || message.document || message.voice || message.audio);
 }
 
-function resolveTelegramConfigFromContext(context: TelegramPlatformFactoryContextLike): TelegramConfig {
-  const telegram = context.config.platform?.telegram ?? {};
+function resolveTelegramConfigFromContext(context: IrisPlatformFactoryContextLike): TelegramConfig {
+  const telegram = getPlatformConfig<TelegramConfig>(context, 'telegram');
   return {
     token: telegram.token ?? '',
     showToolStatus: telegram.showToolStatus,
@@ -972,7 +954,7 @@ function resolveTelegramConfigFromContext(context: TelegramPlatformFactoryContex
   };
 }
 
-export function createTelegramPlatform(context: TelegramPlatformFactoryContextLike): TelegramPlatform {
+export function createTelegramPlatform(context: IrisPlatformFactoryContextLike): TelegramPlatform {
   return new TelegramPlatform(context.backend, resolveTelegramConfigFromContext(context));
 }
 

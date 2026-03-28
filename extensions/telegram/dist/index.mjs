@@ -4420,7 +4420,7 @@ var require_lib2 = __commonJS((exports, module) => {
     let accum = [];
     let accumBytes = 0;
     let abort = false;
-    return new Body.Promise(function(resolve2, reject) {
+    return new Body.Promise(function(resolve, reject) {
       let resTimeout;
       if (_this4.timeout) {
         resTimeout = setTimeout(function() {
@@ -4454,7 +4454,7 @@ var require_lib2 = __commonJS((exports, module) => {
         }
         clearTimeout(resTimeout);
         try {
-          resolve2(Buffer.concat(accum, accumBytes));
+          resolve(Buffer.concat(accum, accumBytes));
         } catch (err) {
           reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
         }
@@ -5053,7 +5053,7 @@ var require_lib2 = __commonJS((exports, module) => {
       throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
     }
     Body.Promise = fetch2.Promise;
-    return new fetch2.Promise(function(resolve2, reject) {
+    return new fetch2.Promise(function(resolve, reject) {
       const request = new Request(url, opts);
       const options = getNodeRequestOptions(request);
       const send = (options.protocol === "https:" ? https : http).request;
@@ -5188,7 +5188,7 @@ var require_lib2 = __commonJS((exports, module) => {
                 requestOpts.body = undefined;
                 requestOpts.headers.delete("content-length");
               }
-              resolve2(fetch2(new Request(locationURL, requestOpts)));
+              resolve(fetch2(new Request(locationURL, requestOpts)));
               finalize();
               return;
           }
@@ -5210,7 +5210,7 @@ var require_lib2 = __commonJS((exports, module) => {
         const codings = headers.get("Content-Encoding");
         if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
           response = new Response2(body, response_options);
-          resolve2(response);
+          resolve(response);
           return;
         }
         const zlibOptions = {
@@ -5220,7 +5220,7 @@ var require_lib2 = __commonJS((exports, module) => {
         if (codings == "gzip" || codings == "x-gzip") {
           body = body.pipe(zlib.createGunzip(zlibOptions));
           response = new Response2(body, response_options);
-          resolve2(response);
+          resolve(response);
           return;
         }
         if (codings == "deflate" || codings == "x-deflate") {
@@ -5232,12 +5232,12 @@ var require_lib2 = __commonJS((exports, module) => {
               body = body.pipe(zlib.createInflateRaw());
             }
             response = new Response2(body, response_options);
-            resolve2(response);
+            resolve(response);
           });
           raw.on("end", function() {
             if (!response) {
               response = new Response2(body, response_options);
-              resolve2(response);
+              resolve(response);
             }
           });
           return;
@@ -5245,11 +5245,11 @@ var require_lib2 = __commonJS((exports, module) => {
         if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
           body = body.pipe(zlib.createBrotliDecompress());
           response = new Response2(body, response_options);
-          resolve2(response);
+          resolve(response);
           return;
         }
         response = new Response2(body, response_options);
-        resolve2(response);
+        resolve(response);
       });
       writeToStream(req, request);
     });
@@ -8193,7 +8193,7 @@ var require_frameworks = __commonJS((exports) => {
       end: () => resolveResponse({ status: 204 }),
       respond: (json) => resolveResponse({ jsonBody: json }),
       unauthorized: () => resolveResponse({ status: 401, body: WRONG_TOKEN_ERROR }),
-      handlerReturn: new Promise((resolve2) => resolveResponse = resolve2)
+      handlerReturn: new Promise((resolve) => resolveResponse = resolve)
     };
   };
   var bun = (request) => {
@@ -8217,8 +8217,8 @@ var require_frameworks = __commonJS((exports) => {
   };
   var cloudflare = (event) => {
     let resolveResponse;
-    event.respondWith(new Promise((resolve2) => {
-      resolveResponse = resolve2;
+    event.respondWith(new Promise((resolve) => {
+      resolveResponse = resolve;
     }));
     return {
       get update() {
@@ -8302,12 +8302,12 @@ var require_frameworks = __commonJS((exports) => {
     const secretHeaderFromRequest = req.headers[SECRET_HEADER_LOWERCASE];
     return {
       get update() {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve, reject) => {
           const chunks = [];
           req.on("data", (chunk) => chunks.push(chunk)).once("end", () => {
             const raw = Buffer.concat(chunks).toString("utf-8");
             try {
-              resolve2(JSON.parse(raw));
+              resolve(JSON.parse(raw));
             } catch (err) {
               reject(err);
             }
@@ -8554,7 +8554,7 @@ var require_webhook = __commonJS((exports) => {
   function timeoutIfNecessary(task, onTimeout, timeout) {
     if (timeout === Infinity)
       return task;
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve, reject) => {
       const handle = setTimeout(() => {
         debugErr(`Request timed out after ${timeout} ms`);
         if (onTimeout === "throw") {
@@ -8562,7 +8562,7 @@ var require_webhook = __commonJS((exports) => {
         } else {
           if (typeof onTimeout === "function")
             onTimeout();
-          resolve2();
+          resolve();
         }
         const now = Date.now();
         task.finally(() => {
@@ -8570,7 +8570,7 @@ var require_webhook = __commonJS((exports) => {
           debugErr(`Request completed ${diff} ms after timeout!`);
         });
       }, timeout);
-      task.then(resolve2).catch(reject).finally(() => clearTimeout(handle));
+      task.then(resolve).catch(reject).finally(() => clearTimeout(handle));
     });
   }
 });
@@ -8641,48 +8641,7 @@ var require_mod = __commonJS((exports) => {
   } });
 });
 
-// extensions/telegram/src/base.ts
-function splitText(text, maxLen) {
-  if (text.length <= maxLen)
-    return [text];
-  const chunks = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf(`
-`, maxLen);
-    if (splitAt <= 0)
-      splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, "");
-  }
-  return chunks;
-}
-
-class PlatformAdapter {
-  get name() {
-    return this.constructor.name;
-  }
-}
-
-// extensions/telegram/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[TelegramExtension:${tag}]`, ...args);
-}
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
-  };
-}
-
-// src/platforms/pairing/code-gen.ts
+// packages/extension-sdk/src/pairing/code-gen.ts
 var CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generatePairingCode(length = 6) {
   let code = "";
@@ -8692,7 +8651,7 @@ function generatePairingCode(length = 6) {
   return code;
 }
 
-// src/platforms/pairing/guard.ts
+// packages/extension-sdk/src/pairing/guard.ts
 class PairingGuard {
   platform;
   config;
@@ -8714,7 +8673,7 @@ class PairingGuard {
       return { allowed: true };
     }
     const allowlist = this.store.loadAllowlist();
-    if (allowlist.some((u) => u.platform === this.platform && u.userId === userId)) {
+    if (allowlist.some((user) => user.platform === this.platform && user.userId === userId)) {
       return { allowed: true };
     }
     const admin = this.store.loadAdmin();
@@ -8731,10 +8690,10 @@ class PairingGuard {
     }
     const inputCode = messageText.trim().toUpperCase();
     const pending = this.store.loadPending();
-    const matchIndex = pending.findIndex((p) => p.code.toUpperCase() === inputCode);
+    const matchIndex = pending.findIndex((item) => item.code.toUpperCase() === inputCode);
     if (matchIndex !== -1) {
-      const p = pending[matchIndex];
-      if (p.platform === "*" && p.userId === "*") {
+      const matched = pending[matchIndex];
+      if (matched.platform === "*" && matched.userId === "*") {
         const newAdmin = {
           platform: this.platform,
           userId,
@@ -8777,9 +8736,9 @@ class PairingGuard {
   generateInviteCode() {
     const code = generatePairingCode();
     const pending = this.store.loadPending();
-    const platformPending = pending.filter((p) => p.platform !== "*");
+    const platformPending = pending.filter((item) => item.platform !== "*");
     if (platformPending.length >= 5) {
-      const oldestIndex = pending.findIndex((p) => p.platform !== "*");
+      const oldestIndex = pending.findIndex((item) => item.platform !== "*");
       if (oldestIndex !== -1)
         pending.splice(oldestIndex, 1);
     }
@@ -8811,9 +8770,9 @@ class PairingGuard {
   }
   removeUser(targetPlatform, targetUserId) {
     let allowlist = this.store.loadAllowlist();
-    const initialLen = allowlist.length;
-    allowlist = allowlist.filter((u) => !(u.platform === targetPlatform && u.userId === targetUserId));
-    if (allowlist.length !== initialLen) {
+    const initialLength = allowlist.length;
+    allowlist = allowlist.filter((user) => !(user.platform === targetPlatform && user.userId === targetUserId));
+    if (allowlist.length !== initialLength) {
       this.store.saveAllowlist(allowlist);
       return true;
     }
@@ -8821,7 +8780,7 @@ class PairingGuard {
   }
   addUserToAllowlist(userId, userName) {
     const allowlist = this.store.loadAllowlist();
-    if (!allowlist.some((u) => u.platform === this.platform && u.userId === userId)) {
+    if (!allowlist.some((user) => user.platform === this.platform && user.userId === userId)) {
       allowlist.push({
         platform: this.platform,
         userId,
@@ -8834,94 +8793,52 @@ class PairingGuard {
   cleanExpiredPending() {
     const pending = this.store.loadPending();
     const now = Date.now();
-    const filtered = pending.filter((p) => p.expiresAt > now);
+    const filtered = pending.filter((item) => item.expiresAt > now);
     if (filtered.length !== pending.length) {
       this.store.savePending(filtered);
     }
   }
 }
-// src/platforms/pairing/store.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+// packages/extension-sdk/src/pairing/store.ts
+import fs from "node:fs";
+import path2 from "node:path";
 
-// src/paths.ts
-import * as os from "os";
-import * as path from "path";
-import * as fs from "fs";
-import { fileURLToPath } from "url";
-var dataDir = path.resolve(process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
-var configDir = path.join(dataDir, "configs");
-var sessionsDir = path.join(dataDir, "sessions");
-var logsDir = path.join(dataDir, "logs");
-var attachmentsDir = path.join(dataDir, "attachments");
-var sessionDbPath = path.join(dataDir, "iris.db");
-var memoryDbPath = path.join(dataDir, "memory.db");
-var extensionsDir = path.join(dataDir, "extensions");
-var __filename_paths = fileURLToPath(import.meta.url);
-function resolveProjectRoot() {
-  const srcRoot = path.resolve(path.dirname(__filename_paths), "..");
-  if (fs.existsSync(path.join(srcRoot, "data"))) {
-    return srcRoot;
-  }
-  try {
-    const realBinary = fs.realpathSync(process.execPath);
-    const binParent = path.resolve(path.dirname(realBinary), "..");
-    if (fs.existsSync(path.join(binParent, "data"))) {
-      return binParent;
-    }
-  } catch {}
-  return srcRoot;
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
 }
-var projectRoot = resolveProjectRoot();
-var workspaceExtensionsDir = path.join(projectRoot, "extensions");
-var isCompiledBinary = !fs.existsSync(path.join(path.resolve(path.dirname(__filename_paths), ".."), "data"));
-
-// src/logger/index.ts
-var globalLevel = 1 /* INFO */;
-class Logger {
-  prefix;
-  constructor(prefix) {
-    this.prefix = prefix;
-  }
-  debug(...args) {
-    if (globalLevel <= 0 /* DEBUG */) {
-      console.debug(`[${this.prefix}]`, ...args);
-    }
-  }
-  info(...args) {
-    if (globalLevel <= 1 /* INFO */) {
-      console.log(`[${this.prefix}]`, ...args);
-    }
-  }
-  warn(...args) {
-    if (globalLevel <= 2 /* WARN */) {
-      console.warn(`[${this.prefix}]`, ...args);
-    }
-  }
-  error(...args) {
-    if (globalLevel <= 3 /* ERROR */) {
-      console.error(`[${this.prefix}]`, ...args);
-    }
-  }
-}
-function createLogger2(prefix) {
-  return new Logger(prefix);
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
 }
 
-// src/platforms/pairing/store.ts
-var logger = createLogger2("PairingStore");
+// packages/extension-sdk/src/runtime-paths.ts
+import os from "node:os";
+import path from "node:path";
+function resolveDefaultDataDir(customDataDir) {
+  return path.resolve(customDataDir || process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
+}
+
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
 var NEVER_EXPIRE = 253402272000000;
 
 class PairingStore {
   credentialsDir;
   constructor(customDataDir) {
-    this.credentialsDir = path2.join(customDataDir || dataDir, "credentials");
+    this.credentialsDir = path2.join(resolveDefaultDataDir(customDataDir), "credentials");
     try {
-      if (!fs2.existsSync(this.credentialsDir)) {
-        fs2.mkdirSync(this.credentialsDir, { recursive: true });
+      if (!fs.existsSync(this.credentialsDir)) {
+        fs.mkdirSync(this.credentialsDir, { recursive: true });
       }
-    } catch (e) {
-      logger.error("Failed to create credentials directory:", e);
+    } catch (error) {
+      logger.error("Failed to create credentials directory:", error);
     }
   }
   getPath(filename) {
@@ -8929,15 +8846,15 @@ class PairingStore {
   }
   loadJSON(filename, defaultValue) {
     const filePath = this.getPath(filename);
-    if (!fs2.existsSync(filePath))
+    if (!fs.existsSync(filePath))
       return defaultValue;
     try {
-      const content = fs2.readFileSync(filePath, "utf-8");
+      const content = fs.readFileSync(filePath, "utf-8");
       if (!content.trim())
         return defaultValue;
       return JSON.parse(content);
-    } catch (e) {
-      logger.error(`Failed to load ${filename}:`, e);
+    } catch (error) {
+      logger.error(`Failed to load ${filename}:`, error);
       return defaultValue;
     }
   }
@@ -8946,13 +8863,13 @@ class PairingStore {
     const tempPath = `${filePath}.tmp`;
     try {
       const content = JSON.stringify(data, null, 2);
-      fs2.writeFileSync(tempPath, content, "utf-8");
-      fs2.renameSync(tempPath, filePath);
-    } catch (e) {
-      logger.error(`Failed to save ${filename}:`, e);
-      if (fs2.existsSync(tempPath)) {
+      fs.writeFileSync(tempPath, content, "utf-8");
+      fs.renameSync(tempPath, filePath);
+    } catch (error) {
+      logger.error(`Failed to save ${filename}:`, error);
+      if (fs.existsSync(tempPath)) {
         try {
-          fs2.unlinkSync(tempPath);
+          fs.unlinkSync(tempPath);
         } catch {}
       }
     }
@@ -8980,7 +8897,7 @@ class PairingStore {
   }
   getOrCreateBootstrapCode() {
     const pending = this.loadPending();
-    const bootstrap = pending.find((p) => p.platform === "*" && p.userId === "*");
+    const bootstrap = pending.find((item) => item.platform === "*" && item.userId === "*");
     if (bootstrap)
       return bootstrap.code;
     const newCode = generatePairingCode();
@@ -8993,6 +8910,43 @@ class PairingStore {
     });
     this.savePending(pending);
     return newCode;
+  }
+}
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
+}
+function splitText(text, maxLen) {
+  if (text.length <= maxLen)
+    return [text];
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf(`
+`, maxLen);
+    if (splitAt <= 0)
+      splitAt = maxLen;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt).replace(/^\n/, "");
+  }
+  return chunks;
+}
+
+class PlatformAdapter {
+  get name() {
+    return this.constructor.name;
   }
 }
 // extensions/telegram/src/client.ts
@@ -9059,7 +9013,7 @@ function buildTelegramSessionTarget(params) {
 }
 
 // extensions/telegram/src/client.ts
-var logger2 = createLogger("TelegramClient");
+var logger2 = createExtensionLogger("TelegramExtension", "TelegramClient");
 
 class TelegramClient {
   config;
@@ -9182,7 +9136,7 @@ class TelegramClient {
 }
 
 // extensions/telegram/src/media.ts
-var logger3 = createLogger("TelegramMedia");
+var logger3 = createExtensionLogger("TelegramExtension", "TelegramMedia");
 
 class TelegramMediaService {
   supportsInboundMedia() {
@@ -9314,7 +9268,7 @@ function formatTelegramToolLine(entry) {
 }
 
 // extensions/telegram/src/message-handler.ts
-var logger4 = createLogger("TelegramMessageHandler");
+var logger4 = createExtensionLogger("TelegramExtension", "TelegramMessageHandler");
 
 class TelegramMessageHandler {
   config;
@@ -9452,7 +9406,7 @@ function stripBotMention(text, username) {
 }
 
 // extensions/telegram/src/index.ts
-var logger5 = createLogger("Telegram");
+var logger5 = createExtensionLogger("TelegramExtension", "Telegram");
 var STREAM_THROTTLE_MS = 1500;
 var UNSUPPORTED_MEDIA_NOTICE = "当前阶段暂不支持直接处理图片、文件或语音消息，请附带文字说明后再次发送。";
 var BUFFERED_NOTICE = `\uD83D\uDCE5 消息已暂存，等 AI 回复结束后自动发送。
@@ -10178,7 +10132,7 @@ function hasTelegramUnsupportedMedia(message) {
   return Boolean(message.photo || message.document || message.voice || message.audio);
 }
 function resolveTelegramConfigFromContext(context) {
-  const telegram = context.config.platform?.telegram ?? {};
+  const telegram = getPlatformConfig(context, "telegram");
   return {
     token: telegram.token ?? "",
     showToolStatus: telegram.showToolStatus,

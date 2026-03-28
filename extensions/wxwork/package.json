@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm"
+  },
+  "dependencies": {
+    "@wecom/aibot-node-sdk": "^1.0.2"
   }
 }

@@ -9,8 +9,7 @@
  */
 
 import { Bot, Context, InputFile } from 'grammy';
-import { splitText } from './base';
-import { createLogger } from './logger';
+import { createExtensionLogger, splitText } from '@iris/extension-sdk';
 import { TELEGRAM_BOT_COMMANDS } from './commands';
 import {
   TELEGRAM_MESSAGE_MAX_LENGTH,
@@ -18,7 +17,7 @@ import {
   TelegramSessionTarget,
 } from './types';
 
-const logger = createLogger('TelegramClient');
+const logger = createExtensionLogger('TelegramExtension', 'TelegramClient');
 
 export interface TelegramSendTextOptions {
   parseMode?: 'HTML';
