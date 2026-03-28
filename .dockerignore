@@ -37,7 +37,7 @@ logs/
 deploy/windows/
 一键启动.bat
 
-# Lock file for bun (we use npm in Docker)
+# Lock file for bun (deps stage uses npm; bun-compile inherits from deps)
 bun.lock
 
 # Misc (root-level only, do NOT use *.html — it would exclude web-ui/index.html)
@@ -46,8 +46,6 @@ gemini_*.html
 # Directories not needed for Docker build
 tests/
 docs/
-onboard/
-script/
 bin/
 deploy/linux/
 vitest.config.ts

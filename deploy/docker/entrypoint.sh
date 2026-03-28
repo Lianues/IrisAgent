@@ -6,17 +6,6 @@ IRIS_PLATFORM="${IRIS_PLATFORM:-web}"
 CONFIG_DIR="$IRIS_DATA_DIR/configs"
 TEMPLATE_DIR="/app/data/configs.example"
 
-# ------ Validate platform: console is not available in Docker image ------
-if echo "$IRIS_PLATFORM" | grep -qw "console"; then
-  echo "[Iris] Warning: 'console' platform is not available in the Docker image (requires Bun runtime)."
-  echo "[Iris] Removing 'console' from IRIS_PLATFORM and falling back to 'web'."
-  # Remove 'console' from comma-separated list; if nothing remains, default to 'web'
-  IRIS_PLATFORM=$(echo "$IRIS_PLATFORM" | sed 's/,*console,*/,/g; s/^,//; s/,$//')
-  if [ -z "$IRIS_PLATFORM" ]; then
-    IRIS_PLATFORM="web"
-  fi
-fi
-
 # ------ First-run: initialize config from templates ------
 if [ ! -d "$CONFIG_DIR" ] || [ -z "$(ls -A "$CONFIG_DIR" 2>/dev/null)" ]; then
   echo "[Iris] First run detected — initializing config directory..."
@@ -50,4 +39,9 @@ if [ -f "$PLATFORM_YAML" ] && grep -q 'host: 127\.0\.0\.1' "$PLATFORM_YAML" 2>/d
 fi
 
 # ------ Start the application ------
-exec node dist/index.js "$@"
+# Console (TUI) platform requires the Bun-compiled binary
+if echo "$IRIS_PLATFORM" | grep -qw "console"; then
+  exec /app/bin/iris "$@"
+else
+  exec node dist/index.js "$@"
+fi

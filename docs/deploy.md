@@ -311,8 +311,8 @@ sudo systemctl list-timers | grep certbot
 
 | 镜像 | 基础 | 体积 | 说明 |
 |------|------|------|------|
-| `ghcr.io/lianues/iris:latest` | Node 22 Alpine | ~300 MB | 生产用，适合大多数场景 |
-| `ghcr.io/lianues/iris:computer-use` | Ubuntu + Playwright | ~800 MB | 含 Chromium，支持浏览器自动化 |
+| `ghcr.io/lianues/iris:latest` | Node 22 Debian slim | ~400 MB | 生产用，含 TUI 二进制 |
+| `ghcr.io/lianues/iris:computer-use` | Ubuntu + Playwright | ~900 MB | 含 Chromium，支持浏览器自动化 |
 
 ### 快速启动（使用预构建镜像）
 
@@ -362,20 +362,22 @@ docker build -t iris-cu -f deploy/docker/Dockerfile --target computer-use-base .
 
 ### 构建流程
 
-Dockerfile 采用多阶段构建，共 5 个阶段：
+Dockerfile 采用多阶段构建，共 6 个阶段：
 
 ```
 Stage 1: deps            ── 安装所有依赖（含 devDeps、原生编译工具）
 Stage 2: build-ui        ── 构建 Vue 3 Web UI（Vite）
 Stage 3: build           ── 编译 TypeScript，然后 npm prune 移除 devDeps
-Stage 4: production      ── Node 22 Alpine 最终镜像（默认 target）
-Stage 5: computer-use    ── Playwright Ubuntu 镜像（含 Chromium）
+Stage 4: bun-compile     ── 使用 Bun 编译独立二进制（含 TUI + onboard）
+Stage 5: production      ── Node 22 Debian slim 最终镜像（默认 target）
+Stage 6: computer-use    ── Playwright Ubuntu 镜像（含 Chromium）
 ```
 
 production 镜像特点：
 - 使用 `tini` 作为 init 进程，正确处理信号转发和僵尸进程回收
 - 以非 root 用户 `iris`（UID 1000）运行
 - 数据目录 `/data` 声明为 VOLUME，配置和会话数据持久化
+- 内置 Bun 编译的 `iris` 二进制，支持 Console TUI 和 onboard 配置引导
 
 ### 首次启动行为
 
@@ -392,12 +394,12 @@ production 镜像特点：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `IRIS_PLATFORM` | `web` | 启动的平台，逗号分隔（`web,discord,telegram` 等）|
+| `IRIS_PLATFORM` | `web` | 启动的平台，逗号分隔（`web,discord,telegram,console` 等）|
 | `IRIS_PORT` | `8192` | 宿主机映射端口 |
 | `WEB_AUTH_TOKEN` | — | Web API 认证令牌（公网部署建议设置）|
 | `WEB_MANAGEMENT_TOKEN` | — | 管理 API 令牌 |
 
-> **注意**：`console` 平台在 Docker 中不可用（需要 Bun 运行时）。entrypoint 会自动移除并回退到 `web`。
+> **注意**：设置 `IRIS_PLATFORM=console` 时，entrypoint 会自动切换到 Bun 编译的二进制来启动 TUI。需要以交互模式运行容器（`docker run -it`）。
 
 LLM API Key 不通过环境变量配置，而是编辑数据卷中的 `/data/configs/llm.yaml`。
 
@@ -418,6 +420,28 @@ LLM API Key 不通过环境变量配置，而是编辑数据卷中的 `/data/con
 
 ```bash
 docker run --rm -v iris-data:/data -v $(pwd):/backup alpine tar czf /backup/iris-data-backup.tar.gz -C /data .
+```
+
+### Console TUI 和 Onboard
+
+Docker 镜像内置了 Bun 编译的 `iris` 二进制，支持 Console TUI 和交互式配置引导。
+
+**以 TUI 模式启动容器：**
+
+```bash
+docker run -it -e IRIS_PLATFORM=console -v iris-data:/data ghcr.io/lianues/iris
+```
+
+**在已运行的容器中启动 TUI：**
+
+```bash
+docker exec -it iris /app/bin/iris
+```
+
+**首次配置使用 Onboard 引导：**
+
+```bash
+docker run -it -v iris-data:/data ghcr.io/lianues/iris /app/bin/iris-onboard
 ```
 
 ### CI/CD 自动发布

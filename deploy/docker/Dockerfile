@@ -2,8 +2,8 @@
 # Iris — Multi-stage Docker build
 # ============================================================
 # Targets:
-#   production    (default)  — Node 22 Alpine, ~300 MB
-#   computer-use  (optional) — Ubuntu + Playwright/Chromium, ~800 MB
+#   production    (default)  — Node 22 Debian slim + Bun 编译 TUI, ~400 MB
+#   computer-use  (optional) — Ubuntu + Playwright/Chromium, ~900 MB
 #
 # Build:
 #   docker build -t iris .                                  # production
@@ -11,11 +11,13 @@
 # ============================================================
 
 # ------ Stage 1: Install ALL dependencies (incl. devDeps for tsc) ------
-FROM node:22-alpine AS deps
+FROM node:22-slim AS deps
 WORKDIR /app
 
 # Native addon build tools (better-sqlite3, sharp, node-pty)
-RUN apk add --no-cache python3 make g++ libvips-dev
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ libvips-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 # Prepare web-ui directory for its own package.json
@@ -44,12 +46,35 @@ RUN npx tsc -p tsconfig.build.json
 RUN npm prune --omit=dev
 
 
-# ------ Stage 4: Production image (default target) ------
-FROM node:22-alpine AS production
+# ------ Stage 4: Compile standalone binary with Bun (TUI + onboard) ------
+FROM deps AS bun-compile
 
-RUN apk add --no-cache libvips tini && \
-    addgroup -g 1000 iris && \
-    adduser -u 1000 -G iris -s /bin/sh -D iris
+# Install Bun (needed for bun build --compile; npm is already available from deps)
+RUN npm install -g bun
+# OpenTUI React dependency — must be installed via npm to avoid incomplete package
+RUN npm install --no-save react-devtools-core
+
+COPY src/ src/
+COPY tsconfig.json tsconfig.build.json ./
+COPY data/ data/
+COPY script/build.ts script/build.ts
+COPY onboard/ onboard/
+# Overlay pre-built web-ui
+COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
+
+# Compile standalone binary for current platform (linux-x64)
+# build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
+RUN bun run script/build.ts --single
+
+
+# ------ Stage 5: Production image (default target) ------
+FROM node:22-slim AS production
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tini libvips42 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    groupadd -g 1000 iris && \
+    useradd -u 1000 -g iris -m -s /bin/sh iris
 
 WORKDIR /app
 
@@ -62,6 +87,10 @@ COPY --from=build /app/package.json .
 COPY --from=build /app/data/ data/
 # Web UI static files — resolvePublicDir() checks cwd/src/platforms/web/web-ui/dist
 COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
+# Bun-compiled binaries (TUI + onboard)
+COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris bin/iris
+COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris-onboard bin/iris-onboard
+RUN chmod +x bin/iris bin/iris-onboard
 # Entrypoint script
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
@@ -77,11 +106,11 @@ EXPOSE 8192
 VOLUME /data
 USER iris
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/entrypoint.sh"]
 
 
-# ------ Stage 5: Computer Use variant (Playwright + Chromium) ------
+# ------ Stage 6: Computer Use variant (Playwright + Chromium) ------
 # Playwright base image already ships Node.js 22 + Chromium + system deps
 FROM mcr.microsoft.com/playwright:v1.58.0-noble AS computer-use-base
 
@@ -99,6 +128,9 @@ COPY --from=build /app/node_modules/ node_modules/
 COPY --from=build /app/package.json .
 COPY --from=build /app/data/ data/
 COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
+COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris bin/iris
+COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris-onboard bin/iris-onboard
+RUN chmod +x bin/iris bin/iris-onboard
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
