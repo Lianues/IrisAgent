@@ -43,6 +43,7 @@ Iris CLI - AI Agent 命令行接口
   echo "<prompt>" | iris        管道传入提示词
   iris start                    启动平台服务（serve 别名）
   iris serve                    启动平台服务（Web/Telegram 等）
+  iris extension                打开插件安装与管理界面
   iris extension install <path> 从远程仓库的 extensions/<path>/ 安装 extension
   iris ext install-local <name> 仅从本地 extension 目录安装
   iris onboard                  启动交互式配置引导

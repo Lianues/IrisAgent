@@ -27,6 +27,7 @@ import type {
 const logger = createLogger('ExtensionRegistry');
 const DEFAULT_PLUGIN_ENTRY_CANDIDATES = ['index.ts', 'index.js', 'index.mjs'];
 const MANIFEST_FILE = 'manifest.json';
+const DISABLED_MARKER_FILE = '.disabled';
 
 interface ExtensionSearchDirectory {
   dir: string;
@@ -127,6 +128,10 @@ function readExtensionManifest(rootDir: string): ExtensionManifest | undefined {
   return manifest as unknown as ExtensionManifest;
 }
 
+function isDisabledExtension(rootDir: string): boolean {
+  return fs.existsSync(path.join(rootDir, DISABLED_MARKER_FILE));
+}
+
 function normalizePluginContribution(manifest: ExtensionManifest): ExtensionPluginContribution | undefined {
   if (manifest.plugin && typeof manifest.plugin === 'object') {
     return manifest.plugin;
@@ -180,6 +185,14 @@ export function discoverLocalExtensions(): ExtensionPackage[] {
       const rootDir = path.join(searchDir.dir, entry.name);
       const manifest = readExtensionManifest(rootDir);
       if (!manifest) continue;
+
+      if (isDisabledExtension(rootDir)) {
+        if (!seenNames.has(manifest.name)) {
+          seenNames.add(manifest.name);
+        }
+        logger.info(`extension "${manifest.name}" 已被禁用，跳过加载: ${rootDir}`);
+        continue;
+      }
 
       if (manifest.name !== entry.name) {
         logger.warn(`extension 目录名与 manifest.name 不一致，已按 manifest.name 处理: ${rootDir}`);

@@ -121,6 +121,7 @@ iris start                 → 启动平台服务（serve 别名）
 iris onboard               → 启动交互式配置引导
 iris platforms             → 启动平台配置界面
 iris models                → 启动模型配置界面
+iris extension             → 启动插件安装与管理界面
 iris -p "prompt"           → CLI 模式
 iris "prompt"              → CLI 模式（位置参数）
 iris --help                → 显示帮助
@@ -129,7 +130,7 @@ iris --sidecar screen      → 内部：运行 screen sidecar
 iris --sidecar browser     → 内部：运行 browser sidecar
 ```
 
-路由逻辑：`onboard`、`platforms` 与 `models` 单独转到终端界面；`serve` / `start` 进入平台服务模式；存在 `-p`、`--prompt`、`--session`、`--model` 等 CLI 特征参数，或存在其他非 `-` 开头的位置参数时，进入 CLI 模式（`src/cli.ts`）；否则进入平台服务模式（`src/index.ts`）。
+路由逻辑：`onboard`、`platforms`、`models` 与 `extension` 单独转到终端界面；`extension install` 与 `extension install-local` 仍走原有命令逻辑；`serve` / `start` 进入平台服务模式；存在 `-p`、`--prompt`、`--session`、`--model` 等 CLI 特征参数，或存在其他非 `-` 开头的位置参数时，进入 CLI 模式（`src/cli.ts`）；否则进入平台服务模式（`src/index.ts`）。
 
 `--sidecar` 是内部参数，用户不会直接使用。详见下文「Sidecar 自举」。
 

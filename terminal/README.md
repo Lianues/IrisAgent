@@ -7,6 +7,7 @@ Iris 的终端命令界面集合，使用 [OpenTUI](https://opentui.com/) + Reac
 - `onboard`：交互式配置引导
 - `platforms`：平台配置界面
 - `models`：模型配置界面
+- `extension`：插件安装与管理界面
 
 目录约定：
 
@@ -17,6 +18,7 @@ terminal/
       onboard/
       platforms/
       models/
+      extension/
     shared/
 ```
 
@@ -38,6 +40,7 @@ bun run dev
 bun run dev:onboard
 bun run dev -- platforms
 bun run dev -- models
+bun run dev -- extension
 ```
 
 ## 构建
@@ -72,3 +75,16 @@ iris models
 ```
 
 `models` 会先读取 `llm.yaml` 中已配置的模型列表，让用户选择一个模型条目，再复用共享模型面板生成模型 ID / 模型别名输入界面。确认后只更新 `llm.yaml` 中所选模型条目，不修改平台配置。
+
+### extension
+
+```bash
+iris extension
+./iris-onboard extension /path/to/iris
+```
+
+`extension` 会先显示“下载插件”和“管理插件”两个入口：
+
+- `下载插件`：从远程仓库读取 `extensions/**/manifest.json`，显示类型、名称、描述和安装状态，再执行下载安装。
+- `下载插件` 会兼容当前安装目录中的内嵌 extension，并在存在同名本地版本时提示“本地已有版本 xx”。
+- `管理插件`：查看 `~/.iris/extensions/` 中已安装的 extension，并执行开启、关闭、删除。运行时同名优先级为：`~/.iris/extensions/` 已安装版本 > 安装目录内嵌版本。

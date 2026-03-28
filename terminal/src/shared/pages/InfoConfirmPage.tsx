@@ -37,7 +37,7 @@ interface InfoConfirmPageProps {
   description?: string
   sections: InfoConfirmSection[]
   notices?: InfoConfirmNotice[]
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   onBack?: () => void
   confirmActionText?: string
   backActionText?: string
@@ -46,6 +46,8 @@ interface InfoConfirmPageProps {
   successActionsTitle?: string
   successActions?: InfoConfirmSuccessAction[]
 }
+
+type ConfirmStatus = "idle" | "running" | "confirmed"
 
 function resolveToneColor(tone: InfoConfirmTone = "normal"): string {
   switch (tone) {
@@ -114,24 +116,35 @@ export function InfoConfirmPage({
   successActionsTitle,
   successActions = [],
 }: InfoConfirmPageProps) {
-  const [confirmed, setConfirmed] = useState(false)
+  const [status, setStatus] = useState<ConfirmStatus>("idle")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useKeyboard((key) => {
-    if (confirmed) return
-
-    if (key.name === "return" || key.name === "y") {
-      setConfirmed(true)
-      onConfirm()
-      return
-    }
-
-    if (key.name === "escape" || key.name === "n") {
-      onBack?.()
-      return
-    }
-
     if (key.name === "c" && key.ctrl) {
       gracefulExit()
+      return
+    }
+
+    if (status === "running") {
+      return
+    }
+
+    if (status === "idle" && (key.name === "return" || key.name === "y")) {
+      setErrorMessage(null)
+      setStatus("running")
+      Promise.resolve(onConfirm())
+        .then(() => {
+          setStatus("confirmed")
+        })
+        .catch((error) => {
+          setStatus("idle")
+          setErrorMessage(error instanceof Error ? error.message : String(error))
+        })
+      return
+    }
+
+    if (status === "idle" && (key.name === "escape" || key.name === "n")) {
+      onBack?.()
     }
   })
 
@@ -139,9 +152,13 @@ export function InfoConfirmPage({
     <PageFrame
       title={title}
       description={description}
-      actions={confirmed ? [] : [confirmActionText, onBack ? backActionText : undefined]}
+      actions={status === "confirmed"
+        ? []
+        : status === "running"
+          ? ["正在处理..."]
+          : [confirmActionText, onBack ? backActionText : undefined]}
     >
-      {!confirmed ? (
+      {status !== "confirmed" ? (
         <>
           <box flexDirection="column" borderStyle="rounded" borderColor="#636e72" padding={1} gap={1}>
             {sections.map((section, index) => (
@@ -184,6 +201,16 @@ export function InfoConfirmPage({
               ))}
             </box>
           ))}
+
+          {errorMessage && (
+            <box flexDirection="column" borderStyle="rounded" borderColor="#ff7675" padding={1}>
+              <text fg="#ff7675">
+                <b>操作失败</b>
+              </text>
+              <text fg="#dfe6e9">{errorMessage}</text>
+              <text fg="#636e72">按 Enter 重试，或按 Esc 返回。</text>
+            </box>
+          )}
         </>
       ) : (
         <box flexDirection="column" gap={1}>

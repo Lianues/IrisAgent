@@ -10,7 +10,7 @@ import { PlatformRegistry } from '../src/platforms/registry.js';
 import { PromptAssembler } from '../src/prompt/assembler.js';
 import { ToolRegistry } from '../src/tools/registry.js';
 import { ModeRegistry } from '../src/modes/registry.js';
-import { registerExtensionPlatforms, resolveLocalPluginSource } from '../src/extension/index.js';
+import { discoverLocalExtensions, registerExtensionPlatforms, resolveLocalPluginSource } from '../src/extension/index.js';
 import { workspaceExtensionsDir } from '../src/paths.js';
 
 const createdDirs: string[] = [];
@@ -129,5 +129,18 @@ describe('extension registry', () => {
 
     const platform = await registry.create(extension.platformName, {} as any);
     expect((platform as { name: string }).name).toBe(extension.platformName);
+  });
+
+  it('被标记为 disabled 的 extension 不应再被发现、加载或注册平台', () => {
+    const extension = createWorkspaceExtension();
+    fs.writeFileSync(path.join(extension.rootDir, '.disabled'), 'disabled\n', 'utf8');
+
+    const packages = discoverLocalExtensions();
+    expect(packages.find((item) => item.manifest.name === extension.name)).toBeUndefined();
+    expect(() => resolveLocalPluginSource(extension.name, packages)).toThrow(`未找到本地 extension: ${extension.name}`);
+
+    const registry = new PlatformRegistry();
+    const registered = registerExtensionPlatforms(registry, packages);
+    expect(registered).not.toContain(extension.platformName);
   });
 });

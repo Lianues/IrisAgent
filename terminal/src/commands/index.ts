@@ -1,3 +1,4 @@
+import extensionCommand from "./extension/index.js"
 import modelsCommand from "./models/index.js"
 import onboardCommand from "./onboard/index.js"
 import platformsCommand from "./platforms/index.js"
@@ -7,6 +8,7 @@ const commandList: TerminalCommandDefinition[] = [
   onboardCommand,
   platformsCommand,
   modelsCommand,
+  extensionCommand,
 ]
 
 const commandMap = new Map(commandList.map((command) => [command.name, command]))

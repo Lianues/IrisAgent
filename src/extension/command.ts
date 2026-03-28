@@ -15,11 +15,12 @@ const HELP_TEXT = `
 Iris Extension 命令
 
 用法:
-  iris extension install <path>        从远程仓库的 extensions/<path>/ 安装；远程不存在时回退到本地 extension 目录
-  iris extension install-local <name>  仅从本地 extension 目录安装
-  iris extension <path>                install 的简写
-  iris ext install <path>              extension 的简写别名
-  iris ext <path>                      install 的最简写法
+  iris extension                      打开插件安装与管理界面
+  iris extension install <path>       从远程仓库的 extensions/<path>/ 安装；远程不存在时回退到本地 extension 目录
+  iris extension install-local <name> 仅从本地 extension 目录安装
+  iris extension <path>               install 的简写
+  iris ext install <path>             extension 的简写别名
+  iris ext <path>                     install 的最简写法
 
 说明:
   - install 支持这些写法：aaa、group/aaa、extensions/aaa

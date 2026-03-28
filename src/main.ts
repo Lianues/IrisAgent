@@ -10,6 +10,7 @@
  *   iris onboard                → 启动交互式配置引导
  *   iris platforms              → 启动平台配置界面
  *   iris models                 → 启动模型配置界面
+ *   iris extension              → 启动插件安装与管理界面
  *   iris extension install <path>      → 从远程仓库的 extensions/<path>/ 安装 extension
  *   iris ext install-local <name>      → 仅从本地 extension 目录安装
  *   iris -p "prompt"            → CLI 模式
@@ -67,6 +68,10 @@ if (args[0] === 'onboard' || args[0] === 'platforms' || args[0] === 'models') {
 }
 
 if (args[0] === 'extension' || args[0] === 'extensions' || args[0] === 'ext') {
+  if (args.length === 1) {
+    runTerminalCommand('extension');
+  }
+
   try {
     const { runExtensionCommand } = await import('./extension/command');
     await runExtensionCommand(args);
@@ -118,5 +123,3 @@ if (sidecarIndex >= 0) {
     await import('./index');
   }
 }
-
-export {};
