@@ -1,3 +1,3 @@
-## Iris v1.0.1
+## Iris v1.0.2
 
-* 修复read_skill重复配置导致的启动失败问题
+* 修复tui模式下，markdown语法高亮失效问题
