@@ -19,43 +19,11 @@
  * 官方插件参考：https://github.com/WecomTeam/wecom-openclaw-plugin
  */
 
+import { createExtensionLogger, definePlatformFactory, splitText, type ImageInput, type IrisBackendLike } from '@iris/extension-sdk';
 import { WSClient, generateReqId } from '@wecom/aibot-node-sdk';
 import type { WsFrame } from '@wecom/aibot-node-sdk';
-import { createLogger } from './logger';
 
-type ImageInput = {
-  mimeType: string;
-  data: string;
-};
-
-interface WXWorkPlatformFactoryContextLike {
-  backend: any;
-  config: {
-    platform?: {
-      wxwork?: Partial<WXWorkConfig>;
-    };
-  };
-}
-
-function splitText(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf('\n', maxLen);
-    if (splitAt <= 0) splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, '');
-  }
-  return chunks;
-}
-
-const logger = createLogger('WXWork');
+const logger = createExtensionLogger('WXWorkExtension', 'WXWork');
 
 // ============ 常量 ============
 
@@ -230,7 +198,7 @@ interface ChatState {
 
 export class WXWorkPlatform {
   private wsClient: WSClient;
-  private backend: any;
+  private backend: IrisBackendLike;
 
   /** 是否在流式回复中展示工具执行状态 */
   private showToolStatus: boolean;
@@ -248,7 +216,7 @@ export class WXWorkPlatform {
    */
   private chatStates = new Map<string, ChatState>();
 
-  constructor(backend: any, config: WXWorkConfig) {
+  constructor(backend: IrisBackendLike, config: WXWorkConfig) {
     this.backend = backend;
     this.showToolStatus = config.showToolStatus !== false;
     // 构造参数与官方插件保持一致
@@ -899,17 +867,14 @@ function detectImageMime(buffer: Buffer): string | null {
   return null;
 }
 
-function resolveWXWorkConfigFromContext(context: WXWorkPlatformFactoryContextLike): WXWorkConfig {
-  const wxwork = context.config.platform?.wxwork ?? {};
-  return {
-    botId: wxwork.botId ?? '',
-    secret: wxwork.secret ?? '',
-    showToolStatus: wxwork.showToolStatus,
-  };
-}
-
-export function createWXWorkPlatform(context: WXWorkPlatformFactoryContextLike): WXWorkPlatform {
-  return new WXWorkPlatform(context.backend, resolveWXWorkConfigFromContext(context));
-}
+export const createWXWorkPlatform = definePlatformFactory<WXWorkConfig, WXWorkPlatform>({
+  platformName: 'wxwork',
+  resolveConfig: (raw) => ({
+    botId: raw.botId ?? '',
+    secret: raw.secret ?? '',
+    showToolStatus: raw.showToolStatus,
+  }),
+  create: (backend, config) => new WXWorkPlatform(backend, config),
+});
 
 export default createWXWorkPlatform;

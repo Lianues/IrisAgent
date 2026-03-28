@@ -1,4 +1,4 @@
-import { createLogger } from './logger';
+import { createExtensionLogger, definePlatformFactory } from '@iris/extension-sdk';
 import { buildLarkCard, formatLarkToolLine, type LarkToolStatusEntry } from './card-builder';
 import { LarkClient } from './client';
 import { LarkCommandRouter } from './commands';
@@ -15,7 +15,7 @@ import type {
   LarkResourceRef,
 } from './types';
 
-const logger = createLogger('Lark');
+const logger = createExtensionLogger('LarkExtension', 'Lark');
 const STREAM_THROTTLE_MS = 1000;
 const BUFFERED_NOTICE = '📥 消息已暂存，等 AI 回复结束后自动发送。\n发送 /flush 可立即处理，/stop 可中止当前回复。';
 const MESSAGE_DEDUP_MAX_SIZE = 500;
@@ -648,20 +648,17 @@ export class LarkPlatform {
   }
 }
 
-export function resolveLarkConfigFromContext(context: IrisPlatformFactoryContextLike): LarkConfig {
-  const lark = context?.config?.platform?.lark ?? {};
-  return {
-    appId: String(lark.appId ?? ''),
-    appSecret: String(lark.appSecret ?? ''),
-    verificationToken: normalizeOptionalString(lark.verificationToken),
-    encryptKey: normalizeOptionalString(lark.encryptKey),
-    showToolStatus: lark.showToolStatus !== false,
-  };
-}
-
-export async function createLarkPlatform(context: IrisPlatformFactoryContextLike): Promise<LarkPlatform> {
-  return new LarkPlatform(context.backend, resolveLarkConfigFromContext(context));
-}
+export const createLarkPlatform = definePlatformFactory<LarkConfig, LarkPlatform>({
+  platformName: 'lark',
+  resolveConfig: (raw) => ({
+    appId: String(raw.appId ?? ''),
+    appSecret: String(raw.appSecret ?? ''),
+    verificationToken: normalizeOptionalString(raw.verificationToken),
+    encryptKey: normalizeOptionalString(raw.encryptKey),
+    showToolStatus: raw.showToolStatus !== false,
+  }),
+  create: (backend, config) => new LarkPlatform(backend, config),
+});
 
 export const platform = createLarkPlatform;
 export default createLarkPlatform;

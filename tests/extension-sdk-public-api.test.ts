@@ -1,0 +1,72 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createPluginLogger,
+  definePlatformFactory,
+  definePlugin,
+  type IrisBackendLike,
+} from '../packages/extension-sdk/src';
+
+describe('extension sdk public api', () => {
+  it('definePlatformFactory 应按平台名读取配置并创建实例', async () => {
+    const backend = {
+      on: vi.fn(),
+      chat: vi.fn(async () => undefined),
+      isStreamEnabled: vi.fn(() => true),
+    } as unknown as IrisBackendLike;
+
+    const create = vi.fn((resolvedBackend: IrisBackendLike, config: { token: string; flag?: boolean }) => ({
+      backend: resolvedBackend,
+      config,
+    }));
+
+    const factory = definePlatformFactory({
+      platformName: 'demo',
+      resolveConfig: (raw) => ({
+        token: String(raw.token ?? ''),
+        flag: raw.flag === true,
+      }),
+      create,
+    });
+
+    const result = await factory({
+      backend,
+      config: {
+        platform: {
+          demo: {
+            token: 'abc',
+            flag: true,
+          },
+        },
+      },
+    });
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      backend,
+      config: {
+        token: 'abc',
+        flag: true,
+      },
+    });
+  });
+
+  it('definePlugin 应返回原插件对象', () => {
+    const plugin = definePlugin({
+      name: 'demo-plugin',
+      version: '1.0.0',
+      activate: vi.fn(),
+    });
+
+    expect(plugin.name).toBe('demo-plugin');
+    expect(plugin.version).toBe('1.0.0');
+  });
+
+  it('createPluginLogger 应返回完整日志接口', () => {
+    const logger = createPluginLogger('demo-plugin', 'test');
+
+    expect(typeof logger.info).toBe('function');
+    expect(typeof logger.warn).toBe('function');
+    expect(typeof logger.error).toBe('function');
+    expect(typeof logger.debug).toBe('function');
+  });
+});

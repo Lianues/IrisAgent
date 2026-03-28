@@ -892,26 +892,25 @@ return ret;
   }
 });
 
-// extensions/weixin/src/index.ts
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
-
-// extensions/weixin/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[WeixinExtension:${tag}]`, ...args);
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
 }
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
   };
 }
-
-// extensions/weixin/src/index.ts
 function splitText(text, maxLen) {
   if (text.length <= maxLen)
     return [text];
@@ -931,7 +930,27 @@ function splitText(text, maxLen) {
   }
   return chunks;
 }
-var logger = createLogger("Weixin");
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
+}
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
+}
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
+// extensions/weixin/src/index.ts
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+var logger2 = createExtensionLogger("WeixinExtension", "Weixin");
 var SILK_SAMPLE_RATE = 24000;
 var WEIXIN_MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 var MESSAGE_MAX_LENGTH = 4000;
@@ -994,10 +1013,10 @@ class WeixinPlatform {
           this.config.botToken = data.botToken;
           if (data.baseUrl)
             this.baseUrl = data.baseUrl.replace(/\/$/, "");
-          logger.info("从本地缓存加载了微信 Token");
+          logger2.info("从本地缓存加载了微信 Token");
         }
       } catch (err) {
-        logger.debug("读取微信 Token 缓存失败:", err);
+        logger2.debug("读取微信 Token 缓存失败:", err);
       }
     }
   }
@@ -1009,14 +1028,14 @@ class WeixinPlatform {
       }
       const cachePath = path.join(dir, "weixin-auth.json");
       fs.writeFileSync(cachePath, JSON.stringify({ botToken, baseUrl }, null, 2));
-      logger.info(`微信 Token 已保存到本地缓存`);
+      logger2.info(`微信 Token 已保存到本地缓存`);
     } catch (err) {
-      logger.warn("保存微信 Token 到缓存失败:", err);
+      logger2.warn("保存微信 Token 到缓存失败:", err);
     }
   }
   async start() {
     if (!this.config.botToken) {
-      logger.info("未配置 botToken，准备扫码登录...");
+      logger2.info("未配置 botToken，准备扫码登录...");
       const { botToken, baseUrl } = await this.performQRLogin();
       this.config.botToken = botToken;
       this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -1025,9 +1044,9 @@ class WeixinPlatform {
     this.setupBackendListeners();
     this.polling = true;
     this.runPollingLoop().catch((err) => {
-      logger.error("长轮询循环异常退出:", err);
+      logger2.error("长轮询循环异常退出:", err);
     });
-    logger.info(`微信平台启动成功 (BaseUrl: ${this.baseUrl})`);
+    logger2.info(`微信平台启动成功 (BaseUrl: ${this.baseUrl})`);
   }
   async performQRLogin(retryCount = 0) {
     const qrcodeResp = await fetch(`${this.baseUrl}/ilink/bot/get_bot_qrcode?bot_type=3`);
@@ -1036,31 +1055,31 @@ class WeixinPlatform {
     const qrcodeData = await qrcodeResp.json();
     const qrcode = qrcodeData.qrcode;
     const qrcodeUrl = qrcodeData.qrcode_img_content ?? qrcodeData.qrcode_url ?? "";
-    logger.info("----------------------------------------");
-    logger.info("请在浏览器打开以下链接扫码登录微信：");
-    logger.info(`
+    logger2.info("----------------------------------------");
+    logger2.info("请在浏览器打开以下链接扫码登录微信：");
+    logger2.info(`
 ${qrcodeUrl}
 `);
-    logger.info("----------------------------------------");
+    logger2.info("----------------------------------------");
     while (true) {
       const statusResp = await fetch(`${this.baseUrl}/ilink/bot/get_qrcode_status?qrcode=${qrcode}`);
       if (!statusResp.ok)
         throw new Error(`获取二维码状态失败: ${await statusResp.text()}`);
       const statusData = await statusResp.json();
       if (statusData.status === "confirmed") {
-        logger.info("扫码登录成功！");
+        logger2.info("扫码登录成功！");
         return {
           botToken: statusData.bot_token,
           baseUrl: statusData.baseurl || this.baseUrl
         };
       } else if (statusData.status === "expired") {
         if (retryCount < 3) {
-          logger.warn("二维码已过期，正在重新获取...");
+          logger2.warn("二维码已过期，正在重新获取...");
           return this.performQRLogin(retryCount + 1);
         }
         throw new Error("二维码已多次过期，请重新启动程序");
       } else if (statusData.status === "scaned") {
-        logger.info("已扫码，请在微信确认...");
+        logger2.info("已扫码，请在微信确认...");
       }
       await this.sleep(2000);
     }
@@ -1068,7 +1087,7 @@ ${qrcodeUrl}
   async stop() {
     this.polling = false;
     this.chatStates.clear();
-    logger.info("平台已停止");
+    logger2.info("平台已停止");
   }
   async apiCall(endpoint, body, label) {
     const url = `${this.baseUrl.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
@@ -1094,7 +1113,7 @@ ${qrcodeUrl}
       }
       return await resp.json();
     } catch (err) {
-      logger.debug(`${label} 失败:`, err);
+      logger2.debug(`${label} 失败:`, err);
       throw err;
     }
   }
@@ -1162,7 +1181,7 @@ ${qrcodeUrl}
         return key ? this.aesEcbDecrypt(raw, key) : raw;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        logger.warn(`下载媒体失败 (attempt ${attempt}/${maxRetries}): ${lastError.message}`);
+        logger2.warn(`下载媒体失败 (attempt ${attempt}/${maxRetries}): ${lastError.message}`);
         if (attempt < maxRetries) {
           await this.sleep(1000 * attempt);
         }
@@ -1213,15 +1232,15 @@ ${qrcodeUrl}
   async silkToWav(silkBuf) {
     try {
       const { decode } = await Promise.resolve().then(() => __toESM(require_lib(), 1));
-      logger.debug(`silkToWav: 解码 ${silkBuf.length} 字节 SILK`);
+      logger2.debug(`silkToWav: 解码 ${silkBuf.length} 字节 SILK`);
       const result = await decode(silkBuf, SILK_SAMPLE_RATE);
       const wav = pcmBytesToWav(result.data, SILK_SAMPLE_RATE);
       return wav;
     } catch (err) {
       if (err.code === "MODULE_NOT_FOUND") {
-        logger.warn("silk-wasm 未安装，跳过语音转码");
+        logger2.warn("silk-wasm 未安装，跳过语音转码");
       } else {
-        logger.warn("silkToWav 失败:", err);
+        logger2.warn("silkToWav 失败:", err);
       }
       return null;
     }
@@ -1238,7 +1257,7 @@ ${qrcodeUrl}
         const errCode = resp.errcode ?? resp.ret ?? 0;
         if (errCode !== 0) {
           if (errCode === -14) {
-            logger.error("微信会话已失效 (Error -14)，进入1小时冷却期");
+            logger2.error("微信会话已失效 (Error -14)，进入1小时冷却期");
             this.cooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
             continue;
           }
@@ -1250,12 +1269,12 @@ ${qrcodeUrl}
         const msgs = resp.msgs || [];
         for (const msg of msgs) {
           this.handleIncomingMessage(msg).catch((err) => {
-            logger.error("消息处理失败:", err);
+            logger2.error("消息处理失败:", err);
           });
         }
         retryDelay = POLL_RETRY_DELAY_MS;
       } catch (err) {
-        logger.warn(`轮询失败: ${err instanceof Error ? err.message : String(err)}，将在 ${retryDelay}ms 后重试`);
+        logger2.warn(`轮询失败: ${err instanceof Error ? err.message : String(err)}，将在 ${retryDelay}ms 后重试`);
         await this.sleep(retryDelay);
         retryDelay = Math.min(retryDelay * 2, POLL_MAX_RETRY_DELAY_MS);
       }
@@ -1300,7 +1319,7 @@ ${qrcodeUrl}
     const parsed = parseMessageBody(msg);
     if (!parsed.text && parsed.imageUrls.length === 0 && parsed.mediaItems.length === 0)
       return;
-    logger.info(`[${userId}] 收到消息: text="${parsed.text.slice(0, 50)}${parsed.text.length > 50 ? "..." : ""}" images=${parsed.imageUrls.length}`);
+    logger2.info(`[${userId}] 收到消息: text="${parsed.text.slice(0, 50)}${parsed.text.length > 50 ? "..." : ""}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, msg, userId);
       if (handled)
@@ -1327,11 +1346,11 @@ ${qrcodeUrl}
         } else if (item.type === MessageItemType.VOICE) {
           const wav = await this.silkToWav(buf);
           if (wav) {
-            logger.debug(`[${userId}] 成功解密并转码语音: ${wav.length} 字节`);
+            logger2.debug(`[${userId}] 成功解密并转码语音: ${wav.length} 字节`);
           }
         }
       } catch (err) {
-        logger.error(`[${userId}] 下载/解密媒体失败:`, err);
+        logger2.error(`[${userId}] 下载/解密媒体失败:`, err);
       }
     }
     if (!cs.typingTicket) {
@@ -1360,7 +1379,7 @@ ${qrcodeUrl}
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "weixin");
     } catch (err) {
-      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
       cs.busy = false;
     }
   }
@@ -1472,7 +1491,7 @@ ${qrcodeUrl}
             context_token: cs.contextToken || undefined
           });
         } catch (err) {
-          logger.error(`[${userId}] 发送附件失败:`, err);
+          logger2.error(`[${userId}] 发送附件失败:`, err);
         }
       }
     });
@@ -1492,7 +1511,7 @@ ${qrcodeUrl}
 
 `) || "✅ 处理完成。";
         this.reply(userId, cs.contextToken, finalContent).catch((err) => {
-          logger.error(`最终消息发送失败 (userId=${userId}):`, err);
+          logger2.error(`最终消息发送失败 (userId=${userId}):`, err);
         });
       }
       cs.busy = false;
@@ -1528,7 +1547,7 @@ ${qrcodeUrl}
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const { message: latestMsg } = messages[messages.length - 1];
-    logger.info(`[${userId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger2.info(`[${userId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.handleIncomingMessage({ ...latestMsg, item_list: [{ type: MessageItemType.TEXT, text_item: { text: combinedText } }] }).catch(() => {});
   }
   async handleCommand(text, msg, userId) {
@@ -1611,7 +1630,7 @@ function parseMessageBody(msg) {
         parts.push(item.text_item.text);
       } else if (item.type === MessageItemType.IMAGE && item.image_item?.url) {
         imageUrls.push(item.image_item.url);
-        logger.debug(`收到图片消息: ${item.image_item.url}`);
+        logger2.debug(`收到图片消息: ${item.image_item.url}`);
       } else if (item.type === MessageItemType.VOICE) {
         if (item.voice_item?.text)
           parts.push(item.voice_item.text);
@@ -1753,18 +1772,16 @@ function pcmBytesToWav(pcm, sampleRate) {
   Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).copy(buf, offset);
   return buf;
 }
-function resolveWeixinConfigFromContext(context) {
-  const weixin = context.config.platform?.weixin ?? {};
-  return {
-    botToken: weixin.botToken,
-    baseUrl: weixin.baseUrl,
-    showToolStatus: weixin.showToolStatus,
+var createWeixinPlatform = definePlatformFactory({
+  platformName: "weixin",
+  resolveConfig: (raw, context) => ({
+    botToken: raw.botToken,
+    baseUrl: raw.baseUrl,
+    showToolStatus: raw.showToolStatus,
     configDir: context.configDir
-  };
-}
-function createWeixinPlatform(context) {
-  return new WeixinPlatform(context.backend, resolveWeixinConfigFromContext(context));
-}
+  }),
+  create: (backend, config) => new WeixinPlatform(backend, config)
+});
 var platform = createWeixinPlatform;
 var src_default = platform;
 export {

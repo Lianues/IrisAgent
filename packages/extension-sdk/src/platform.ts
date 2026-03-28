@@ -106,6 +106,26 @@ export function getPlatformConfig<T extends Record<string, unknown>>(
   return value as Partial<T>;
 }
 
+export interface PlatformFactoryHelperOptions<TConfig extends Record<string, unknown>, TPlatform> {
+  platformName: string;
+  resolveConfig: (raw: Partial<TConfig>, context: IrisPlatformFactoryContextLike) => TConfig;
+  create: (
+    backend: IrisBackendLike,
+    config: TConfig,
+    context: IrisPlatformFactoryContextLike,
+  ) => Promise<TPlatform> | TPlatform;
+}
+
+export function definePlatformFactory<TConfig extends Record<string, unknown>, TPlatform>(
+  options: PlatformFactoryHelperOptions<TConfig, TPlatform>,
+): (context: IrisPlatformFactoryContextLike) => Promise<TPlatform> {
+  return async (context: IrisPlatformFactoryContextLike): Promise<TPlatform> => {
+    const raw = getPlatformConfig<TConfig>(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
+  };
+}
+
 /** 将文本按最大长度分段，优先在换行处切分 */
 export function splitText(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];

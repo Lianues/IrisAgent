@@ -57418,24 +57418,25 @@ var require_src = __commonJS((exports) => {
   __exportStar(require_dist10(), exports);
 });
 
-// extensions/discord/src/index.ts
-var import_discord = __toESM(require_src(), 1);
-
-// extensions/discord/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[DiscordExtension:${tag}]`, ...args);
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
 }
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
   };
 }
-
-// extensions/discord/src/index.ts
 function splitText(text, maxLen) {
   if (text.length <= maxLen)
     return [text];
@@ -57455,10 +57456,28 @@ function splitText(text, maxLen) {
   }
   return chunks;
 }
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
+}
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
+}
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
+// extensions/discord/src/index.ts
+var import_discord = __toESM(require_src(), 1);
 function extractText(parts) {
   return (parts ?? []).filter((part) => part?.thought !== true).map((part) => part?.text || "").join("");
 }
-var logger = createLogger("Discord");
+var logger2 = createExtensionLogger("DiscordExtension", "Discord");
 var MESSAGE_MAX_LENGTH = 2000;
 
 class DiscordPlatform {
@@ -57504,15 +57523,15 @@ class DiscordPlatform {
       this.sendToChannel(sid, text);
     });
     this.client.on("ready", () => {
-      logger.info(`已连接 | Bot: ${this.client.user?.tag}`);
+      logger2.info(`已连接 | Bot: ${this.client.user?.tag}`);
     });
     this.client.on("messageCreate", (msg) => this.handleMessage(msg));
     await this.client.login(this.token);
-    logger.info("平台已启动");
+    logger2.info("平台已启动");
   }
   async stop() {
     await this.client.destroy();
-    logger.info("平台已停止");
+    logger2.info("平台已停止");
   }
   async sendToChannel(sessionId, text) {
     const channelId = sessionId.replace("discord-", "");
@@ -57543,18 +57562,17 @@ class DiscordPlatform {
     try {
       await this.backend.chat(sessionId, content, undefined, undefined, "discord");
     } catch (err) {
-      logger.error("处理消息时出错:", err);
+      logger2.error("处理消息时出错:", err);
     }
   }
 }
-function resolveDiscordConfigFromContext(context) {
-  return {
-    token: context.config.platform?.discord?.token ?? ""
-  };
-}
-function createDiscordPlatform(context) {
-  return new DiscordPlatform(context.backend, resolveDiscordConfigFromContext(context));
-}
+var createDiscordPlatform = definePlatformFactory({
+  platformName: "discord",
+  resolveConfig: (raw) => ({
+    token: raw.token ?? ""
+  }),
+  create: (backend, config) => new DiscordPlatform(backend, config)
+});
 var src_default = createDiscordPlatform;
 export {
   src_default as default,

@@ -467,7 +467,7 @@ var require_combined_stream = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/form-data/node_modules/mime-types/node_modules/mime-db/db.json
+// node_modules/form-data/node_modules/mime-db/db.json
 var require_db = __commonJS((exports, module) => {
   module.exports = {
     "application/1d-interleaved-parityfec": {
@@ -17846,8 +17846,8 @@ var require_index_cjs = __commonJS((exports) => {
   })(exports.EventType || (exports.EventType = {}));
 
   class WeComApiClient {
-    constructor(logger, timeout = 1e4) {
-      this.logger = logger;
+    constructor(logger2, timeout = 1e4) {
+      this.logger = logger2;
       this.httpClient = axios.create({
         timeout,
         headers: {
@@ -17893,7 +17893,7 @@ var require_index_cjs = __commonJS((exports) => {
   var DEFAULT_WS_URL = "wss://openws.work.weixin.qq.com";
 
   class WsConnectionManager {
-    constructor(logger, heartbeatInterval = 30000, reconnectBaseDelay = 1000, maxReconnectAttempts = 10, wsUrl) {
+    constructor(logger2, heartbeatInterval = 30000, reconnectBaseDelay = 1000, maxReconnectAttempts = 10, wsUrl) {
       this.ws = null;
       this.heartbeatTimer = null;
       this.reconnectAttempts = 0;
@@ -17914,7 +17914,7 @@ var require_index_cjs = __commonJS((exports) => {
       this.onMessage = null;
       this.onReconnecting = null;
       this.onError = null;
-      this.logger = logger;
+      this.logger = logger2;
       this.heartbeatInterval = heartbeatInterval;
       this.reconnectBaseDelay = reconnectBaseDelay;
       this.maxReconnectAttempts = maxReconnectAttempts;
@@ -18197,8 +18197,8 @@ var require_index_cjs = __commonJS((exports) => {
   }
 
   class MessageHandler {
-    constructor(logger) {
-      this.logger = logger;
+    constructor(logger2) {
+      this.logger = logger2;
     }
     handleFrame(frame, emitter) {
       try {
@@ -18582,25 +18582,44 @@ var require_index_cjs = __commonJS((exports) => {
   exports.generateReqId = generateReqId;
 });
 
-// extensions/wxwork/src/index.ts
-var import_aibot_node_sdk = __toESM(require_index_cjs(), 1);
-
-// extensions/wxwork/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[WXWorkExtension:${tag}]`, ...args);
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
 }
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
   };
 }
-
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
+}
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
+}
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
 // extensions/wxwork/src/index.ts
-var logger = createLogger("WXWork");
+var import_aibot_node_sdk = __toESM(require_index_cjs(), 1);
+var logger2 = createExtensionLogger("WXWorkExtension", "WXWork");
 var STREAM_THROTTLE_MS = 300;
 var THINKING_PLACEHOLDER = "<think></think>";
 var WS_HEARTBEAT_INTERVAL_MS = 30000;
@@ -18681,7 +18700,7 @@ class WXWorkPlatform {
     this.setupBackendListeners();
     this.setupWsListeners();
     this.wsClient.connect();
-    logger.info("平台启动中，正在连接企业微信...");
+    logger2.info("平台启动中，正在连接企业微信...");
   }
   async stop() {
     this.wsClient.disconnect();
@@ -18690,7 +18709,7 @@ class WXWorkPlatform {
         clearTimeout(cs.stream.throttleTimer);
     }
     this.chatStates.clear();
-    logger.info("平台已停止");
+    logger2.info("平台已停止");
   }
   getChatState(ck) {
     let cs = this.chatStates.get(ck);
@@ -18753,7 +18772,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
       if (!displayText)
         return;
       this.wsClient.replyStream(cs.frame, cs.stream.streamId, displayText, false).catch((err) => {
-        logger.error(`工具状态更新失败 (session=${sid}):`, err);
+        logger2.error(`工具状态更新失败 (session=${sid}):`, err);
       });
     });
     this.backend.on("stream:start", (sid) => {
@@ -18785,7 +18804,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
             return;
           cs.stream.dirty = false;
           this.wsClient.replyStream(cs.frame, cs.stream.streamId, cs.stream.buffer, false).catch((err) => {
-            logger.error(`流式发送失败 (session=${sid}):`, err);
+            logger2.error(`流式发送失败 (session=${sid}):`, err);
           });
         }, STREAM_THROTTLE_MS);
       }
@@ -18800,13 +18819,13 @@ ${activeLine}` : activeLine : cs.stream.buffer;
           cs.stream.throttleTimer = null;
         }
         this.wsClient.replyStream(cs.frame, cs.stream.streamId, text, true).catch((err) => {
-          logger.error(`流式关闭失败 (session=${sid}):`, err);
+          logger2.error(`流式关闭失败 (session=${sid}):`, err);
         });
         cs.stream = null;
       } else {
         const streamId = import_aibot_node_sdk.generateReqId("stream");
         this.wsClient.replyStream(cs.frame, streamId, text, true).catch((err) => {
-          logger.error(`回复失败 (session=${sid}):`, err);
+          logger2.error(`回复失败 (session=${sid}):`, err);
         });
       }
     });
@@ -18839,7 +18858,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
         if (!cs.stopped) {
           const finalText = cs.stream.buffer || "✅ 处理完成。";
           this.wsClient.replyStream(cs.frame, cs.stream.streamId, finalText, true).catch((err) => {
-            logger.error(`done 关闭流失败 (session=${sid}):`, err);
+            logger2.error(`done 关闭流失败 (session=${sid}):`, err);
           });
         }
         cs.stream = null;
@@ -18854,20 +18873,20 @@ ${activeLine}` : activeLine : cs.stream.buffer;
   }
   setupWsListeners() {
     this.wsClient.on("authenticated", () => {
-      logger.info("✅ 企业微信机器人已连接并认证成功");
+      logger2.info("✅ 企业微信机器人已连接并认证成功");
     });
     this.wsClient.on("disconnected", (reason) => {
-      logger.warn(`连接断开: ${reason}`);
+      logger2.warn(`连接断开: ${reason}`);
     });
     this.wsClient.on("reconnecting", (attempt) => {
-      logger.info(`正在重连 (第 ${attempt} 次)...`);
+      logger2.info(`正在重连 (第 ${attempt} 次)...`);
     });
     this.wsClient.on("error", (error) => {
-      logger.error(`WebSocket 错误: ${error.message}`);
+      logger2.error(`WebSocket 错误: ${error.message}`);
     });
     this.wsClient.on("message", (frame) => {
       this.handleIncomingMessage(frame).catch((err) => {
-        logger.error("处理入站消息失败:", err);
+        logger2.error("处理入站消息失败:", err);
       });
     });
     this.wsClient.on("event.enter_chat", (frame) => {
@@ -18875,7 +18894,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
         msgtype: "text",
         text: { content: "\uD83D\uDC4B 你好！我是 Iris 助手，有什么可以帮你的？" }
       }).catch((err) => {
-        logger.error("发送欢迎语失败:", err);
+        logger2.error("发送欢迎语失败:", err);
       });
     });
   }
@@ -19007,7 +19026,7 @@ _${date}_`);
         this.wsClient.replyStream(cs.frame, cs.stream.streamId, stopText, true).catch(() => {});
         cs.stream = null;
       }
-      logger.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
+      logger2.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
       return true;
     }
     if (cmd === "/flush") {
@@ -19033,7 +19052,7 @@ _${date}_`);
       } else {
         this.flushPendingMessages(cs);
       }
-      logger.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
+      logger2.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
       return true;
     }
     return false;
@@ -19045,9 +19064,9 @@ _${date}_`);
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const latestFrame = messages[messages.length - 1].frame;
-    logger.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger2.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.dispatchChat(cs, combinedText, latestFrame).catch((err) => {
-      logger.error(`处理缓冲消息失败:`, err);
+      logger2.error(`处理缓冲消息失败:`, err);
     });
   }
   async dispatchChat(cs, text, frame, images) {
@@ -19060,13 +19079,13 @@ _${date}_`);
       try {
         await this.wsClient.replyStream(frame, streamId, THINKING_PLACEHOLDER, false);
       } catch (err) {
-        logger.error("发送思考中占位失败:", err);
+        logger2.error("发送思考中占位失败:", err);
       }
     }
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "wxwork");
     } catch (err) {
-      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
     }
   }
   async handleIncomingMessage(frame) {
@@ -19079,7 +19098,7 @@ _${date}_`);
       return;
     }
     const ck = this.chatKey(chatType, chatId, senderId);
-    logger.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
+    logger2.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, frame, ck);
       if (handled)
@@ -19092,7 +19111,7 @@ _${date}_`);
       const noticeStreamId = import_aibot_node_sdk.generateReqId("stream");
       this.wsClient.replyStream(frame, noticeStreamId, `\uD83D\uDCE5 消息已暂存（共 ${count} 条），等 AI 回复结束后自动发送。
 发送 \`/flush\` 可立即处理，\`/stop\` 可中止当前回复。`, true).catch(() => {});
-      logger.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
+      logger2.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
       return;
     }
     let images;
@@ -19111,9 +19130,9 @@ _${date}_`);
         const mimeType = detectImageMime(buffer) || "image/jpeg";
         const base64 = buffer.toString("base64");
         results.push({ mimeType, data: base64 });
-        logger.debug(`图片下载成功: size=${buffer.length} bytes`);
+        logger2.debug(`图片下载成功: size=${buffer.length} bytes`);
       } catch (err) {
-        logger.error(`图片下载失败: ${url}`, err);
+        logger2.error(`图片下载失败: ${url}`, err);
       }
     }
     return results;
@@ -19159,17 +19178,15 @@ function detectImageMime(buffer) {
     return "image/bmp";
   return null;
 }
-function resolveWXWorkConfigFromContext(context) {
-  const wxwork = context.config.platform?.wxwork ?? {};
-  return {
-    botId: wxwork.botId ?? "",
-    secret: wxwork.secret ?? "",
-    showToolStatus: wxwork.showToolStatus
-  };
-}
-function createWXWorkPlatform(context) {
-  return new WXWorkPlatform(context.backend, resolveWXWorkConfigFromContext(context));
-}
+var createWXWorkPlatform = definePlatformFactory({
+  platformName: "wxwork",
+  resolveConfig: (raw) => ({
+    botId: raw.botId ?? "",
+    secret: raw.secret ?? "",
+    showToolStatus: raw.showToolStatus
+  }),
+  create: (backend, config) => new WXWorkPlatform(backend, config)
+});
 var src_default = createWXWorkPlatform;
 export {
   src_default as default,

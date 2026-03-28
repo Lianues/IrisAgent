@@ -1,4 +1,4 @@
-import { createLogger } from './logger';
+import { createExtensionLogger } from '@iris/extension-sdk';
 import {
   buildLarkSessionTarget,
   type LarkMessageEvent,
@@ -6,7 +6,7 @@ import {
   type ParsedLarkMessage,
 } from './types';
 
-const logger = createLogger('LarkMessageHandler');
+const logger = createExtensionLogger('LarkExtension', 'LarkMessageHandler');
 
 interface LarkMessageEnvelope {
   event?: LarkMessageEvent;

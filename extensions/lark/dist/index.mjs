@@ -76110,9 +76110,9 @@ var require_lib2 = __commonJS((exports) => {
   };
 
   class LoggerProxy {
-    constructor(level, logger) {
+    constructor(level, logger2) {
       this.level = level;
-      this.logger = logger;
+      this.logger = logger2;
     }
     error(...msg) {
       if (this.level >= exports.LoggerLevel.error) {
@@ -76530,10 +76530,10 @@ var require_lib2 = __commonJS((exports) => {
 
   class RequestHandle {
     constructor(params) {
-      const { encryptKey, verificationToken, logger } = params;
+      const { encryptKey, verificationToken, logger: logger2 } = params;
       this.verificationToken = verificationToken;
       this.encryptKey = encryptKey;
-      this.logger = logger;
+      this.logger = logger2;
       if (encryptKey) {
         this.aesCipher = new AESCipher(encryptKey);
       }
@@ -77411,8 +77411,8 @@ var require_lib2 = __commonJS((exports) => {
         lastConnectTime: 0,
         nextConnectTime: 0
       };
-      const { appId, appSecret, agent, domain = exports.Domain.Feishu, httpInstance = defaultHttpInstance, loggerLevel = exports.LoggerLevel.info, logger = defaultLogger, autoReconnect = true } = params;
-      this.logger = new LoggerProxy(loggerLevel, logger);
+      const { appId, appSecret, agent, domain = exports.Domain.Feishu, httpInstance = defaultHttpInstance, loggerLevel = exports.LoggerLevel.info, logger: logger2 = defaultLogger, autoReconnect = true } = params;
+      this.logger = new LoggerProxy(loggerLevel, logger2);
       assert(!appId, () => this.logger.error("appId is needed"));
       assert(!appSecret, () => this.logger.error("appSecret is needed"));
       this.agent = agent;
@@ -78015,20 +78015,41 @@ var require_lib2 = __commonJS((exports) => {
   exports.withUserAccessToken = withUserAccessToken;
 });
 
-// extensions/lark/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[LarkExtension:${tag}]`, ...args);
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
 }
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
   };
 }
-
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
+}
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
+}
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
 // extensions/lark/src/card-builder.ts
 var TOOL_STATUS_ICONS = {
   queued: "⏳",
@@ -78115,7 +78136,7 @@ function formatLarkToolLine(entry) {
 
 // extensions/lark/src/client.ts
 import { Readable } from "node:stream";
-var logger = createLogger("LarkClient");
+var logger2 = createExtensionLogger("LarkExtension", "LarkClient");
 var MEDIA_DOWNLOAD_TIMEOUT_MS = 30000;
 var larkSdkPromise = null;
 async function loadLarkSdk() {
@@ -78265,7 +78286,7 @@ class LarkClient {
   async downloadResource(options) {
     const client = await this.getSdkClient();
     const timeout = setTimeout(() => {
-      logger.warn(`飞书资源下载超时: ${options.type}:${options.fileKey}`);
+      logger2.warn(`飞书资源下载超时: ${options.type}:${options.fileKey}`);
     }, MEDIA_DOWNLOAD_TIMEOUT_MS);
     try {
       const response = await client.im.messageResource.get({
@@ -78368,7 +78389,7 @@ class LarkClient {
       }
     }
     if (this.wsClient) {
-      logger.warn("检测到旧的飞书 WebSocket 客户端，先执行关闭。");
+      logger2.warn("检测到旧的飞书 WebSocket 客户端，先执行关闭。");
       this.stopWebSocket();
     }
     const dispatcher = new sdk.EventDispatcher({
@@ -78594,7 +78615,7 @@ function normalizeOptionalString(value) {
 }
 
 // extensions/lark/src/message-handler.ts
-var logger2 = createLogger("LarkMessageHandler");
+var logger3 = createExtensionLogger("LarkExtension", "LarkMessageHandler");
 
 class LarkMessageHandler {
   botOpenId;
@@ -78610,7 +78631,7 @@ class LarkMessageHandler {
       return null;
     const senderOpenId = String(event.sender?.sender_id?.open_id ?? "").trim();
     if (senderOpenId && this.botOpenId && senderOpenId === this.botOpenId) {
-      logger2.debug("忽略飞书机器人自身发送的消息");
+      logger3.debug("忽略飞书机器人自身发送的消息");
       return null;
     }
     const extracted = extractLarkMessageContent(event.message);
@@ -78766,7 +78787,7 @@ function safeJsonParse(content) {
 }
 
 // extensions/lark/src/index.ts
-var logger3 = createLogger("Lark");
+var logger4 = createExtensionLogger("LarkExtension", "Lark");
 var STREAM_THROTTLE_MS = 1000;
 var BUFFERED_NOTICE = `\uD83D\uDCE5 消息已暂存，等 AI 回复结束后自动发送。
 发送 /flush 可立即处理，/stop 可中止当前回复。`;
@@ -78811,9 +78832,9 @@ class LarkPlatform {
       abortSignal: this.wsAbortController.signal,
       autoProbe: false
     }).catch((error) => {
-      logger3.error("飞书 WebSocket 监听失败:", error);
+      logger4.error("飞书 WebSocket 监听失败:", error);
     });
-    logger3.info(`飞书平台已启动 | Bot: ${probe.botName ?? probe.botOpenId ?? "unknown"}`);
+    logger4.info(`飞书平台已启动 | Bot: ${probe.botName ?? probe.botOpenId ?? "unknown"}`);
   }
   async stop() {
     this.wsAbortController?.abort();
@@ -78825,7 +78846,7 @@ class LarkPlatform {
     this.chatStates.clear();
     this.messageDedup.clear();
     this.client.dispose();
-    logger3.info("Lark 平台已停止");
+    logger4.info("Lark 平台已停止");
   }
   getSessionId(chatKey) {
     let sid = this.activeSessions.get(chatKey);
@@ -78974,7 +78995,7 @@ ${line}
         throttleTimer: null
       };
     } catch (error) {
-      logger3.warn("发送占位卡片失败，降级为非流式模式:", error);
+      logger4.warn("发送占位卡片失败，降级为非流式模式:", error);
     }
   }
   patchStreamCard(cs) {
@@ -78985,7 +79006,7 @@ ${line}
       toolEntries: cs.stream.activeToolEntries
     });
     this.client.patchCard({ messageId: cs.stream.cardMessageId, card }).catch((error) => {
-      logger3.error("流式卡片更新失败:", error);
+      logger4.error("流式卡片更新失败:", error);
     });
   }
   finalizeStreamCard(cs, text, isError) {
@@ -78997,7 +79018,7 @@ ${line}
     }
     const card = buildLarkCard("complete", { text, isError });
     this.client.patchCard({ messageId: cs.stream.cardMessageId, card }).catch((error) => {
-      logger3.error("流式卡片关闭失败:", error);
+      logger4.error("流式卡片关闭失败:", error);
     });
   }
   cleanupStream(cs) {
@@ -79023,7 +79044,7 @@ ${line}
     if (!parsed)
       return;
     if (this.messageDedup.has(parsed.messageId)) {
-      logger3.debug(`跳过重复消息: ${parsed.messageId}`);
+      logger4.debug(`跳过重复消息: ${parsed.messageId}`);
       return;
     }
     this.messageDedup.add(parsed.messageId);
@@ -79032,7 +79053,7 @@ ${line}
     if (createTimeMs > 0) {
       const age = Date.now() - createTimeMs;
       if (age > MESSAGE_EXPIRE_MS) {
-        logger3.debug(`跳过过期消息: ${parsed.messageId} (age=${Math.round(age / 1000)}s)`);
+        logger4.debug(`跳过过期消息: ${parsed.messageId} (age=${Math.round(age / 1000)}s)`);
         return;
       }
     }
@@ -79227,14 +79248,14 @@ ${lines.join(`
       try {
         await this.client.deleteMessage(cs.lastBotMessageId);
       } catch (error) {
-        logger3.warn(`飞书消息撤回失败 (${cs.lastBotMessageId})，尝试用 patchCard 更新:`, error);
+        logger4.warn(`飞书消息撤回失败 (${cs.lastBotMessageId})，尝试用 patchCard 更新:`, error);
         try {
           await this.client.patchCard({
             messageId: cs.lastBotMessageId,
             card: buildLarkCard("complete", { text: "~~已撤销~~" })
           });
         } catch (patchError) {
-          logger3.warn("patchCard 也失败了:", patchError);
+          logger4.warn("patchCard 也失败了:", patchError);
         }
       }
       cs.lastBotMessageId = undefined;
@@ -79270,7 +79291,7 @@ ${lines.join(`
     try {
       await this.backend.chat(cs.sessionId, message.text, images, documents, "lark");
     } catch (error) {
-      logger3.error(`backend.chat 失败 (session=${cs.sessionId}):`, error);
+      logger4.error(`backend.chat 失败 (session=${cs.sessionId}):`, error);
     }
   }
   flushPendingMessages(cs) {
@@ -79280,7 +79301,7 @@ ${lines.join(`
     const latest = messages[messages.length - 1];
     const combinedText = messages.map((message) => message.text).filter(Boolean).join(`
 `).trim();
-    logger3.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger4.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.dispatchChat(cs, {
       session: latest.session,
       text: combinedText,
@@ -79308,16 +79329,16 @@ ${lines.join(`
           const mimeType = downloaded.contentType || detectImageMime(downloaded.buffer) || "image/jpeg";
           const base64 = downloaded.buffer.toString("base64");
           images.push({ mimeType, data: base64 });
-          logger3.debug(`图片下载成功: fileKey=${resource.fileKey}, size=${downloaded.buffer.length}`);
+          logger4.debug(`图片下载成功: fileKey=${resource.fileKey}, size=${downloaded.buffer.length}`);
         } else {
           const fileName = resource.fileName || downloaded.fileName || `file_${resource.fileKey}`;
           const mimeType = downloaded.contentType || guessMimeByFileName(fileName);
           const base64 = downloaded.buffer.toString("base64");
           documents.push({ fileName, mimeType, data: base64 });
-          logger3.debug(`文件下载成功: fileKey=${resource.fileKey}, fileName=${fileName}, size=${downloaded.buffer.length}`);
+          logger4.debug(`文件下载成功: fileKey=${resource.fileKey}, fileName=${fileName}, size=${downloaded.buffer.length}`);
         }
       } catch (error) {
-        logger3.error(`资源下载失败: type=${resource.type}, fileKey=${resource.fileKey}`, error);
+        logger4.error(`资源下载失败: type=${resource.type}, fileKey=${resource.fileKey}`, error);
       }
     }
     return { images, documents };
@@ -79330,19 +79351,17 @@ ${lines.join(`
     }
   }
 }
-function resolveLarkConfigFromContext(context) {
-  const lark = context?.config?.platform?.lark ?? {};
-  return {
-    appId: String(lark.appId ?? ""),
-    appSecret: String(lark.appSecret ?? ""),
-    verificationToken: normalizeOptionalString2(lark.verificationToken),
-    encryptKey: normalizeOptionalString2(lark.encryptKey),
-    showToolStatus: lark.showToolStatus !== false
-  };
-}
-async function createLarkPlatform(context) {
-  return new LarkPlatform(context.backend, resolveLarkConfigFromContext(context));
-}
+var createLarkPlatform = definePlatformFactory({
+  platformName: "lark",
+  resolveConfig: (raw) => ({
+    appId: String(raw.appId ?? ""),
+    appSecret: String(raw.appSecret ?? ""),
+    verificationToken: normalizeOptionalString2(raw.verificationToken),
+    encryptKey: normalizeOptionalString2(raw.encryptKey),
+    showToolStatus: raw.showToolStatus !== false
+  }),
+  create: (backend, config) => new LarkPlatform(backend, config)
+});
 var platform = createLarkPlatform;
 var src_default = createLarkPlatform;
 function detectImageMime(buffer) {
@@ -79411,7 +79430,6 @@ function normalizeOptionalString2(value) {
 export {
   unwrapLarkMessageEvent,
   stripLarkBotMention,
-  resolveLarkConfigFromContext,
   platform,
   parseLarkSessionTarget,
   normalizeLarkMessageId,

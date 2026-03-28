@@ -10,9 +10,10 @@ export type {
 } from './manifest';
 
 export {
+  definePlatformFactory,
+  getPlatformConfig,
   PlatformAdapter,
   splitText,
-  getPlatformConfig,
 } from './platform';
 
 export type {
@@ -25,8 +26,43 @@ export type {
   IrisSessionMetaLike,
   IrisSkillInfoLike,
   IrisToolInvocationLike,
+  PlatformFactoryHelperOptions,
   ToolAttachment,
 } from './platform';
+
+export type {
+  Content,
+  FunctionCallPart,
+  FunctionResponsePart,
+  InlineDataPart,
+  Part,
+  Role,
+  TextPart,
+  TokensDetail,
+  UsageMetadata,
+} from './message';
+
+export type {
+  LLMGenerationConfig,
+  LLMRequest,
+  LLMResponse,
+  LLMStreamChunk,
+} from './llm';
+
+export type {
+  ModeDefinition,
+  ToolFilter,
+} from './mode';
+
+export type {
+  FunctionDeclaration,
+  ToolDefinition,
+  ToolHandler,
+  ToolInvocation,
+  ToolParallelPolicy,
+  ToolParallelResolver,
+  ToolStatus,
+} from './tool';
 
 export {
   createExtensionLogger,
@@ -35,6 +71,40 @@ export {
 export type {
   ExtensionLogger,
 } from './logger';
+
+export {
+  createPluginLogger,
+  definePlugin,
+} from './plugin';
+
+export type {
+  BootstrapExtensionRegistryLike,
+  InlinePluginEntry,
+  IrisAPI,
+  IrisPlugin,
+  LLMProviderFactory,
+  LLMRouterLike,
+  MemoryFactory,
+  ModeRegistryLike,
+  NamedFactoryRegistryLike,
+  OCRFactory,
+  PatchDisposer,
+  PatchMethod,
+  PatchPrototype,
+  PlatformFactory,
+  PluginContext,
+  PluginEntry,
+  PluginEventBusLike,
+  PluginHook,
+  PluginLogger,
+  PluginManagerLike,
+  PreBootstrapContext,
+  PromptAssemblerLike,
+  StorageFactory,
+  ToolExecInterception,
+  ToolRegistryLike,
+  ToolWrapper,
+} from './plugin';
 
 export {
   resolveDefaultDataDir,

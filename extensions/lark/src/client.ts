@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { createLogger } from './logger';
+import { createExtensionLogger } from '@iris/extension-sdk';
 import type {
   LarkConfig,
   LarkDownloadedResource,
@@ -13,7 +13,7 @@ import type {
   LarkWebSocketStartOptions,
 } from './types';
 
-const logger = createLogger('LarkClient');
+const logger = createExtensionLogger('LarkExtension', 'LarkClient');
 const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000;
 
 interface LarkSdkClientLike {

@@ -19,45 +19,12 @@
  *   协议文档：https://ilinkai.weixin.qq.com
  */
 
+import { createExtensionLogger, definePlatformFactory, splitText, type ImageInput, type IrisBackendLike, type IrisPlatformFactoryContextLike } from '@iris/extension-sdk';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { createLogger } from './logger';
 
-type ImageInput = {
-  mimeType: string;
-  data: string;
-};
-
-interface WeixinPlatformFactoryContextLike {
-  backend: any;
-  config: {
-    platform?: {
-      weixin?: Partial<WeixinConfig>;
-    };
-  };
-  configDir?: string;
-}
-
-function splitText(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf('\n', maxLen);
-    if (splitAt <= 0) splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, '');
-  }
-  return chunks;
-}
-
-const logger = createLogger('Weixin');
+const logger = createExtensionLogger('WeixinExtension', 'Weixin');
 
 /** 微信语音采样率 */
 const SILK_SAMPLE_RATE = 24_000;
@@ -190,7 +157,7 @@ interface ChatState {
 // ============ 平台适配器 ============
 
 export class WeixinPlatform {
-  private backend: any;
+  private backend: IrisBackendLike;
   private config: WeixinConfig;
   private baseUrl: string;
   private configDir: string;
@@ -211,7 +178,7 @@ export class WeixinPlatform {
    */
   private activeSessions = new Map<string, string>();
 
-  constructor(backend: any, config: WeixinConfig) {
+  constructor(backend: IrisBackendLike, config: WeixinConfig) {
     this.backend = backend;
     this.config = config;
     this.baseUrl = (config.baseUrl || 'https://ilinkai.weixin.qq.com').replace(/\/$/, '');
@@ -1141,19 +1108,16 @@ function pcmBytesToWav(pcm: Uint8Array, sampleRate: number): Buffer {
   return buf;
 }
 
-function resolveWeixinConfigFromContext(context: WeixinPlatformFactoryContextLike): WeixinConfig {
-  const weixin = context.config.platform?.weixin ?? {};
-  return {
-    botToken: weixin.botToken,
-    baseUrl: weixin.baseUrl,
-    showToolStatus: weixin.showToolStatus,
+export const createWeixinPlatform = definePlatformFactory<WeixinConfig, WeixinPlatform>({
+  platformName: 'weixin',
+  resolveConfig: (raw, context) => ({
+    botToken: raw.botToken,
+    baseUrl: raw.baseUrl,
+    showToolStatus: raw.showToolStatus,
     configDir: context.configDir,
-  };
-}
-
-export function createWeixinPlatform(context: WeixinPlatformFactoryContextLike): WeixinPlatform {
-  return new WeixinPlatform(context.backend, resolveWeixinConfigFromContext(context));
-}
+  }),
+  create: (backend, config) => new WeixinPlatform(backend, config),
+});
 
 const platform = createWeixinPlatform;
 

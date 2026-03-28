@@ -60,6 +60,27 @@ function normalizePackageName(specifier: string): string {
 }
 
 describe('extension sdk boundary', () => {
+  it('宿主根 package.json 不应声明仅供 extension 使用的第三方依赖', () => {
+    const rootPackageJson = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
+
+    const declared = new Set<string>([
+      ...Object.keys(rootPackageJson.dependencies ?? {}),
+      ...Object.keys(rootPackageJson.optionalDependencies ?? {}),
+    ]);
+
+    const extensionOnlyPackages = [
+      '@larksuiteoapi/node-sdk',
+      '@wecom/aibot-node-sdk',
+      'discord.js',
+      'grammy',
+      'silk-wasm',
+    ];
+
+    expect(extensionOnlyPackages.filter((pkgName) => declared.has(pkgName))).toEqual([]);
+  });
+
   it('extension 源码不应直接 import 宿主内部 src 路径', () => {
     const offenders: string[] = [];
 

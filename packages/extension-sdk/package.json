@@ -1,11 +1,12 @@
 {
   "name": "@iris/extension-sdk",
   "version": "0.1.0",
-  "description": "Public SDK for Iris extensions",
+  "description": "Public SDK for Iris extensions and plugins",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./pairing": "./src/pairing/index.ts"
+    "./pairing": "./src/pairing/index.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "files": [
     "src"

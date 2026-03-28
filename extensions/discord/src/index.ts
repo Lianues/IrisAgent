@@ -4,45 +4,18 @@
  * 基于 discord.js 官方 SDK。
  */
 
+import { createExtensionLogger, definePlatformFactory, splitText, type IrisBackendLike } from '@iris/extension-sdk';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
-import { createLogger } from './logger';
-
-interface DiscordPlatformFactoryContextLike {
-  backend: any;
-  config: {
-    platform?: {
-      discord?: Partial<DiscordConfig>;
-    };
-  };
-}
 
 interface ContentLike {
   parts?: Array<{ text?: string; thought?: boolean }>;
-}
-
-function splitText(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf('\n', maxLen);
-    if (splitAt <= 0) splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, '');
-  }
-  return chunks;
 }
 
 function extractText(parts: ContentLike['parts']): string {
   return (parts ?? []).filter((part) => part?.thought !== true).map((part) => part?.text || '').join('');
 }
 
-const logger = createLogger('Discord');
+const logger = createExtensionLogger('DiscordExtension', 'Discord');
 
 const MESSAGE_MAX_LENGTH = 2000;
 
@@ -53,10 +26,10 @@ export interface DiscordConfig {
 export class DiscordPlatform {
   private client: Client;
   private token: string;
-  private backend: any;
+  private backend: IrisBackendLike;
   private pendingTexts = new Map<string, string>();
 
-  constructor(backend: any, config: DiscordConfig) {
+  constructor(backend: IrisBackendLike, config: DiscordConfig) {
     this.backend = backend;
     this.token = config.token;
     this.client = new Client({
@@ -154,14 +127,12 @@ export class DiscordPlatform {
   }
 }
 
-function resolveDiscordConfigFromContext(context: DiscordPlatformFactoryContextLike): DiscordConfig {
-  return {
-    token: context.config.platform?.discord?.token ?? '',
-  };
-}
-
-export function createDiscordPlatform(context: DiscordPlatformFactoryContextLike): DiscordPlatform {
-  return new DiscordPlatform(context.backend, resolveDiscordConfigFromContext(context));
-}
+export const createDiscordPlatform = definePlatformFactory<DiscordConfig, DiscordPlatform>({
+  platformName: 'discord',
+  resolveConfig: (raw) => ({
+    token: raw.token ?? '',
+  }),
+  create: (backend, config) => new DiscordPlatform(backend, config),
+});
 
 export default createDiscordPlatform;

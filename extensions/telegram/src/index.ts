@@ -9,7 +9,7 @@
  */
 
 import { PairingGuard, PairingStore } from '@iris/extension-sdk/pairing';
-import { PlatformAdapter, createExtensionLogger, getPlatformConfig, type DocumentInput, type ImageInput, type IrisBackendLike, type IrisPlatformFactoryContextLike, type ToolAttachment } from '@iris/extension-sdk';
+import { PlatformAdapter, createExtensionLogger, definePlatformFactory, type DocumentInput, type ImageInput, type IrisBackendLike, type ToolAttachment } from '@iris/extension-sdk';
 import { TelegramClient } from './client';
 import { TelegramCommandRouter } from './commands';
 import { TelegramMediaService } from './media';
@@ -944,18 +944,15 @@ function hasTelegramUnsupportedMedia(message: ParsedTelegramMessage): boolean {
   return Boolean(message.photo || message.document || message.voice || message.audio);
 }
 
-function resolveTelegramConfigFromContext(context: IrisPlatformFactoryContextLike): TelegramConfig {
-  const telegram = getPlatformConfig<TelegramConfig>(context, 'telegram');
-  return {
-    token: telegram.token ?? '',
-    showToolStatus: telegram.showToolStatus,
-    groupMentionRequired: telegram.groupMentionRequired,
-    pairing: telegram.pairing,
-  };
-}
-
-export function createTelegramPlatform(context: IrisPlatformFactoryContextLike): TelegramPlatform {
-  return new TelegramPlatform(context.backend, resolveTelegramConfigFromContext(context));
-}
+export const createTelegramPlatform = definePlatformFactory<TelegramConfig, TelegramPlatform>({
+  platformName: 'telegram',
+  resolveConfig: (raw) => ({
+    token: raw.token ?? '',
+    showToolStatus: raw.showToolStatus,
+    groupMentionRequired: raw.groupMentionRequired,
+    pairing: raw.pairing,
+  }),
+  create: (backend, config) => new TelegramPlatform(backend, config),
+});
 
 export default createTelegramPlatform;

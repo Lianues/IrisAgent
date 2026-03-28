@@ -2876,29 +2876,25 @@ var require_websocket_server = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/ws/wrapper.mjs
-var import_stream = __toESM(require_stream(), 1);
-var import_receiver = __toESM(require_receiver(), 1);
-var import_sender = __toESM(require_sender(), 1);
-var import_websocket = __toESM(require_websocket(), 1);
-var import_websocket_server = __toESM(require_websocket_server(), 1);
-var wrapper_default = import_websocket.default;
-
-// extensions/qq/src/logger.ts
-function print(level, tag, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[QQExtension:${tag}]`, ...args);
+// packages/extension-sdk/src/platform.ts
+function getPlatformConfig(context, platformName) {
+  const platform = context.config?.platform;
+  if (!platform || typeof platform !== "object") {
+    return {};
+  }
+  const value = platform[platformName];
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
 }
-function createLogger(tag) {
-  return {
-    info: (...args) => print("log", tag, args),
-    warn: (...args) => print("warn", tag, args),
-    error: (...args) => print("error", tag, args),
-    debug: (...args) => print("debug", tag, args)
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
   };
 }
-
-// extensions/qq/src/index.ts
 function splitText(text, maxLen) {
   if (text.length <= maxLen)
     return [text];
@@ -2918,7 +2914,32 @@ function splitText(text, maxLen) {
   }
   return chunks;
 }
-var logger = createLogger("QQ");
+// packages/extension-sdk/src/logger.ts
+function print(level, scope, args) {
+  const consoleMethod = console[level] ?? console.log;
+  consoleMethod(`[${scope}]`, ...args);
+}
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    info: (...args) => print("log", scope, args),
+    warn: (...args) => print("warn", scope, args),
+    error: (...args) => print("error", scope, args),
+    debug: (...args) => print("debug", scope, args)
+  };
+}
+// packages/extension-sdk/src/pairing/store.ts
+var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
+// node_modules/ws/wrapper.mjs
+var import_stream = __toESM(require_stream(), 1);
+var import_receiver = __toESM(require_receiver(), 1);
+var import_sender = __toESM(require_sender(), 1);
+var import_websocket = __toESM(require_websocket(), 1);
+var import_websocket_server = __toESM(require_websocket_server(), 1);
+var wrapper_default = import_websocket.default;
+
+// extensions/qq/src/index.ts
+var logger2 = createExtensionLogger("QQExtension", "QQ");
 var MESSAGE_MAX_LENGTH = 4500;
 var IMAGE_DOWNLOAD_TIMEOUT_MS = 30000;
 var WS_RECONNECT_INTERVAL_MS = 5000;
@@ -2971,7 +2992,7 @@ class QQPlatform {
   async start() {
     this.setupBackendListeners();
     this.connect();
-    logger.info("平台启动中，正在连接 NapCat...");
+    logger2.info("平台启动中，正在连接 NapCat...");
   }
   async stop() {
     this.stopping = true;
@@ -2989,39 +3010,39 @@ class QQPlatform {
       this.ws = null;
     }
     this.chatStates.clear();
-    logger.info("平台已停止");
+    logger2.info("平台已停止");
   }
   connect() {
     const url = this.config.accessToken ? `${this.config.wsUrl}?access_token=${encodeURIComponent(this.config.accessToken)}` : this.config.wsUrl;
     this.ws = new wrapper_default(url);
     this.ws.on("open", () => {
-      logger.info("✅ WebSocket 已连接到 NapCat");
+      logger2.info("✅ WebSocket 已连接到 NapCat");
       this.reconnectAttempts = 0;
     });
     this.ws.on("message", (raw) => {
       try {
         this.handleWsMessage(String(raw));
       } catch (err) {
-        logger.error("处理 WS 消息失败:", err);
+        logger2.error("处理 WS 消息失败:", err);
       }
     });
     this.ws.on("close", (code, reason) => {
-      logger.warn(`WebSocket 断开: code=${code} reason=${reason.toString()}`);
+      logger2.warn(`WebSocket 断开: code=${code} reason=${reason.toString()}`);
       if (!this.stopping) {
         this.scheduleReconnect();
       }
     });
     this.ws.on("error", (err) => {
-      logger.error(`WebSocket 错误: ${err.message}`);
+      logger2.error(`WebSocket 错误: ${err.message}`);
     });
   }
   scheduleReconnect() {
     if (this.reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      logger.error(`达到最大重连次数 (${WS_MAX_RECONNECT_ATTEMPTS})，停止重连`);
+      logger2.error(`达到最大重连次数 (${WS_MAX_RECONNECT_ATTEMPTS})，停止重连`);
       return;
     }
     this.reconnectAttempts++;
-    logger.info(`正在重连 (第 ${this.reconnectAttempts} 次)...`);
+    logger2.info(`正在重连 (第 ${this.reconnectAttempts} 次)...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -3053,7 +3074,7 @@ class QQPlatform {
     try {
       data = JSON.parse(raw);
     } catch {
-      logger.warn("收到非 JSON 消息，忽略");
+      logger2.warn("收到非 JSON 消息，忽略");
       return;
     }
     if (data.echo) {
@@ -3072,13 +3093,13 @@ class QQPlatform {
     switch (data.post_type) {
       case "message":
         this.handleIncomingMessage(data).catch((err) => {
-          logger.error("处理入站消息失败:", err);
+          logger2.error("处理入站消息失败:", err);
         });
         break;
       case "meta_event": {
         const meta = data;
         if (meta.meta_event_type === "lifecycle" && meta.sub_type === "connect") {
-          logger.info("✅ NapCat 生命周期事件: 连接成功");
+          logger2.info("✅ NapCat 生命周期事件: 连接成功");
         }
         break;
       }
@@ -3126,7 +3147,7 @@ class QQPlatform {
           this.notifiedToolIds.add(inv.id);
           const line = formatToolLine(inv);
           this.sendMessage(line, cs.target).catch((err) => {
-            logger.error(`工具状态通知失败 (session=${sid}):`, err);
+            logger2.error(`工具状态通知失败 (session=${sid}):`, err);
           });
         }
       }
@@ -3146,7 +3167,7 @@ class QQPlatform {
       if (!finalText)
         return;
       this.sendMessage(finalText, cs.target).catch((err) => {
-        logger.error(`回复失败 (session=${sid}):`, err);
+        logger2.error(`回复失败 (session=${sid}):`, err);
       });
     });
     this.backend.on("error", (sid, errorMsg) => {
@@ -3163,7 +3184,7 @@ class QQPlatform {
         const text = cs.streamBuffer;
         cs.streamBuffer = "";
         this.sendMessage(text, cs.target).catch((err) => {
-          logger.error(`done 兜底发送失败 (session=${sid}):`, err);
+          logger2.error(`done 兜底发送失败 (session=${sid}):`, err);
         });
       }
       cs.busy = false;
@@ -3289,7 +3310,7 @@ ${date}`);
       }
       cs.stopped = true;
       this.backend.abortChat(cs.sessionId);
-      logger.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
+      logger2.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
       await reply("⏹ 已中止回复。");
       return true;
     }
@@ -3305,7 +3326,7 @@ ${date}`);
       } else {
         this.flushPendingMessages(cs);
       }
-      logger.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
+      logger2.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
       return true;
     }
     return false;
@@ -3317,9 +3338,9 @@ ${date}`);
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const latestTarget = messages[messages.length - 1].target;
-    logger.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger2.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.dispatchChat(cs, combinedText, latestTarget).catch((err) => {
-      logger.error("处理缓冲消息失败:", err);
+      logger2.error("处理缓冲消息失败:", err);
     });
   }
   async dispatchChat(cs, text, target, images) {
@@ -3329,7 +3350,7 @@ ${date}`);
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "qq");
     } catch (err) {
-      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
     }
   }
   async handleIncomingMessage(event) {
@@ -3349,7 +3370,7 @@ ${date}`);
     }
     const ck = this.chatKey(messageType, senderId, groupId);
     const target = messageType === "group" ? { groupId } : { userId: senderId };
-    logger.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
+    logger2.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, ck, target);
       if (handled)
@@ -3361,7 +3382,7 @@ ${date}`);
       const count = cs.pendingMessages.length;
       this.sendMessage(`\uD83D\uDCE5 消息已暂存（共 ${count} 条），等 AI 回复结束后自动发送。
 发送 /flush 可立即处理，/stop 可中止当前回复。`, target).catch(() => {});
-      logger.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
+      logger2.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
       return;
     }
     let images;
@@ -3387,7 +3408,7 @@ ${date}`);
           });
         }
       } catch (err) {
-        logger.error("发送消息失败:", err);
+        logger2.error("发送消息失败:", err);
       }
     }
   }
@@ -3399,15 +3420,15 @@ ${date}`);
           signal: AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS)
         });
         if (!response.ok) {
-          logger.error(`图片下载 HTTP 错误: ${response.status} ${url}`);
+          logger2.error(`图片下载 HTTP 错误: ${response.status} ${url}`);
           continue;
         }
         const buffer = Buffer.from(await response.arrayBuffer());
         const mimeType = detectImageMime(buffer) || "image/jpeg";
         results.push({ mimeType, data: buffer.toString("base64") });
-        logger.debug(`图片下载成功: size=${buffer.length} bytes`);
+        logger2.debug(`图片下载成功: size=${buffer.length} bytes`);
       } catch (err) {
-        logger.error(`图片下载失败: ${url}`, err);
+        logger2.error(`图片下载失败: ${url}`, err);
       }
     }
     return results;
@@ -3453,19 +3474,17 @@ function detectImageMime(buffer) {
     return "image/bmp";
   return null;
 }
-function resolveQQConfigFromContext(context) {
-  const qq = context.config.platform?.qq ?? {};
-  return {
-    wsUrl: qq.wsUrl ?? "ws://127.0.0.1:3001",
-    accessToken: qq.accessToken,
-    selfId: qq.selfId ?? "",
-    groupMode: qq.groupMode,
-    showToolStatus: qq.showToolStatus
-  };
-}
-function createQQPlatform(context) {
-  return new QQPlatform(context.backend, resolveQQConfigFromContext(context));
-}
+var createQQPlatform = definePlatformFactory({
+  platformName: "qq",
+  resolveConfig: (raw) => ({
+    wsUrl: raw.wsUrl ?? "ws://127.0.0.1:3001",
+    accessToken: raw.accessToken,
+    selfId: raw.selfId ?? "",
+    groupMode: raw.groupMode,
+    showToolStatus: raw.showToolStatus
+  }),
+  create: (backend, config) => new QQPlatform(backend, config)
+});
 var src_default = createQQPlatform;
 export {
   src_default as default,

@@ -8924,6 +8924,13 @@ function getPlatformConfig(context, platformName) {
   }
   return value;
 }
+function definePlatformFactory(options) {
+  return async (context) => {
+    const raw = getPlatformConfig(context, options.platformName);
+    const config = options.resolveConfig(raw, context);
+    return await options.create(context.backend, config, context);
+  };
+}
 function splitText(text, maxLen) {
   if (text.length <= maxLen)
     return [text];
@@ -10131,18 +10138,16 @@ ${list}`);
 function hasTelegramUnsupportedMedia(message) {
   return Boolean(message.photo || message.document || message.voice || message.audio);
 }
-function resolveTelegramConfigFromContext(context) {
-  const telegram = getPlatformConfig(context, "telegram");
-  return {
-    token: telegram.token ?? "",
-    showToolStatus: telegram.showToolStatus,
-    groupMentionRequired: telegram.groupMentionRequired,
-    pairing: telegram.pairing
-  };
-}
-function createTelegramPlatform(context) {
-  return new TelegramPlatform(context.backend, resolveTelegramConfigFromContext(context));
-}
+var createTelegramPlatform = definePlatformFactory({
+  platformName: "telegram",
+  resolveConfig: (raw) => ({
+    token: raw.token ?? "",
+    showToolStatus: raw.showToolStatus,
+    groupMentionRequired: raw.groupMentionRequired,
+    pairing: raw.pairing
+  }),
+  create: (backend, config) => new TelegramPlatform(backend, config)
+});
 var src_default = createTelegramPlatform;
 export {
   src_default as default,
