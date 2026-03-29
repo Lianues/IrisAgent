@@ -38,6 +38,8 @@ function isManagementRequest(url: string): boolean {
     || url.startsWith('/api/config/')
     || url.startsWith('/api/deploy/')
     || url.startsWith('/api/cloudflare/')
+    || url.startsWith('/api/extensions/install')
+    || url.match(/\/api\/extensions\/[^/]+\/(enable|disable)$/) !== null
 }
 
 /** 合并请求头 */
@@ -642,4 +644,50 @@ export function sendChat(
     })
 
   return controller
+}
+
+
+// ============ 扩展管理 ============
+
+import type { ExtensionSummary, PlatformOption } from './types'
+
+export async function getInstalledExtensions(): Promise<{ extensions: ExtensionSummary[] }> {
+  const res = await request('/api/extensions')
+  return res.json()
+}
+
+export async function getRemoteExtensions(): Promise<{ extensions: ExtensionSummary[] }> {
+  const res = await request('/api/extensions/remote')
+  return res.json()
+}
+
+export async function installExtension(requestedPath: string): Promise<{ ok: boolean; extension?: ExtensionSummary; error?: string }> {
+  const res = await request('/api/extensions/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestedPath }),
+  })
+  return res.json()
+}
+
+export async function enableExtension(name: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await request(`/api/extensions/${encodeURIComponent(name)}/enable`, { method: 'POST' })
+  return res.json()
+}
+
+export async function disableExtension(name: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await request(`/api/extensions/${encodeURIComponent(name)}/disable`, { method: 'POST' })
+  return res.json()
+}
+
+export async function deleteExtension(name: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await request(`/api/extensions/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  return res.json()
+}
+
+// ============ 平台目录 ============
+
+export async function getAvailablePlatforms(): Promise<{ platforms: PlatformOption[] }> {
+  const res = await request('/api/platforms')
+  return res.json()
 }

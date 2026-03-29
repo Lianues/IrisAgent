@@ -27,7 +27,12 @@ function sanitizeLLMConfig(result: any): void {
   }
 }
 
-export function sanitizeConfig(data: any): any {
+/**
+ * @param extensionPasswordFields 可选，扩展平台中 type: "password" 的字段映射。
+ *   key = 平台名，value = 该平台的 password 字段名集合。
+ *   不传时回退到通用正则匹配（key/secret/token/password）。
+ */
+export function sanitizeConfig(data: any, extensionPasswordFields?: Map<string, Set<string>>): any {
   const result = JSON.parse(JSON.stringify(data ?? {}));
 
   sanitizeLLMConfig(result);
@@ -36,32 +41,37 @@ export function sanitizeConfig(data: any): any {
     result.ocr.apiKey = maskSensitive(String(result.ocr.apiKey));
   }
 
-  if (result.platform?.discord?.token) {
-    result.platform.discord.token = maskSensitive(String(result.platform.discord.token));
-  }
-
-  if (result.platform?.telegram?.token) {
-    result.platform.telegram.token = maskSensitive(String(result.platform.telegram.token));
-  }
-
+  // 内置 Web 平台固定脱敏
   if (result.platform?.web?.authToken) {
     result.platform.web.authToken = maskSensitive(String(result.platform.web.authToken));
   }
-
   if (result.platform?.web?.managementToken) {
     result.platform.web.managementToken = maskSensitive(String(result.platform.web.managementToken));
   }
 
-  if (result.platform?.wxwork?.secret) {
-    result.platform.wxwork.secret = maskSensitive(String(result.platform.wxwork.secret));
-  }
-
-  if (result.platform?.lark?.appSecret) {
-    result.platform.lark.appSecret = maskSensitive(String(result.platform.lark.appSecret));
-  }
-
-  if (result.platform?.qq?.accessToken) {
-    result.platform.qq.accessToken = maskSensitive(String(result.platform.qq.accessToken));
+  // 扩展平台动态脱敏：根据 manifest 中 type: "password" 的字段
+  if (result.platform && typeof result.platform === 'object') {
+    const RESERVED = new Set(['type', 'pairing', 'web']);
+    for (const [platformName, platformConfig] of Object.entries(result.platform)) {
+      if (RESERVED.has(platformName) || !platformConfig || typeof platformConfig !== 'object') continue;
+      const section = platformConfig as Record<string, unknown>;
+      const passwordKeys = extensionPasswordFields?.get(platformName);
+      if (passwordKeys) {
+        // 精确脱敏：根据 manifest 声明
+        for (const key of passwordKeys) {
+          if (section[key] && typeof section[key] === 'string') {
+            section[key] = maskSensitive(String(section[key]));
+          }
+        }
+      } else {
+        // 通用回退：正则匹配 key/secret/token/password
+        for (const key of Object.keys(section)) {
+          if (/key|secret|token|password/i.test(key) && typeof section[key] === 'string') {
+            section[key] = maskSensitive(String(section[key]));
+          }
+        }
+      }
+    }
   }
 
   if (result.cloudflare?.apiToken) {

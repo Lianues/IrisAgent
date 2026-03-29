@@ -21,6 +21,7 @@ import { createChatHandler } from './handlers/chat';
 import { createSessionsHandlers } from './handlers/sessions';
 import { createConfigHandlers } from './handlers/config';
 import { createDiffPreviewHandler } from './handlers/diff-preview';
+import { createExtensionHandlers } from './handlers/extensions';
 import { createLogger } from '../../logger';
 import { MCPManager } from '../../mcp';
 import { assertManagementToken } from './security/management';
@@ -389,6 +390,7 @@ export class WebPlatform extends PlatformAdapter {
           || pathname.startsWith('/api/config/')
           || pathname.startsWith('/api/deploy/')
           || pathname.startsWith('/api/cloudflare/')
+          || (pathname.startsWith('/api/extensions/') && method !== 'GET')
         ) {
           if (!assertManagementToken(req, res, this.config.managementToken)) {
             return;
@@ -736,6 +738,16 @@ export class WebPlatform extends PlatformAdapter {
     this.router.delete('/api/cloudflare/dns/:id', cloudflare.removeDns);
     this.router.get('/api/cloudflare/ssl', cloudflare.getSsl);
     this.router.put('/api/cloudflare/ssl', cloudflare.setSsl);
+
+    // 扩展管理 + 平台目录 API（全局，不区分 agent）
+    const extensions = createExtensionHandlers(projectRoot);
+    this.router.get('/api/extensions', extensions.list);
+    this.router.get('/api/extensions/remote', extensions.remote);
+    this.router.post('/api/extensions/install', extensions.install);
+    this.router.post('/api/extensions/:name/enable', extensions.enable);
+    this.router.post('/api/extensions/:name/disable', extensions.disable);
+    this.router.delete('/api/extensions/:name', extensions.remove);
+    this.router.get('/api/platforms', extensions.platforms);
 
     // 配置管理 API（使用请求对应 agent 的 backend）
     this.router.get('/api/config', async (req, res) => {

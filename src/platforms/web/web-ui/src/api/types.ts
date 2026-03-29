@@ -312,3 +312,50 @@ export interface ChatCallbacks {
   onAutoCompact?: (summary: string) => void
   onUserToken?: (tokenCount: number) => void
 }
+
+
+// ============ 扩展管理 ============
+
+/** 平台配置面板字段声明 */
+export interface PanelFieldDefinition {
+  key: string
+  configKey: string
+  type: 'string' | 'password' | 'number'
+  label: string
+  description?: string
+  placeholder?: string
+  example?: string
+  defaultValue?: string | number
+  required?: boolean
+}
+
+/** 可用平台选项（内置 + 扩展贡献） */
+export interface PlatformOption {
+  value: string
+  label: string
+  desc: string
+  source: 'builtin' | 'extension'
+  panelTitle?: string
+  panelDescription?: string
+  panelFields: PanelFieldDefinition[]
+}
+
+/** 扩展摘要（列表项） */
+export interface ExtensionSummary {
+  name: string
+  version: string
+  description: string
+  typeLabel: string
+  hasPlugin: boolean
+  hasPlatforms: boolean
+  platformCount: number
+  distributionMode: 'bundled' | 'source'
+  distributionLabel: string
+  installed: boolean
+  enabled: boolean
+  stateLabel: string
+  localSource?: 'installed' | 'embedded'
+  localVersion?: string
+  localVersionHint?: string
+  requestedPath?: string
+}

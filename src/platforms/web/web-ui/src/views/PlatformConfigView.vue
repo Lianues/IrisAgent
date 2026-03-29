@@ -5,7 +5,7 @@
         <div class="plat-topbar-main">
           <span class="plat-kicker">Platform</span>
           <h2>平台配置</h2>
-          <p>配置 Iris 运行在哪些平台上，以及各平台的连接凭证。</p>
+          <p>配置 Iris 运行在哪些平台上。除 console 与 web 外，其他平台均来自已安装的扩展。</p>
         </div>
       </header>
 
@@ -13,238 +13,38 @@
         <div v-if="loading" class="settings-section" style="text-align:center;padding:32px">加载中...</div>
         <template v-else>
           <section class="settings-section">
-            <!-- Console -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.console = !platformOpen.console">
-                <span class="tier-arrow" :class="{ open: platformOpen.console }"></span>
-                <span class="tier-label">Console</span>
-                <span class="tier-desc">终端控制台</span>
+            <div
+              v-for="platform in platforms"
+              :key="platform.value"
+              class="tier-block"
+            >
+              <div class="tier-header" @click="toggleOpen(platform.value)">
+                <span class="tier-arrow" :class="{ open: openMap[platform.value] }"></span>
+                <span class="tier-label">{{ platform.label }}</span>
+                <span class="tier-desc">{{ platform.desc }}</span>
                 <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('console')" @change="togglePlatformType('console')" />
+                  <input type="checkbox" :checked="enabledTypes.includes(platform.value)" @change="togglePlatformType(platform.value)" />
                   <span class="toggle-switch-ui"></span>
                 </label>
               </div>
-            </div>
-
-            <!-- Web -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.web = !platformOpen.web">
-                <span class="tier-arrow" :class="{ open: platformOpen.web }"></span>
-                <span class="tier-label">Web</span>
-                <span class="tier-desc">Web GUI 端口、鉴权</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('web')" @change="togglePlatformType('web')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.web" class="tier-body">
+              <div v-show="openMap[platform.value] && platform.panelFields.length > 0" class="tier-body">
+                <p v-if="platform.panelDescription" class="tier-panel-desc">{{ platform.panelDescription }}</p>
                 <div class="settings-grid two-columns">
-                  <div class="form-group">
-                    <label>端口</label>
-                    <input type="number" :value="platformConfig.web.port" placeholder="3000" min="1" max="65535" @input="handleStringNumberInput(platformConfig.web, 'port', $event)" />
-                  </div>
-                  <div class="form-group">
-                    <label>主机</label>
-                    <input type="text" v-model="platformConfig.web.host" placeholder="0.0.0.0" />
-                  </div>
-                  <div class="form-group full-width">
-                    <label>API 访问令牌</label>
-                    <input type="password" v-model="platformConfig.web.authToken" placeholder="可选" />
-                    <p v-if="platformConfig.web.authToken.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                  <div class="form-group full-width">
-                    <label>管理令牌</label>
-                    <input type="password" v-model="platformConfig.web.managementToken" placeholder="可选" />
-                    <p v-if="platformConfig.web.managementToken.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Discord -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.discord = !platformOpen.discord">
-                <span class="tier-arrow" :class="{ open: platformOpen.discord }"></span>
-                <span class="tier-label">Discord</span>
-                <span class="tier-desc">Discord Bot</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('discord')" @change="togglePlatformType('discord')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.discord" class="tier-body">
-                <div class="settings-grid two-columns">
-                  <div class="form-group full-width">
-                    <label>Bot Token</label>
-                    <input type="password" v-model="platformConfig.discord.token" placeholder="Discord Bot Token" />
-                    <p v-if="platformConfig.discord.token.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Telegram -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.telegram = !platformOpen.telegram">
-                <span class="tier-arrow" :class="{ open: platformOpen.telegram }"></span>
-                <span class="tier-label">Telegram</span>
-                <span class="tier-desc">Telegram Bot</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('telegram')" @change="togglePlatformType('telegram')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.telegram" class="tier-body">
-                <div class="settings-grid two-columns">
-                  <div class="form-group full-width">
-                    <label>Bot Token</label>
-                    <input type="password" v-model="platformConfig.telegram.token" placeholder="Telegram Bot Token" />
-                    <p v-if="platformConfig.telegram.token.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                  <div class="settings-switch-row">
-                    <div>
-                      <span class="switch-label">展示工具状态</span>
-                      <p class="field-hint">在消息中显示工具调用状态。</p>
-                    </div>
-                    <label class="toggle-switch">
-                      <input type="checkbox" v-model="platformConfig.telegram.showToolStatus" />
-                      <span class="toggle-switch-ui"></span>
-                    </label>
-                  </div>
-                  <div class="settings-switch-row">
-                    <div>
-                      <span class="switch-label">群聊需 @ 触发</span>
-                      <p class="field-hint">在群组中必须 @ 机器人才会回复。</p>
-                    </div>
-                    <label class="toggle-switch">
-                      <input type="checkbox" v-model="platformConfig.telegram.groupMentionRequired" />
-                      <span class="toggle-switch-ui"></span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 企业微信 -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.wxwork = !platformOpen.wxwork">
-                <span class="tier-arrow" :class="{ open: platformOpen.wxwork }"></span>
-                <span class="tier-label">企业微信</span>
-                <span class="tier-desc">企业微信机器人</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('wxwork')" @change="togglePlatformType('wxwork')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.wxwork" class="tier-body">
-                <div class="settings-grid two-columns">
-                  <div class="form-group">
-                    <label>Bot ID</label>
-                    <input type="text" v-model="platformConfig.wxwork.botId" placeholder="企业微信机器人 ID" />
-                  </div>
-                  <div class="form-group">
-                    <label>Secret</label>
-                    <input type="password" v-model="platformConfig.wxwork.secret" placeholder="企业微信 Secret" />
-                    <p v-if="platformConfig.wxwork.secret.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                  <div class="settings-switch-row">
-                    <div>
-                      <span class="switch-label">展示工具状态</span>
-                      <p class="field-hint">在消息中显示工具调用状态。</p>
-                    </div>
-                    <label class="toggle-switch">
-                      <input type="checkbox" v-model="platformConfig.wxwork.showToolStatus" />
-                      <span class="toggle-switch-ui"></span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 飞书 -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.lark = !platformOpen.lark">
-                <span class="tier-arrow" :class="{ open: platformOpen.lark }"></span>
-                <span class="tier-label">飞书</span>
-                <span class="tier-desc">飞书机器人</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('lark')" @change="togglePlatformType('lark')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.lark" class="tier-body">
-                <div class="settings-grid two-columns">
-                  <div class="form-group">
-                    <label>App ID</label>
-                    <input type="text" v-model="platformConfig.lark.appId" placeholder="飞书应用 App ID" />
-                  </div>
-                  <div class="form-group">
-                    <label>App Secret</label>
-                    <input type="password" v-model="platformConfig.lark.appSecret" placeholder="飞书应用 App Secret" />
-                    <p v-if="platformConfig.lark.appSecret.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                  <div class="form-group">
-                    <label>Verification Token</label>
-                    <input type="text" v-model="platformConfig.lark.verificationToken" placeholder="事件回调验证 Token（可选）" />
-                  </div>
-                  <div class="form-group">
-                    <label>Encrypt Key</label>
-                    <input type="text" v-model="platformConfig.lark.encryptKey" placeholder="事件回调加密 Key（可选）" />
-                  </div>
-                  <div class="settings-switch-row">
-                    <div>
-                      <span class="switch-label">展示工具状态</span>
-                      <p class="field-hint">在消息中显示工具调用状态。</p>
-                    </div>
-                    <label class="toggle-switch">
-                      <input type="checkbox" v-model="platformConfig.lark.showToolStatus" />
-                      <span class="toggle-switch-ui"></span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- QQ -->
-            <div class="tier-block">
-              <div class="tier-header" @click="platformOpen.qq = !platformOpen.qq">
-                <span class="tier-arrow" :class="{ open: platformOpen.qq }"></span>
-                <span class="tier-label">QQ</span>
-                <span class="tier-desc">QQ 机器人（OneBot）</span>
-                <label class="toggle-switch tier-toggle" @click.stop>
-                  <input type="checkbox" :checked="platformConfig.types.includes('qq')" @change="togglePlatformType('qq')" />
-                  <span class="toggle-switch-ui"></span>
-                </label>
-              </div>
-              <div v-show="platformOpen.qq" class="tier-body">
-                <div class="settings-grid two-columns">
-                  <div class="form-group full-width">
-                    <label>WebSocket URL</label>
-                    <input type="text" v-model="platformConfig.qq.wsUrl" placeholder="ws://127.0.0.1:8080" />
-                  </div>
-                  <div class="form-group">
-                    <label>Access Token</label>
-                    <input type="password" v-model="platformConfig.qq.accessToken" placeholder="OneBot Access Token（可选）" />
-                    <p v-if="platformConfig.qq.accessToken.startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
-                  </div>
-                  <div class="form-group">
-                    <label>Self ID</label>
-                    <input type="text" v-model="platformConfig.qq.selfId" placeholder="机器人 QQ 号" />
-                  </div>
-                  <div class="form-group">
-                    <label>群聊模式</label>
-                    <AppSelect v-model="platformConfig.qq.groupMode" :options="qqGroupModeOptions" />
-                    <p class="field-hint">at=需要@触发，all=所有消息触发，off=不响应群聊。</p>
-                  </div>
-                  <div class="settings-switch-row">
-                    <div>
-                      <span class="switch-label">展示工具状态</span>
-                      <p class="field-hint">在消息中显示工具调用状态。</p>
-                    </div>
-                    <label class="toggle-switch">
-                      <input type="checkbox" v-model="platformConfig.qq.showToolStatus" />
-                      <span class="toggle-switch-ui"></span>
-                    </label>
+                  <div
+                    v-for="field in platform.panelFields"
+                    :key="field.key"
+                    class="form-group"
+                    :class="{ 'full-width': platform.panelFields.length <= 2 }"
+                  >
+                    <label>{{ field.label }}</label>
+                    <input
+                      :type="field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'"
+                      :value="getFieldValue(platform.value, field.configKey)"
+                      :placeholder="field.placeholder || field.example || (field.defaultValue != null ? String(field.defaultValue) : '')"
+                      @input="setFieldValue(platform.value, field.configKey, ($event.target as HTMLInputElement).value)"
+                    />
+                    <p v-if="field.description" class="field-hint">{{ field.description }}</p>
+                    <p v-if="field.type === 'password' && String(getFieldValue(platform.value, field.configKey)).startsWith('****')" class="field-hint">已读取已保存值，保持不变则不会覆盖。</p>
                   </div>
                 </div>
               </div>
@@ -264,142 +64,89 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import AppSelect from '../components/AppSelect.vue'
-import { getConfig, updateConfig } from '../api/client'
+import { getConfig, updateConfig, getAvailablePlatforms } from '../api/client'
+import type { PlatformOption } from '../api/types'
 
 const loading = ref(true)
 const saving = ref(false)
 const statusText = ref('')
 const statusError = ref(false)
 
-const platformConfig = reactive({
-  types: [] as string[],
-  web: { port: '', host: '', authToken: '', managementToken: '' },
-  discord: { token: '' },
-  telegram: { token: '', showToolStatus: false, groupMentionRequired: false },
-  wxwork: { botId: '', secret: '', showToolStatus: false },
-  lark: { appId: '', appSecret: '', verificationToken: '', encryptKey: '', showToolStatus: false },
-  qq: { wsUrl: '', accessToken: '', selfId: '', groupMode: 'at' as string, showToolStatus: false },
-})
+const platforms = ref<PlatformOption[]>([])
+const enabledTypes = ref<string[]>([])
+const openMap = reactive<Record<string, boolean>>({})
 
-const platformOpen = reactive({
-  console: false,
-  web: false,
-  discord: false,
-  telegram: false,
-  wxwork: false,
-  lark: false,
-  qq: false,
-})
+// 动态配置存储：platformName -> { configKey: value }
+const platformValues = reactive<Record<string, Record<string, string | number>>>({})
 
-const qqGroupModeOptions = [
-  { value: 'at', label: '@ 触发', description: '群聊中需要 @ 机器人' },
-  { value: 'all', label: '全部消息', description: '响应群内所有消息' },
-  { value: 'off', label: '关闭', description: '不响应群聊消息' },
-]
+function toggleOpen(name: string) {
+  openMap[name] = !openMap[name]
+}
 
 function togglePlatformType(value: string) {
-  const idx = platformConfig.types.indexOf(value)
-  if (idx === -1) platformConfig.types.push(value)
-  else platformConfig.types.splice(idx, 1)
+  const idx = enabledTypes.value.indexOf(value)
+  if (idx === -1) enabledTypes.value.push(value)
+  else enabledTypes.value.splice(idx, 1)
 }
 
-function handleStringNumberInput(target: Record<string, any>, key: string, event: Event) {
-  target[key] = (event.target as HTMLInputElement).value
+function getFieldValue(platformName: string, configKey: string): string | number {
+  return platformValues[platformName]?.[configKey] ?? ''
 }
 
+function setFieldValue(platformName: string, configKey: string, value: string) {
+  if (!platformValues[platformName]) platformValues[platformName] = {}
+  platformValues[platformName][configKey] = value
+}
+
+// 从后端配置加载平台值
 function loadPlatformFromData(data: any) {
   if (!data.platform || typeof data.platform !== 'object') return
   const pl = data.platform
-  if (Array.isArray(pl.types)) platformConfig.types = [...pl.types]
-  if (pl.web) {
-    platformConfig.web.port = pl.web.port != null ? String(pl.web.port) : ''
-    platformConfig.web.host = pl.web.host || ''
-    platformConfig.web.authToken = pl.web.authToken || ''
-    platformConfig.web.managementToken = pl.web.managementToken || ''
-  }
-  if (pl.discord) platformConfig.discord.token = pl.discord.token || ''
-  if (pl.telegram) {
-    platformConfig.telegram.token = pl.telegram.token || ''
-    platformConfig.telegram.showToolStatus = !!pl.telegram.showToolStatus
-    platformConfig.telegram.groupMentionRequired = !!pl.telegram.groupMentionRequired
-  }
-  if (pl.wxwork) {
-    platformConfig.wxwork.botId = pl.wxwork.botId || ''
-    platformConfig.wxwork.secret = pl.wxwork.secret || ''
-    platformConfig.wxwork.showToolStatus = !!pl.wxwork.showToolStatus
-  }
-  if (pl.lark) {
-    platformConfig.lark.appId = pl.lark.appId || ''
-    platformConfig.lark.appSecret = pl.lark.appSecret || ''
-    platformConfig.lark.verificationToken = pl.lark.verificationToken || ''
-    platformConfig.lark.encryptKey = pl.lark.encryptKey || ''
-    platformConfig.lark.showToolStatus = !!pl.lark.showToolStatus
-  }
-  if (pl.qq) {
-    platformConfig.qq.wsUrl = pl.qq.wsUrl || ''
-    platformConfig.qq.accessToken = pl.qq.accessToken || ''
-    platformConfig.qq.selfId = pl.qq.selfId || ''
-    platformConfig.qq.groupMode = pl.qq.groupMode || 'at'
-    platformConfig.qq.showToolStatus = !!pl.qq.showToolStatus
+  if (Array.isArray(pl.types)) enabledTypes.value = [...pl.types]
+
+  // 为每个平台提取已保存的配置值
+  for (const platform of platforms.value) {
+    const section = pl[platform.value]
+    if (!section || typeof section !== 'object') continue
+    if (!platformValues[platform.value]) platformValues[platform.value] = {}
+    for (const field of platform.panelFields) {
+      const val = section[field.configKey]
+      if (val != null) {
+        platformValues[platform.value][field.configKey] = val
+      }
+    }
   }
 }
 
+// 构建保存 payload
 function buildPayload(): Record<string, any> {
   const p: Record<string, any> = {}
-  p.types = platformConfig.types.length > 0 ? [...platformConfig.types] : null
-  const web: Record<string, any> = {}
-  const webPort = String(platformConfig.web.port).trim()
-  web.port = webPort ? (Number(webPort) || null) : null
-  web.host = platformConfig.web.host.trim() || null
-  if (platformConfig.web.authToken && !platformConfig.web.authToken.startsWith('****')) {
-    web.authToken = platformConfig.web.authToken
+  p.types = enabledTypes.value.length > 0 ? [...enabledTypes.value] : null
+
+  for (const platform of platforms.value) {
+    const section: Record<string, any> = {}
+    const values = platformValues[platform.value] ?? {}
+
+    for (const field of platform.panelFields) {
+      const raw = values[field.configKey]
+      if (raw == null || raw === '') {
+        section[field.configKey] = null
+        continue
+      }
+      // password 字段如果不变，不发送
+      if (field.type === 'password' && String(raw).startsWith('****')) continue
+      // number 字段转型
+      if (field.type === 'number') {
+        const num = Number(raw)
+        section[field.configKey] = Number.isFinite(num) ? num : null
+      } else {
+        section[field.configKey] = String(raw).trim() || null
+      }
+    }
+
+    p[platform.value] = section
   }
-  if (platformConfig.web.managementToken && !platformConfig.web.managementToken.startsWith('****')) {
-    web.managementToken = platformConfig.web.managementToken
-  }
-  p.web = web
-  const discord: Record<string, any> = {}
-  if (platformConfig.discord.token && !platformConfig.discord.token.startsWith('****')) {
-    discord.token = platformConfig.discord.token
-  }
-  p.discord = discord
-  const telegram: Record<string, any> = {
-    showToolStatus: platformConfig.telegram.showToolStatus,
-    groupMentionRequired: platformConfig.telegram.groupMentionRequired,
-  }
-  if (platformConfig.telegram.token && !platformConfig.telegram.token.startsWith('****')) {
-    telegram.token = platformConfig.telegram.token
-  }
-  p.telegram = telegram
-  const wxwork: Record<string, any> = {
-    botId: platformConfig.wxwork.botId.trim() || null,
-    showToolStatus: platformConfig.wxwork.showToolStatus,
-  }
-  if (platformConfig.wxwork.secret && !platformConfig.wxwork.secret.startsWith('****')) {
-    wxwork.secret = platformConfig.wxwork.secret
-  }
-  p.wxwork = wxwork
-  const lark: Record<string, any> = {
-    appId: platformConfig.lark.appId.trim() || null,
-    verificationToken: platformConfig.lark.verificationToken.trim() || null,
-    encryptKey: platformConfig.lark.encryptKey.trim() || null,
-    showToolStatus: platformConfig.lark.showToolStatus,
-  }
-  if (platformConfig.lark.appSecret && !platformConfig.lark.appSecret.startsWith('****')) {
-    lark.appSecret = platformConfig.lark.appSecret
-  }
-  p.lark = lark
-  const qq: Record<string, any> = {
-    wsUrl: platformConfig.qq.wsUrl.trim() || null,
-    selfId: platformConfig.qq.selfId.trim() || null,
-    groupMode: platformConfig.qq.groupMode || null,
-    showToolStatus: platformConfig.qq.showToolStatus,
-  }
-  if (platformConfig.qq.accessToken && !platformConfig.qq.accessToken.startsWith('****')) {
-    qq.accessToken = platformConfig.qq.accessToken
-  }
-  p.qq = qq
+
   return p
 }
 
@@ -437,7 +184,7 @@ function scheduleAutoSave() {
   }, 1000)
 }
 
-watch(() => JSON.stringify(platformConfig), scheduleAutoSave)
+watch([enabledTypes, platformValues], scheduleAutoSave, { deep: true })
 
 async function loadData() {
   configLoaded = false
@@ -445,8 +192,17 @@ async function loadData() {
   statusText.value = ''
   statusError.value = false
   try {
-    const data = await getConfig()
-    loadPlatformFromData(data)
+    // 并行加载平台目录和当前配置
+    const [platformsRes, configData] = await Promise.all([
+      getAvailablePlatforms(),
+      getConfig(),
+    ])
+    platforms.value = platformsRes.platforms
+    // 初始化 openMap
+    for (const p of platforms.value) {
+      if (!(p.value in openMap)) openMap[p.value] = false
+    }
+    loadPlatformFromData(configData)
   } catch (err: any) {
     statusText.value = '加载失败: ' + (err instanceof Error ? err.message : '未知错误')
     statusError.value = true
@@ -537,5 +293,12 @@ onBeforeUnmount(() => {
   padding: 10px 24px;
   border-top: 1px solid var(--shell-stroke);
   text-align: right;
+}
+
+.tier-panel-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 </style>

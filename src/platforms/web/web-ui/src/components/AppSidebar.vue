@@ -48,6 +48,14 @@
         </span>
       </RouterLink>
 
+      <RouterLink class="sidebar-nav-link" to="/extensions" @click="emit('toggle')">
+        <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.extension" /></span>
+        <span class="sidebar-nav-copy">
+          <span class="sidebar-nav-label">Extensions</span>
+          <strong>扩展管理</strong>
+        </span>
+      </RouterLink>
+
       <RouterLink class="sidebar-nav-link" to="/platform-config" @click="emit('toggle')">
         <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.platform" /></span>
         <span class="sidebar-nav-copy">
@@ -154,6 +162,16 @@
           <li>确认域名解析到当前服务器</li>
           <li>检查 Nginx 与 systemd 环境检测状态</li>
           <li>按需配置 Cloudflare DNS 与 SSL 模式</li>
+        </ul>
+      </div>
+
+      <div class="sidebar-context-card" v-else-if="route.path === '/extensions'">
+        <span class="sidebar-context-kicker">Extensions</span>
+        <h3>扩展使用说明</h3>
+        <ul class="sidebar-context-list">
+          <li>从远程仓库下载平台和插件扩展</li>
+          <li>已安装的扩展可随时启用或禁用</li>
+          <li>安装新平台后需到「平台配置」启用</li>
         </ul>
       </div>
     </div>

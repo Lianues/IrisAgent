@@ -23,7 +23,7 @@ describe('Weixin / WXWork: parsePlatformConfig', () => {
     expect(config.types).toEqual(['wxwork']);
     expect(config.wxwork.botId).toBe('bot_xxx');
     expect(config.wxwork.secret).toBe('secret_xxx');
-    expect(config.wxwork.showToolStatus).toBe(true);
+    // 扩展平台默认值由扩展运行时自行处理，宿主只做透传
   });
 
   it('解析 weixin 配置并提供默认值', () => {
@@ -38,7 +38,7 @@ describe('Weixin / WXWork: parsePlatformConfig', () => {
     expect(config.types).toEqual(['weixin']);
     expect(config.weixin.botToken).toBe('token_xxx');
     expect(config.weixin.baseUrl).toBe('https://ilinkai.weixin.qq.com');
-    expect(config.weixin.showToolStatus).toBe(true);
+    // 扩展平台默认值由扩展运行时自行处理，宿主只做透传
   });
 });
 

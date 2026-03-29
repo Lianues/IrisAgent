@@ -35,8 +35,7 @@ describe('Discord / QQ: parsePlatformConfig', () => {
     expect(config.types).toEqual(['qq']);
     expect(config.qq.wsUrl).toBe('ws://127.0.0.1:3001');
     expect(config.qq.selfId).toBe('123456789');
-    expect(config.qq.groupMode).toBe('at');
-    expect(config.qq.showToolStatus).toBe(true);
+    // 扩展平台默认值由扩展运行时自行处理，宿主只做透传
   });
 });
 

@@ -29,6 +29,7 @@ export const ICONS = {
     key: 'key',
     computerUse: 'mouse',
     platform: 'dns',
+    extension: 'extension',
   },
   tool: {
     call: 'build',
