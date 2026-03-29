@@ -43,7 +43,8 @@
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
     "yaml": "^2.8.2",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@iris/extension-utils": "file:packages/extension-utils"
   },
   "optionalDependencies": {
     "@opentui/core": "^0.1.88",
@@ -52,7 +53,6 @@
   },
   "devDependencies": {
     "@irises/extension-sdk": "file:packages/extension-sdk",
-    "@iris/extension-utils": "file:packages/extension-utils",
     "@types/better-sqlite3": "^7.6.13",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^22.19.15",

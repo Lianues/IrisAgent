@@ -39,11 +39,22 @@ RUN cd src/platforms/web/web-ui && npm run build
 # ------ Stage 3: Compile TypeScript ------
 FROM deps AS build
 COPY src/ src/
+COPY packages/ packages/
 COPY tsconfig.json tsconfig.build.json ./
 COPY data/ data/
 # Overlay pre-built web-ui into source tree
 COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
 RUN npx tsc -p tsconfig.build.json
+# Fix ESM imports: Node.js ESM requires explicit .js extensions and does not
+# support directory imports (index.js auto-resolution) or tsconfig path aliases.
+# The bundler moduleResolution used by tsc emits bare specifiers that only work
+# with a bundler runtime (tsx/bun). This script rewrites them for plain Node.js.
+COPY deploy/docker/fix-esm-imports.cjs /tmp/fix-esm-imports.cjs
+RUN node /tmp/fix-esm-imports.cjs dist
+# Prepare compiled @iris/extension-utils with a Node-compatible package.json
+# (the source package.json points exports to .ts files which Node cannot run)
+RUN echo '{"name":"@iris/extension-utils","version":"0.1.0","type":"module","exports":{".":{"import":"./src/index.js"},"./package.json":"./package.json"}}' \
+    > dist/packages/extension-utils/package.json
 # Strip devDependencies — production image only needs runtime deps
 RUN npm prune --omit=dev
 
@@ -60,7 +71,7 @@ COPY src/ src/
 COPY tsconfig.json tsconfig.build.json ./
 COPY data/ data/
 COPY script/build.ts script/build.ts
-COPY onboard/ onboard/
+COPY terminal/ terminal/
 # Overlay pre-built web-ui
 COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
 
@@ -87,7 +98,7 @@ COPY --from=build /app/package.json .
 COPY --from=build /app/data/ data/
 # Web UI static files — resolvePublicDir() checks cwd/src/platforms/web/web-ui/dist
 COPY --from=build-ui /app/src/platforms/web/web-ui/dist/ src/platforms/web/web-ui/dist/
-# Bun-compiled binaries (TUI + onboard)
+# Bun-compiled binaries (TUI + terminal)
 COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris bin/iris
 COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris-onboard bin/iris-onboard
 RUN chmod +x bin/iris bin/iris-onboard
@@ -96,6 +107,11 @@ COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 # Extension plugins (lark, telegram, weixin, etc.)
 COPY extensions/ extensions/
+# Link @iris/extension-utils — tsc preserves the tsconfig path alias verbatim
+# in emitted JS, so Node.js needs the package resolvable in node_modules.
+# dist/packages/extension-utils/ contains the compiled JS from the build stage.
+RUN mkdir -p node_modules/@iris && \
+    ln -sf /app/dist/packages/extension-utils node_modules/@iris/extension-utils
 RUN mkdir -p /data && chown node:node /data
 
 ENV NODE_ENV=production \
@@ -133,6 +149,9 @@ RUN chmod +x bin/iris bin/iris-onboard
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 COPY extensions/ extensions/
+# Link @iris/extension-utils (same as production stage)
+RUN mkdir -p node_modules/@iris && \
+    ln -sf /app/dist/packages/extension-utils node_modules/@iris/extension-utils
 
 RUN mkdir -p /data && chown 1001:1001 /data
 
