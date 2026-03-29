@@ -11,7 +11,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@iris/extension-utils": ["../packages/extension-utils/src"]
+    }
   },
   "include": ["src/**/*"]
 }

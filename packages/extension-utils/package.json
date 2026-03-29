@@ -1,0 +1,29 @@
+{
+  "name": "@iris/extension-utils",
+  "version": "0.1.0",
+  "description": "Internal shared utilities for Iris extension system",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "typescript": "^5.7.0"
+  }
+}

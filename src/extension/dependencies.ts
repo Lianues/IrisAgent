@@ -3,10 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../logger';
 import type { ExtensionManifest } from './types';
+import {
+  analyzeRuntimeEntries as analyzeRuntimeEntriesShared,
+  describeRuntimeIssues,
+  collectRelativeFilesFromDir,
+  type RuntimeEntryGroupAnalysis,
+} from '@iris/extension-utils';
 
 const logger = createLogger('ExtensionDependencies');
-const SOURCE_FILE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
-const RUNTIME_FILE_EXTENSIONS = new Set(['.mjs', '.js', '.cjs']);
 
 export type ExtensionPackageManager = 'npm' | 'pnpm' | 'bun' | 'yarn';
 
@@ -46,20 +50,6 @@ export interface ValidatedInstallableExtensionResult {
   runnableEntries: string[];
 }
 
-interface RuntimeEntryGroup {
-  label: string;
-  alternatives: string[];
-}
-
-interface RuntimeEntryGroupAnalysis {
-  label: string;
-  alternatives: string[];
-  existingAlternatives: string[];
-  runnableAlternatives: string[];
-  sourceAlternatives: string[];
-  needsBuild: boolean;
-}
-
 function defaultCommandRunner(command: string, args: string[], cwd: string): void {
   const result = childProcess.spawnSync(command, args, {
     cwd,
@@ -81,77 +71,13 @@ function readPackageJson(packageJsonPath: string): ExtensionInstallablePackageJs
   return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as ExtensionInstallablePackageJson;
 }
 
-function normalizePathForManifest(input: string | undefined): string | undefined {
-  const normalized = String(input ?? '').trim();
-  return normalized || undefined;
-}
-
-function collectRuntimeEntryGroups(manifest: ExtensionManifest): RuntimeEntryGroup[] {
-  const groups: RuntimeEntryGroup[] = [];
-
-  const pluginEntry = normalizePathForManifest(manifest.plugin?.entry)
-    ?? normalizePathForManifest(manifest.entry);
-  const hasPlatforms = Array.isArray(manifest.platforms) && manifest.platforms.length > 0;
-
-  if (pluginEntry) {
-    groups.push({ label: 'plugin', alternatives: [pluginEntry] });
-  } else if (!hasPlatforms) {
-    groups.push({
-      label: 'plugin',
-      alternatives: ['index.mjs', 'index.js', 'index.cjs', 'index.ts'],
-    });
-  }
-
-  for (const platform of manifest.platforms ?? []) {
-    const entry = normalizePathForManifest(platform?.entry);
-    if (!entry) continue;
-    groups.push({ label: `platform:${platform.name}`, alternatives: [entry] });
-  }
-
-  return groups;
-}
-
+/**
+ * 分析运行时入口 —— core 版本（基于文件系统扫描）。
+ * 内部先收集文件列表，再调用共享包的 analyzeRuntimeEntries。
+ */
 function analyzeRuntimeEntries(extensionDir: string, manifest: ExtensionManifest): RuntimeEntryGroupAnalysis[] {
-  return collectRuntimeEntryGroups(manifest).map((group) => {
-    const existingAlternatives = group.alternatives.filter((relativePath) => {
-      return fs.existsSync(path.resolve(extensionDir, relativePath));
-    });
-
-    const runnableAlternatives = existingAlternatives.filter((relativePath) => {
-      return RUNTIME_FILE_EXTENSIONS.has(path.extname(relativePath).toLowerCase());
-    });
-
-    const sourceAlternatives = existingAlternatives.filter((relativePath) => {
-      const ext = path.extname(relativePath).toLowerCase();
-      return SOURCE_FILE_EXTENSIONS.has(ext) || /(^|[\\/])src([\\/]|$)/.test(relativePath);
-    });
-
-    const needsBuild = runnableAlternatives.length === 0 || sourceAlternatives.length > 0;
-
-    return {
-      label: group.label,
-      alternatives: group.alternatives,
-      existingAlternatives,
-      runnableAlternatives,
-      sourceAlternatives,
-      needsBuild,
-    };
-  });
-}
-
-function describeRuntimeIssues(analyses: RuntimeEntryGroupAnalysis[]): string {
-  return analyses
-    .filter((item) => item.needsBuild)
-    .map((item) => {
-      if (item.sourceAlternatives.length > 0) {
-        return `${item.label} 使用了源码入口: ${item.sourceAlternatives.join(', ')}`;
-      }
-      if (item.existingAlternatives.length > 0) {
-        return `${item.label} 缺少可运行入口，当前存在: ${item.existingAlternatives.join(', ')}`;
-      }
-      return `${item.label} 缺少入口文件，期望其一: ${item.alternatives.join(', ')}`;
-    })
-    .join('；');
+  const files = collectRelativeFilesFromDir(extensionDir);
+  return analyzeRuntimeEntriesShared(files, manifest);
 }
 
 function detectPackageManagerFromPackageJson(packageJson: ExtensionInstallablePackageJson | undefined): ExtensionPackageManager | undefined {

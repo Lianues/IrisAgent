@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { parse, stringify } from "yaml"
 import { resolveRuntimeConfigDir } from "../runtime-paths.js"
 import { PROVIDER_DEFAULTS } from "./provider-config.js"
+import { normalizeText as normalizeTextShared } from "@iris/extension-utils"
 
 export interface EditableModelConfig {
   provider: string
@@ -32,11 +33,7 @@ function readYamlSafe(filepath: string): Record<string, unknown> {
   }
 }
 
-function normalizeText(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined
-}
+function normalizeText(value: unknown): string | undefined { return normalizeTextShared(value) }
 
 function readCurrentLlmConfig(installDir: string): Record<string, unknown> {
   const runtimePath = join(resolveRuntimeConfigDir(), "llm.yaml")

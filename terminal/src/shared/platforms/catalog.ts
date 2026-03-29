@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { resolveRuntimeDataDir } from "../runtime-paths.js"
+import { normalizeText as normalizeTextShared } from "@iris/extension-utils"
 
 export type PlatformPanelFieldType = "string" | "password" | "number"
 
@@ -88,11 +89,7 @@ const BUILTIN_PLATFORMS: PlatformOption[] = [
   },
 ]
 
-function normalizeText(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
- ? value.trim()
-    : undefined
-}
+function normalizeText(value: unknown): string | undefined { return normalizeTextShared(value) }
 
 function normalizeFieldType(value: unknown): PlatformPanelFieldType {
   if (value === "password" || value === "number") {

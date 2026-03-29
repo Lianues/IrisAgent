@@ -9,6 +9,10 @@ Iris 的终端命令界面集合，使用 [OpenTUI](https://opentui.com/) + Reac
 - `models`：模型配置界面
 - `extension`：插件安装与管理界面
 
+### 共享包依赖
+
+Terminal 通过 `@iris/extension-utils`（`packages/extension-utils/`）与 core 共享 extension 系统的基础工具函数（路径处理、manifest 解析、远程仓库操作、运行时入口分析等），避免重复实现。bun build 时会自动内联该包。
+
 目录约定：
 
 ```txt

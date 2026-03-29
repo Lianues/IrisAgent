@@ -23,11 +23,11 @@ import type {
   ExtensionSource,
   ResolvedLocalPlugin,
 } from './types';
-import { isDirectory, MANIFEST_FILE, resolveSafeRelativePath } from './utils';
+import { isDirectory, MANIFEST_FILE, resolveSafeRelativePath } from '@iris/extension-utils';
+import { DISABLED_MARKER_FILE } from '@iris/extension-utils';
 
 const logger = createLogger('ExtensionRegistry');
 const DEFAULT_PLUGIN_ENTRY_CANDIDATES = ['index.ts', 'index.js', 'index.mjs'];
-const DISABLED_MARKER_FILE = '.disabled';
 
 interface ExtensionSearchDirectory {
   dir: string;

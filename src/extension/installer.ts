@@ -9,21 +9,30 @@ import type {
   ExtensionInstallFallbackReason,
   InstalledExtensionResult,
 } from './types';
-import { isDirectory, MANIFEST_FILE, parseExtensionManifest, readManifestFromDir, resolveSafeRelativePath } from './utils';
+import { readManifestFromDir } from './utils';
+import {
+  normalizeRelativeFilePath,
+  normalizeRequestedExtensionPath,
+  resolveSafeRelativePath,
+  isDirectory,
+  ensureDirectory,
+  createTempInstallDir,
+  cleanupTempInstallDir,
+  MANIFEST_FILE,
+  fetchBuffer,
+  fetchJson,
+  fetchRemoteIndex,
+  fetchRemoteManifest,
+  buildRemoteExtensionPath,
+  getRemoteDistributionFiles,
+  buildRemoteExtensionFileUrl,
+  getRemoteExtensionIndexUrl as getRemoteExtensionIndexUrlShared,
+  type RemoteExtensionOptions,
+} from '@iris/extension-utils';
 
 const logger = createLogger('ExtensionInstaller');
-const DEFAULT_REMOTE_EXTENSION_INDEX_URL = 'https://raw.githubusercontent.com/Lianues/Iris/main/extensions/index.json';
-const DEFAULT_REMOTE_EXTENSION_RAW_BASE_URL = 'https://raw.githubusercontent.com/Lianues/Iris/main';
-const DEFAULT_REMOTE_EXTENSIONS_SUBDIR = 'extensions';
 
-interface RemoteIndexLike {
-  extensions?: string[];
-}
-
-export interface ExtensionInstallOptions {
-  remoteIndexUrl?: string;
-  remoteRawBaseUrl?: string;
-  remoteExtensionsSubdir?: string;
+export interface ExtensionInstallOptions extends RemoteExtensionOptions {
   installedExtensionsDir?: string;
   localExtensionsDir?: string;
 }
@@ -53,78 +62,8 @@ function getLocalExtensionsDir(options?: ExtensionInstallOptions): string {
   return path.resolve(options?.localExtensionsDir || defaultLocalExtensionsDir);
 }
 
-function normalizeRelativeFilePath(input: string, label = '文件路径'): string {
-  const normalized = input.trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-  if (!normalized) {
-    throw new Error(`${label}不能为空`);
-  }
-
-  const parts = normalized.split('/');
-  if (parts.some((part) => !part || part === '.' || part === '..')) {
-    throw new Error(`${label}无效: ${input}`);
-  }
-
-  return parts.join('/');
-}
-
-function getRemoteExtensionsSubdir(options?: ExtensionInstallOptions): string {
-  const configured = options?.remoteExtensionsSubdir?.trim() || process.env.IRIS_EXTENSION_REMOTE_SUBDIR?.trim();
-  return normalizeRelativeFilePath(configured || DEFAULT_REMOTE_EXTENSIONS_SUBDIR, '远程 extension 根目录');
-}
-
 export function getRemoteExtensionIndexUrl(options?: ExtensionInstallOptions): string {
-  const configured = options?.remoteIndexUrl?.trim() || process.env.IRIS_EXTENSION_REMOTE_INDEX_URL?.trim();
-  return configured || DEFAULT_REMOTE_EXTENSION_INDEX_URL;
-}
-
-function getRemoteRawBaseUrl(options?: ExtensionInstallOptions): string {
-  const configured = options?.remoteRawBaseUrl?.trim() || process.env.IRIS_EXTENSION_REMOTE_RAW_BASE_URL?.trim();
-  return configured || DEFAULT_REMOTE_EXTENSION_RAW_BASE_URL;
-}
-
-function encodeRepoPathForUrl(repoPath: string): string {
-  return repoPath.split('/').map((part) => encodeURIComponent(part)).join('/');
-}
-
-function ensureNonEmptyRequested(requested: string, label: string): string {
-  const trimmed = requested.trim();
-  if (!trimmed) {
-    throw new Error(`${label}不能为空`);
-  }
-  return trimmed;
-}
-
-function normalizeRequestedExtensionPath(requested: string, label: string): string {
-  let normalized = ensureNonEmptyRequested(requested, label).replace(/\\/g, '/').trim();
-  normalized = normalized.replace(/^\.\//, '').replace(/^\/+/, '');
-  if (normalized === 'extensions' || normalized === 'extensions/') {
-    throw new Error(`${label}不能为空`);
-  }
-
-  if (normalized.startsWith('extensions/')) {
-    normalized = normalized.slice('extensions/'.length);
-  }
-  return normalizeRelativeFilePath(normalized, label);
-}
-
-function ensureDirectory(dirPath: string): void {
-  fs.mkdirSync(dirPath, { recursive: true });
-}
-
-function createTempInstallDir(installedRootDir: string): string {
-  ensureDirectory(installedRootDir);
-  const tempDir = path.join(
-    installedRootDir,
-    `.tmp-install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
-  fs.mkdirSync(tempDir, { recursive: true });
-  return tempDir;
-}
-
-function cleanupTempInstallDir(tempDir: string): void {
-  if (fs.existsSync(tempDir)) {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
+  return getRemoteExtensionIndexUrlShared(options);
 }
 
 function finalizeInstall(
@@ -195,52 +134,6 @@ function findLocalExtensionSource(requested: string, localExtensionsDir: string)
   return undefined;
 }
 
-async function fetchBuffer(url: string, label: string): Promise<Buffer> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${label} 下载失败 (${response.status} ${response.statusText}): ${url}`);
-  }
-  return Buffer.from(await response.arrayBuffer());
-}
-
-async function fetchJson<T>(url: string, label: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${label} 读取失败 (${response.status} ${response.statusText}): ${url}`);
-  }
-  return await response.json() as T;
-}
-
-async function fetchRemoteIndex(options?: ExtensionInstallOptions): Promise<string[]> {
-  const raw = await fetchJson<RemoteIndexLike>(getRemoteExtensionIndexUrl(options), '远程 extension 索引');
-  if (!Array.isArray(raw.extensions)) {
-    throw new Error('远程 extension 索引返回格式无效');
-  }
-
-  return raw.extensions.map((entry) => normalizeRequestedExtensionPath(String(entry), '远程 extension 路径'));
-}
-
-function buildRemoteExtensionPath(requested: string, options?: ExtensionInstallOptions): string {
-  return `${getRemoteExtensionsSubdir(options)}/${requested}`;
-}
-
-function getRemoteDistributionFiles(manifest: ExtensionManifest): string[] {
-  return Array.isArray(manifest.distribution?.files)
-    ? manifest.distribution.files.map((file) => normalizeRelativeFilePath(String(file), '远程 extension 文件路径'))
-    : [];
-}
-
-function buildRemoteExtensionFileUrl(requestedPath: string, relativePath: string, options?: ExtensionInstallOptions): string {
-  const repoPath = `${buildRemoteExtensionPath(requestedPath, options)}/${relativePath}`;
-  return `${getRemoteRawBaseUrl(options)}/${encodeRepoPathForUrl(repoPath)}`;
-}
-
-async function fetchRemoteManifest(requestedPath: string, options?: ExtensionInstallOptions): Promise<ExtensionManifest> {
-  const manifestUrl = buildRemoteExtensionFileUrl(requestedPath, MANIFEST_FILE, options);
-  const raw = await fetchJson<unknown>(manifestUrl, 'extension manifest');
-  return parseExtensionManifest(raw, `${buildRemoteExtensionPath(requestedPath, options)}/${MANIFEST_FILE}`);
-}
-
 async function installRemoteExtensionFromIndex(
   requestedPath: string,
   options?: ExtensionInstallOptions,
@@ -265,7 +158,7 @@ async function installRemoteExtensionFromIndex(
       throw new RemoteInstallError('remote_path_not_found', `远程 extension 目录不存在: ${remotePath}`);
     }
 
-    const manifest = await fetchRemoteManifest(requested, options);
+    const manifest = await fetchRemoteManifest(requested, options) as ExtensionManifest;
     const files = getRemoteDistributionFiles(manifest);
 
     ensureDirectory(tempDir);
