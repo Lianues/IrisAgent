@@ -99,7 +99,11 @@ function buildDisplayDiff(filePath: string, patch: string): string {
     const body = parsed.hunks
       .map((hunk) => {
         const lines = hunk.lines.map(line => `${toDiffLinePrefix(line.type)}${line.content}`);
-        return [hunk.header, ...lines].join('\n');
+        // Recalculate correct line counts from actual parsed lines
+        const oldCount = hunk.lines.filter(l => l.type === 'context' || l.type === 'del').length;
+        const newCount = hunk.lines.filter(l => l.type === 'context' || l.type === 'add').length;
+        const header = `@@ -${hunk.oldStart},${oldCount} +${hunk.newStart},${newCount} @@`;
+        return [header, ...lines].join('\n');
       })
       .join('\n');
     return [`--- ${parsed.oldFile ?? fallbackOld}`, `+++ ${parsed.newFile ?? fallbackNew}`, body]
