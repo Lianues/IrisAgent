@@ -9,7 +9,8 @@
     "build:sidecar:screen": "bun build ./src/screen-sidecar.ts --outfile ./dist/screen-sidecar.mjs --target=node --format=esm"
   },
   "dependencies": {
-    "@irises/extension-sdk": "file:../../packages/extension-sdk"
+    "@irises/extension-sdk": "file:../../packages/extension-sdk",
+    "yaml": "^2.7.1"
   },
   "optionalDependencies": {
     "playwright": "^1.52.0"

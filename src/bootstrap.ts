@@ -9,7 +9,6 @@
  *   - cli.ts（CLI 模式）：bootstrap() → backend.chat() → 输出 → 退出
  */
 
-import type { Computer } from './computer-use/types';
 import { loadConfig, findConfigFile, AppConfig } from './config';
 import type { AgentPaths } from './paths';
 import { dataDir as globalDataDir, logsDir as globalLogsDir } from './paths';
@@ -47,7 +46,7 @@ import type { PlatformRegistry } from './platforms/registry';
 import { PluginEventBus } from './plugins/event-bus';
 import { patchMethod, patchPrototype } from './plugins/patch';
 import { registerExtensionPlatforms } from './extension';
-import type { IrisAPI, InlinePluginEntry } from './plugins/types';
+import type { IrisAPI, InlinePluginEntry, WebPanelDefinition } from './plugins/types';
 
 export interface BootstrapResult {
   backend: Backend;
@@ -61,8 +60,6 @@ export interface BootstrapResult {
   getMCPManager: () => MCPManager | undefined;
   /** Agent 名称（多 Agent 模式下标识；单 Agent 模式为 undefined） */
   agentName?: string;
-  /** 由 computer-use 扩展插件管理。插件通过 onReady 回调设置此值。 */
-  computerEnv?: Computer;
   /** 初始化过程中的警告信息（TUI 启动后展示给用户） */
   initWarnings: string[];
   /** 插件管理器（未配置插件时为 undefined） */
@@ -163,8 +160,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   }
 
   const initWarnings: string[] = [];
-  /** 由 CU 扩展插件在 onReady 中设置 */
-  let computerEnv: Computer | undefined;
 
   // ---- 3.5 注册子代理工具 ----
   const subAgentTypes = new SubAgentTypeRegistry();
@@ -216,7 +211,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     defaultMode,
     currentLLMConfig: router.getCurrentConfig(),
     ocrService,
-    maxRecentScreenshots: config.computerUse?.maxRecentScreenshots,
     summaryModelName: config.llm.summaryModelName,
     summaryConfig: config.summary,
     skills: config.system.skills,
@@ -287,6 +281,16 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     for (const route of webRouteRegistrations) register(route.method, route.path, route.handler);
   };
 
+  // 扩展面板注册表：插件通过 registerWebPanel 注册前端面板，宿主通过 /api/web-panels 暴露给 Web UI。
+  const webPanels: WebPanelDefinition[] = [];
+  const registerWebPanel = (panel: WebPanelDefinition) => {
+    if (!webPanels.some(p => p.id === panel.id)) webPanels.push(panel);
+  };
+  registerDeferredWebRoute('GET', '/api/web-panels', async (_req: any, res: any) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(webPanels));
+  });
+
   if (pluginManager && pluginManager.size > 0) {
     backend.setPluginHooks(pluginManager.getHooks());
 
@@ -302,17 +306,15 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       config,
       mcpManager,
       ocrService,
-      computerEnv: undefined,
       extensions,
       pluginManager,
       eventBus,
       patchMethod,
       patchPrototype,
       registerWebRoute: registerDeferredWebRoute,
+      registerWebPanel,
     };
     await pluginManager.notifyReady(irisAPI);
-    // 同步插件在 onReady 中设置的 computerEnv
-    computerEnv = irisAPI.computerEnv;
   }
 
   return {
@@ -325,7 +327,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     setMCPManager: (manager?: MCPManager) => { mcpManager = manager; },
     getMCPManager: () => mcpManager,
     agentName: agentLabel,
-    computerEnv,
     initWarnings,
     pluginManager,
     extensions,

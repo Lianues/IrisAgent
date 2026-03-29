@@ -13,8 +13,14 @@ import { supportsVision as llmSupportsVision, isDocumentMimeType, supportsNative
 import { isOCRTextPart, stripOCRTextMarker } from '../../ocr';
 import type { Content, Part } from '../../types';
 import { isFunctionCallPart, isFunctionResponsePart, isInlineDataPart, isTextPart } from '../../types';
-import { COMPUTER_USE_FUNCTION_NAMES } from '../../computer-use/tools';
 import { IMAGE_UNAVAILABLE_NOTICE, DOCUMENT_UNAVAILABLE_NOTICE } from './types';
+
+/** Computer Use 工具函数名集合（用于截图剥离判断） */
+const COMPUTER_USE_FUNCTION_NAMES = new Set([
+  'get_screenshot', 'click_at', 'hover_at', 'type_text_at',
+  'scroll_document', 'scroll_at', 'key_combination', 'navigate',
+  'go_back', 'go_forward', 'search', 'wait_5_seconds', 'drag_and_drop',
+]);
 
 /**
  * 将存储的完整历史转换为 LLM 请求所用的历史。

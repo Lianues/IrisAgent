@@ -27,7 +27,6 @@ export const ICONS = {
     terminal: 'terminal',
     empty: 'auto_awesome',
     key: 'key',
-    computerUse: 'mouse',
     platform: 'dns',
     extension: 'extension',
   },

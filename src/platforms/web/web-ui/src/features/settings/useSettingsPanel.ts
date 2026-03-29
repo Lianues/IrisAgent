@@ -744,69 +744,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     return null
   }
 
-  // ============ Computer Use ============
-  const computerUse = reactive({
-    enabled: false,
-    environment: 'browser' as string,
-    screenWidth: '',
-    screenHeight: '',
-    postActionDelay: '',
-    screenshotFormat: 'png' as string,
-    screenshotQuality: '',
-    headless: false,
-    initialUrl: '',
-    searchEngineUrl: '',
-    highlightMouse: false,
-    targetWindow: '',
-    backgroundMode: false,
-    maxRecentScreenshots: '',
-    envToolBrowserMode: 'all' as string,
-    envToolBrowserList: '',
-    envToolScreenMode: 'all' as string,
-    envToolScreenList: '',
-    envToolBackgroundMode: 'all' as string,
-    envToolBackgroundList: '',
-  })
-
-  function buildComputerUsePayload(): Record<string, any> {
-    const cu: Record<string, any> = {
-      enabled: computerUse.enabled,
-      environment: computerUse.environment,
-    }
-    const numOrNull = (val: string | number): number | null => {
-      const trimmed = String(val).trim()
-      if (!trimmed) return null
-      const n = Number(trimmed)
-      return Number.isFinite(n) ? n : null
-    }
-    cu.screenWidth = numOrNull(computerUse.screenWidth)
-    cu.screenHeight = numOrNull(computerUse.screenHeight)
-    cu.postActionDelay = numOrNull(computerUse.postActionDelay)
-    cu.screenshotFormat = computerUse.screenshotFormat
-    cu.screenshotQuality = numOrNull(computerUse.screenshotQuality)
-    cu.headless = computerUse.headless
-    cu.initialUrl = computerUse.initialUrl.trim() || null
-    cu.searchEngineUrl = computerUse.searchEngineUrl.trim() || null
-    cu.highlightMouse = computerUse.highlightMouse
-    cu.targetWindow = computerUse.targetWindow.trim() || null
-    cu.backgroundMode = computerUse.backgroundMode
-    cu.maxRecentScreenshots = numOrNull(computerUse.maxRecentScreenshots)
-    const buildToolPolicy = (mode: string, list: string): any => {
-      if (mode === 'include') return { include: list.split('\n').map(s => s.trim()).filter(Boolean), exclude: null }
-      if (mode === 'exclude') return { exclude: list.split('\n').map(s => s.trim()).filter(Boolean), include: null }
-      return null
-    }
-    const browser = buildToolPolicy(computerUse.envToolBrowserMode, computerUse.envToolBrowserList)
-    const screen = buildToolPolicy(computerUse.envToolScreenMode, computerUse.envToolScreenList)
-    const background = buildToolPolicy(computerUse.envToolBackgroundMode, computerUse.envToolBackgroundList)
-    if (browser || screen || background) {
-      cu.environmentTools = { browser, screen, background }
-    } else {
-      cu.environmentTools = null
-    }
-    return cu
-  }
-
   // ============ Platform Config ============
   const platformConfig = reactive({
     types: [] as string[],
@@ -1128,7 +1065,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
       () => JSON.stringify(subAgentEntries.map(e => ({ name: e.name, description: e.description, systemPrompt: e.systemPrompt, toolMode: e.toolMode, toolList: e.toolList, modelName: e.modelName, maxToolRounds: e.maxToolRounds, parallel: e.parallel }))),
       () => JSON.stringify(modeEntries.map(e => ({ name: e.name, description: e.description, systemPrompt: e.systemPrompt, toolMode: e.toolMode, toolList: e.toolList }))),
       () => JSON.stringify(pluginEntries.map(e => ({ name: e.name, type: e.type, enabled: e.enabled, config: e.config }))),
-      () => JSON.stringify(computerUse),
       () => JSON.stringify(platformConfig),
       () => JSON.stringify([...disabledTools.value].sort()),
     ],
@@ -1183,27 +1119,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     config.maxToolRounds = 10
     config.stream = true
     defaultModelName.value = ''
-    // Computer Use
-    computerUse.enabled = false
-    computerUse.environment = 'browser'
-    computerUse.screenWidth = ''
-    computerUse.screenHeight = ''
-    computerUse.postActionDelay = ''
-    computerUse.screenshotFormat = 'png'
-    computerUse.screenshotQuality = ''
-    computerUse.headless = false
-    computerUse.initialUrl = ''
-    computerUse.searchEngineUrl = ''
-    computerUse.highlightMouse = false
-    computerUse.targetWindow = ''
-    computerUse.backgroundMode = false
-    computerUse.maxRecentScreenshots = ''
-    computerUse.envToolBrowserMode = 'all'
-    computerUse.envToolBrowserList = ''
-    computerUse.envToolScreenMode = 'all'
-    computerUse.envToolScreenList = ''
-    computerUse.envToolBackgroundMode = 'all'
-    computerUse.envToolBackgroundList = ''
     // Platform
     platformConfig.types = []
     platformConfig.web = { port: '', host: '', authToken: '', managementToken: '' }
@@ -1323,42 +1238,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
               config: p.config ? JSON.stringify(p.config, null, 2) : '',
               open: false,
             }))
-          }
-        }
-
-        // Computer Use
-        if (data.computer_use && typeof data.computer_use === 'object') {
-          const cu = data.computer_use
-          computerUse.enabled = !!cu.enabled
-          computerUse.environment = cu.environment === 'screen' ? 'screen' : 'browser'
-          computerUse.screenWidth = cu.screenWidth != null ? String(cu.screenWidth) : ''
-          computerUse.screenHeight = cu.screenHeight != null ? String(cu.screenHeight) : ''
-          computerUse.postActionDelay = cu.postActionDelay != null ? String(cu.postActionDelay) : ''
-          computerUse.screenshotFormat = cu.screenshotFormat === 'jpeg' ? 'jpeg' : 'png'
-          computerUse.screenshotQuality = cu.screenshotQuality != null ? String(cu.screenshotQuality) : ''
-          computerUse.headless = !!cu.headless
-          computerUse.initialUrl = cu.initialUrl || ''
-          computerUse.searchEngineUrl = cu.searchEngineUrl || ''
-          computerUse.highlightMouse = !!cu.highlightMouse
-          computerUse.targetWindow = cu.targetWindow || ''
-          computerUse.backgroundMode = !!cu.backgroundMode
-          computerUse.maxRecentScreenshots = cu.maxRecentScreenshots != null ? String(cu.maxRecentScreenshots) : ''
-          if (cu.environmentTools && typeof cu.environmentTools === 'object') {
-            const loadPolicy = (policy: any): { mode: string; list: string } => {
-              if (!policy || typeof policy !== 'object') return { mode: 'all', list: '' }
-              if (Array.isArray(policy.include) && policy.include.length > 0) return { mode: 'include', list: policy.include.join('\n') }
-              if (Array.isArray(policy.exclude) && policy.exclude.length > 0) return { mode: 'exclude', list: policy.exclude.join('\n') }
-              return { mode: 'all', list: '' }
-            }
-            const bp = loadPolicy(cu.environmentTools.browser)
-            computerUse.envToolBrowserMode = bp.mode
-            computerUse.envToolBrowserList = bp.list
-            const sp = loadPolicy(cu.environmentTools.screen)
-            computerUse.envToolScreenMode = sp.mode
-            computerUse.envToolScreenList = sp.list
-            const bgp = loadPolicy(cu.environmentTools.background)
-            computerUse.envToolBackgroundMode = bgp.mode
-            computerUse.envToolBackgroundList = bgp.list
           }
         }
 
@@ -1648,7 +1527,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
       if (pluginsPayload !== null) {
         payload.plugins = pluginsPayload
       }
-      payload.computer_use = buildComputerUsePayload()
       payload.platform = buildPlatformPayload()
       const disabledArr = [...disabledTools.value]
       payload.tools = { disabledTools: disabledArr.length > 0 ? disabledArr : null }
@@ -2177,7 +2055,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     pluginEntries,
     addPluginEntry,
     removePluginEntry,
-    computerUse,
     platformConfig,
     contextWindowPlaceholder,
     handleStringNumberInput,

@@ -14,7 +14,6 @@ import { parseSystemConfig } from './system';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { createMCPManager, MCPManager } from '../mcp';
 import { ToolRegistry } from '../tools/registry';
-import type { Computer } from '../computer-use/types';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PluginManager } from '../plugins/manager';
 
@@ -23,8 +22,6 @@ export interface RuntimeConfigReloadContext {
   pluginManager?: PluginManager;
   getMCPManager(): MCPManager | undefined;
   setMCPManager(manager?: MCPManager): void;
-  getComputerEnv?(): Computer | undefined;
-  setComputerEnv?(env?: Computer): void;
   /** Skill 文件系统扫描使用的数据目录（多 Agent 模式下为 agent 专属目录） */
   dataDir?: string;
   extensions?: Pick<BootstrapExtensionRegistry, 'llmProviders' | 'ocrProviders'>;

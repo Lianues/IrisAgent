@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { LLMModelInfo } from '../../../llm/router';
-import type { WindowInfo } from '../../../computer-use/types';
 import type { SessionMeta } from '../../../storage/base';
 import type { ChatMessage } from '../components/MessageItem';
 import type {
@@ -17,8 +16,6 @@ import type { UseModelStateReturn } from './use-model-state';
 type SetMessages = Dispatch<SetStateAction<ChatMessage[]>>;
 
 type SetViewMode = Dispatch<SetStateAction<ViewMode>>;
-type SetWindowList = Dispatch<SetStateAction<WindowInfo[]>>;
-type SetWindowSearchText = Dispatch<SetStateAction<string>>;
 type SetSessionList = Dispatch<SetStateAction<SessionMeta[]>>;
 type SetModelList = Dispatch<SetStateAction<LLMModelInfo[]>>;
 type SetSelectedIndex = Dispatch<SetStateAction<number>>;
@@ -40,10 +37,6 @@ interface UseCommandDispatchOptions {
   onExit: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   onSwitchAgent?: () => void;
-  onListWindows?: () => Promise<WindowInfo[]>;
-  onSwitchWindow?: (hwnd: string) => Promise<{ ok: boolean; message: string }>;
-  setWindowList: SetWindowList;
-  setWindowSearchText: SetWindowSearchText;
   undoRedoRef: MutableRefObject<UndoRedoStack>;
   setMessages: SetMessages;
   commitTools: () => void;
@@ -80,10 +73,6 @@ export function useCommandDispatch({
   onExit,
   onSwitchAgent,
   onSummarize,
-  onListWindows,
-  onSwitchWindow,
-  setWindowList,
-  setWindowSearchText,
   undoRedoRef,
   setMessages,
   commitTools,
@@ -197,30 +186,6 @@ export function useCommandDispatch({
       return;
     }
 
-    if (text === '/window' || text.startsWith('/window ')) {
-      if (!onListWindows) {
-        appendCommandMessage(
-          setMessages,
-          'Computer Use 未启用。请在 computer_use.yaml 中设置 enabled: true 并使用 screen 环境。',
-        );
-        return;
-      }
-      const keyword = text.slice('/window'.length).trim();
-      onListWindows().then((windows) => {
-        setWindowList(windows);
-        setWindowSearchText(keyword);
-        setSelectedIndex(0);
-        setViewMode('window-list');
-      }).catch(() => {
-        appendCommandMessage(
-          setMessages,
-          '获取窗口列表失败。',
-          { isError: true },
-        );
-      });
-      return;
-    }
-
     if (text.startsWith('/model')) {
       resetRedo(undoRedoRef, onClearRedoStack);
       const arg = text.slice('/model'.length).trim();
@@ -271,8 +236,6 @@ export function useCommandDispatch({
     onExit,
     onListModels,
     onListSessions,
-    onListWindows,
-    onSwitchWindow,
     onNewSession,
     onRedo,
     onResetConfig,
@@ -291,8 +254,6 @@ export function useCommandDispatch({
     setSelectedIndex,
     setSessionList,
     setSettingsInitialSection,
-    setWindowList,
-    setWindowSearchText,
     setViewMode,
     undoRedoRef,
   ]);

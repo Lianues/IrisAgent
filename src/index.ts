@@ -33,7 +33,7 @@ async function createPlatforms(
   result: BootstrapResult,
   options?: CreatePlatformsOptions,
 ): Promise<{ platforms: PlatformAdapter[]; platformMap: Map<string, PlatformAdapter>; webPlatformRef?: WebPlatformType }> {
-  const { backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, platformRegistry, agentName, eventBus } = result;
+  const { backend, config, configDir, router, getMCPManager, setMCPManager, initWarnings, platformRegistry, agentName, eventBus } = result;
 
   const platforms: PlatformAdapter[] = [];
   const platformMap = new Map<string, PlatformAdapter>();
@@ -68,7 +68,6 @@ async function createPlatforms(
       setMCPManager: (manager?: MCPManager) => { setMCPManager(manager); },
       agentName,
       extensions: result.extensions,
-      computerEnv,
       initWarnings,
       eventBus,
     });
@@ -99,15 +98,6 @@ async function runSingleAgent(): Promise<void> {
   if (activePlatforms.length === 0) {
     console.error('未配置任何有效平台，请检查 platform.yaml 的 type 字段。');
     process.exit(1);
-  }
-
-  // 注入 Computer Use 热重载引用
-  if (webPlatformRef) {
-    let _computerEnv = result.computerEnv;
-    webPlatformRef.setComputerEnvHandlers(
-      () => _computerEnv,
-      (env?) => { _computerEnv = env; },
-    );
   }
 
   // 注入 Agent 热重载能力
@@ -238,13 +228,6 @@ async function runMultiAgent(): Promise<void> {
       (mgr?) => result.setMCPManager(mgr),
       { llmProviders: result.extensions.llmProviders, ocrProviders: result.extensions.ocrProviders },
       );
-      // 注入 Computer Use 热重载引用
-      let _cuEnv = result.computerEnv;
-      sharedWebPlatform.setComputerEnvHandlers(
-        () => _cuEnv,
-        (env?) => { _cuEnv = env; },
-        name,
-      );
       result.bindWebRouteRegistration(registerSharedWebRoute);
     }
     allNonConsolePlatforms.push(sharedWebPlatform);
@@ -346,7 +329,7 @@ async function startConsoleForAgent(
   result: BootstrapResult,
   agentName?: string,
 ): Promise<'exit' | 'switch-agent'> {
-  const { backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, platformRegistry } = result;
+  const { backend, config, configDir, router, getMCPManager, setMCPManager, initWarnings, platformRegistry } = result;
   const currentModel = router.getCurrentModelInfo();
   const defaultMode = config.system.defaultMode ?? 'default';
 
@@ -368,7 +351,6 @@ async function startConsoleForAgent(
     setMCPManager: (manager?: MCPManager) => { setMCPManager(manager); },
     extensions: result.extensions,
     agentName,
-    computerEnv,
     initWarnings,
     onSwitchAgent: () => {
       resolved = true;

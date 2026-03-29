@@ -27,19 +27,15 @@ interface InputBarProps {
   onSubmit: (text: string) => void;
   /** 强制优先发送：中断当前生成，在队列最前面插入并立即发送 */
   onPrioritySubmit: (text: string) => void;
-  /** Computer Use 是否启用（用于条件显示 /window 指令） */
-  hasComputerUse?: boolean;
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, hasComputerUse }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
   const { width: termWidth } = useTerminalDimensions();
 
-  const visibleCommands = useMemo(() => {
-    return hasComputerUse ? COMMANDS : COMMANDS.filter((cmd) => cmd.name !== '/window');
-  }, [hasComputerUse]);
+  const visibleCommands = COMMANDS;
 
   // ── 粘贴保护 ──────────────────────────────────────────────
   // 当 bracketed paste 事件触发时，框架可能同时发出对应的逐字符

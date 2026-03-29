@@ -13,9 +13,9 @@ const router = createRouter({
     { path: '/', component: () => import('./views/ChatView.vue') },
     { path: '/deploy', component: () => import('./views/DeployView.vue') },
     { path: '/terminal', component: () => import('./views/TerminalView.vue'), meta: { terminal: true } },
-    { path: '/computer-use', component: () => import('./views/ComputerUseView.vue') },
     { path: '/extensions', component: () => import('./views/ExtensionView.vue') },
     { path: '/platform-config', component: () => import('./views/PlatformConfigView.vue') },
+    { path: '/ext/:id', component: () => import('./views/ExtensionPanelView.vue'), props: true },
   ],
 })
 

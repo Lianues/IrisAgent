@@ -40,14 +40,6 @@
         </span>
       </RouterLink>
 
-      <RouterLink class="sidebar-nav-link" to="/computer-use" @click="emit('toggle')">
-        <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.computerUse" /></span>
-        <span class="sidebar-nav-copy">
-          <span class="sidebar-nav-label">Tools</span>
-          <strong>Computer Use</strong>
-        </span>
-      </RouterLink>
-
       <RouterLink class="sidebar-nav-link" to="/extensions" @click="emit('toggle')">
         <span class="sidebar-nav-icon"><AppIcon :name="ICONS.sidebar.extension" /></span>
         <span class="sidebar-nav-copy">
@@ -61,6 +53,20 @@
         <span class="sidebar-nav-copy">
           <span class="sidebar-nav-label">Config</span>
           <strong>平台配置</strong>
+        </span>
+      </RouterLink>
+
+      <RouterLink
+        v-for="panel in webPanels"
+        :key="panel.id"
+        class="sidebar-nav-link"
+        :to="`/ext/${panel.id}`"
+        @click="emit('toggle')"
+      >
+        <span class="sidebar-nav-icon"><AppIcon :name="panel.icon || 'extension'" /></span>
+        <span class="sidebar-nav-copy">
+          <span class="sidebar-nav-label">Extension</span>
+          <strong>{{ panel.title }}</strong>
         </span>
       </RouterLink>
     </nav>
@@ -208,7 +214,7 @@ import { ICONS } from '../constants/icons'
 import AgentSelector from './AgentSelector.vue'
 import { useAgents } from '../composables/useAgents'
 import { useSessions } from '../composables/useSessions'
-import { getStatus } from '../api/client'
+import { getStatus, getWebPanels, type WebPanelInfo } from '../api/client'
 import type { SessionSummary, StatusInfo } from '../api/types'
 import { loadManagementToken, subscribeManagementTokenChange } from '../utils/managementToken'
 import { loadAuthToken, subscribeAuthTokenChange } from '../utils/authToken'
@@ -246,6 +252,7 @@ const authProtected = ref<boolean | null>(null)
 const managementProtected = ref<boolean | null>(null)
 const accessRequirementLoaded = ref(false)
 const accessRequirementError = ref('')
+const webPanels = ref<WebPanelInfo[]>([])
 
 function hasMissingRequiredCredential(): boolean {
   return (authProtected.value === true && !authReady.value)
@@ -447,6 +454,7 @@ function handleOpenManagementToken() {
 onMounted(async () => {
   const { loadAgents } = useAgents()
   await Promise.all([loadAgents(), loadSessions(), loadAccessRequirements()])
+  getWebPanels().then(panels => { webPanels.value = panels }).catch(() => {})
   refreshAccessState()
   unsubscribeManagementToken = subscribeManagementTokenChange(handleCredentialStorageChange)
   unsubscribeAuthToken = subscribeAuthTokenChange(handleCredentialStorageChange)

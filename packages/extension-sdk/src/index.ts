@@ -108,6 +108,7 @@ export type {
   ToolExecInterception,
   ToolRegistryLike,
   ToolWrapper,
+  WebPanelDefinition,
 } from './plugin.js';
 
 export {

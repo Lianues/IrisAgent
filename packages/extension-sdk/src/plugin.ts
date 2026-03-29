@@ -75,7 +75,6 @@ export interface IrisAPI {
   prompt: PromptAssemblerLike;
   config: Readonly<Record<string, unknown>>;
   mcpManager?: unknown;
-  computerEnv?: unknown;
   ocrService?: unknown;
   extensions: BootstrapExtensionRegistryLike;
   pluginManager: PluginManagerLike;
@@ -83,6 +82,20 @@ export interface IrisAPI {
   patchMethod: PatchMethod;
   patchPrototype: PatchPrototype;
   registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => void;
+  /** 向 Web 平台注册扩展面板页面。宿主侧边栏会动态展示已注册的面板。 */
+  registerWebPanel?: (panel: WebPanelDefinition) => void;
+}
+
+/** 扩展面板定义（由插件通过 registerWebPanel 注册，宿主 Web UI 动态渲染） */
+export interface WebPanelDefinition {
+  /** 面板唯一标识，如 'computer-use' */
+  id: string;
+  /** 面板显示标题 */
+  title: string;
+  /** 面板图标名称（Material Symbols 图标名，如 'mouse'），缺省使用 'extension' */
+  icon?: string;
+  /** 面板内容 URL 路径（由扩展通过 registerWebRoute 提供，宿主用 iframe 加载） */
+  contentPath: string;
 }
 
 export interface PreBootstrapContext {

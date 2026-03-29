@@ -690,3 +690,18 @@ export async function getAvailablePlatforms(): Promise<{ platforms: PlatformOpti
   const res = await request('/api/platforms')
   return res.json()
 }
+
+
+// ============ 扩展面板 ============
+
+export interface WebPanelInfo {
+  id: string
+  title: string
+  icon?: string
+  contentPath: string
+}
+
+export async function getWebPanels(): Promise<WebPanelInfo[]> {
+  const res = await request('/api/web-panels')
+  return res.json()
+}

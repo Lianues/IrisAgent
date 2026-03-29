@@ -10,7 +10,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRenderer } from '@opentui/react';
 import type { LLMModelInfo } from '../../llm/router';
 import type { SessionMeta } from '../../storage/base';
-import type { WindowInfo } from '../../computer-use/types';
 import { BottomPanel } from './components/BottomPanel';
 import { ChatMessageList } from './components/ChatMessageList';
 import { DiffApprovalView } from './components/DiffApprovalView';
@@ -20,7 +19,6 @@ import { ModelListView } from './components/ModelListView';
 import { QueueListView } from './components/QueueListView';
 import { SessionListView } from './components/SessionListView';
 import { SettingsView } from './components/SettingsView';
-import { WindowListView } from './components/WindowListView';
 import { type ConfirmChoice, type PendingConfirm, type SettingsInitialSection, type ViewMode } from './app-types';
 import type { AppProps } from './app-props';
 import { useAppHandle, type AppHandle } from './hooks/use-app-handle';
@@ -57,10 +55,7 @@ export function App({
   onResetConfig,
   onExit,
   onSummarize,
-  onListWindows,
-  onSwitchWindow,
   onSwitchAgent,
-  hasComputerUse,
   initWarnings,
   agentName,
   modeName,
@@ -76,8 +71,6 @@ export function App({
   const [copyMode, setCopyMode] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmChoice, setConfirmChoice] = useState<ConfirmChoice>('confirm');
-  const [windowList, setWindowList] = useState<WindowInfo[]>([]);
-  const [windowSearchText, setWindowSearchText] = useState('');
 
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
@@ -133,10 +126,6 @@ export function App({
     onExit,
     onSwitchAgent,
     onSummarize,
-    onListWindows,
-    onSwitchWindow,
-    setWindowList,
-    setWindowSearchText,
     undoRedoRef,
     setMessages: appState.setMessages,
     commitTools: appState.commitTools,
@@ -198,10 +187,6 @@ export function App({
     onLoadSession,
     onSwitchModel,
     modelState,
-    windowList,
-    windowSearchText,
-    setWindowSearchText,
-    onSwitchWindow,
     queue: messageQueue.queue,
     queueRemove: messageQueue.remove,
     queueMoveUp: messageQueue.moveUp,
@@ -234,10 +219,6 @@ export function App({
 
   if (viewMode === 'model-list') {
     return <ModelListView models={modelList} selectedIndex={selectedIndex} />;
-  }
-
-  if (viewMode === 'window-list') {
-    return <WindowListView windows={windowList} selectedIndex={selectedIndex} searchText={windowSearchText} />;
   }
 
   if (viewMode === 'queue-list') {
@@ -299,7 +280,6 @@ export function App({
         contextWindow={modelState.currentContextWindow}
         copyMode={copyMode}
         exitConfirmArmed={exitConfirm.exitConfirmArmed}
-        hasComputerUse={hasComputerUse}
       />
     </box>
   );

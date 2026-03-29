@@ -33,7 +33,6 @@ import { parseMemoryConfig } from './memory';
 import { parseMCPConfig } from './mcp';
 import { parseModeConfig } from './mode';
 import { parseSubAgentsConfig } from './sub_agents';
-import { parseComputerUseConfig } from './computer-use';
 import { loadRawConfigDir } from './raw';
 import { parsePluginsConfig } from './plugins';
 import { parseSummaryConfig } from './summary';
@@ -56,7 +55,6 @@ export type {
   SubAgentTypeDef,
 } from './types';
 export type { OCRConfig } from './ocr';
-export type { ComputerUseConfig } from './types';
 
 /**
  * 返回配置目录的绝对路径。
@@ -130,7 +128,6 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
     mcp: parseMCPConfig(data.mcp),
     modes: parseModeConfig(data.modes),
     subAgents: parseSubAgentsConfig(data.sub_agents),
-    computerUse: parseComputerUseConfig(data.computer_use),
     plugins: parsePluginsConfig(data.plugins),
     summary: parseSummaryConfig(data.summary),
   };

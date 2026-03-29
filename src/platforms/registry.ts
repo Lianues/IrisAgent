@@ -8,7 +8,6 @@ import type { AppConfig } from '../config/types';
 import type { Backend } from '../core/backend';
 import type { LLMRouter } from '../llm/router';
 import type { MCPManager } from '../mcp';
-import type { Computer } from '../computer-use/types';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import { PlatformAdapter } from './base';
 import type { PluginEventBus } from '../plugins/event-bus';
@@ -21,7 +20,6 @@ export interface PlatformFactoryContext {
   getMCPManager: () => MCPManager | undefined;
   setMCPManager: (manager?: MCPManager) => void;
   agentName?: string;
-  computerEnv?: Computer;
   extensions: BootstrapExtensionRegistry;
   initWarnings: string[];
   onSwitchAgent?: () => void;
@@ -87,7 +85,7 @@ export function createDefaultPlatformRegistry(): PlatformRegistry {
     return webPlatform;
   });
 
-  registry.register('console', async ({ backend, config, configDir, router, getMCPManager, setMCPManager, computerEnv, initWarnings, agentName, onSwitchAgent, extensions }) => {
+  registry.register('console', async ({ backend, config, configDir, router, getMCPManager, setMCPManager, initWarnings, agentName, onSwitchAgent, extensions }) => {
     if (typeof (globalThis as { Bun?: unknown }).Bun === 'undefined') {
       console.error(
         '[Iris] Console 平台需要 Bun 运行时。\n'
@@ -110,7 +108,6 @@ export function createDefaultPlatformRegistry(): PlatformRegistry {
       configDir,
       getMCPManager,
       setMCPManager,
-      computerEnv,
       initWarnings,
       agentName,
       onSwitchAgent,

@@ -21,7 +21,6 @@ export const CONFIG_SECTION_KEYS = [
   'modes',
   'sub_agents',
   'summary',
-  'computer_use',
   'plugins',
 ] as const;
 

@@ -59,8 +59,6 @@ export interface AgentContext {
   /** MCP 管理器 getter（延迟求值，热重载后自动获取最新引用） */
   getMCPManager: () => MCPManager | undefined;
   setMCPManager: (mgr?: MCPManager) => void;
-  getComputerEnv?: () => import('../../computer-use/types').Computer | undefined;
-  setComputerEnv?: (env?: import('../../computer-use/types').Computer) => void;
   /** 当前 Agent 对应的数据目录，用于热重载时扫描正确的 skills 目录 */
   dataDir?: string;
   extensions?: RuntimeReloadExtensions;
@@ -154,20 +152,6 @@ export class WebPlatform extends PlatformAdapter {
     this.deployToken = crypto.randomBytes(16).toString('hex');
     this.terminalHandler = createTerminalHandler();
   }
-
-  /** 为指定 agent（默认为 default）设置 Computer Use 环境的 getter/setter */
-  setComputerEnvHandlers(
-    getEnv: () => import('../../computer-use/types').Computer | undefined,
-    setEnv: (env?: import('../../computer-use/types').Computer) => void,
-    agentName = 'default',
-  ): void {
-    const agent = this.agents.get(agentName) ?? this.agents.get(this.defaultAgentName);
-    if (agent) {
-      agent.getComputerEnv = getEnv;
-      agent.setComputerEnv = setEnv;
-    }
-  }
-
   /** 添加 Agent（多 Agent 模式使用）。首次调用时移除构造函数创建的 'default' 占位 */
   addAgent(
     name: string, backend: Backend, config: WebPlatformConfig, description?: string,
@@ -762,8 +746,6 @@ export class WebPlatform extends PlatformAdapter {
             backend: agent.backend,
             getMCPManager: agent.getMCPManager,
             setMCPManager: agent.setMCPManager,
-            getComputerEnv: agent.getComputerEnv,
-            setComputerEnv: agent.setComputerEnv,
             dataDir: agent.dataDir,
             extensions: agent.extensions,
           },

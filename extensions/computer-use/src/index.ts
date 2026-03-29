@@ -9,6 +9,8 @@
 import { definePlugin, createPluginLogger, type PluginContext, type IrisAPI } from '@irises/extension-sdk';
 import { parseComputerUseConfig } from './config.js';
 import { DEFAULT_CONFIG_TEMPLATE } from './config-template.js';
+import { buildPanelHTML } from './panel-html.js';
+import { parse as parseYAML, stringify as stringifyYAML } from 'yaml';
 import { BrowserEnvironment, setExtensionDir as setBrowserExtDir } from './browser-env.js';
 import { ScreenEnvironment, setExtensionDir as setScreenExtDir } from './screen-env.js';
 import {
@@ -53,8 +55,58 @@ export default definePlugin({
     // 注册 onReady 回调：在 Backend 创建完成后初始化 CU
     ctx.onReady(async (api) => {
       cachedApi = api;
-      const pluginConfig = ctx.getPluginConfig<Record<string, unknown>>();
 
+      // 注册扩展面板（Web UI 侧边栏会动态显示）
+      api.registerWebPanel?.({
+        id: 'computer-use',
+        title: 'Computer Use',
+        icon: 'mouse',
+        contentPath: '/api/ext/computer-use/panel',
+      });
+
+      // 面板内容路由：返回完整配置 UI
+      api.registerWebRoute?.('GET', '/api/ext/computer-use/panel', async (_req: any, res: any) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildPanelHTML());
+      });
+
+      // 配置读取路由
+      api.registerWebRoute?.('GET', '/api/ext/computer-use/config', async (_req: any, res: any) => {
+        try {
+          const data = ctx.readConfigSection('computer_use') ?? {};
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(data));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || '读取配置失败' }));
+        }
+      });
+
+      // 配置写入路由
+      api.registerWebRoute?.('PUT', '/api/ext/computer-use/config', async (req: any, res: any) => {
+        try {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+
+          const configDir = ctx.getConfigDir();
+          const fs = await import('fs');
+          const path = await import('path');
+          const filePath = path.join(configDir, 'computer_use.yaml');
+          fs.writeFileSync(filePath, stringifyYAML(body, { indent: 2 }), 'utf-8');
+
+          // 触发配置重载
+          await safeReload(body, api);
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, reloaded: true }));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || '写入配置失败' }));
+        }
+      });
+
+      const pluginConfig = ctx.getPluginConfig<Record<string, unknown>>();
       // 配置来源：
       //   1. 宿主配置目录中的 computer_use.yaml（优先）
       //   2. 插件配置（plugins.yaml 中的 config 字段）
@@ -137,9 +189,6 @@ async function initEnvironment(cuConfig: ComputerUseConfig, api: IrisAPI): Promi
 
   activeEnv = cuEnv;
 
-  // 同步到 IrisAPI.computerEnv（宿主兼容）
-  (api as any).computerEnv = cuEnv;
-
   logger.info(`Computer Use 已启用 [环境=${env}, 策略=${envKey}]`);
 }
 
@@ -187,7 +236,6 @@ async function doReload(rawConfig: any, api: IrisAPI): Promise<void> {
 
   // 销毁旧环境
   await destroyEnvironment();
-  (api as any).computerEnv = undefined;
 
   // 重新初始化
   const cuConfig = parseComputerUseConfig(rawConfig);

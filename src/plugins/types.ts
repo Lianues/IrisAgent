@@ -20,7 +20,6 @@ import type { MemoryProvider } from '../memory/base';
 import type { LLMRouter } from '../llm/router';
 import type { Backend } from '../core/backend';
 import type { MCPManager } from '../mcp/manager';
-import type { Computer } from '../computer-use/types';
 import type { OCRProvider } from '../ocr';
 import type {
   BootstrapExtensionRegistry,
@@ -90,8 +89,6 @@ export interface IrisAPI {
   config: Readonly<AppConfig>;
   /** MCP 管理器（可选，未配置 MCP 时为 undefined） */
   mcpManager?: MCPManager;
-  /** Computer Use 环境实例（可选，未启用时为 undefined） */
-  computerEnv?: Computer;
   /** OCR 服务（可选，未配置时为 undefined） */
   ocrService?: OCRProvider;
   /** 启动扩展注册表（Provider / Platform 工厂） */
@@ -119,6 +116,20 @@ export interface IrisAPI {
   patchPrototype: typeof import('./patch').patchPrototype;
   /** 向 Web 平台注册自定义 HTTP 路由。若 Web 平台尚未创建，将在绑定后自动补注册。 */
   registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => void;
+  /** 向 Web 平台注册扩展面板页面。宿主侧边栏会动态展示已注册的面板。 */
+  registerWebPanel?: (panel: WebPanelDefinition) => void;
+}
+
+/** 扩展面板定义（由插件通过 registerWebPanel 注册，宿主 Web UI 动态渲染） */
+export interface WebPanelDefinition {
+  /** 面板唯一标识，如 'computer-use' */
+  id: string;
+  /** 面板显示标题 */
+  title: string;
+  /** 面板图标名称（Material Symbols 图标名，如 'mouse'），缺省使用 'extension' */
+  icon?: string;
+  /** 面板内容 URL 路径（由扩展通过 registerWebRoute 提供，宿主用 iframe 加载） */
+  contentPath: string;
 }
 
 // ============ 预启动上下文 ============

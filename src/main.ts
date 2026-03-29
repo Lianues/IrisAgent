@@ -85,12 +85,8 @@ if (args[0] === 'extension' || args[0] === 'extensions' || args[0] === 'ext') {
 const sidecarIndex = args.indexOf('--sidecar');
 if (sidecarIndex >= 0) {
   const sidecarType = args[sidecarIndex + 1];
-  if (sidecarType === 'screen') {
-    await import('./computer-use/screen-sidecar');
-  } else if (sidecarType === 'browser') {
-    await import('./computer-use/browser-sidecar');
-  } else {
-    console.error(`未知的 sidecar 类型: ${sidecarType}`);
+  if (!sidecarType) {
+    console.error('--sidecar 需要指定类型');
     process.exit(1);
   }
 } else {

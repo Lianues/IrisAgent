@@ -27,8 +27,6 @@ interface BottomPanelProps {
   contextWindow?: number;
   copyMode: boolean;
   exitConfirmArmed: boolean;
-  /** Computer Use 是否启用（用于条件显示 /window 指令） */
-  hasComputerUse?: boolean;
 }
 
 export function BottomPanel({
@@ -48,7 +46,6 @@ export function BottomPanel({
   contextWindow,
   copyMode,
   exitConfirmArmed,
-  hasComputerUse,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -77,7 +74,6 @@ export function BottomPanel({
             queueSize={queueSize}
             onSubmit={onSubmit}
             onPrioritySubmit={onPrioritySubmit}
-            hasComputerUse={hasComputerUse}
           />
           <StatusBar
             agentName={agentName}
