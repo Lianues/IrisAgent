@@ -83,10 +83,15 @@ async function main() {
   const config = loadConfig()
   const packageManager = detectPackageManager()
   const hasConsolePlatform = config.platform.types.includes('console')
-  const preferBunRuntime = packageManager === 'bun'
 
-  if (preferBunRuntime || hasConsolePlatform) {
-    if (hasConsolePlatform && !preferBunRuntime) {
+  // 只有在配置了 console 平台时才必须使用 Bun 运行时。
+  // 即使通过 bun start 启动，如果没有 console 平台，也应回退到 Node.js + tsx，
+  // 因为项目依赖 better-sqlite3 等原生模块，Bun 尚不支持。
+  // 参见: https://github.com/oven-sh/bun/issues/4290
+  const preferBunRuntime = hasConsolePlatform
+
+  if (preferBunRuntime) {
+    if (packageManager !== 'bun') {
       console.log('[Iris] 检测到 console 平台，已自动切换到 Bun 运行时。')
     }
 
