@@ -367,6 +367,25 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     patchPrototype,
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
+    supportsVision: (modelName?: string) => {
+      const { supportsVision: sv } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return sv(cfg);
+    },
+    supportsNativePDF: (modelName?: string) => {
+      const { supportsNativePDF: sp } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return sp(cfg);
+    },
+    supportsNativeOffice: (modelName?: string) => {
+      const { supportsNativeOffice: so } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return so(cfg);
+    },
+    isDocumentMimeType: (mimeType: string) => {
+      const { isDocumentMimeType: idm } = require('./llm/vision');
+      return idm(mimeType);
+    },
   } satisfies Record<string, unknown> as unknown as IrisAPI;
 
   if (pluginManager && pluginManager.size > 0) {

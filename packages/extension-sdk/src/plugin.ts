@@ -1,5 +1,5 @@
 import { createExtensionLogger, type ExtensionLogger } from './logger.js';
-import type { LLMRequest } from './llm.js';
+import type { LLMRequest, LLMResponse, LLMStreamChunk } from './llm.js';
 import type { Content, Part } from './message.js';
 import type { ModeDefinition } from './mode.js';
 import type { IrisBackendLike, IrisPlatformFactoryContextLike, PlatformAdapter } from './platform.js';
@@ -48,6 +48,18 @@ export interface LLMRouterLike {
   getCurrentModelInfo?(): unknown;
   listModels?(): unknown[];
   resolve?(modelName: string): unknown;
+  /** 检查模型是否已注册 */
+  hasModel?(modelName: string): boolean;
+  /** 动态注册一个模型（modelName 不可重复） */
+  registerModel?(entry: { modelName: string; provider: unknown; config: Record<string, unknown> }): void;
+  /** 动态移除一个模型（至少需保留一个模型） */
+  unregisterModel?(modelName: string): boolean;
+  /** 切换当前活动模型 */
+  setCurrentModel?(modelName: string): unknown;
+  /** 获取当前活动模型名称 */
+  getCurrentModelName?(): string;
+  /** 获取指定模型的配置（不传参数时获取当前模型） */
+  getModelConfig?(modelName?: string): Record<string, unknown>;
 }
 
 export interface PromptAssemblerLike {
@@ -100,6 +112,14 @@ export interface IrisAPI {
   fetchAvailableModels?(config: { provider: string; apiKey: string; baseUrl?: string }): Promise<ModelCatalogResultLike>;
   extensionManager?: ExtensionManagerLike;
   agentManager?: AgentManagerLike;
+  /** 检查指定模型是否支持 vision（不传参数时检查当前模型） */
+  supportsVision?(modelName?: string): boolean;
+  /** 检查指定模型是否支持原生 PDF 输入（不传参数时检查当前模型） */
+  supportsNativePDF?(modelName?: string): boolean;
+  /** 检查指定模型是否支持原生 Office 文档输入（不传参数时检查当前模型） */
+  supportsNativeOffice?(modelName?: string): boolean;
+  /** 检查 MIME 类型是否为文档类型（PDF / DOCX / PPTX / XLSX） */
+  isDocumentMimeType?(mimeType: string): boolean;
 }
 
 /** 扩展面板定义（由插件通过 registerWebPanel 注册，宿主 Web UI 动态渲染） */
@@ -168,6 +188,14 @@ export interface StorageLike {
   truncateHistory(sessionId: string, keepCount: number): Promise<void>;
   listSessions(): Promise<string[]>;
   listSessionMetas(): Promise<SessionInfoLike[]>;
+  /** 向指定会话追加一条消息 */
+  addMessage?(sessionId: string, content: Content): Promise<void>;
+  /** 更新指定会话最后一条消息（用于补充 durationMs 等元信息） */
+  updateLastMessage?(sessionId: string, updater: (content: Content) => Content): Promise<void>;
+  /** 获取会话元数据 */
+  getMeta?(sessionId: string): Promise<SessionInfoLike | null>;
+  /** 保存/更新会话元数据 */
+  saveMeta?(meta: SessionInfoLike): Promise<void>;
 }
 
 /** 可用模型信息 */
