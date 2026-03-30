@@ -368,7 +368,11 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       };
       return new Proxy({} as any, { get: (_t, p) => (getUtils() as any)[p] });
     })(),
-    setLogLevel: (level: number) => setGlobalLogLevel(level as LogLevel),
+    setLogLevel: (level: number) => {
+      setGlobalLogLevel(level as LogLevel);
+      const { setExtensionLogLevel } = require('@irises/extension-sdk');
+      setExtensionLogLevel(level);
+    },
     getLogLevel: () => getGlobalLogLevel() as number,
     pluginManager: pluginManager!,
     eventBus,
@@ -396,6 +400,12 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       return idm(mimeType);
     },
   } satisfies Record<string, unknown> as unknown as IrisAPI;
+
+  // 同步初始日志级别到 SDK logger
+  try {
+    const { setExtensionLogLevel } = require('@irises/extension-sdk');
+    setExtensionLogLevel(getGlobalLogLevel());
+  } catch { /* SDK 未安装时忽略 */ }
 
   if (pluginManager && pluginManager.size > 0) {
     backend.setPluginHooks(pluginManager.getHooks());

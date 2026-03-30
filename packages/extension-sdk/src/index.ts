@@ -92,6 +92,8 @@ export type {
 
 export {
   createExtensionLogger,
+  setExtensionLogLevel,
+  getExtensionLogLevel,
 } from './logger.js';
 
 export type {
