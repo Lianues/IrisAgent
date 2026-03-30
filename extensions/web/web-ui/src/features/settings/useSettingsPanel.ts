@@ -416,6 +416,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
   interface SubAgentEntry {
     uid: number
     open: boolean
+    enabled: boolean
+    stream: boolean
     name: string
     description: string
     systemPrompt: string
@@ -433,6 +435,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     return {
       uid: nextSubAgentUid++,
       open: data.open ?? true,
+      enabled: data.enabled ?? true,
+      stream: data.stream ?? false,
       name: data.name ?? '',
       description: data.description ?? '',
       systemPrompt: data.systemPrompt ?? '',
@@ -447,6 +451,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
 
   const subAgentEntries = reactive<SubAgentEntry[]>([])
   const subAgentOriginalNames = ref<string[]>([])
+  const subAgentEnabled = ref(true)
+  const subAgentStream = ref(true)
 
   const subAgentModelOptions = computed(() => {
     const options: Array<{ value: string; label: string; description?: string }> = [
@@ -496,6 +502,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
         toolMode: 'excluded',
         toolList: 'sub_agent',
         parallel: false,
+        enabled: true,
+        stream: true,
         maxToolRounds: 200,
         open: false,
       }),
@@ -506,6 +514,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
         toolMode: 'allowed',
         toolList: 'read_file\nsearch_in_files\nshell',
         parallel: false,
+        enabled: true,
+        stream: true,
         maxToolRounds: 200,
         open: false,
       }),
@@ -535,6 +545,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
       const name = entry.name.trim()
       if (!name) continue
       const def: any = {
+        enabled: entry.enabled,
+        stream: entry.stream,
         description: entry.description,
         systemPrompt: entry.systemPrompt,
         maxToolRounds: entry.maxToolRounds,
@@ -557,7 +569,7 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
       }
       types[name] = def
     }
-    return Object.keys(types).length > 0 ? { types } : null
+    return Object.keys(types).length > 0 ? { enabled: subAgentEnabled.value, stream: subAgentStream.value, types } : null
   }
 
   function validateSubAgentEntries(): string | null {
@@ -1165,6 +1177,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
 
         // Sub-Agents
         if (data.sub_agents?.types && typeof data.sub_agents.types === 'object') {
+          subAgentEnabled.value = data.sub_agents.enabled !== false
+          subAgentStream.value = data.sub_agents.stream === true
           for (const [name, cfg] of Object.entries(data.sub_agents.types) as [string, any][]) {
             if (!cfg || typeof cfg !== 'object') continue
             let toolMode: SubAgentToolMode = 'all'
@@ -1178,6 +1192,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
             }
             subAgentEntries.push(createSubAgentEntry({
               name,
+              enabled: cfg.enabled !== false,
+              stream: cfg.stream === true,
               description: cfg.description || '',
               systemPrompt: cfg.systemPrompt || '',
               toolMode,
@@ -2034,6 +2050,8 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
     runtimeInfo,
     subAgentEntries,
     subAgentModelOptions,
+    subAgentEnabled,
+    subAgentStream,
     addSubAgentEntry,
     removeSubAgentEntry,
     loadBuiltinSubAgentDefaults,

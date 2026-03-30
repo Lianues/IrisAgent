@@ -90,15 +90,20 @@ enabled: false
 `,
 
   'sub_agents.yaml': `# 子代理配置
+enabled: true
+stream: true
 types:
   general-purpose:
+    enabled: true
     description: "执行需要多步工具操作的复杂子任务。适合承接相对独立的子任务。"
     systemPrompt: "你是一个通用子代理，负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。"
     excludedTools:
       - sub_agent
+    stream: true
     parallel: false
     maxToolRounds: 200
   explore:
+    enabled: true
     description: "只读搜索和阅读文件、执行查询命令。不做修改，只返回发现的信息。"
     systemPrompt: "你是一个只读探索代理，负责搜索和阅读信息。不要修改任何文件，只返回你发现的内容。"
     allowedTools:
@@ -107,6 +112,7 @@ types:
       - find_files
       - list_files
       - shell
+    stream: true
     parallel: true
     maxToolRounds: 200
 `,

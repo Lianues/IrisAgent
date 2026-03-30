@@ -263,6 +263,8 @@ export interface AppConfig {
 export interface SubAgentTypeDef {
   /** 类型标识（从 YAML 键名解析） */
   name: string;
+  /** 是否启用此类型（默认 true）；全局 enabled 为 false 时此字段无效 */
+  enabled: boolean;
   /** 面向主 LLM 的用途说明 */
   description: string;
   /** 子代理的系统提示词 */
@@ -275,12 +277,18 @@ export interface SubAgentTypeDef {
   modelName?: string;
   /** 最大工具执行轮次 */
   maxToolRounds: number;
+  /** 此类型是否使用流式输出（默认 false）；全局 stream 有值时被覆盖 */
+  stream: boolean;
   /** 当前类型的 sub_agent 调用是否可按 parallel 工具参与调度，默认 false */
   parallel: boolean;
 }
 
 /** 子代理配置（对应 sub_agents.yaml） */
 export interface SubAgentsConfig {
+  /** 是否启用子代理功能（默认 true）；设为 false 可一键禁用全部子代理 */
+  enabled: boolean;
+  /** 全局流式输出开关（设置后覆盖所有类型的 stream 设置；不设置则各类型自行决定） */
+  stream?: boolean;
   /** 子代理类型定义列表（来自配置文件，未配置时不启用子代理功能） */
   types?: SubAgentTypeDef[];
 }

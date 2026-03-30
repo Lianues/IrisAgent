@@ -157,9 +157,13 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // ---- 3.5 注册子代理工具 ----
   const subAgentTypes = new SubAgentTypeRegistry();
 
-  if (config.subAgents?.types) {
+  if (config.subAgents?.enabled !== false && config.subAgents?.types) {
+    const globalStream = config.subAgents.stream;
     for (const t of config.subAgents.types) {
-      subAgentTypes.register({ ...t });
+      if (t.enabled === false) continue;
+      // 全局 stream 有值时覆盖类型独立设置
+      const effectiveStream = globalStream ?? t.stream;
+      subAgentTypes.register({ ...t, stream: effectiveStream });
     }
   }
 

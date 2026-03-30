@@ -9,6 +9,8 @@
  */
 
 import { ToolDefinition } from '../../../types';
+import type { Content, Part, LLMRequest, UsageMetadata } from '../../../types';
+import { appendMergedPart } from '../../../core/backend/stream';
 import { ToolPolicyConfig } from '../../../config';
 import { LLMRouter } from '../../../llm/router';
 import { ToolRegistry } from '../../registry';
@@ -135,8 +137,34 @@ export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number 
         maxRetries: deps.maxRetries,
       });
 
-      const callLLM: LLMCaller = async (request, modelName) => {
-        const response = await deps.getRouter().chat(request, modelName);
+      const callLLM: LLMCaller = async (request, modelName, signal) => {
+        const router = deps.getRouter();
+
+        if (typeConfig.stream) {
+          // 流式路径：调用 chatStream，收集所有 chunk 组装完整 Content
+          const parts: Part[] = [];
+          let usageMetadata: UsageMetadata | undefined;
+          for await (const chunk of router.chatStream(request, modelName, signal)) {
+            if (chunk.partsDelta && chunk.partsDelta.length > 0) {
+              for (const part of chunk.partsDelta) {
+                appendMergedPart(parts, part, Date.now());
+              }
+            } else {
+              if (chunk.textDelta) appendMergedPart(parts, { text: chunk.textDelta }, Date.now());
+              if (chunk.functionCalls) {
+                for (const fc of chunk.functionCalls) appendMergedPart(parts, fc, Date.now());
+              }
+            }
+            if (chunk.usageMetadata) usageMetadata = chunk.usageMetadata;
+          }
+          if (parts.length === 0) parts.push({ text: '' });
+          const content: Content = { role: 'model', parts, createdAt: Date.now() };
+          if (usageMetadata) content.usageMetadata = usageMetadata;
+          return content;
+        }
+
+        // 非流式路径
+        const response = await router.chat(request, modelName, signal);
         return response.content;
       };
 

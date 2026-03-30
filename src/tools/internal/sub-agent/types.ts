@@ -23,6 +23,8 @@ export interface SubAgentTypeConfig {
   parallel: boolean;
   /** 最大工具轮次 */
   maxToolRounds: number;
+  /** 此类型是否使用流式输出（已解析全局覆盖后的最终值） */
+  stream: boolean;
 }
 
 /** 子代理类型注册表 */
