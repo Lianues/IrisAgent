@@ -37,6 +37,7 @@ import { findFenceRenderer } from './renderers/registry'
 import './renderers/svg-renderer'
 import './renderers/html-renderer'
 import './renderers/diff-renderer'
+import './renderers/image-link-hydrator'
 import './renderers/mermaid-renderer'
 import { parseLineHighlights } from './code-highlights'
 
@@ -216,6 +217,11 @@ const HTML_INLINE_FALLBACK_BLOCKED_CONTENT_PATTERN = /[`<>\[\]_]/
 const EMPHASIS_BOUNDARY_PUNCTUATION_PATTERN = /[\p{P}\p{S}]/u
 const ASCII_WORD_CHARACTER_PATTERN = /[A-Za-z0-9]/
 const NON_ASCII_CHARACTER_PATTERN = /[^\u0000-\u007F]/
+const CJK_BOUNDARY_CHARS = '\u3000-\u303F\uFF00-\uFF60\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF'
+const INLINE_LATEX_PATTERN = new RegExp(
+  `(^|[\\s(${CJK_BOUNDARY_CHARS}])\\$([^$\\n]+?)\\$(?=[\\s.,;:!?'")\\]${CJK_BOUNDARY_CHARS}]|$)`,
+  'gm',
+)
 
 interface LatexFormula {
   formula: string
@@ -1091,7 +1097,7 @@ function buildMarkdownPreviewBlock(source: string, hintedLang?: string | null): 
   const previewHtml = compileRichText(source) || '<p class="message-markdown-empty">空 Markdown 文档</p>'
   const sourceHtml = renderCodeBlock(source, hintedLang || 'markdown')
 
-  return `<div class="message-markdown-shell"><div class="message-markdown-header"><span class="message-markdown-badge">Markdown 预览</span><span class="message-markdown-meta">检测到 Markdown 文档，已按富文本渲染</span></div><div class="message-markdown-preview">${previewHtml}</div><details class="message-markdown-source"><summary>查看源码</summary>${sourceHtml}</details></div>`
+  return `<div class="message-markdown-shell"><div class="message-markdown-header"><span class="message-markdown-badge">Markdown 预览</span></div><div class="message-markdown-preview">${previewHtml}</div><details class="message-markdown-source"><summary>查看源码</summary>${sourceHtml}</details></div>`
 }
 
 function buildLatexPreviewBlock(source: string, hintedLang?: string | null): string {
@@ -1206,33 +1212,62 @@ function detectCodeLanguage(code: string, hintedLang?: string | null): string {
   return 'text'
 }
 
-function highlightCode(code: string, detectedLang: string): string {
-  const highlightLanguage = getHighlightLanguage(detectedLang)
-  if (!highlightLanguage) {
-    return escapeHtml(code)
+function splitHighlightedHtml(html: string): string[] {
+  const lines: string[] = []
+  const openTags: string[] = []
+  let currentLine = ''
+  const tokenPattern = /<span\s[^>]*>|<\/span>|\n|[^<\n]+|</g
+  let token: RegExpExecArray | null
+
+  while ((token = tokenPattern.exec(html)) !== null) {
+    const t = token[0]
+    if (t === '\n') {
+      for (let i = openTags.length - 1; i >= 0; i--) currentLine += '</span>'
+      lines.push(currentLine)
+      currentLine = openTags.join('')
+    } else if (t.startsWith('<span')) {
+      openTags.push(t)
+      currentLine += t
+    } else if (t === '</span>') {
+      openTags.pop()
+      currentLine += t
+    } else {
+      currentLine += t
+    }
   }
 
-  try {
-    return hljs.highlight(code, { language: highlightLanguage, ignoreIllegals: true }).value
-  } catch {
-    return escapeHtml(code)
-  }
+  lines.push(currentLine)
+  return lines
 }
 
 function renderNumberedCodeLines(code: string, detectedLang: string, highlightedLines?: Set<number> | null): string {
   const normalizedCode = code.replace(/\r\n?/g, '\n')
-  const lines = normalizedCode.split('\n')
+
+  const highlightLanguage = getHighlightLanguage(detectedLang)
+  let fullHtml: string
+  if (highlightLanguage) {
+    try {
+      fullHtml = hljs.highlight(normalizedCode, { language: highlightLanguage, ignoreIllegals: true }).value
+    } catch {
+      fullHtml = escapeHtml(normalizedCode)
+    }
+  } else {
+    fullHtml = escapeHtml(normalizedCode)
+  }
+
+  const lines = splitHighlightedHtml(fullHtml)
   const totalLines = Math.max(1, lines.length)
   const gutterWidth = String(totalLines).length
 
-  return (lines.length > 0 ? lines : ['']).map((line, index) => {
+  return (lines.length > 0 ? lines : ['']).map((lineHtml, index) => {
     const lineNum = index + 1
-    const lineHtml = line.length > 0 ? highlightCode(line, detectedLang) : '&#8203;'
+    const isEmptyLine = lineHtml.replace(/<\/?span[^>]*>/g, '').length === 0
+    const content = isEmptyLine ? '&#8203;' : lineHtml
     const highlighted = highlightedLines?.has(lineNum) ? ' message-code-line-highlighted' : ''
     return [
       `<span class="message-code-line${highlighted}">`,
       `<span class="message-code-line-number">${escapeHtml(String(lineNum).padStart(gutterWidth, ' '))}</span>`,
-      `<span class="message-code-line-text">${lineHtml}</span>`,
+      `<span class="message-code-line-text">${content}</span>`,
       '</span>',
     ].join('')
   }).join('')
@@ -1417,7 +1452,7 @@ function extractLatexFormulas(text: string): { text: string; formulas: LatexForm
     return createLatexPlaceholder(index, 'inline')
   })
 
-  result = result.replace(/(^|[\s(])\$([^$\n]+?)\$(?=[\s.,;:!?)'"\]]|$)/gm, (match, prefix: string, formula: string) => {
+  result = result.replace(INLINE_LATEX_PATTERN, (match, prefix: string, formula: string) => {
     if (!/[a-zA-Z\\{}^_=+\-*/<>]/.test(formula)) {
       return match
     }
@@ -1559,6 +1594,108 @@ function decorateImages(root: ParentNode) {
   })
 }
 
+const IMAGE_LINK_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+  '.bmp', '.ico', '.avif', '.apng', '.tiff', '.tif',
+])
+
+function isImageUrl(href: string): boolean {
+  try {
+    const url = new URL(href)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+    const pathname = url.pathname.toLowerCase()
+    const dotIndex = pathname.lastIndexOf('.')
+    if (dotIndex < 0) return false
+    return IMAGE_LINK_EXTENSIONS.has(pathname.slice(dotIndex))
+  } catch {
+    return false
+  }
+}
+
+function isAutoLinkedImageAnchor(anchor: HTMLAnchorElement): boolean {
+  const href = anchor.getAttribute('href')
+  if (!href) return false
+  if (!isImageUrl(href)) return false
+
+  // linkify 生成的链接：文本内容 ≈ href
+  // 注意 linkify 可能从不带协议的文本（如 example.com/a.jpg）生成
+  // href="http://example.com/a.jpg"，所以比较时需要兼容
+  const text = anchor.textContent?.trim() ?? ''
+  if (!text) return false
+
+  if (text === href) return !anchor.querySelector('img, code, strong, em')
+
+  try {
+    const hrefUrl = new URL(href)
+    // 兼容不带协议的文本：补上协议后再比较
+    const textWithProtocol = /^https?:\/\//i.test(text) ? text : `${hrefUrl.protocol}//${text}`
+    const textUrl = new URL(textWithProtocol)
+    if (textUrl.origin !== hrefUrl.origin || textUrl.pathname !== hrefUrl.pathname) return false
+  } catch {
+    return false
+  }
+
+  // 排除链接内嵌套了其他元素的情况（如手写 HTML）
+  if (anchor.querySelector('img, code, strong, em')) return false
+
+  return true
+}
+
+function isSoleChildOfParagraph(anchor: HTMLAnchorElement): boolean {
+  const parent = anchor.parentElement
+  if (!parent || parent.tagName !== 'P') return false
+  // 段落内只有这一个有意义的子节点（忽略前后空白文本节点）
+  for (const child of parent.childNodes) {
+    if (child === anchor) continue
+    if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue
+    return false
+  }
+  return true
+}
+
+function decorateImageLinks(root: ParentNode) {
+  const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>('a'))
+  for (const anchor of anchors) {
+    if (!isAutoLinkedImageAnchor(anchor)) continue
+
+    const href = anchor.getAttribute('href')!
+    const isBlock = isSoleChildOfParagraph(anchor)
+
+    if (isBlock) {
+      const shell = document.createElement('div')
+      shell.className = 'message-image-link-shell'
+
+      const img = document.createElement('img')
+      img.className = 'message-image-link-preview'
+      img.src = href
+      img.alt = href
+      img.setAttribute('loading', 'lazy')
+      img.setAttribute('decoding', 'async')
+      img.setAttribute('data-original-href', href)
+
+      const link = document.createElement('a')
+      link.className = 'message-image-link-url'
+      link.href = href
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = href
+
+      shell.append(img, link)
+      // 替换整个 <p>
+      anchor.parentElement!.replaceWith(shell)
+    } else {
+      const img = document.createElement('img')
+      img.className = 'message-image-link-inline'
+      img.src = href
+      img.alt = href
+      img.setAttribute('loading', 'lazy')
+      img.setAttribute('decoding', 'async')
+      img.setAttribute('data-original-href', href)
+      anchor.replaceWith(img)
+    }
+  }
+}
+
 function decorateRenderedHtml(html: string): string {
   if (typeof document === 'undefined') return html
 
@@ -1567,6 +1704,7 @@ function decorateRenderedHtml(html: string): string {
 
   decorateCodeBlocks(template.content)
   decorateTables(template.content)
+  decorateImageLinks(template.content)
   decorateAnchors(template.content)
   decorateImages(template.content)
 

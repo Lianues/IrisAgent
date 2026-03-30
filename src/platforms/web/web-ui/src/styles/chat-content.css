@@ -170,7 +170,6 @@
 
 .message-rich h3 {
   font-size: 1.08rem;
-  color: var(--accent-cyan);
 }
 
 .message-rich h4 {
@@ -1059,6 +1058,75 @@
 :root[data-theme="light"] .diff-line-header {
   color: var(--text-tertiary);
 }
+
+/* ==========================================
+ *  Image Link Preview (裸图片URL自动预览)
+ * ========================================== */
+
+.message-image-link-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.message-image-link-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 10px;
+  object-fit: contain;
+  cursor: zoom-in;
+  transition: opacity var(--transition-fast);
+}
+
+.message-image-link-preview:hover {
+  opacity: 0.92;
+}
+
+.message-image-link-url {
+  display: block;
+  max-width: 100%;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.message-image-link-url:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.message-image-link-inline {
+  display: inline;
+  max-width: 280px;
+  max-height: 200px;
+  vertical-align: middle;
+  border-radius: 6px;
+  object-fit: contain;
+  cursor: zoom-in;
+  margin: 0 2px;
+}
+
+/* ---- Light theme ---- */
+
+:root[data-theme="light"] .message-image-link-shell {
+  background: transparent;
+}
+
+:root[data-theme="light"] .message-image-link-url {
+  color: var(--text-tertiary);
+}
+
+:root[data-theme="light"] .message-image-link-url:hover {
+  color: var(--accent);
+}
+
 
 /* ==========================================
  *  Image Lightbox
