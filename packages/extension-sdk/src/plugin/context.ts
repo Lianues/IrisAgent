@@ -9,6 +9,8 @@ import type { IrisAPI } from './api.js';
 import type {
   LLMRouterLike,
   ModeRegistryLike,
+  PluginEventBusLike,
+  PluginManagerLike,
   ToolRegistryLike,
 } from './registry.js';
 import type {
@@ -114,6 +116,15 @@ export interface PluginContext {
   ensureConfigFile(filename: string, content: string): boolean;
   /** 从宿主配置目录读取指定 YAML 配置段（不含 .yaml 后缀） */
   readConfigSection(section: string): Record<string, unknown> | undefined;
+
+  // ── 插件间协作 ──
+
+  /** 获取插件间事件总线（插件间通信通道） */
+  getEventBus?(): PluginEventBusLike;
+  /** 获取插件管理器（查询其他已加载插件） */
+  getPluginManager?(): PluginManagerLike;
+  /** 更新当前插件已注册 Hook 的优先级 */
+  setHookPriority?(hookName: string, priority: number): boolean;
 }
 
 export interface IrisPlugin {

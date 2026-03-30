@@ -286,6 +286,18 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   const setMCPManagerFn = (m?: MCPManager) => { mcpManager = m; };
   const irisAPI = {
     backend,
+    media: (() => {
+      let _media: any;
+      const load = () => {
+        if (_media) return _media;
+        const { resizeImage, formatDimensionNote } = require('./media/image-resize');
+        const { extractDocument, isSupportedDocumentMime } = require('./media/document-extract');
+        const { convertToPDF, isConversionAvailable } = require('./media/office-to-pdf');
+        _media = { resizeImage, formatDimensionNote, extractDocument, isSupportedDocumentMime, convertToPDF, isConversionAvailable };
+        return _media;
+      };
+      return new Proxy({} as any, { get: (_t, p) => (load() as any)[p] });
+    })(),
     router,
     storage,
     tools,
@@ -330,6 +342,15 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       update: (name: string, fields: any) => { const { updateAgent } = require('./agents'); return updateAgent(name, fields); },
       delete: (name: string) => { const { deleteAgent } = require('./agents'); return deleteAgent(name); },
       resetCache: () => { const { resetCache } = require('./agents'); resetCache(); },
+      getActiveSessionId: () => backend.getActiveSessionId(),
+      getLastSessionTokens: (sessionId: string) => (backend as any).lastSessionTokens?.get(sessionId),
+      getAllSessionTokens: () => {
+        const map: Map<string, number> = (backend as any).lastSessionTokens;
+        if (!map) return {};
+        const result: Record<string, number> = {};
+        for (const [k, v] of map) result[k] = v;
+        return result;
+      },
     },
     toolPreviewUtils: (() => {
       // 懒加载工具预览工具集
@@ -356,6 +377,25 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
     listAgents: () => { const { loadAgentDefinitions } = require('./agents'); return loadAgentDefinitions(); },
+    supportsVision: (modelName?: string) => {
+      const { supportsVision: sv } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return sv(cfg);
+    },
+    supportsNativePDF: (modelName?: string) => {
+      const { supportsNativePDF: sp } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return sp(cfg);
+    },
+    supportsNativeOffice: (modelName?: string) => {
+      const { supportsNativeOffice: so } = require('./llm/vision');
+      const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
+      return so(cfg);
+    },
+    isDocumentMimeType: (mimeType: string) => {
+      const { isDocumentMimeType: idm } = require('./llm/vision');
+      return idm(mimeType);
+    },
   } satisfies Record<string, unknown> as unknown as IrisAPI;
 
   if (pluginManager && pluginManager.size > 0) {

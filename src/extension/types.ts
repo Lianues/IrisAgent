@@ -6,6 +6,7 @@
 
 import type { Content, LLMRequest } from '../types';
 import type { IrisAPI, PluginHook, PluginEntry, IrisPlugin, ToolExecInterception, PlatformAdapter } from '@irises/extension-sdk';
+import type { PluginContextImpl } from './context';
 
 /** 已加载的插件实例（PluginManager 内部） */
 export interface LoadedPlugin {
@@ -14,6 +15,7 @@ export interface LoadedPlugin {
   hooks: PluginHook[];
   readyCallbacks: Array<(api: IrisAPI) => void | Promise<void>>;
   platformReadyCallbacks: Array<(platforms: ReadonlyMap<string, PlatformAdapter>, api: IrisAPI) => void | Promise<void>>;
+  context: PluginContextImpl;
 }
 
 /** 插件信息（公开查询用） */

@@ -15,7 +15,7 @@ import { parse as parseYAML } from 'yaml';
 import type { ModeRegistry } from '../modes/registry';
 import type { PromptAssembler } from '../prompt/assembler';
 import type { LLMRouter } from '../llm/router';
-import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI } from '@irises/extension-sdk';
+import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI, PluginEventBusLike, PluginManagerLike } from '@irises/extension-sdk';
 import { createLogger } from '../logger';
 import type { PlatformAdapter } from '@irises/extension-sdk';
 
@@ -146,6 +146,34 @@ export class PluginContextImpl {
     if (!fs.existsSync(filePath)) return undefined;
     const raw = fs.readFileSync(filePath, 'utf-8');
     return (parseYAML(raw) as Record<string, unknown>) ?? undefined;
+  }
+
+  // ---- 插件间协作 ----
+
+  private _eventBus?: PluginEventBusLike;
+  private _pluginManager?: PluginManagerLike;
+
+  /** 注入事件总线和插件管理器引用（由 PluginManager 在 activate 后调用） */
+  setInteropRefs(eventBus: PluginEventBusLike, pluginManager: PluginManagerLike): void {
+    this._eventBus = eventBus;
+    this._pluginManager = pluginManager;
+  }
+
+  getEventBus(): PluginEventBusLike {
+    if (!this._eventBus) throw new Error('EventBus 尚未就绪，请在 onReady 回调中访问');
+    return this._eventBus;
+  }
+
+  getPluginManager(): PluginManagerLike {
+    if (!this._pluginManager) throw new Error('PluginManager 尚未就绪，请在 onReady 回调中访问');
+    return this._pluginManager;
+  }
+
+  setHookPriority(hookName: string, priority: number): boolean {
+    const hook = this.hooks.find(h => h.name === hookName);
+    if (!hook) return false;
+    hook.priority = priority;
+    return true;
   }
 
   // ---- 内部方法（供 PluginManager 使用） ----

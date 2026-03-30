@@ -165,6 +165,12 @@ export class PluginManager {
    */
   async notifyReady(api: IrisAPI): Promise<void> {
     this._api = api;
+
+    // 注入插件间协作引用（eventBus + pluginManager）
+    for (const loaded of this.plugins.values()) {
+      loaded.context.setInteropRefs(api.eventBus, api.pluginManager);
+    }
+
     for (const loaded of byPriorityDesc(Array.from(this.plugins.values()).map(item => item.entry)).map(entry => this.plugins.get(entry.name)!).filter(Boolean)) {
       for (const callback of loaded.readyCallbacks) {
         try {
@@ -231,6 +237,11 @@ export class PluginManager {
     }));
   }
 
+  /** 根据名称查找指定插件 */
+  getPlugin(name: string): PluginInfo | undefined {
+    return this.listPlugins().find(p => p.name === name);
+  }
+
   /** 已加载插件数量 */
   get size(): number {
     return this.plugins.size;
@@ -281,6 +292,7 @@ export class PluginManager {
     this.plugins.set(prepared.entry.name, {
       entry: prepared.entry,
       plugin: prepared.plugin,
+      context,
       hooks: context.getHooks(),
       readyCallbacks: context.getReadyCallbacks(),
       platformReadyCallbacks: context.getPlatformReadyCallbacks(),

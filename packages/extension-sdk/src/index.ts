@@ -39,6 +39,14 @@ export type {
 } from './platform.js';
 
 export type {
+  ExtractedDocument,
+  ImageResizeOptions,
+  MediaServiceLike,
+  OCRProviderLike,
+  ResizedImage,
+} from './media.js';
+
+export type {
   Content,
   FunctionCallPart,
   FunctionResponsePart,
@@ -128,6 +136,7 @@ export type {
   PluginEntry,
   PluginEventBusLike,
   PluginHook,
+  PluginInfoLike,
   PluginLogger,
   PluginManagerLike,
   PreBootstrapContext,

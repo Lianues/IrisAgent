@@ -1,4 +1,5 @@
 import type { IrisBackendLike } from '../platform.js';
+import type { MediaServiceLike, OCRProviderLike } from '../media.js';
 import type {
   BootstrapExtensionRegistryLike,
   PatchMethod,
@@ -41,6 +42,12 @@ export interface MCPManagerLike {
   listServers?(): MCPServerInfoLike[];
   getConfig?(): Record<string, unknown>;
   connectAll?(): Promise<void>;
+  /** 断开所有 MCP 服务器连接 */
+  disconnectAll?(): Promise<void>;
+  /** 热重载：断开旧连接，用新配置重新连接 */
+  reload?(config: Record<string, unknown>): Promise<void>;
+  /** 获取所有已连接服务器提供的工具列表 */
+  getTools?(): unknown[];
 }
 
 export interface ConfigManagerLike {
@@ -79,7 +86,7 @@ export interface ExtensionManagerLike {
   listPlatformCatalog?(): unknown[];
 }
 
-/** Agent 管理接口（CRUD 操作 agents.yaml） */
+/** Agent 管理接口（CRUD 操作 agents.yaml + 运行时状态查询） */
 export interface AgentManagerLike {
   getStatus(): { exists: boolean; enabled: boolean; agents: AgentDefinitionLike[]; manifestPath: string };
   setEnabled(enabled: boolean): { success: boolean; message: string };
@@ -88,6 +95,12 @@ export interface AgentManagerLike {
   update(name: string, fields: { description?: string; dataDir?: string }): { success: boolean; message: string };
   delete(name: string): { success: boolean; message: string };
   resetCache(): void;
+  /** 获取当前活跃会话 ID */
+  getActiveSessionId?(): string | undefined;
+  /** 获取指定会话最近一次 LLM 调用的 Token 用量 */
+  getLastSessionTokens?(sessionId: string): number | undefined;
+  /** 获取所有会话的 Token 用量映射 */
+  getAllSessionTokens?(): Record<string, number>;
 }
 
 export interface IrisAPI {
@@ -101,7 +114,10 @@ export interface IrisAPI {
   prompt: PromptAssemblerLike;
   config: Readonly<Record<string, unknown>>;
   mcpManager?: MCPManagerLike;
-  ocrService?: unknown;
+  /** OCR 服务（当主模型不支持 vision 时回退使用）。未配置 OCR 时为 undefined。 */
+  ocrService?: OCRProviderLike;
+  /** 媒体处理服务：图片缩放、文档提取、Office→PDF 转换 */
+  media?: MediaServiceLike;
   extensions: BootstrapExtensionRegistryLike;
   pluginManager: PluginManagerLike;
   eventBus: PluginEventBusLike;
@@ -123,4 +139,12 @@ export interface IrisAPI {
   fetchAvailableModels?(config: { provider: string; apiKey: string; baseUrl?: string }): Promise<ModelCatalogResultLike>;
   extensionManager?: ExtensionManagerLike;
   agentManager?: AgentManagerLike;
+  /** 检查指定模型是否支持 vision（不传参数时检查当前模型） */
+  supportsVision?(modelName?: string): boolean;
+  /** 检查指定模型是否支持原生 PDF 输入（不传参数时检查当前模型） */
+  supportsNativePDF?(modelName?: string): boolean;
+  /** 检查指定模型是否支持原生 Office 文档输入（不传参数时检查当前模型） */
+  supportsNativeOffice?(modelName?: string): boolean;
+  /** 检查 MIME 类型是否为文档类型（PDF / DOCX / PPTX / XLSX） */
+  isDocumentMimeType?(mimeType: string): boolean;
 }
