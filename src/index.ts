@@ -231,7 +231,7 @@ async function runMultiAgent(): Promise<void> {
       },
       displayName,
       () => result.getMCPManager(),
-      (mgr?) => result.setMCPManager(mgr),
+      (mgr?: any) => result.setMCPManager(mgr),
       { llmProviders: result.extensions.llmProviders, ocrProviders: result.extensions.ocrProviders },
       );
       if (registerSharedWebRoute) result.bindWebRouteRegistration(registerSharedWebRoute);

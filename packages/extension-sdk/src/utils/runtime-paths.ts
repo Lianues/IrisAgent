@@ -5,12 +5,12 @@
  * 中重复的数据目录解析逻辑。
  */
 
-import * as os from 'node:os';
+import { resolveDefaultDataDir } from '../runtime-paths.js';
 import * as path from 'node:path';
 
 /** 解析 Iris 数据根目录（~/.iris/ 或 IRIS_DATA_DIR 覆盖） */
 export function resolveRuntimeDataDir(): string {
-  return path.resolve(process.env.IRIS_DATA_DIR || path.join(os.homedir(), '.iris'));
+  return resolveDefaultDataDir();
 }
 
 /** 解析 Iris 配置文件目录（dataDir/configs/） */

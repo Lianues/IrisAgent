@@ -19,7 +19,6 @@ export interface ToolAttachment {
   fileName?: string;
   /** @deprecated 请使用 fileName */
   filename?: string;
-  [key: string]: unknown;
 }
 
 export interface IrisModelInfoLike {
@@ -63,7 +62,7 @@ export interface IrisToolInvocationLike {
 export interface IrisBackendLike {
   on(event: string, listener: (...args: any[]) => void): this;
   once?(event: string, listener: (...args: any[]) => void): this;
-  off?(event: string, listener: (...args: any[]) => void): this;
+  off(event: string, listener: (...args: any[]) => void): this;
   chat(
     sessionId: string,
     text: string,
@@ -72,12 +71,12 @@ export interface IrisBackendLike {
     platform?: string,
   ): Promise<unknown>;
   isStreamEnabled(): boolean;
-  approveTool?(id: string, approved: boolean): void;
-  clearSession?(sessionId: string): Promise<void>;
-  switchModel?(modelName: string, platform?: string): { modelName: string; modelId: string };
-  listModels?(): IrisModelInfoLike[];
-  listSessionMetas?(): Promise<IrisSessionMetaLike[]>;
-  abortChat?(sessionId: string): void;
+  approveTool(id: string, approved: boolean): void;
+  clearSession(sessionId: string): Promise<void>;
+  switchModel(modelName: string, platform?: string): { modelName: string; modelId: string };
+  listModels(): IrisModelInfoLike[];
+  listSessionMetas(): Promise<IrisSessionMetaLike[]>;
+  abortChat(sessionId: string): void;
   undo?(sessionId: string, scope?: string): Promise<{ assistantText?: string } | null>;
   redo?(sessionId: string): Promise<{ assistantText?: string } | null>;
   listSkills?(): IrisSkillInfoLike[];
@@ -102,6 +101,13 @@ export interface IrisPlatformFactoryContextLike {
   agentName?: string;
   initWarnings?: string[];
   eventBus?: unknown;
+  projectRoot?: string;
+  dataDir?: string;
+  isCompiledBinary?: boolean;
+  /** 完整的 IrisAPI 对象（类型为 IrisAPI，此处用 unknown 避免循环引用） */
+  api?: unknown;
+  getMCPManager?: () => unknown;
+  setMCPManager?: (mgr?: unknown) => void;
   [key: string]: unknown;
 }
 

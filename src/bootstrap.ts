@@ -380,6 +380,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     patchPrototype,
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
+    listAgents: () => { const { loadAgentDefinitions } = require('./agents'); return loadAgentDefinitions(); },
     supportsVision: (modelName?: string) => {
       const { supportsVision: sv } = require('./llm/vision');
       const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
