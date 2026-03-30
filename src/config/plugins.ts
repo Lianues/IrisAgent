@@ -13,7 +13,7 @@
  *         apiKey: "xxx"
  */
 
-import type { PluginEntry } from '../plugins/types';
+import type { PluginEntry } from '../extension/types';
 
 export function parsePluginsConfig(raw: any): PluginEntry[] | undefined {
   if (!raw) return undefined;

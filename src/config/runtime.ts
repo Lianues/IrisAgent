@@ -15,7 +15,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { createMCPManager, MCPManager } from '../mcp';
 import { ToolRegistry } from '../tools/registry';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
-import type { PluginManager } from '../plugins/manager';
+import type { PluginManager } from '../extension/manager';
 
 export interface RuntimeConfigReloadContext {
   backend: Backend;

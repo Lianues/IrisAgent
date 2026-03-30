@@ -20,7 +20,7 @@ import { FunctionCallPart, FunctionResponsePart, InlineDataPart } from '../types
 import { createLogger } from '../logger';
 import type { ToolAttachment } from '../types';
 import { ToolPolicyConfig, ToolsConfig } from '../config';
-import type { BeforeToolExecInterceptor, AfterToolExecInterceptor } from '../plugins/types';
+import type { BeforeToolExecInterceptor, AfterToolExecInterceptor } from '../extension/types';
 
 const logger = createLogger('ToolScheduler');
 

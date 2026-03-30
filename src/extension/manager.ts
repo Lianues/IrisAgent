@@ -21,8 +21,8 @@ import type { PlatformAdapter } from '@irises/extension-sdk';
 import {
   importLocalExtensionModule,
   resolveLocalPluginSource,
-  type ResolvedLocalPlugin,
-} from '../extension';
+} from './registry';
+import type { ResolvedLocalPlugin } from './manifest-types';
 
 const logger = createLogger('PluginManager');
 

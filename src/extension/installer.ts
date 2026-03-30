@@ -8,7 +8,7 @@ import type {
   ExtensionDistributionMode,
   ExtensionInstallFallbackReason,
   InstalledExtensionResult,
-} from './types';
+} from './manifest-types';
 import { readManifestFromDir } from './utils';
 import {
   normalizeRelativeFilePath,

@@ -27,7 +27,7 @@ import type {
   AfterToolExecInterceptor,
   BeforeLLMCallInterceptor,
   AfterLLMCallInterceptor,
-} from '../plugins/types';
+} from '../extension/types';
 import { createLogger } from '../logger';
 import {
   extractText, isFunctionCallPart,

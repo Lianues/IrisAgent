@@ -10,7 +10,7 @@ import type { LLMRouter } from '../llm/router';
 import type { MCPManager } from '../mcp';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import { PlatformAdapter } from '@irises/extension-sdk';
-import type { PluginEventBus } from '../plugins/event-bus';
+import type { PluginEventBus } from '../extension/event-bus';
 
 export interface PlatformFactoryContext {
   backend: Backend;

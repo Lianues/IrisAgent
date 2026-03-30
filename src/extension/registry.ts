@@ -22,7 +22,7 @@ import type {
   ExtensionPluginContribution,
   ExtensionSource,
   ResolvedLocalPlugin,
-} from './types';
+} from './manifest-types';
 import { isDirectory, MANIFEST_FILE, resolveSafeRelativePath } from '@irises/extension-sdk/utils';
 import { DISABLED_MARKER_FILE } from '@irises/extension-sdk/utils';
 
