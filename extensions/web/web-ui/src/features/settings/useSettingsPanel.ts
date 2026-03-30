@@ -509,16 +509,6 @@ export function useSettingsPanel(options: UseSettingsPanelOptions) {
         maxToolRounds: 200,
         open: false,
       }),
-      createSubAgentEntry({
-        name: 'recall',
-        description: '从长期记忆中检索相关信息。当需要回忆用户偏好、历史事实或之前保存的内容时使用。',
-        systemPrompt: '你是一个记忆召回代理。根据给定的查询，从长期记忆中尽可能全面地检索相关信息。\n\n策略：\n1. 先用原始查询搜索\n2. 如果结果不够，提取关键词重新搜索\n3. 尝试相关概念或同义词搜索\n\n将所有找到的记忆整理为清晰的摘要返回。如果没有找到任何相关记忆，明确说明。',
-        toolMode: 'allowed',
-        toolList: 'memory_search',
-        parallel: false,
-        maxToolRounds: 3,
-        open: false,
-      }),
     )
   }
 

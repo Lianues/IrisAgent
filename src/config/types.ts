@@ -217,16 +217,6 @@ export interface SystemConfig {
   skillPreamble?: string;
 }
 
-export interface MemoryConfig {
-  /** 是否启用记忆，默认 false */
-  enabled: boolean;
-  /** 记忆提供商类型，默认 sqlite */
-  type?: string;
-  /** 数据库路径，默认 ~/.iris/memory.db */
-  dbPath?: string;
-  [key: string]: unknown;
-}
-
 export interface MCPServerConfig {
   transport: 'stdio' | 'sse' | 'streamable-http';
   command?: string;        // stdio
@@ -258,7 +248,6 @@ export interface AppConfig {
   storage: StorageConfig;
   tools: ToolsConfig;
   system: SystemConfig;
-  memory?: MemoryConfig;
   mcp?: MCPConfig;
   /** 用户自定义模式（可选） */
   modes?: import('../modes/types').ModeDefinition[];

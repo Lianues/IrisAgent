@@ -25,7 +25,6 @@ import { StorageProvider, SessionMeta } from '../../storage/base';
 import { ToolRegistry } from '../../tools/registry';
 import { ToolStateManager } from '../../tools/state';
 import { PromptAssembler } from '../../prompt/assembler';
-import { MemoryProvider } from '../../memory/base';
 import { ModeRegistry, ModeDefinition, applyToolFilter } from '../../modes';
 import type { OCRProvider } from '../../ocr';
 import { isOCRTextPart } from '../../ocr';
@@ -55,9 +54,7 @@ export class Backend extends EventEmitter {
   private tools: ToolRegistry;
   private prompt: PromptAssembler;
   private stream: boolean;
-  private autoRecall: boolean;
   private subAgentGuidance?: string;
-  private memory?: MemoryProvider;
   private modeRegistry?: ModeRegistry;
   private defaultMode?: string;
   private currentLLMConfig?: LLMConfig;
@@ -100,7 +97,6 @@ export class Backend extends EventEmitter {
     toolState: ToolStateManager,
     prompt: PromptAssembler,
     config?:BackendConfig,
-    memory?: MemoryProvider,
     modeRegistry?: ModeRegistry,
   ) {
     super();
@@ -110,9 +106,7 @@ export class Backend extends EventEmitter {
     this.toolState = toolState;
     this.prompt = prompt;
     this.stream = config?.stream ?? false;
-    this.autoRecall = config?.autoRecall ?? true;
     this.subAgentGuidance = config?.subAgentGuidance;
-    this.memory = memory;
     this.modeRegistry = modeRegistry;
     this.defaultMode = config?.defaultMode;
     this.currentLLMConfig = config?.currentLLMConfig;
@@ -423,11 +417,6 @@ export class Backend extends EventEmitter {
     return this.router;
   }
 
-  /** 获取记忆层引用 */
-  getMemory(): MemoryProvider | undefined {
-    return this.memory;
-  }
-
   /** 获取提示词组装器引用 */
   getPrompt(): PromptAssembler {
     return this.prompt;
@@ -703,17 +692,6 @@ export class Backend extends EventEmitter {
 
     // 2. 构建 per-request 额外上下文
     let extraParts: Part[] | undefined;
-
-    if (this.memory && this.autoRecall) {
-      try {
-        const context = await this.memory.buildContext(userText);
-        if (context) {
-          extraParts = [...(extraParts ?? []), { text: context }];
-        }
-      } catch (err) {
-        logger.warn('查询记忆失败:', err);
-      }
-    }
 
     if (this.subAgentGuidance) {
       if (!extraParts) extraParts = [];

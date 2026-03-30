@@ -9,17 +9,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
-import { MemoryProvider } from '../base';
-import { MemoryEntry } from '../types';
-import { createLogger } from '../../logger';
-import { memoryDbPath } from '../../paths';
+import { MemoryProvider } from '../base.js';
+import { MemoryEntry } from '../types.js';
 
-const logger = createLogger('Memory');
+export interface MemoryLogger {
+  info(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+}
 
 export class SqliteMemory extends MemoryProvider {
   private db: Database.Database;
 
-  constructor(dbPath: string = memoryDbPath) {
+  constructor(dbPath: string, private logger?: MemoryLogger) {
     super();
 
     // 确保父目录存在
@@ -62,14 +63,14 @@ export class SqliteMemory extends MemoryProvider {
       END;
     `);
 
-    logger.info(`记忆存储已初始化: ${dbPath}`);
+    this.logger?.info(`记忆存储已初始化: ${dbPath}`);
   }
 
   async add(content: string, category: string = 'note'): Promise<number> {
     const result = this.db
       .prepare('INSERT INTO memories (content, category) VALUES (?, ?)')
       .run(content, category);
-    logger.info(`添加记忆 #${result.lastInsertRowid} [${category}]`);
+    this.logger?.info(`添加记忆 #${result.lastInsertRowid} [${category}]`);
     return result.lastInsertRowid as number;
   }
 
@@ -94,19 +95,13 @@ export class SqliteMemory extends MemoryProvider {
         LIMIT ?
       `)
       .all(sanitized, limit) as Array<{
-        id: number;
-        content: string;
-        category: string;
-        created_at: number;
-        updated_at: number;
+        id: number; content: string; category: string;
+        created_at: number; updated_at: number;
       }>;
 
     return rows.map(row => ({
-      id: row.id,
-      content: row.content,
-      category: row.category,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      id: row.id, content: row.content, category: row.category,
+      createdAt: row.created_at, updatedAt: row.updated_at,
     }));
   }
 
@@ -116,30 +111,21 @@ export class SqliteMemory extends MemoryProvider {
       rows = this.db
         .prepare('SELECT id, content, category, created_at, updated_at FROM memories WHERE category = ? ORDER BY updated_at DESC LIMIT ?')
         .all(category, limit) as Array<{
-          id: number;
-          content: string;
-          category: string;
-          created_at: number;
-          updated_at: number;
+          id: number; content: string; category: string;
+          created_at: number; updated_at: number;
         }>;
     } else {
       rows = this.db
         .prepare('SELECT id, content, category, created_at, updated_at FROM memories ORDER BY updated_at DESC LIMIT ?')
         .all(limit) as Array<{
-          id: number;
-          content: string;
-          category: string;
-          created_at: number;
-          updated_at: number;
+          id: number; content: string; category: string;
+          created_at: number; updated_at: number;
         }>;
     }
 
     return rows.map(row => ({
-      id: row.id,
-      content: row.content,
-      category: row.category,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      id: row.id, content: row.content, category: row.category,
+      createdAt: row.created_at, updatedAt: row.updated_at,
     }));
   }
 
@@ -148,7 +134,7 @@ export class SqliteMemory extends MemoryProvider {
       .prepare('DELETE FROM memories WHERE id = ?')
       .run(id);
     if (result.changes > 0) {
-      logger.info(`删除记忆 #${id}`);
+      this.logger?.info(`删除记忆 #${id}`);
       return true;
     }
     return false;
@@ -156,6 +142,6 @@ export class SqliteMemory extends MemoryProvider {
 
   async clear(): Promise<void> {
     this.db.exec('DELETE FROM memories');
-    logger.info('已清空所有记忆');
+    this.logger?.info('已清空所有记忆');
   }
 }

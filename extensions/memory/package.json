@@ -1,0 +1,12 @@
+{
+  "name": "@iris-extension/memory",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm --external=better-sqlite3"
+  },
+  "dependencies": {
+    "@irises/extension-sdk": "file:../../packages/extension-sdk",
+    "better-sqlite3": "*"
+  }
+}

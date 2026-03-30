@@ -1,0 +1,14 @@
+export const DEFAULT_CONFIG_TEMPLATE = `# 记忆插件配置
+#
+# 启用后，LLM 可通过 memory_search / memory_add / memory_delete 工具
+# 读写长期记忆，实现跨会话的信息持久化。
+#
+# 存储后端：SQLite + FTS5 全文检索
+# 数据库文件默认存放在数据目录下的 memory.db
+
+# 是否启用记忆
+enabled: false
+
+# 数据库路径（相对于数据目录，或绝对路径）
+# dbPath: ./memory.db
+`;

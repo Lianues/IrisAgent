@@ -29,7 +29,6 @@ import { parsePlatformConfig } from './platform';
 import { parseStorageConfig } from './storage';
 import { parseToolsConfig } from './tools';
 import { parseSystemConfig } from './system';
-import { parseMemoryConfig } from './memory';
 import { parseMCPConfig } from './mcp';
 import { parseModeConfig } from './mode';
 import { parseSubAgentsConfig } from './sub_agents';
@@ -47,7 +46,6 @@ export type {
   ToolPolicyConfig,
   ToolsConfig,
   SystemConfig,
-  MemoryConfig,
   MCPConfig,
   MCPServerConfig,
   SummaryConfig,
@@ -124,7 +122,6 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
     storage: parseStorageConfig(data.storage, agentPaths),
     tools: parseToolsConfig(data.tools),
     system: parseSystemConfig(data.system, effectiveDataDir),
-    memory: parseMemoryConfig(data.memory, agentPaths),
     mcp: parseMCPConfig(data.mcp),
     modes: parseModeConfig(data.modes),
     subAgents: parseSubAgentsConfig(data.sub_agents),

@@ -74,8 +74,6 @@ export interface BackendConfig {
   toolsConfig?: ToolsConfig;
   /** 是否启用流式输出 */
   stream?: boolean;
-  /** 是否自动召回记忆 */
-  autoRecall?: boolean;
   /** 子代理协调指导文本 */
   subAgentGuidance?: string;
   /** 默认模式名称 */

@@ -15,7 +15,6 @@ import { dataDir as globalDataDir, logsDir as globalLogsDir } from './paths';
 import { createLLMRouter } from './llm/factory';
 import { LLMRouter } from './llm/router';
 import { createSkillWatcher } from './config/skill-loader';
-import type { MemoryProvider } from './memory';
 import { createMCPManager, MCPManager } from './mcp';
 import type { OCRProvider } from './ocr';
 import { ToolRegistry } from './tools/registry';
@@ -130,17 +129,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   }
   const storage = await storageFactory(config.storage) as StorageProvider;
 
-  // ---- 2.5 创建记忆模块 ----
-  let memory: MemoryProvider | undefined;
-  if (config.memory?.enabled) {
-    const memoryType = config.memory.type ?? 'sqlite';
-    const memoryFactory = extensions.memoryProviders.get(memoryType);
-    if (!memoryFactory) {
-      throw new Error(`未注册的记忆类型: ${memoryType}`);
-    }
-    memory = await memoryFactory(config.memory) as MemoryProvider;
-  }
-
   // ---- 2.6 创建 OCR 服务 ----
   let ocrService: OCRProvider | undefined;
   if (config.ocr) {
@@ -155,10 +143,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   const tools = new ToolRegistry();
   setToolLimits(config.tools.limits);
   tools.registerAll([readFile, writeFile, applyDiff, searchInFiles, findFiles, shell, listFiles, deleteFile, createDirectory, insertCode, deleteCode]);
-  if (memory) {
-    const { createMemoryTools } = await import('./memory');
-    tools.registerAll(createMemoryTools(memory));
-  }
 
   // ---- 3.1 连接 MCP 服务器 ----
   let mcpManager: MCPManager | undefined;
@@ -172,11 +156,9 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
 
   // ---- 3.5 注册子代理工具 ----
   const subAgentTypes = new SubAgentTypeRegistry();
-  const MEMORY_TOOLS = new Set(['memory_search', 'memory_add', 'memory_delete']);
 
   if (config.subAgents?.types) {
     for (const t of config.subAgents.types) {
-      if (!memory && t.allowedTools?.every(name => MEMORY_TOOLS.has(name))) continue;
       subAgentTypes.register({ ...t });
     }
   }
@@ -206,8 +188,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
 
   // ---- 5. 创建 Backend ----
   const hasSubAgents = subAgentTypes.getAll().length > 0;
-  const subAgentGuidance = hasSubAgents ? buildSubAgentGuidance(subAgentTypes, !!memory) : '';
-  const autoRecall = !(memory && hasSubAgents);
+  const subAgentGuidance = hasSubAgents ? buildSubAgentGuidance(subAgentTypes) : '';
 
   const backend = new Backend(router, storage, tools, toolState, prompt, {
     maxToolRounds: config.system.maxToolRounds,
@@ -215,7 +196,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     retryOnError: config.system.retryOnError,
     maxRetries: config.system.maxRetries,
     toolsConfig: config.tools,
-    autoRecall,
     subAgentGuidance,
     defaultMode,
     currentLLMConfig: router.getCurrentConfig(),
@@ -225,7 +205,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     skills: config.system.skills,
     configDir,
     rememberPlatformModel: config.llm.rememberPlatformModel,
-  }, memory, modeRegistry);
+  }, modeRegistry);
 
   // 注册子代理工具（需要 backend 引用；无类型定义时跳过）
   if (hasSubAgents) {
@@ -308,7 +288,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     backend,
     router,
     storage,
-    memory,
     tools,
     modes: modeRegistry,
     prompt,

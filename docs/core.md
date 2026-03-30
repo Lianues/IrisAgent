@@ -76,7 +76,6 @@ new Backend(
   toolState: ToolStateManager, // 工具状态管理器
   prompt: PromptAssembler,     // 提示词组装器
   config?: BackendConfig,      // 配置
-  memory?: MemoryProvider,     // 记忆层（可选）
   modeRegistry?: ModeRegistry, // 模式注册表（可选）
 )
 ```
@@ -87,7 +86,6 @@ new Backend(
 |------|------|--------|------|
 | `maxToolRounds` | `number` | `200` | 工具执行最大轮次 |
 | `stream` | `boolean` | `false` | 是否启用流式输出 |
-| `autoRecall` | `boolean` | `true` | 是否自动召回记忆 |
 | `subAgentGuidance` | `string` | — | 子代理协调指导文本 |
 | `defaultMode` | `string` | — | 默认模式名称 |
 | `currentLLMConfig` | `LLMConfig` | — | 当前活动模型配置（用于 vision 能力判定） |
@@ -214,7 +212,6 @@ chat() 调用
 3. 追加用户消息到历史
 4. 构建额外上下文：
    - workspace mutation 控制（判断用户意图是否涉及写操作，按需过滤写入型工具）
-   - 记忆自动召回（autoRecall=true 时）
    - 子代理协调指导文本
    - 模式提示词覆盖
 5. 立即持久化用户消息（不等工具循环结束，防止中途中断丢失）
@@ -306,7 +303,6 @@ interface SubAgentType {
 |------|----------|------|----------|----------|------|
 | `general-purpose` | 跟随当前模型 | 200 | false | 排除 `sub_agent` | 多步骤通用任务 |
 | `explore` | 跟随当前模型 | 200 | false | 仅 `read_file`、`search_in_files`、`shell` | 只读探索 |
-| `recall` | 跟随当前模型 | 3 | false | 仅 `memory_search` | 记忆搜索 |
 
 `parallel` 的含义是：当前类型的 `sub_agent` 调用是否作为 parallel 工具参与调度。默认 `false`。不写就是 `false`，只有显式写 `true` 的类型，才会在同一轮里与相邻的 parallel 工具一起进入并行批次。
 
@@ -315,10 +311,6 @@ interface SubAgentType {
 ### subAgentGuidance
 
 根据已注册的 Agent 类型生成指导文本，注入系统提示词，指导 LLM 使用 `sub_agent` 工具。指导文本会显示各类型是”可并行调度”还是”串行调度”。
-
-### autoRecall
-
-当记忆模块和 Agent 系统同时启用时，`autoRecall` 设为 `false`，由 `recall` 子 Agent按需搜索。
 
 ---
 

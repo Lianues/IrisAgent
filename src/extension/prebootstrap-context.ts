@@ -3,7 +3,7 @@
  */
 
 import type { AppConfig } from '../config/types';
-import type { BootstrapExtensionRegistry, LLMProviderFactory, StorageFactory, MemoryFactory, OCRFactory } from '../bootstrap/extensions';
+import type { BootstrapExtensionRegistry, LLMProviderFactory, StorageFactory, OCRFactory } from '../bootstrap/extensions';
 import type { PlatformFactory } from '../core/platform-registry';
 import type { PreBootstrapContext, PluginLogger } from '@irises/extension-sdk';
 import { createLogger } from '../logger';
@@ -37,8 +37,9 @@ export class PreBootstrapContextImpl {
     this.extensions.storageProviders.register(type, factory);
   }
 
-  registerMemoryProvider(type: string, factory: MemoryFactory): void {
-    this.extensions.memoryProviders.register(type, factory);
+  /** @deprecated Memory 已迁移为独立扩展插件，此方法保留为空操作以兼容旧插件 */
+  registerMemoryProvider(_type: string, _factory: unknown): void {
+    // no-op: memory 现在由 extensions/memory 插件自行管理
   }
 
   registerOCRProvider(name: string, factory: OCRFactory): void {

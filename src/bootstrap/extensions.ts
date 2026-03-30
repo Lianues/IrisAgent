@@ -4,7 +4,7 @@
  * 供插件在 PreBootstrap 阶段注册新的 Provider / Factory / Platform。
  */
 
-import type { LLMConfig, StorageConfig, MemoryConfig } from '../config/types';
+import type { LLMConfig, StorageConfig } from '../config/types';
 import type { OCRConfig } from '../config/ocr';
 import type { LLMProviderLike } from '../llm/providers/base';
 import { createGeminiProvider } from '../llm/providers/gemini';
@@ -14,8 +14,6 @@ import { createOpenAIResponsesProvider } from '../llm/providers/openai-responses
 import type { StorageProvider } from '../storage/base';
 import { JsonFileStorage } from '../storage/json-file';
 import { SqliteStorage } from '../storage/sqlite';
-import type { MemoryProvider } from '../memory/base';
-import { SqliteMemory } from '../memory/sqlite';
 import type { OCRProvider } from '../ocr';
 import { OCRService } from '../ocr';
 import { PlatformRegistry } from '../core/platform-registry';
@@ -47,18 +45,15 @@ export class NamedFactoryRegistry<TFactory> {
 
 export type LLMProviderFactory = (config: LLMConfig) => LLMProviderLike;
 export type StorageFactory = (config: StorageConfig) => Promise<StorageProvider> | StorageProvider;
-export type MemoryFactory = (config: MemoryConfig) => Promise<MemoryProvider> | MemoryProvider;
 export type OCRFactory = (config: OCRConfig) => Promise<OCRProvider> | OCRProvider;
 
 export class LLMProviderFactoryRegistry extends NamedFactoryRegistry<LLMProviderFactory> {}
 export class StorageFactoryRegistry extends NamedFactoryRegistry<StorageFactory> {}
-export class MemoryFactoryRegistry extends NamedFactoryRegistry<MemoryFactory> {}
 export class OCRFactoryRegistry extends NamedFactoryRegistry<OCRFactory> {}
 
 export interface BootstrapExtensionRegistry {
   llmProviders: LLMProviderFactoryRegistry;
   storageProviders: StorageFactoryRegistry;
-  memoryProviders: MemoryFactoryRegistry;
   ocrProviders: OCRFactoryRegistry;
   platforms: PlatformRegistry;
 }
@@ -79,16 +74,12 @@ export function createBootstrapExtensionRegistry(): BootstrapExtensionRegistry {
   storageProviders.register('json-file', (config) => new JsonFileStorage(config.dir));
   storageProviders.register('sqlite', (config) => new SqliteStorage(config.dbPath));
 
-  const memoryProviders = new MemoryFactoryRegistry();
-  memoryProviders.register('sqlite', (config) => new SqliteMemory(config.dbPath));
-
   const ocrProviders = new OCRFactoryRegistry();
   ocrProviders.register('openai-compatible', (config) => new OCRService(config));
 
   return {
     llmProviders,
     storageProviders,
-    memoryProviders,
     ocrProviders,
     platforms: new PlatformRegistry(),
   };

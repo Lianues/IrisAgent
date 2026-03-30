@@ -62,7 +62,7 @@ function formatTypeSuffix(type: SubAgentTypeConfig): string {
  * 根据注册的类型动态生成协调指导文本，注入系统提示词引导主 LLM 自然委派。
  * 当注册表为空时返回空字符串（不生成任何指导文本）。
  */
-export function buildSubAgentGuidance(registry: SubAgentTypeRegistry, hasMemory: boolean): string {
+export function buildSubAgentGuidance(registry: SubAgentTypeRegistry): string {
   const allTypes = registry.getAll();
   if (allTypes.length === 0) return '';
 
@@ -70,11 +70,6 @@ export function buildSubAgentGuidance(registry: SubAgentTypeRegistry, hasMemory:
     .map(t => `- **${t.name}**：${t.description}（${formatTypeSuffix(t)}）`)
     .join('\n');
 
-  let guidance = `\n## 任务委派\n\n你可以使用 sub_agent 工具将子任务委派给专门的子代理。每个子代理拥有独立的上下文和工具，完成后返回结果。\n\n可用的子代理类型：\n${typeList}\n\n使用原则：\n- 简单问题直接回答，不需要子代理\n- 当子任务相对独立时，优先委派给子代理\n- 当需要拆分多个独立子任务时，可以连续调用多个标记为“可并行调度”的子代理类型`;
-
-  if (hasMemory) {
-    guidance += `\n- 需要检索长期记忆时，使用 recall 子代理\n- memory_add 和 memory_delete 请直接使用，不要委派`;
-  }
-
-  return guidance;
+  return `\n## 任务委派\n\n你可以使用 sub_agent 工具将子任务委派给专门的子代理。每个子代理拥有独立的上下文和工具，完成后返回结果。\n\n可用的子代理类型：\n${typeList}\n\n使用原则：\n- 简单问题直接回答，不需要子代理\n- 当子任务相对独立时，优先委派给子代理\n- 当需要拆分多个独立子任务时，可以连续调用多个标记为"可并行调度"的子代理类型`;
 }
+

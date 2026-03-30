@@ -86,9 +86,7 @@ type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 | `create_directory` | `create_directory.ts` | 创建目录 |
 | `delete_file` | `delete_file.ts` | 删除文件 |
 | `shell` | `shell.ts` | 执行 Shell 命令，支持超时和工作目录 |
-| `memory_search` | 由 `memory/tools.ts` 动态创建 | 搜索长期记忆 |
-| `memory_add` | 同上 | 保存记忆 |
-| `memory_delete` | 同上 | 删除记忆 |
+| `memory_search` / `memory_add` / `memory_delete` | 由 `extensions/memory` 插件动态注册 | 长期记忆读写（需启用 memory 插件） |
 | `sub_agent` | `sub-agent/index.ts`（工厂函数动态创建） | 委派子任务给独立子代理 |
 | `mcp__*` | 由 `MCPManager` 动态创建 | MCP 外部服务器提供的工具 |
 | `click_at` / `type_text_at` / ... | 由 `computer-use/tools.ts` 动态创建 | Computer Use 浏览器操控工具（共 13 个），详见 [computer-use.md](./computer-use.md) |

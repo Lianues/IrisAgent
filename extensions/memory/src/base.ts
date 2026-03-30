@@ -4,7 +4,7 @@
  * 定义记忆系统的核心接口，所有记忆存储实现继承此类。
  */
 
-import { MemoryEntry } from './types';
+import { MemoryEntry } from './types.js';
 
 export abstract class MemoryProvider {
   /** 添加一条记忆，返回记忆 ID */

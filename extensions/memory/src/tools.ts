@@ -5,8 +5,11 @@
  * 让 LLM 自主决定何时读写长期记忆。
  */
 
-import { ToolDefinition } from '../types';
-import { MemoryProvider } from './base';
+import type { ToolDefinition } from '@irises/extension-sdk';
+import { MemoryProvider } from './base.js';
+
+/** memory 工具名称集合，供外部引用 */
+export const MEMORY_TOOL_NAMES = new Set(['memory_search', 'memory_add', 'memory_delete']);
 
 /** 根据 MemoryProvider 实例创建记忆工具数组 */
 export function createMemoryTools(provider: MemoryProvider): ToolDefinition[] {
@@ -18,14 +21,8 @@ export function createMemoryTools(provider: MemoryProvider): ToolDefinition[] {
       parameters: {
         type: 'object',
         properties: {
-          query: {
-            type: 'string',
-            description: '搜索关键词',
-          },
-          limit: {
-            type: 'number',
-            description: '返回数量，默认 5',
-          },
+          query: { type: 'string', description: '搜索关键词' },
+          limit: { type: 'number', description: '返回数量，默认 5' },
         },
         required: ['query'],
       },
@@ -40,9 +37,7 @@ export function createMemoryTools(provider: MemoryProvider): ToolDefinition[] {
       return {
         message: `找到 ${results.length} 条相关记忆`,
         results: results.map(m => ({
-          id: m.id,
-          content: m.content,
-          category: m.category,
+          id: m.id, content: m.content, category: m.category,
         })),
       };
     },
@@ -55,10 +50,7 @@ export function createMemoryTools(provider: MemoryProvider): ToolDefinition[] {
       parameters: {
         type: 'object',
         properties: {
-          content: {
-            type: 'string',
-            description: '记忆内容',
-          },
+          content: { type: 'string', description: '记忆内容' },
           category: {
             type: 'string',
             description: '分类：user / fact / preference / note',
@@ -83,10 +75,7 @@ export function createMemoryTools(provider: MemoryProvider): ToolDefinition[] {
       parameters: {
         type: 'object',
         properties: {
-          id: {
-            type: 'number',
-            description: '记忆 ID',
-          },
+          id: { type: 'number', description: '记忆 ID' },
         },
         required: ['id'],
       },

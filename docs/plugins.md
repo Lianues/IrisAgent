@@ -221,7 +221,7 @@ interface PreBootstrapContext {
   mutateConfig(mutator: (config: AppConfig) => void): void;
   registerLLMProvider(name: string, factory: LLMProviderFactory): void;
   registerStorageProvider(type: string, factory: StorageFactory): void;
-  registerMemoryProvider(type: string, factory: MemoryFactory): void;
+  registerMemoryProvider(type: string, factory: MemoryFactory): void;  // @deprecated — memory 已迁移为独立插件
   registerOCRProvider(name: string, factory: OCRFactory): void;
   registerPlatform(name: string, factory: PlatformFactory): void;
   getExtensions(): BootstrapExtensionRegistry;
@@ -600,7 +600,7 @@ interface IrisAPI {
   backend: Backend;          // EventEmitter，可监听所有内部事件
   router: LLMRouter;         // 切换模型、获取模型信息
   storage: StorageProvider;  // 会话历史、元数据
-  memory?: MemoryProvider;   // 记忆层
+  memory?: unknown;          // 由 memory 插件注入（可选）
   tools: ToolRegistry;       // 工具注册表
   modes: ModeRegistry;       // 模式注册表
   prompt: PromptAssembler;   // 提示词装配器
