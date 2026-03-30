@@ -17,6 +17,7 @@ export interface ToolAttachment {
   data: Buffer;
   caption?: string;
   fileName?: string;
+  /** @deprecated 请使用 fileName */
   filename?: string;
   [key: string]: unknown;
 }
