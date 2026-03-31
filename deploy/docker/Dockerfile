@@ -20,6 +20,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
+COPY packages/extension-sdk/package.json packages/extension-sdk/package.json
 # Prepare web-ui directory for its own package.json
 RUN mkdir -p extensions/web/web-ui
 COPY extensions/web/web-ui/package.json extensions/web/web-ui/
@@ -40,7 +41,12 @@ RUN cd extensions/web/web-ui && npm run build
 FROM deps AS build
 COPY src/ src/
 COPY tsconfig.json tsconfig.build.json ./
+COPY packages/ packages/
 COPY data/ data/
+# extensions/console is needed for dynamic import in src/index.ts
+COPY extensions/console/ extensions/console/
+# Build extension-sdk (needed at runtime by core imports)
+RUN cd packages/extension-sdk && npx tsc
 RUN npx tsc -p tsconfig.build.json
 # Strip devDependencies — production image only needs runtime deps
 RUN npm prune --omit=dev
@@ -57,8 +63,13 @@ RUN npm install --no-save react-devtools-core
 COPY src/ src/
 COPY tsconfig.json tsconfig.build.json ./
 COPY data/ data/
+COPY packages/ packages/
 COPY script/build.ts script/build.ts
-COPY onboard/ onboard/
+COPY terminal/ terminal/
+# extensions/console is imported dynamically from src/index.ts
+COPY extensions/console/ extensions/console/
+# Overlay pre-built web-ui (build.ts expects src/platforms/web/web-ui/dist/)
+COPY --from=build-ui /app/extensions/web/web-ui/dist/ src/platforms/web/web-ui/dist/
 
 # Compile standalone binary for current platform (linux-x64)
 # build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
@@ -79,6 +90,8 @@ COPY --from=build /app/dist/ dist/
 # Runtime dependencies only (devDeps pruned in build stage)
 COPY --from=build /app/node_modules/ node_modules/
 COPY --from=build /app/package.json .
+# Extension SDK (symlinked from node_modules)
+COPY --from=build /app/packages/extension-sdk/ packages/extension-sdk/
 # Config templates for first-run init
 COPY --from=build /app/data/ data/
 # Web UI static files
@@ -89,6 +102,7 @@ COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris-onboard bin/iris-o
 RUN chmod +x bin/iris bin/iris-onboard
 # Entrypoint script
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
+COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
 # Extension plugins (lark, telegram, web, weixin, etc.)
 COPY extensions/ extensions/
@@ -121,12 +135,14 @@ WORKDIR /app
 COPY --from=build /app/dist/ dist/
 COPY --from=build /app/node_modules/ node_modules/
 COPY --from=build /app/package.json .
+COPY --from=build /app/packages/extension-sdk/ packages/extension-sdk/
 COPY --from=build /app/data/ data/
 COPY --from=build-ui /app/extensions/web/web-ui/dist/ extensions/web/web-ui/dist/
 COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris bin/iris
 COPY --from=bun-compile /app/dist/bin/iris-linux-x64/bin/iris-onboard bin/iris-onboard
 RUN chmod +x bin/iris bin/iris-onboard
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
+COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
 COPY extensions/ extensions/
 
