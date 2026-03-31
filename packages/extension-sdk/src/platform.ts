@@ -91,6 +91,15 @@ export interface IrisBackendLike {
   getToolNames?(): string[];
 }
 
+/**
+ * 平台工厂创建上下文。
+ *
+ * 部分字段类型为 `unknown`，这是为了避免 SDK 内部的循环引用
+ * （`platform.ts` ↔ `plugin/api.ts`）。扩展如需访问强类型 API，
+ * 请在 `definePlatformFactory.create()` 回调中使用 `context.api as IrisAPI`。
+ *
+ * 索引签名 `[key: string]: unknown` 允许宿主传递额外的平台特定参数。
+ */
 export interface IrisPlatformFactoryContextLike {
   backend: IrisBackendLike;
   config?: {
@@ -100,13 +109,16 @@ export interface IrisPlatformFactoryContextLike {
   configDir?: string;
   agentName?: string;
   initWarnings?: string[];
+  /** 插件事件总线。类型为 unknown 以避免循环引用，实际为 PluginEventBusLike。 */
   eventBus?: unknown;
   projectRoot?: string;
   dataDir?: string;
   isCompiledBinary?: boolean;
-  /** 完整的 IrisAPI 对象（类型为 IrisAPI，此处用 unknown 避免循环引用） */
+  /** 完整的 IrisAPI 对象。类型为 unknown 以避免循环引用，实际为 IrisAPI。 */
   api?: unknown;
+  /** 获取 MCP 管理器。类型为 unknown 以避免循环引用，实际为 MCPManagerLike。 */
   getMCPManager?: () => unknown;
+  /** 设置 MCP 管理器。 */
   setMCPManager?: (mgr?: unknown) => void;
   [key: string]: unknown;
 }

@@ -4,16 +4,8 @@
  * 基于 discord.js 官方 SDK。
  */
 
-import { createExtensionLogger, definePlatformFactory, splitText, type IrisBackendLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, extractText, PlatformAdapter, splitText, type Content, type IrisBackendLike } from '@irises/extension-sdk';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
-
-interface ContentLike {
-  parts?: Array<{ text?: string; thought?: boolean }>;
-}
-
-function extractText(parts: ContentLike['parts']): string {
-  return (parts ?? []).filter((part) => part?.thought !== true).map((part) => part?.text || '').join('');
-}
 
 const logger = createExtensionLogger('DiscordExtension', 'Discord');
 
@@ -23,13 +15,14 @@ export interface DiscordConfig {
   token: string;
 }
 
-export class DiscordPlatform {
+export class DiscordPlatform extends PlatformAdapter {
   private client: Client;
   private token: string;
   private backend: IrisBackendLike;
   private pendingTexts = new Map<string, string>();
 
   constructor(backend: IrisBackendLike, config: DiscordConfig) {
+    super();
     this.backend = backend;
     this.token = config.token;
     this.client = new Client({
@@ -51,8 +44,8 @@ export class DiscordPlatform {
     });
 
     // 流式模式下缓存每轮完整 assistant 文本，待 done 时一次性发送
-    this.backend.on('assistant:content', (sid: string, content: ContentLike) => {
-      const text = extractText(content.parts);
+    this.backend.on('assistant:content', (sid: string, content: Content) => {
+      const text = extractText(content.parts ?? []);
       if (!text) return;
       this.pendingTexts.set(sid, text);
     });

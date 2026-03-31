@@ -19,7 +19,7 @@
  * 官方插件参考：https://github.com/WecomTeam/wecom-openclaw-plugin
  */
 
-import { createExtensionLogger, definePlatformFactory, type ImageInput, type IrisBackendLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, autoApproveTools, formatToolStatusLine, detectImageMime, PlatformAdapter, type ImageInput, type IrisBackendLike } from '@irises/extension-sdk';
 import { WSClient, generateReqId } from '@wecom/aibot-node-sdk';
 import type { WsFrame } from '@wecom/aibot-node-sdk';
 
@@ -196,7 +196,7 @@ interface ChatState {
 
 // ============ 平台适配器 ============
 
-export class WXWorkPlatform {
+export class WXWorkPlatform extends PlatformAdapter {
   private wsClient: WSClient;
   private backend: IrisBackendLike;
 
@@ -217,6 +217,7 @@ export class WXWorkPlatform {
   private chatStates = new Map<string, ChatState>();
 
   constructor(backend: IrisBackendLike, config: WXWorkConfig) {
+    super();
     this.backend = backend;
     this.showToolStatus = config.showToolStatus !== false;
     // 构造参数与官方插件保持一致
@@ -297,15 +298,7 @@ export class WXWorkPlatform {
       createdAt: number;
     }>) => {
       // ⚠️ 临时方案：自动批准所有等待审批的工具（跳过人工审批）
-      for (const inv of invocations) {
-        if (inv.status === 'awaiting_approval') {
-          try {
-            this.backend.approveTool(inv.id, true);
-          } catch {
-            // 状态可能已被并发转换，忽略
-          }
-        }
-      }
+      autoApproveTools(this.backend, invocations);
 
       if (!this.showToolStatus) return;
 
@@ -320,7 +313,7 @@ export class WXWorkPlatform {
         const isDone = inv.status === 'success' || inv.status === 'error';
         if (isDone && !cs.stream.committedToolIds.has(inv.id)) {
           cs.stream.committedToolIds.add(inv.id);
-          const line = formatToolLine(inv);
+          const line = formatToolStatusLine(inv, { codeStyle: true });
           // 末尾留 \n\n，让后续 stream:chunk 的 AI 文本自然另起一段
           cs.stream.buffer = cs.stream.buffer
             ? `${cs.stream.buffer}\n\n${line}\n\n` : `${line}\n\n`;
@@ -330,7 +323,7 @@ export class WXWorkPlatform {
       // 仍在执行中的工具：临时追加在 buffer 末尾（不固化）
       const activeLine = sorted
         .filter(inv => !cs.stream!.committedToolIds.has(inv.id))
-        .map(inv => formatToolLine(inv))
+        .map(inv => formatToolStatusLine(inv, { codeStyle: true }))
         .join('\n\n');
 
       const displayText = activeLine
@@ -822,50 +815,6 @@ export class WXWorkPlatform {
   }
 }
 
-// ============ 工具函数 ============
-
-/** 工具状态图标映射 */
-const STATUS_ICONS: Record<string, string> = {
-  queued: '⏳',
-  executing: '🔧',
-  success: '✅',
-  error: '❌',
-  streaming: '📡',
-  awaiting_approval: '🔐',
-  awaiting_apply: '📋',
-  warning: '⚠️',
-};
-
-/** 工具状态中文标签映射 */
-const STATUS_LABELS: Record<string, string> = {
-  queued: '等待中',
-  executing: '执行中',
-  success: '成功',
-  error: '失败',
-  streaming: '输出中',
-  awaiting_approval: '等待审批',
-  awaiting_apply: '等待应用',
-  warning: '警告',
-};
-
-/** 格式化单个工具行 */
-function formatToolLine(inv: { toolName: string; status: string }): string {
-  const icon = STATUS_ICONS[inv.status] || '⏳';
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} \`${inv.toolName}\` ${label}`;
-}
-
-/** 根据文件头魔术字节检测图片 MIME 类型 */
-function detectImageMime(buffer: Buffer): string | null {
-  if (buffer.length < 4) return null;
-  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'image/jpeg';
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return 'image/png';
-  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
-  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
-    && buffer.length >= 12 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
-  if (buffer[0] === 0x42 && buffer[1] === 0x4D) return 'image/bmp';
-  return null;
-}
 
 export const createWXWorkPlatform = definePlatformFactory<WXWorkConfig, WXWorkPlatform>({
   platformName: 'wxwork',

@@ -20,7 +20,7 @@
  * OneBot v11 参考：https://github.com/botuniverse/onebot-11
  */
 
-import { createExtensionLogger, definePlatformFactory, splitText, type ImageInput, type IrisBackendLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, splitText, autoApproveTools, formatToolStatusLine, detectImageMime, PlatformAdapter, type ImageInput, type IrisBackendLike } from '@irises/extension-sdk';
 import WebSocket from 'ws';
 
 const logger = createExtensionLogger('QQExtension', 'QQ');
@@ -168,7 +168,7 @@ interface ChatState {
 
 // ============ 平台适配器 ============
 
-export class QQPlatform {
+export class QQPlatform extends PlatformAdapter {
   private ws: WebSocket | null = null;
   private backend: IrisBackendLike;
   private config: QQConfig;
@@ -209,6 +209,7 @@ export class QQPlatform {
   private notifiedToolIds = new Set<string>();
 
   constructor(backend: IrisBackendLike, config: QQConfig) {
+    super();
     this.backend = backend;
     this.config = config;
     this.showToolStatus = config.showToolStatus !== false;
@@ -413,16 +414,7 @@ export class QQPlatform {
       args: Record<string, unknown>;
       createdAt: number;
     }>) => {
-      // 自动批准所有等待审批的工具
-      for (const inv of invocations) {
-        if (inv.status === 'awaiting_approval') {
-          try {
-            this.backend.approveTool(inv.id, true);
-          } catch {
-            // 状态可能已被并发转换，忽略
-          }
-        }
-      }
+      autoApproveTools(this.backend, invocations);
 
       if (!this.showToolStatus) return;
 
@@ -433,7 +425,7 @@ export class QQPlatform {
       for (const inv of invocations) {
         if (inv.status === 'executing' && !this.notifiedToolIds.has(inv.id)) {
           this.notifiedToolIds.add(inv.id);
-          const line = formatToolLine(inv);
+          const line = formatToolStatusLine(inv);
           this.sendMessage(line, cs.target).catch((err) => {
             logger.error(`工具状态通知失败 (session=${sid}):`, err);
           });
@@ -829,51 +821,6 @@ export class QQPlatform {
 
     return results;
   }
-}
-
-// ============ 工具函数 ============
-
-/** 工具状态图标映射 */
-const STATUS_ICONS: Record<string, string> = {
-  queued: '⏳',
-  executing: '🔧',
-  success: '✅',
-  error: '❌',
-  streaming: '📡',
-  awaiting_approval: '🔐',
-  awaiting_apply: '📋',
-  warning: '⚠️',
-};
-
-/** 工具状态中文标签映射 */
-const STATUS_LABELS: Record<string, string> = {
-  queued: '等待中',
-  executing: '执行中',
-  success: '成功',
-  error: '失败',
-  streaming: '输出中',
-  awaiting_approval: '等待审批',
-  awaiting_apply: '等待应用',
-  warning: '警告',
-};
-
-/** 格式化单个工具行 */
-function formatToolLine(inv: { toolName: string; status: string }): string {
-  const icon = STATUS_ICONS[inv.status] || '⏳';
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} ${inv.toolName} ${label}`;
-}
-
-/** 根据文件头魔术字节检测图片 MIME 类型 */
-function detectImageMime(buffer: Buffer): string | null {
-  if (buffer.length < 4) return null;
-  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'image/jpeg';
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return 'image/png';
-  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
-  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
-    && buffer.length >= 12 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
-  if (buffer[0] === 0x42 && buffer[1] === 0x4D) return 'image/bmp';
-  return null;
 }
 
 export const createQQPlatform = definePlatformFactory<QQConfig, QQPlatform>({

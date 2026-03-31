@@ -1,4 +1,4 @@
-import { createExtensionLogger, definePlatformFactory } from '@irises/extension-sdk';
+import { PlatformAdapter, createExtensionLogger, definePlatformFactory, autoApproveTools } from '@irises/extension-sdk';
 import { buildLarkCard, formatLarkToolLine, type LarkToolStatusEntry } from './card-builder';
 import { LarkClient } from './client';
 import { LarkCommandRouter } from './commands';
@@ -48,7 +48,7 @@ interface LarkChatState {
   stream: LarkStreamState | null;
 }
 
-export class LarkPlatform {
+export class LarkPlatform extends PlatformAdapter {
   private client: LarkClient;
   private readonly messageHandler = new LarkMessageHandler();
   private readonly commandRouter = new LarkCommandRouter();
@@ -64,6 +64,7 @@ export class LarkPlatform {
     private readonly backend: IrisBackendLike,
     private readonly config: LarkConfig,
   ) {
+    super();
     this.client = new LarkClient(config);
     this.showToolStatus = config.showToolStatus !== false;
   }
@@ -146,15 +147,7 @@ export class LarkPlatform {
     this.backendListenersReady = true;
 
     this.backend.on('tool:update', (sid: string, invocations: IrisToolInvocationLike[]) => {
-      for (const inv of invocations) {
-        if (inv.status === 'awaiting_approval' && typeof this.backend.approveTool === 'function') {
-          try {
-            this.backend.approveTool(inv.id, true);
-          } catch {
-            // ignore
-          }
-        }
-      }
+      autoApproveTools(this.backend, invocations);
 
       if (!this.showToolStatus) return;
       const cs = this.findChatStateBySid(sid);

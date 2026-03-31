@@ -9,7 +9,7 @@
  */
 
 import { PairingGuard, PairingStore } from '@irises/extension-sdk/pairing';
-import { PlatformAdapter, createExtensionLogger, definePlatformFactory, type DocumentInput, type ImageInput, type IrisBackendLike, type ToolAttachment } from '@irises/extension-sdk';
+import { PlatformAdapter, autoApproveTools, createExtensionLogger, definePlatformFactory, type DocumentInput, type ImageInput, type IrisBackendLike, type ToolAttachment } from '@irises/extension-sdk';
 import { TelegramClient } from './client';
 import { TelegramCommandRouter } from './commands';
 import { TelegramMediaService } from './media';
@@ -181,11 +181,7 @@ export class TelegramPlatform extends PlatformAdapter {
       id: string; toolName: string; status: string; args: Record<string, unknown>; createdAt: number;
     }>) => {
       // 自动批准所有等待审批的工具
-      for (const inv of invocations) {
-        if (inv.status === 'awaiting_approval') {
-          try { this.backend.approveTool(inv.id, true); } catch { /* 忽略 */ }
-        }
-      }
+      autoApproveTools(this.backend, invocations);
 
       if (!this.showToolStatus) return;
       const cs = this.findChatStateBySid(sid);
@@ -559,7 +555,7 @@ export class TelegramPlatform extends PlatformAdapter {
         }
 
         case 'mode': {
-          const ok = this.backend.switchMode(arg);
+          const ok = this.backend.switchMode?.(arg);
           resultText = ok ? `✅ 已切换到 Mode "${arg}"。` : `❌ 未找到 Mode "${arg}"。`;
           break;
         }
@@ -702,6 +698,10 @@ export class TelegramPlatform extends PlatformAdapter {
           await reply('ℹ️ 当前正在回复中，请先 /stop。');
           return true;
         }
+        if (typeof this.backend.undo !== 'function') {
+          await reply('❌ 当前宿主未提供撤销能力。');
+          return true;
+        }
         // undo 由 Backend 统一处理，平台层只负责 UI。
         const undoResult = await this.backend.undo(cs.sessionId, 'last-turn');
         if (!undoResult) {
@@ -719,6 +719,10 @@ export class TelegramPlatform extends PlatformAdapter {
           await reply('ℹ️ 当前正在回复中，请先 /stop。');
           return true;
         }
+        if (typeof this.backend.redo !== 'function') {
+          await reply('❌ 当前宿主未提供恢复能力。');
+          return true;
+        }
         const redoResult = await this.backend.redo(cs.sessionId);
         if (!redoResult) {
           await reply('ℹ️ 没有可以恢复的对话。');
@@ -732,7 +736,7 @@ export class TelegramPlatform extends PlatformAdapter {
 
       case 'skill':
       case 'skills': {
-        const skills = this.backend.listSkills();
+        const skills = this.backend.listSkills?.() ?? [];
         if (skills.length === 0) {
           await reply('ℹ️ 未配置任何 Skill。请在 system.yaml 中添加。');
           return true;
@@ -767,13 +771,13 @@ export class TelegramPlatform extends PlatformAdapter {
 
       case 'mode':
       case 'modes': {
-        const modes = this.backend.listModes();
+        const modes = this.backend.listModes?.() ?? [];
         if (modes.length === 0) {
           await reply('ℹ️ 未配置任何 Mode。请在 modes.yaml 中添加。');
           return true;
         }
         if (cmd.args) {
-          const ok = this.backend.switchMode(cmd.args);
+          const ok = this.backend.switchMode?.(cmd.args);
           if (!ok) {
             await reply(`❌ 未找到 Mode "${cmd.args}"。发送 /mode 查看可用列表。`);
           } else {

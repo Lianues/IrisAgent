@@ -6,7 +6,7 @@ export type SessionInfoLike = IrisSessionMetaLike;
 
 /** 类型化存储接口（替代 IrisAPI.storage 的 unknown） */
 export interface StorageLike {
-  getHistory(sessionId: string): Promise<unknown[]>;
+  getHistory(sessionId: string): Promise<Content[]>;
   clearHistory(sessionId: string): Promise<void>;
   truncateHistory(sessionId: string, keepCount: number): Promise<void>;
   listSessions(): Promise<string[]>;

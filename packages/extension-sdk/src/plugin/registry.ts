@@ -40,10 +40,10 @@ export interface PromptAssemblerLike {
 }
 
 export interface PluginEventBusLike {
-  emit?(event: string, ...args: unknown[]): void;
-  on?(event: string, listener: (...args: unknown[]) => void): void;
-  off?(event: string, listener: (...args: unknown[]) => void): void;
-  /** 发射事件（emit 的别名，语义更清晰） */
+  emit(event: string, ...args: unknown[]): void;
+  on(event: string, listener: (...args: unknown[]) => void): void;
+  off(event: string, listener: (...args: unknown[]) => void): void;
+  /** 发射事件（emit 的别名，语义更清晰）。可选，未实现时可用 emit 代替。 */
   fire?(event: string, ...args: unknown[]): void;
 }
 

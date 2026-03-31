@@ -1,27 +1,24 @@
-export interface ParsedUnifiedDiffLike {
-  oldFile?: string;
-  newFile?: string;
-  hunks: UnifiedDiffHunkLike[];
-}
+import type {
+  ParsedUnifiedDiff,
+  UnifiedDiffHunk,
+  UnifiedDiffLine,
+  WriteEntry,
+  InsertEntry,
+  DeleteCodeEntry,
+} from '../tool-utils.js';
 
-export interface UnifiedDiffHunkLike {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  header: string;
-  lines: UnifiedDiffLineLike[];
-}
-
-export interface UnifiedDiffLineLike {
-  type: 'context' | 'add' | 'del';
-  content: string;
-  raw: string;
-}
-
-export interface WriteEntryLike { path: string; content: string }
-export interface InsertEntryLike { path: string; line: number; content: string }
-export interface DeleteCodeEntryLike { path: string; start_line: number; end_line: number }
+/** @deprecated 请直接使用 ParsedUnifiedDiff */
+export type ParsedUnifiedDiffLike = ParsedUnifiedDiff;
+/** @deprecated 请直接使用 UnifiedDiffHunk */
+export type UnifiedDiffHunkLike = UnifiedDiffHunk;
+/** @deprecated 请直接使用 UnifiedDiffLine */
+export type UnifiedDiffLineLike = UnifiedDiffLine;
+/** @deprecated 请直接使用 WriteEntry */
+export type WriteEntryLike = WriteEntry;
+/** @deprecated 请直接使用 InsertEntry */
+export type InsertEntryLike = InsertEntry;
+/** @deprecated 请直接使用 DeleteCodeEntry */
+export type DeleteCodeEntryLike = DeleteCodeEntry;
 
 export interface ToolPreviewUtilsLike {
   parseUnifiedDiff(patch: string): ParsedUnifiedDiffLike;

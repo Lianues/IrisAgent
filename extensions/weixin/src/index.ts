@@ -19,7 +19,7 @@
  *   协议文档：https://ilinkai.weixin.qq.com
  */
 
-import { createExtensionLogger, definePlatformFactory, splitText, type ImageInput, type IrisBackendLike, type IrisPlatformFactoryContextLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, splitText, autoApproveTools, formatToolStatusLine, PlatformAdapter, type ImageInput, type IrisBackendLike, type IrisPlatformFactoryContextLike } from '@irises/extension-sdk';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -156,7 +156,7 @@ interface ChatState {
 
 // ============ 平台适配器 ============
 
-export class WeixinPlatform {
+export class WeixinPlatform extends PlatformAdapter {
   private backend: IrisBackendLike;
   private config: WeixinConfig;
   private baseUrl: string;
@@ -179,6 +179,7 @@ export class WeixinPlatform {
   private activeSessions = new Map<string, string>();
 
   constructor(backend: IrisBackendLike, config: WeixinConfig) {
+    super();
     this.backend = backend;
     this.config = config;
     this.baseUrl = (config.baseUrl || 'https://ilinkai.weixin.qq.com').replace(/\/$/, '');
@@ -705,7 +706,7 @@ export class WeixinPlatform {
 
       for (const inv of sorted) {
         const isDone = inv.status === 'success' || inv.status === 'error';
-        const line = formatToolLine(inv);
+        const line = formatToolStatusLine(inv);
 
         if (isDone) {
           if (!cs.committedToolIds.has(inv.id)) {
@@ -1044,29 +1045,6 @@ function markdownToPlainText(text: string): string {
   return result;
 }
 
-/** 工具状态图标 */
-const STATUS_ICONS: Record<string, string> = {
-  queued: '⏳',
-  executing: '🔧',
-  success: '✅',
-  error: '❌',
-  awaiting_approval: '🔐',
-};
-
-/** 工具状态中文 */
-const STATUS_LABELS: Record<string, string> = {
-  queued: '等待中',
-  executing: '执行中',
-  success: '成功',
-  error: '失败',
-  awaiting_approval: '等待审批',
-};
-
-function formatToolLine(inv: { toolName: string; status: string }): string {
-  const icon = STATUS_ICONS[inv.status] || '⏳';
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} ${inv.toolName} ${label}`;
-}
 
 function pcmBytesToWav(pcm: Uint8Array, sampleRate: number): Buffer {
   const pcmBytes = pcm.byteLength;

@@ -1,4 +1,5 @@
 import type { IrisBackendLike } from '../platform.js';
+import { LogLevel } from '../logger.js';
 import type { MediaServiceLike, OCRProviderLike } from '../media.js';
 import type {
   BootstrapExtensionRegistryLike,
@@ -28,8 +29,7 @@ export interface WebPanelDefinition {
   contentPath: string;
 }
 
-export enum LogLevel { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3, SILENT = 4 }
-
+export { LogLevel };
 export interface MCPServerInfoLike {
   name: string;
   status: string;

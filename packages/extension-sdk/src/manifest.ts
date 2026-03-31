@@ -5,7 +5,8 @@ export interface ExtensionPluginContribution {
   configFile?: string;
 }
 
-export type ExtensionPlatformPanelFieldType = 'string' | 'password' | 'number';
+/** 表单字段类型。'text' 为默认文本输入（'string' 是 'text' 的别名，保留兼容性）。 */
+export type ExtensionPlatformPanelFieldType = 'text' | 'string' | 'password' | 'number';
 
 export interface ExtensionPlatformPanelField {
   /** 表单字段唯一键 */

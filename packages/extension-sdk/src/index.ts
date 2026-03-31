@@ -94,6 +94,7 @@ export {
   createExtensionLogger,
   setExtensionLogLevel,
   getExtensionLogLevel,
+  LogLevel,
 } from './logger.js';
 
 export type {
@@ -103,10 +104,6 @@ export type {
 export {
   createPluginLogger,
   definePlugin,
-} from './plugin.js';
-
-export {
-  LogLevel,
 } from './plugin.js';
 
 export type {
@@ -173,3 +170,16 @@ export type {
   PairingConfig,
   PendingPairing,
 } from './pairing/index.js';
+
+
+export {
+  autoApproveTools,
+  detectImageMime,
+  formatToolStatusLine,
+  TOOL_STATUS_ICONS,
+  TOOL_STATUS_LABELS,
+} from './platform-utils.js';
+
+export type {
+  ToolInvocationInfo,
+} from './platform-utils.js';

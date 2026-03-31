@@ -5,7 +5,14 @@
   "platforms": [
     {
       "name": "console",
-      "entry": "dist/index.mjs"
+      "label": "Console (TUI)",
+      "entry": "dist/index.mjs",
+      "description": "Interactive terminal interface with OpenTUI React rendering"
     }
-  ]
+  ],
+  "distribution": {
+    "files": [
+      "dist/index.mjs"
+    ]
+  }
 }
