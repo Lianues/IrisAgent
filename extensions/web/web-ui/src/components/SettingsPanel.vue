@@ -642,7 +642,7 @@
                 Token 来源：{{ cf.tokenSource === 'env' ? '环境变量' : (cf.tokenSource === 'file' ? '文件' : '配置文件明文') }}
               </p>
             </div>
-            <span class="settings-pill" :style="{ background: cf.connected ? 'var(--success)' : undefined }">
+            <span class="settings-pill" :style="{ background: cf.connected ? 'var(--success)' : 'var(--error, #e74c3c)' }">
               {{ cf.connected ? '已连接' : '未连接' }}
             </span>
           </div>
@@ -670,7 +670,7 @@
               <label>API Token</label>
               <input type="password" v-model="cf.tokenInput" placeholder="以 Bearer token 格式，例如 xyzABC123..." />
             </div>
-            <div class="form-group full-width" style="display:flex;align-items:center;gap:12px">
+            <div class="form-actions" style="display:flex;align-items:center;gap:12px">
               <button class="btn-save" type="button" :disabled="cf.loading || accessLocked" @click="handleCfSetup">
                 {{ cf.loading ? '验证中...' : '连接' }}
               </button>

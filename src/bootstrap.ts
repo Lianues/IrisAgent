@@ -53,6 +53,21 @@ import { parseSystemConfig } from './config/system';
 import { parseToolsConfig } from './config/tools';
 import { setGlobalLogLevel, getGlobalLogLevel, LogLevel } from './logger';
 import { isCompiledBinary } from './paths';
+import { resizeImage, formatDimensionNote } from './media/image-resize';
+import { extractDocument, isSupportedDocumentMime } from './media/document-extract';
+import { convertToPDF, isConversionAvailable } from './media/office-to-pdf';
+import {
+  getAgentStatus, setAgentEnabled, createManifestIfNotExists,
+  createAgent, updateAgent, deleteAgent, resetCache as resetAgentCache, loadAgentDefinitions,
+} from './agents';
+import { parseUnifiedDiff } from './tools/internal/apply_diff/unified_diff';
+import { buildSearchRegex, decodeText, globToRegExp, isLikelyBinary, toPosix, walkFiles } from './tools/internal/search_in_files';
+import { normalizeWriteArgs } from './tools/internal/write_file';
+import { normalizeInsertArgs } from './tools/internal/insert_code';
+import { normalizeDeleteCodeArgs } from './tools/internal/delete_code';
+import { resolveProjectPath } from './tools/utils';
+import { supportsVision as checkVision, supportsNativePDF as checkNativePDF, supportsNativeOffice as checkNativeOffice, isDocumentMimeType as checkDocMime } from './llm/vision';
+import { setExtensionLogLevel } from '@irises/extension-sdk';
 
 export interface BootstrapResult {
   backend: Backend;
@@ -290,18 +305,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   const setMCPManagerFn = (m?: MCPManager) => { mcpManager = m; };
   const irisAPI = {
     backend,
-    media: (() => {
-      let _media: any;
-      const load = () => {
-        if (_media) return _media;
-        const { resizeImage, formatDimensionNote } = require('./media/image-resize');
-        const { extractDocument, isSupportedDocumentMime } = require('./media/document-extract');
-        const { convertToPDF, isConversionAvailable } = require('./media/office-to-pdf');
-        _media = { resizeImage, formatDimensionNote, extractDocument, isSupportedDocumentMime, convertToPDF, isConversionAvailable };
-        return _media;
-      };
-      return new Proxy({} as any, { get: (_t, p) => (load() as any)[p] });
-    })(),
+    media: { resizeImage, formatDimensionNote, extractDocument, isSupportedDocumentMime, convertToPDF, isConversionAvailable },
     router,
     storage,
     tools,
@@ -339,13 +343,13 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       return await listAvailableModels(input as any);
     },
     agentManager: {
-      getStatus: () => { const { getAgentStatus } = require('./agents'); return getAgentStatus(); },
-      setEnabled: (enabled: boolean) => { const { setAgentEnabled } = require('./agents'); return setAgentEnabled(enabled); },
-      createManifest: () => { const { createManifestIfNotExists } = require('./agents'); return createManifestIfNotExists(); },
-      create: (name: string, description?: string) => { const { createAgent } = require('./agents'); return createAgent(name, description); },
-      update: (name: string, fields: any) => { const { updateAgent } = require('./agents'); return updateAgent(name, fields); },
-      delete: (name: string) => { const { deleteAgent } = require('./agents'); return deleteAgent(name); },
-      resetCache: () => { const { resetCache } = require('./agents'); resetCache(); },
+      getStatus: () => getAgentStatus(),
+      setEnabled: (enabled: boolean) => setAgentEnabled(enabled),
+      createManifest: () => createManifestIfNotExists(),
+      create: (name: string, description?: string) => createAgent(name, description),
+      update: (name: string, fields: any) => updateAgent(name, fields),
+      delete: (name: string) => deleteAgent(name),
+      resetCache: () => resetAgentCache(),
       getActiveSessionId: () => backend.getActiveSessionId(),
       getLastSessionTokens: (sessionId: string) => (backend as any).lastSessionTokens?.get(sessionId),
       getAllSessionTokens: () => {
@@ -356,25 +360,9 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
         return result;
       },
     },
-    toolPreviewUtils: (() => {
-      // 懒加载工具预览工具集
-      let _utils: any;
-      const getUtils = () => {
-        if (_utils) return _utils;
-        const { parseUnifiedDiff } = require('./tools/internal/apply_diff/unified_diff');
-        const { buildSearchRegex, decodeText, globToRegExp, isLikelyBinary, toPosix, walkFiles } = require('./tools/internal/search_in_files');
-        const { normalizeWriteArgs } = require('./tools/internal/write_file');
-        const { normalizeInsertArgs } = require('./tools/internal/insert_code');
-        const { normalizeDeleteCodeArgs } = require('./tools/internal/delete_code');
-        const { resolveProjectPath } = require('./tools/utils');
-        _utils = { parseUnifiedDiff, normalizeWriteArgs, normalizeInsertArgs, normalizeDeleteCodeArgs, resolveProjectPath, buildSearchRegex, decodeText, globToRegExp, isLikelyBinary, toPosix, walkFiles };
-        return _utils;
-      };
-      return new Proxy({} as any, { get: (_t, p) => (getUtils() as any)[p] });
-    })(),
+    toolPreviewUtils: { parseUnifiedDiff, normalizeWriteArgs, normalizeInsertArgs, normalizeDeleteCodeArgs, resolveProjectPath, buildSearchRegex, decodeText, globToRegExp, isLikelyBinary, toPosix, walkFiles },
     setLogLevel: (level: number) => {
       setGlobalLogLevel(level as LogLevel);
-      const { setExtensionLogLevel } = require('@irises/extension-sdk');
       setExtensionLogLevel(level);
     },
     getLogLevel: () => getGlobalLogLevel() as number,
@@ -384,33 +372,26 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     patchPrototype,
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
-    listAgents: () => { const { loadAgentDefinitions } = require('./agents'); return loadAgentDefinitions(); },
+    listAgents: () => loadAgentDefinitions(),
     supportsVision: (modelName?: string) => {
-      const { supportsVision: sv } = require('./llm/vision');
       const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
-      return sv(cfg);
+      return checkVision(cfg);
     },
     supportsNativePDF: (modelName?: string) => {
-      const { supportsNativePDF: sp } = require('./llm/vision');
       const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
-      return sp(cfg);
+      return checkNativePDF(cfg);
     },
     supportsNativeOffice: (modelName?: string) => {
-      const { supportsNativeOffice: so } = require('./llm/vision');
       const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
-      return so(cfg);
+      return checkNativeOffice(cfg);
     },
     isDocumentMimeType: (mimeType: string) => {
-      const { isDocumentMimeType: idm } = require('./llm/vision');
-      return idm(mimeType);
+      return checkDocMime(mimeType);
     },
   } satisfies Record<string, unknown> as unknown as IrisAPI;
 
   // 同步初始日志级别到 SDK logger
-  try {
-    const { setExtensionLogLevel } = require('@irises/extension-sdk');
-    setExtensionLogLevel(getGlobalLogLevel());
-  } catch { /* SDK 未安装时忽略 */ }
+  setExtensionLogLevel(getGlobalLogLevel());
 
   if (pluginManager && pluginManager.size > 0) {
     backend.setPluginHooks(pluginManager.getHooks());
