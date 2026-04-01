@@ -22,6 +22,14 @@ export class GeminiFormat implements FormatAdapter {
     // 针对 Gemini 渠道，将 thoughtSignatures.gemini 映射回 thoughtSignature 字段发送
     mapSignaturesToProvider(filtered);
 
+    // 将内部统一的 callId 映射为 Gemini API 的 id 字段
+    // Gemini 3 模型要求 functionCall 和 functionResponse 使用 id 字段进行配对
+    mapCallIdsToGemini(filtered);
+
+    // 过滤 Gemini 3 流式响应中产生的空 text part（text === "" 且无签名/thought）。
+    // 这类空 part 由模型在 functionCall 后附带返回，回传时会导致 Gemini API 报 INTERNAL 错误。
+    stripEmptyTextParts(filtered);
+
     return filtered;
   }
 
@@ -41,6 +49,12 @@ export class GeminiFormat implements FormatAdapter {
           if (!part.thoughtSignatures) part.thoughtSignatures = {};
           part.thoughtSignatures.gemini = rawPart.thoughtSignature;
           delete rawPart.thoughtSignature;
+        }
+
+        // Gemini 3 模型返回 functionCall.id，提取为内部统一的 callId
+        if (rawPart.functionCall?.id) {
+          rawPart.functionCall.callId = rawPart.functionCall.id;
+          delete rawPart.functionCall.id;
         }
       }
     }
@@ -76,7 +90,23 @@ export class GeminiFormat implements FormatAdapter {
           delete rawPart.thoughtSignature;
         }
 
+        // Gemini 3 流式响应中 functionCall.id → callId
+        if (hasFunctionCall && rawPart.functionCall?.id) {
+          if (!rawPart.functionCall.callId) {
+            rawPart.functionCall.callId = rawPart.functionCall.id;
+          }
+          delete rawPart.functionCall.id;
+        }
+
         if (hasText || (hasSignature && !hasFunctionCall)) {
+          // Gemini 3 流式响应中 functionCall 后面经常跟一个 {"text":""} 空 part，
+          // 没有 thought 标记也没有签名，纯粹是占位符。
+          // 跳过这种无意义的空 part，避免它进入 partsDelta 并最终污染历史。
+          // 回传时 Gemini API 会因为含有空 text part 报 INTERNAL 错误。
+          if (hasText && !rawPart.text && !rawPart.thought && !hasSignature) {
+            continue;
+          }
+
           if (!chunk.partsDelta) chunk.partsDelta = [];
 
           if (hasText) {
@@ -172,6 +202,51 @@ function mapSignaturesToProvider(obj: unknown): void {
 }
 
 /**
+ * 将内部统一的 callId 映射为 Gemini API 原生的 id 字段。
+ *
+ * Gemini 3 模型要求：
+ *   - functionCall 中的 id 用于标识工具调用
+ *   - functionResponse 中的 id 用于与 functionCall 配对
+ *   - callId 是内部统一字段，Gemini API 不认识，必须删除
+ *
+ * 同时清理 functionResponse.durationMs 等内部字段。
+ */
+function mapCallIdsToGemini(obj: unknown): void {
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return;
+  }
+
+  if (Array.isArray(obj)) {
+    obj.forEach(mapCallIdsToGemini);
+    return;
+  }
+
+  const record = obj as Record<string, any>;
+
+  // functionCall.callId → functionCall.id
+  if (record.functionCall && typeof record.functionCall === 'object') {
+    if (record.functionCall.callId) {
+      record.functionCall.id = record.functionCall.callId;
+    }
+    delete record.functionCall.callId;
+  }
+
+  // functionResponse.callId → functionResponse.id
+  // 同时清理 durationMs（工具执行耗时，内部字段，不发送给 LLM）
+  if (record.functionResponse && typeof record.functionResponse === 'object') {
+    if (record.functionResponse.callId) {
+      record.functionResponse.id = record.functionResponse.callId;
+    }
+    delete record.functionResponse.callId;
+    delete record.functionResponse.durationMs;
+  }
+
+  for (const value of Object.values(record)) {
+    mapCallIdsToGemini(value);
+  }
+}
+
+/**
  * 遍历 Gemini 请求体中的 tools[].functionDeclarations[].parameters，
  * 用指定的 sanitizer 函数对每个 parameters 做降级处理。
  */
@@ -188,5 +263,37 @@ function sanitizeToolSchemas(
         decl.parameters = sanitizer(decl.parameters);
       }
     }
+  }
+}
+
+
+/**
+ * 过滤 Gemini 3 流式响应中产生的无意义空 text part。
+ *
+ * Gemini 3 模型在流式响应中，functionCall part 后面可能跟一个 {"text":""} 的空 part。
+ * 这个空 part 如果在下一轮请求中原样回传给 Gemini API，会导致 INTERNAL 错误。
+ *
+ * 过滤条件：text === "" 且没有 thought 标记、没有 thoughtSignature。
+ * 带 thoughtSignature 的空 text part 需要保留（签名载体）。
+ */
+function stripEmptyTextParts(obj: unknown): void {
+  const req = obj as Record<string, any>;
+  if (!Array.isArray(req?.contents)) return;
+
+  for (const content of req.contents) {
+    if (!Array.isArray(content?.parts) || content.parts.length <= 1) continue;
+
+    content.parts = content.parts.filter((part: any) => {
+      // 保留非 text part（functionCall、functionResponse、inlineData 等）
+      if (!('text' in part)) return true;
+      // 保留有实际文本内容的 part
+      if (part.text !== '' && part.text !== undefined) return true;
+      // 保留带 thought 标记的空 part（thinking 占位）
+      if (part.thought) return true;
+      // 保留带签名的空 part（签名载体）
+      if (part.thoughtSignature) return true;
+      // 其余空 text part 过滤掉
+      return false;
+    });
   }
 }

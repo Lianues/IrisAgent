@@ -20,6 +20,7 @@
 
 import { EventEmitter } from 'events';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { agentContext } from '../../logger';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
@@ -725,13 +726,20 @@ export class Backend extends EventEmitter {
       if (msg.mode === 'task-notification') {
         // ---- task-notification 路径（异步子代理完成通知） ----
         // 不走用户消息的完整流程，直接以 user-role message 注入 LLM 对话历史。
+        // 注入 agentContext='main'，使主 LLM turn 内的工具执行日志
+        // 都带 [Module|main] 前缀，与子代理的 [Module|taskId] 区分。
         await sessionContext.run(msg.sessionId, () =>
-          this.handleNotificationTurn(msg.sessionId, msg.text, msg.turnId, abortController.signal)
+          agentContext.run('main', () =>
+            this.handleNotificationTurn(msg.sessionId, msg.text, msg.turnId, abortController.signal)
+          )
         );
       } else {
         // ---- 普通用户消息路径 ----
+        // 同上，注入 agentContext='main'。
         await sessionContext.run(msg.sessionId, () =>
-          this.handleMessage(msg.sessionId, msg.text, msg.turnId, abortController.signal, msg.images, msg.documents, msg.platformName)
+          agentContext.run('main', () =>
+            this.handleMessage(msg.sessionId, msg.text, msg.turnId, abortController.signal, msg.images, msg.documents, msg.platformName)
+          )
         );
       }
     } catch (err) {

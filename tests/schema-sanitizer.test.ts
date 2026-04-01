@@ -154,6 +154,21 @@ describe('sanitizeSchemaForGemini', () => {
     expect(result.definitions).toBeUndefined();
     expect(result.properties.x.type).toBe('string');
   });
+
+  it('删除 $schema（MCP 工具 inputSchema 常携带此字段）', () => {
+    const schema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索关键词' },
+      },
+      required: ['query'],
+    };
+    const result = sanitizeSchemaForGemini(schema) as any;
+    expect(result.$schema).toBeUndefined();
+    expect(result.type).toBe('object');
+    expect(result.properties.query.type).toBe('string');
+  });
 });
 
 // ======================== OpenAI ========================
@@ -208,6 +223,19 @@ describe('sanitizeSchemaForOpenAI', () => {
     };
     const result = sanitizeSchemaForOpenAI(schema) as any;
     expect(result.$defs).toBeUndefined();
+  });
+
+  it('删除 $schema', () => {
+    const schema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+      },
+    };
+    const result = sanitizeSchemaForOpenAI(schema) as any;
+    expect(result.$schema).toBeUndefined();
+    expect(result.type).toBe('object');
   });
 });
 
@@ -278,6 +306,19 @@ describe('sanitizeSchemaForClaude', () => {
     const result = sanitizeSchemaForClaude(schema) as any;
     expect(result.$defs).toBeUndefined();
     expect(result.definitions).toBeUndefined();
+  });
+
+  it('删除 $schema', () => {
+    const schema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+      },
+    };
+    const result = sanitizeSchemaForClaude(schema) as any;
+    expect(result.$schema).toBeUndefined();
+    expect(result.type).toBe('object');
   });
 });
 

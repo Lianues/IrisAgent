@@ -19,6 +19,7 @@ import type { Content, Part, LLMRequest, UsageMetadata } from '../../../types';
 import { appendMergedPart } from '../../../core/backend/stream';
 import { ToolPolicyConfig } from '../../../config';
 import { LLMRouter } from '../../../llm/router';
+import { agentContext } from '../../../logger';
 import { ToolRegistry } from '../../registry';
 import { ToolLoop, LLMCaller } from '../../../core/tool-loop';
 import { PromptAssembler } from '../../../prompt/assembler';
@@ -254,66 +255,71 @@ ${typeDescriptions}
       }
 
       // ---- 同步路径（保持原有逻辑不变） ----
+      // 同步子代理也注入 agent context，使其内部所有工具执行的日志
+      // 都能通过 [Module|sync_typeName] 前缀区分来源。
+      const syncLabel = `sync_${typeName}`;
       logger.info(`创建子代理: type=${typeName} depth=${currentDepth + 1}/${deps.maxDepth} 工具数=${subTools.size}`);
 
-      const subPrompt = new PromptAssembler();
-      subPrompt.setSystemPrompt(typeConfig.systemPrompt);
+      return agentContext.run(syncLabel, async () => {
+        const subPrompt = new PromptAssembler();
+        subPrompt.setSystemPrompt(typeConfig.systemPrompt);
 
-      const loop = new ToolLoop(subTools, subPrompt, {
-        maxRounds: typeConfig.maxToolRounds,
-        toolsConfig: { permissions: deps.getToolPolicies() },
-        retryOnError: deps.retryOnError,
-        maxRetries: deps.maxRetries,
-      });
+        const loop = new ToolLoop(subTools, subPrompt, {
+          maxRounds: typeConfig.maxToolRounds,
+          toolsConfig: { permissions: deps.getToolPolicies() },
+          retryOnError: deps.retryOnError,
+          maxRetries: deps.maxRetries,
+        });
 
-      const callLLM: LLMCaller = async (request, modelName, signal) => {
-        const router = deps.getRouter();
+        const callLLM: LLMCaller = async (request, modelName, signal) => {
+          const router = deps.getRouter();
 
-        if (typeConfig.stream) {
-          const parts: Part[] = [];
-          let usageMetadata: UsageMetadata | undefined;
-          for await (const chunk of router.chatStream(request, modelName, signal)) {
-            if (chunk.partsDelta && chunk.partsDelta.length > 0) {
-              for (const part of chunk.partsDelta) {
-                appendMergedPart(parts, part, Date.now());
+          if (typeConfig.stream) {
+            const parts: Part[] = [];
+            let usageMetadata: UsageMetadata | undefined;
+            for await (const chunk of router.chatStream(request, modelName, signal)) {
+              if (chunk.partsDelta && chunk.partsDelta.length > 0) {
+                for (const part of chunk.partsDelta) {
+                  appendMergedPart(parts, part, Date.now());
+                }
+              } else {
+                if (chunk.textDelta) appendMergedPart(parts, { text: chunk.textDelta }, Date.now());
+                if (chunk.functionCalls) {
+                  for (const fc of chunk.functionCalls) appendMergedPart(parts, fc, Date.now());
+                }
               }
-            } else {
-              if (chunk.textDelta) appendMergedPart(parts, { text: chunk.textDelta }, Date.now());
-              if (chunk.functionCalls) {
-                for (const fc of chunk.functionCalls) appendMergedPart(parts, fc, Date.now());
-              }
+              if (chunk.usageMetadata) usageMetadata = chunk.usageMetadata;
             }
-            if (chunk.usageMetadata) usageMetadata = chunk.usageMetadata;
+            if (parts.length === 0) parts.push({ text: '' });
+            const content: Content = { role: 'model', parts, createdAt: Date.now() };
+            if (usageMetadata) content.usageMetadata = usageMetadata;
+            return content;
           }
-          if (parts.length === 0) parts.push({ text: '' });
-          const content: Content = { role: 'model', parts, createdAt: Date.now() };
-          if (usageMetadata) content.usageMetadata = usageMetadata;
-          return content;
+
+          const response = await router.chat(request, modelName, signal);
+          return response.content;
+        };
+
+        try {
+          const result = await loop.run(
+            // 使用 fullPrompt（含 context 前缀），而非原始 prompt
+            [{ role: 'user', parts: [{ text: fullPrompt }] }],
+            callLLM,
+            { modelName: typeConfig.modelName },
+          );
+
+          if (result.error) {
+            throw new Error(result.error);
+          }
+
+          logger.info(`子代理完成: type=${typeName}`);
+          return { result: result.text };
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logger.error(`子代理执行失败: ${errorMsg}`);
+          throw err instanceof Error ? err : new Error(errorMsg);
         }
-
-        const response = await router.chat(request, modelName, signal);
-        return response.content;
-      };
-
-      try {
-        const result = await loop.run(
-          // 使用 fullPrompt（含 context 前缀），而非原始 prompt
-          [{ role: 'user', parts: [{ text: fullPrompt }] }],
-          callLLM,
-          { modelName: typeConfig.modelName },
-        );
-
-        if (result.error) {
-          throw new Error(result.error);
-        }
-
-        logger.info(`子代理完成: type=${typeName}`);
-        return { result: result.text };
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        logger.error(`子代理执行失败: ${errorMsg}`);
-        throw err instanceof Error ? err : new Error(errorMsg);
-      }
+      });
     },
   };
 }
@@ -334,6 +340,11 @@ async function runSubAgentAsync(
   description: string,
   signal?: AbortSignal,
 ): Promise<void> {
+  // 整个异步子代理的生命周期都在 agentContext.run(taskId, ...) 内执行，
+  // 使得子代理内部所有模块（ToolLoop、ToolScheduler、LLMRouter 等）
+  // 的日志自动携带 [Module|taskId] 前缀，解决子代理工具执行日志
+  // 无法区分来源的问题。对标 CC issue #31939 的 agent_id 传播。
+  return agentContext.run(taskId, async () => {
   const startTime = Date.now();
 
   const subPrompt = new PromptAssembler();
@@ -425,4 +436,5 @@ async function runSubAgentAsync(
     deps.enqueueNotification!(sessionId, xml);
     logger.error(`异步子代理异常: taskId=${taskId}, error="${errorMsg}"`);
   }
+  }); // agentContext.run() 结束
 }
