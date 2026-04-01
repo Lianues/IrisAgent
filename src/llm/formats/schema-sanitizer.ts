@@ -34,7 +34,7 @@
  *   1. enum 数字值 → 字符串
  *   2. 删除 additionalProperties
  *   3. anyOf/oneOf/allOf → 尝试展平或取第一个分支
- *   4. 删除 title、default、const、$defs、definitions
+ *   4. 删除 title、default、const、$defs、definitions、$schema
  *   5. 递归处理所有嵌套
  */
 export function sanitizeSchemaForGemini(schema: unknown): unknown {
@@ -52,7 +52,8 @@ export function sanitizeSchemaForGemini(schema: unknown): unknown {
 
   for (const [key, value] of Object.entries(obj)) {
     // 删除 Gemini 不支持的关键字
-    if (['title', 'default', 'const', '$defs', 'definitions',
+    // $schema: MCP 工具的 inputSchema 常携带此字段，Gemini API 不识别会直接 400
+    if (['title', 'default', 'const', '$defs', 'definitions', '$schema',
          'not', 'if', 'then', 'else', 'prefixItems'].includes(key)) {
       continue;
     }
@@ -124,7 +125,8 @@ export function sanitizeSchemaForOpenAI(schema: unknown): unknown {
 
   for (const [key, value] of Object.entries(obj)) {
     // 删除已展开的残留
-    if (key === '$defs' || key === 'definitions') continue;
+    // $schema: MCP 工具常携带，对 LLM API 无意义
+    if (key === '$defs' || key === 'definitions' || key === '$schema') continue;
 
     // enum: 统一转字符串
     if (key === 'enum' && Array.isArray(value)) {
@@ -160,7 +162,8 @@ export function sanitizeSchemaForClaude(schema: unknown, isTopLevel = true): unk
 
   for (const [key, value] of Object.entries(obj)) {
     // 删除已展开的残留
-    if (key === '$defs' || key === 'definitions') continue;
+    // $schema: MCP 工具常携带，对 LLM API 无意义
+    if (key === '$defs' || key === 'definitions' || key === '$schema') continue;
 
     // 顶层的 anyOf/oneOf/allOf → 取第一个分支
     if (isTopLevel && (key === 'anyOf' || key === 'oneOf' || key === 'allOf') && Array.isArray(value) && value.length > 0) {
