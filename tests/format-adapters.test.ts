@@ -400,6 +400,220 @@ describe('GeminiFormat: stream decode', () => {
 });
 
 // ============================================================
+//  Gemini Format — functionCall/functionResponse id 映射测试
+//  Gemini 3 模型要求：
+//    - functionCall 返回 id 字段，需提取为内部 callId
+//    - functionResponse 发送时需携带匹配的 id 字段
+//    - callId 是内部字段，不能原样发送给 Gemini API
+// ============================================================
+
+describe('GeminiFormat: functionCall/functionResponse id mapping', () => {
+  const fmt = new GeminiFormat();
+
+  it('encodeRequest: functionCall.callId 映射为 functionCall.id', () => {
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        modelToolCallMsg([{ name: 'list_files', args: { paths: ['.'] }, callId: 'abc123' }]),
+        toolResponseMsg([{ name: 'list_files', result: { ok: true }, callId: 'abc123' }]),
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+
+    // functionCall 部分：callId → id
+    const fcPart = body.contents[1].parts[0];
+    expect(fcPart.functionCall.id).toBe('abc123');
+    expect(fcPart.functionCall.callId).toBeUndefined();
+
+    // functionResponse 部分：callId → id
+    const frPart = body.contents[2].parts[0];
+    expect(frPart.functionResponse.id).toBe('abc123');
+    expect(frPart.functionResponse.callId).toBeUndefined();
+  });
+
+  it('encodeRequest: 无 callId 时不添加 id 字段', () => {
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        modelToolCallMsg([{ name: 'list_files', args: { paths: ['.'] } }]),
+        toolResponseMsg([{ name: 'list_files', result: { ok: true } }]),
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+
+    const fcPart = body.contents[1].parts[0];
+    expect(fcPart.functionCall.id).toBeUndefined();
+    expect(fcPart.functionCall.callId).toBeUndefined();
+
+    const frPart = body.contents[2].parts[0];
+    expect(frPart.functionResponse.id).toBeUndefined();
+    expect(frPart.functionResponse.callId).toBeUndefined();
+  });
+
+  it('encodeRequest: 多个并行工具调用的 id 都正确映射', () => {
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        modelToolCallMsg([
+          { name: 'get_weather', args: { city: 'A' }, callId: 'id_1' },
+          { name: 'read_file', args: { path: '/x' }, callId: 'id_2' },
+        ]),
+        toolResponseMsg([
+          { name: 'get_weather', result: 'ok', callId: 'id_1' },
+          { name: 'read_file', result: 'ok', callId: 'id_2' },
+        ]),
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+
+    // functionCall 部分
+    expect(body.contents[1].parts[0].functionCall.id).toBe('id_1');
+    expect(body.contents[1].parts[1].functionCall.id).toBe('id_2');
+    expect(body.contents[1].parts[0].functionCall.callId).toBeUndefined();
+
+    // functionResponse 部分
+    expect(body.contents[2].parts[0].functionResponse.id).toBe('id_1');
+    expect(body.contents[2].parts[1].functionResponse.id).toBe('id_2');
+    expect(body.contents[2].parts[0].functionResponse.callId).toBeUndefined();
+  });
+
+  it('encodeRequest: durationMs 被过滤', () => {
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        modelToolCallMsg([{ name: 'list_files', args: {}, callId: 'x' }]),
+        {
+          role: 'user',
+          parts: [{
+            functionResponse: {
+              name: 'list_files',
+              response: { result: 'ok' },
+              callId: 'x',
+              durationMs: 500,
+            },
+          }],
+        },
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+    const frPart = body.contents[2].parts[0];
+    expect(frPart.functionResponse.durationMs).toBeUndefined();
+    expect(frPart.functionResponse.id).toBe('x');
+  });
+
+  it('decodeResponse: Gemini 返回的 functionCall.id 提取为 callId', () => {
+    const raw = {
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{
+            functionCall: { name: 'list_files', args: { paths: ['.'] }, id: '9uyyp2b0' },
+            thoughtSignature: 'sig_test',
+          }],
+        },
+        finishReason: 'STOP',
+      }],
+    };
+    const resp = fmt.decodeResponse(raw);
+    const fc = resp.content.parts[0] as FunctionCallPart;
+    expect(fc.functionCall.callId).toBe('9uyyp2b0');
+    // id 被提取后不应该残留（避免 encode 时重复）
+    expect((fc.functionCall as any).id).toBeUndefined();
+  });
+
+  it('decodeStreamChunk: 流式 functionCall.id 提取为 callId', () => {
+    const state = fmt.createStreamState();
+    const chunk = fmt.decodeStreamChunk({
+      candidates: [{
+        content: {
+          parts: [{
+            functionCall: { name: 'get_weather', args: { city: 'X' }, id: 'stream_id_1' },
+          }],
+        },
+      }],
+    }, state);
+    expect(chunk.functionCalls).toHaveLength(1);
+    expect(chunk.functionCalls![0].functionCall.callId).toBe('stream_id_1');
+    expect((chunk.functionCalls![0].functionCall as any).id).toBeUndefined();
+  });
+
+  it('decodeStreamChunk: 过滤 functionCall 后的空 text part', () => {
+    const state = fmt.createStreamState();
+    // Gemini 3 流式响应：functionCall 后跟一个 {"text":""} 空 part
+    const chunk = fmt.decodeStreamChunk({
+      candidates: [{
+        content: {
+          parts: [
+            { functionCall: { name: 'list_files', args: { paths: ['.'] }, id: 'fc1' }, thoughtSignature: 'sig' },
+            { text: '' },  // 空 part，应被过滤
+          ],
+        },
+      }],
+    }, state);
+    // partsDelta 中不应该出现空 text part
+    const textParts = (chunk.partsDelta || []).filter((p: any) => 'text' in p && !('functionCall' in p));
+    for (const tp of textParts) {
+      // 如果有 text part，它要么有实际文本，要么有签名
+      expect((tp as any).text || (tp as any).thoughtSignatures).toBeTruthy();
+    }
+  });
+
+
+  it('encodeRequest: 过滤 functionCall 后面的空 text part', () => {
+    // Gemini 3 流式响应中，functionCall 后经常跟一个 {text:""} 空 part，
+    // 回传时会导致 Gemini API 报 INTERNAL 错误
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        {
+          role: 'model',
+          parts: [
+            { functionCall: { name: 'list_files', args: { paths: ['.'] }, callId: 'abc' } },
+            { text: '' },  // 空 text part，应被过滤
+          ],
+        },
+        toolResponseMsg([{ name: 'list_files', result: { ok: true }, callId: 'abc' }]),
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+    // model 消息应该只剩 1 个 part（functionCall），空 text 被过滤
+    expect(body.contents[1].parts).toHaveLength(1);
+    expect(body.contents[1].parts[0].functionCall).toBeDefined();
+  });
+
+  it('encodeRequest: 不过滤带 thoughtSignature 的空 text part', () => {
+    const req: LLMRequest = {
+      contents: [
+        userMsg('test'),
+        {
+          role: 'model',
+          parts: [
+            { functionCall: { name: 'list_files', args: {}, callId: 'abc' } },
+            { text: '', thoughtSignatures: { gemini: 'sig_123' } } as any,  // 带签名，应保留
+          ],
+        },
+        toolResponseMsg([{ name: 'list_files', result: 'ok', callId: 'abc' }]),
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+    // 签名 part 应该保留（mapSignaturesToProvider 会把 thoughtSignatures 转为 thoughtSignature）
+    expect(body.contents[1].parts).toHaveLength(2);
+  });
+
+  it('encodeRequest: 不过滤唯一的空 text part（parts.length === 1）', () => {
+    const req: LLMRequest = {
+      contents: [
+        { role: 'model', parts: [{ text: '' }] },
+      ],
+    };
+    const body = fmt.encodeRequest(req) as any;
+    // 唯一的 part 不能被过滤掉
+    expect(body.contents[0].parts).toHaveLength(1);
+  });
+
+});
+
+// ============================================================
 //  Claude Format
 // ============================================================
 
