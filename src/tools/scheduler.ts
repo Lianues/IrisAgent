@@ -16,6 +16,9 @@
 
 import { ToolRegistry } from './registry';
 import { ToolStateManager } from './state';
+import { coerceToolArgs, getToolArgsArrayValidationError } from './coerce-args';
+import type { ToolParameterSchema } from './coerce-args';
+import { validateToolArgs } from './validate-args';
 import { FunctionCallPart, FunctionResponsePart, InlineDataPart } from '../types';
 import { createLogger } from '../logger';
 import type { ToolAttachment } from '../types';
@@ -287,6 +290,46 @@ async function executeSingle(
 
   // 插件钩子: onBeforeToolExec
   let effectiveArgs = call.functionCall.args as Record<string, unknown>;
+
+  // ── 参数类型容错 + Schema 校验（在插件钩子之前执行） ──
+  // 目的：在工具 handler 和插件钩子看到参数之前，先做类型修正和合法性校验。
+  // 这样插件钩子拿到的已经是修正后的参数，handler 不会因为类型错误崩溃，
+  // 校验失败时模型能收到可读的错误描述并自行修正重试。
+  const toolDef = registry.get(toolName);
+  const toolSchema = toolDef?.declaration.parameters as ToolParameterSchema | undefined;
+  if (toolSchema) {
+    // 1. 类型容错：boolean/number/array 字符串静默转换
+    effectiveArgs = coerceToolArgs(effectiveArgs, toolSchema);
+
+    // 2. 数组专项校验：coerceToolArgs 处理后仍不是数组的，直接报错
+    const arrayError = getToolArgsArrayValidationError(toolName, effectiveArgs, toolSchema);
+    if (arrayError) {
+      if (toolState && invocationId) {
+        toolState.transition(invocationId, 'error', { error: arrayError });
+      }
+      return {
+        functionResponse: {
+          name: toolName, callId: call.functionCall.callId,
+          response: { error: arrayError },
+        },
+      };
+    }
+
+    // 3. 完整 schema 校验：必需字段、类型匹配、多余字段
+    const schemaError = validateToolArgs(toolName, effectiveArgs, toolSchema);
+    if (schemaError) {
+      if (toolState && invocationId) {
+        toolState.transition(invocationId, 'error', { error: schemaError });
+      }
+      return {
+        functionResponse: {
+          name: toolName, callId: call.functionCall.callId,
+          response: { error: schemaError },
+        },
+      };
+    }
+  }
+
   if (beforeToolExec) {
     try {
       const interception = await beforeToolExec(toolName, effectiveArgs);
