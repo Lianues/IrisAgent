@@ -74,8 +74,6 @@ export interface BackendConfig {
   toolsConfig?: ToolsConfig;
   /** 是否启用流式输出 */
   stream?: boolean;
-  /** 子代理协调指导文本 */
-  subAgentGuidance?: string;
   /** 默认模式名称 */
   defaultMode?: string;
   /** 当前活动模型配置（用于 vision 能力判定） */
@@ -92,6 +90,8 @@ export interface BackendConfig {
   configDir?: string;
   /** 是否记住各平台上次使用的模型 */
   rememberPlatformModel?: boolean;
+  /** 是否启用异步子代理（默认 false，向后兼容） */
+  asyncSubAgents?: boolean;
 }
 
 export interface BackendEvents {
@@ -128,4 +128,13 @@ export interface BackendEvents {
    * 由具体平台自己决定如何发送给用户。
    */
   'attachments': (sessionId: string, attachments: ToolAttachment[]) => void;
+  /**
+   * 异步子代理状态通知（供平台层展示后台任务状态）。
+   *
+   * 当异步子代理完成/失败/被中止时，Backend 在通过 task-notification
+   * 触发主 LLM 新 turn 之前，先 emit 此事件让平台层得知。
+   *
+   * 对标 CC：SDK 的 task_notification 事件。
+   */
+  'agent:notification': (sessionId: string, taskId: string, status: string, summary: string) => void;
 }

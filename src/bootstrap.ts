@@ -31,9 +31,10 @@ import { deleteFile } from './tools/internal/delete_file';
 import { createDirectory } from './tools/internal/create_directory';
 import { insertCode } from './tools/internal/insert_code';
 import { deleteCode } from './tools/internal/delete_code';
-import { SubAgentTypeRegistry, buildSubAgentGuidance, createSubAgentTool } from './tools/internal/sub-agent';
+import { SubAgentTypeRegistry, createSubAgentTool } from './tools/internal/sub-agent';
 import { ModeRegistry, DEFAULT_MODE, DEFAULT_MODE_NAME } from './modes';
 import { PromptAssembler } from './prompt/assembler';
+import { AgentTaskRegistry } from './core/agent-task-registry';
 import { createHistorySearchTool } from './tools/internal/history_search';
 import { createReadSkillTool } from './tools/internal/read_skill';
 import { DEFAULT_SYSTEM_PROMPT } from './prompt/templates/default';
@@ -172,6 +173,10 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // ---- 3.5 注册子代理工具 ----
   const subAgentTypes = new SubAgentTypeRegistry();
 
+  // 注册子代理类型（来自 sub_agents.yaml）。
+  // 默认配置（general-purpose / explore）在 data/configs.example/sub_agents.yaml 中定义，
+  // 首次运行时自动拷贝到用户目录，无需代码硬编码 fallback。
+  // 用户可直接编辑 sub_agents.yaml 修改/新增/禁用子代理类型。
   if (config.subAgents?.enabled !== false && config.subAgents?.types) {
     const globalStream = config.subAgents.stream;
     for (const t of config.subAgents.types) {
@@ -207,15 +212,16 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
 
   // ---- 5. 创建 Backend ----
   const hasSubAgents = subAgentTypes.getAll().length > 0;
-  const subAgentGuidance = hasSubAgents ? buildSubAgentGuidance(subAgentTypes) : '';
+  // 判断异步子代理是否启用（需要配置开启 + 存在子代理类型定义）
+  const asyncSubAgentsEnabled = config.system.asyncSubAgents === true && hasSubAgents;
 
+  const agentTaskRegistry = new AgentTaskRegistry();
   const backend = new Backend(router, storage, tools, toolState, prompt, {
     maxToolRounds: config.system.maxToolRounds,
     stream: config.system.stream,
     retryOnError: config.system.retryOnError,
     maxRetries: config.system.maxRetries,
     toolsConfig: config.tools,
-    subAgentGuidance,
     defaultMode,
     currentLLMConfig: router.getCurrentConfig(),
     ocrService,
@@ -224,6 +230,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     skills: config.system.skills,
     configDir,
     rememberPlatformModel: config.llm.rememberPlatformModel,
+    asyncSubAgents: asyncSubAgentsEnabled,
   }, modeRegistry);
 
   // 注册子代理工具（需要 backend 引用；无类型定义时跳过）
@@ -236,6 +243,14 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       tools,
       subAgentTypes,
       maxDepth: config.system.maxAgentDepth,
+      // ---- 异步子代理依赖注入（仅在 asyncSubAgents 启用时提供） ----
+      // 不提供时子代理只能同步运行（向后兼容）。
+      // 对标 CC：AgentTool.tsx 中 registerAsyncAgent / enqueueAgentNotification 的注入方式。
+      ...(asyncSubAgentsEnabled ? {
+        enqueueNotification: (sessionId: string, text: string) => backend.enqueueAgentNotification(sessionId, text),
+        getSessionId: () => backend.getActiveSessionId(),
+        agentTaskRegistry,
+      } : {}),
     }));
   }
 

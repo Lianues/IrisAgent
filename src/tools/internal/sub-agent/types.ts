@@ -27,6 +27,8 @@ export interface SubAgentTypeConfig {
   stream: boolean;
 }
 
+/** 异步子代理是否启用的标志 */
+export type AsyncSubAgentCapability = boolean;
 /** 子代理类型注册表 */
 export class SubAgentTypeRegistry {
   private types = new Map<string, SubAgentTypeConfig>();
@@ -51,27 +53,3 @@ export class SubAgentTypeRegistry {
     return Array.from(this.types.values());
   }
 }
-
-function formatTypeSuffix(type: SubAgentTypeConfig): string {
-  const segments = [type.parallel ? '可并行调度' : '串行调度'];
-  if (type.modelName) {
-    segments.push(`模型名称=${type.modelName}`);
-  }
-  return segments.join('，');
-}
-
-/**
- * 根据注册的类型动态生成协调指导文本，注入系统提示词引导主 LLM 自然委派。
- * 当注册表为空时返回空字符串（不生成任何指导文本）。
- */
-export function buildSubAgentGuidance(registry: SubAgentTypeRegistry): string {
-  const allTypes = registry.getAll();
-  if (allTypes.length === 0) return '';
-
-  const typeList = allTypes
-    .map(t => `- **${t.name}**：${t.description}（${formatTypeSuffix(t)}）`)
-    .join('\n');
-
-  return `\n## 任务委派\n\n你可以使用 sub_agent 工具将子任务委派给专门的子代理。每个子代理拥有独立的上下文和工具，完成后返回结果。\n\n可用的子代理类型：\n${typeList}\n\n使用原则：\n- 简单问题直接回答，不需要子代理\n- 当子任务相对独立时，优先委派给子代理\n- 当需要拆分多个独立子任务时，可以连续调用多个标记为"可并行调度"的子代理类型`;
-}
-

@@ -5,6 +5,9 @@
  * Node/TS 会自动解析到此 index.ts，保持向后兼容。
  */
 
+export { MessageQueue } from '../message-queue';
+export type { QueuedMessage, QueuePriority } from '../message-queue';
+export { TurnLock } from '../turn-lock';
 export { Backend } from './backend';
 
 export type {

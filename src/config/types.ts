@@ -192,6 +192,8 @@ export interface SystemConfig {
   systemPrompt: string;
   maxToolRounds: number;
   stream: boolean;
+  /** 是否启用异步子代理（默认 false），对标 CC 的 fork subagent gate */
+  asyncSubAgents?: boolean;
   /** LLM 调用报错时是否自动重试，默认 true */
   retryOnError: boolean;
   /** 自动重试最大次数，默认 3 */
@@ -281,6 +283,8 @@ export interface SubAgentTypeDef {
   stream: boolean;
   /** 当前类型的 sub_agent 调用是否可按 parallel 工具参与调度，默认 false */
   parallel: boolean;
+  /** 是否默认后台运行（可被调用时的 run_in_background 参数覆盖），默认 false */
+  background?: boolean;
 }
 
 /** 子代理配置（对应 sub_agents.yaml） */

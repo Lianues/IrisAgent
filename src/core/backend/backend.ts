@@ -3,11 +3,19 @@
  *
  * 封装全部业务逻辑，通过公共方法和事件与平台层交互。
  *
- *平台层调用 Backend 的方法（chat / clearSession / listSessionMetas 等），
+ * 平台层调用 Backend 的方法（chat / clearSession / listSessionMetas 等），
  * Backend 通过事件（response / stream:start / stream:chunk / stream:end / tool:update）
  * 将结果推送给平台层。
  *
  * Backend 不知道任何平台的存在。
+ *
+ * 队列化改造说明（对标 Claude Code 的 messageQueueManager + QueryGuard）：
+ *   - chat() 从"直接执行 turn"改为"用户消息入队"
+ *   - 所有消息源（用户输入、异步子代理通知）统一通过 MessageQueue 入队
+ *   - drainQueue() 按优先级逐条取出消息，通过 TurnLock 防止同 session 并发
+ *   - executeTurn() 包装原有 handleMessage() 逻辑，在 finally 中释放锁并触发下一轮排空
+ *   - 用户消息 priority='user'（高），子代理通知 priority='notification'（低）
+ *   - 保证用户输入永远优先于后台通知被处理
  */
 
 import { EventEmitter } from 'events';
@@ -37,6 +45,9 @@ import { extractText, isTextPart, isInlineDataPart } from '../../types';
 import type { Content, Part, UsageMetadata, ToolInvocation } from '../../types';
 import { summarizeHistory } from '../summarizer';
 import { resetConfigToDefaults as doResetConfigToDefaults } from '../../config/index';
+import { MessageQueue } from '../message-queue';
+import type { QueuedMessage } from '../message-queue';
+import { TurnLock } from '../turn-lock';
 
 import type { BackendConfig, ImageInput, DocumentInput, UndoScope, UndoOperationResult, RedoOperationResult } from './types';
 import { buildStoredUserParts } from './media';
@@ -59,7 +70,6 @@ export class Backend extends EventEmitter {
   private tools: ToolRegistry;
   private prompt: PromptAssembler;
   private stream: boolean;
-  private subAgentGuidance?: string;
   private modeRegistry?: ModeRegistry;
   private defaultMode?: string;
   private currentLLMConfig?: LLMConfig;
@@ -92,13 +102,43 @@ export class Backend extends EventEmitter {
    */
   private _onSkillsChanged?: () => void;
 
+  // ============ 队列化新增成员（对标 CC messageQueueManager + QueryGuard） ============
+
+  /**
+   * 统一消息队列。
+   * 所有消息源（用户输入、异步子代理通知）统一入队，
+   * 由 drainQueue() 按优先级逐条取出处理。
+   * 对标 CC 的 messageQueueManager.ts 中的 commandQueue。
+   */
+  private messageQueue: MessageQueue;
+
+  /**
+   * Per-session turn 锁。
+   * 防止同一 session 并发执行多个 turn。
+   * 不同 session 之间互不影响，可以并行。
+   * 对标 CC 的 QueryGuard。
+   */
+  private turnLock: TurnLock;
+
+  /**
+   * drainQueue 重入守卫。
+   *
+   * EventEmitter.emit() 同步调用监听器。如果 drainQueue 内部操作
+   * 触发了 'enqueued' 或 'released' 事件，监听器会同步递归调用
+   * drainQueue，导致无限递归直至栈溢出。
+   *
+   * 此标志防止重入：正在 drain 时，新的触发被安全忽略——
+   * 消息已在队列中不会丢失，当前循环或下一次非递归触发会处理它。
+   */
+  private _draining = false;
+
   constructor(
     router: LLMRouter,
     storage: StorageProvider,
     tools: ToolRegistry,
     toolState: ToolStateManager,
     prompt: PromptAssembler,
-    config?:BackendConfig,
+    config?: BackendConfig,
     modeRegistry?: ModeRegistry,
   ) {
     super();
@@ -108,7 +148,6 @@ export class Backend extends EventEmitter {
     this.toolState = toolState;
     this.prompt = prompt;
     this.stream = config?.stream ?? false;
-    this.subAgentGuidance = config?.subAgentGuidance;
     this.modeRegistry = modeRegistry;
     this.defaultMode = config?.defaultMode;
     this.currentLLMConfig = config?.currentLLMConfig;
@@ -118,7 +157,6 @@ export class Backend extends EventEmitter {
 
     this.configDir = config?.configDir;
     this.rememberPlatformModel = config?.rememberPlatformModel ?? true;
-    // 初始化 Skill 定义列表。Skill 内容改为通过 read_skill 工具按需读取，不再维护启用状态。
     if (config?.skills) {
       this.skills = config.skills;
     }
@@ -133,6 +171,18 @@ export class Backend extends EventEmitter {
 
     // 转发工具状态事件
     this.setupToolStateForwarding();
+
+    // ---- 队列化初始化 ----
+    // 创建消息队列和 turn 锁，并监听事件以实现自动调度。
+    // 对标 CC：React useQueueProcessor hook 监听 queueSnapshot + isQueryActive 变化。
+    // Iris 用 EventEmitter 替代 React 的响应式系统，效果等价。
+    this.messageQueue = new MessageQueue();
+    this.turnLock = new TurnLock();
+
+    // 消息入队后自动尝试排空队列
+    this.messageQueue.on('enqueued', () => this.drainQueue());
+    // turn 结束释放锁后，再检查队列是否有待处理消息（如异步子代理通知）
+    this.turnLock.on('released', () => this.drainQueue());
   }
 
   // ============ 公共 API（平台层调用） ============
@@ -147,44 +197,74 @@ export class Backend extends EventEmitter {
     this.toolLoopConfig.afterLLMCall = hookConfig.afterLLMCall;
   }
 
-  /** 发送消息，触发完整的 LLM + 工具循环 */
+  /**
+   * 发送消息。
+   *
+   * 改造说明：
+   *   改造前——直接调用 handleMessage()，阻塞到 turn 结束。
+   *   改造后——执行插件钩子后将消息入队，drainQueue() 自动调度执行。
+   *   返回的 Promise 在该消息对应的 turn 完成后 resolve（通过监听 done 事件），
+   *   因此 await chat() 的行为与改造前一致——等到 turn 结束才返回。
+   *   这保证了所有平台层的 await backend.chat() 调用无需修改。
+   *
+   * 对标 CC：handlePromptSubmit() 中 queryGuard.isActive 时走 enqueue() 路径。
+   */
   async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[], platformName?: string): Promise<void> {
-    const startTime = Date.now();
-    const abortController = new AbortController();
-    this.activeAbortControllers.set(sessionId, abortController);
-
-    try {
-      // 插件钩子: onBeforeChat（可修改用户消息文本）
-      for (const hook of this.pluginHooks) {
-        try {
-          const hookResult = await hook.onBeforeChat?.({ sessionId, text });
-          if (hookResult) text = hookResult.text;
-        } catch (err) {
-          logger.warn(`插件钩子 "${hook.name}" onBeforeChat 执行失败:`, err);
-        }
+    // 插件钩子: onBeforeChat（可修改用户消息文本）
+    // 注意：钩子在入队前执行，确保修改后的文本被队列存储。
+    for (const hook of this.pluginHooks) {
+      try {
+        const hookResult = await hook.onBeforeChat?.({ sessionId, text });
+        if (hookResult) text = hookResult.text;
+      } catch (err) {
+        logger.warn(`插件钩子 "${hook.name}" onBeforeChat 执行失败:`, err);
       }
-
-      const storedUserParts = await buildStoredUserParts(text, images, documents, {
-        currentLLMConfig: this.currentLLMConfig,
-        ocrService: this.ocrService,
-      });
-      const llmUserParts = preparePartsForLLM(storedUserParts, this.currentLLMConfig);
-      await sessionContext.run(sessionId, () =>
-        this.handleMessage(sessionId, storedUserParts, llmUserParts, abortController.signal, platformName)
-      );
-    } catch (err) {
-      // 区分用户主动 abort 和其他错误
-      if (abortController.signal.aborted) {
-        logger.info(`chat 已被中止 (session=${sessionId})`);
-      } else {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        logger.error(`处理消息失败 (session=${sessionId}):`, err);
-        this.emit('error', sessionId, errorMsg);
-      }
-      this.emit('done', sessionId, Date.now() - startTime);
-    } finally {
-      this.activeAbortControllers.delete(sessionId);
     }
+
+    // 将用户消息入队（高优先级）。
+    // drainQueue() 会被 'enqueued' 事件自动触发。
+    const turnId = this.messageQueue.enqueueUser({
+      sessionId,
+      text,
+      images,
+      documents,
+      platformName,
+    });
+
+    // 返回一个 Promise，在本条消息对应的 turn 完成后 resolve。
+    //
+    // 用 turnId（而非 sessionId）配对 done 事件，避免同一 session 上
+    // 其他 turn（如异步子代理 notification turn）的 done 事件将本
+    // Promise 错误 resolve。
+    //
+    // 对标搜索结论：Stack Overflow jfriend00 方案——事件携带唯一 payload ID，
+    // 监听器比对后才 resolve，确保 Promise 与事件精确配对。
+    return new Promise<void>((resolve) => {
+      const onDone = (_sid: string, _dur: number, doneTurnId?: string) => {
+        if (doneTurnId !== turnId) return;
+        this.removeListener('done', onDone);
+        resolve();
+      };
+      this.on('done', onDone);
+    });
+  }
+
+  /**
+   * 异步子代理通知入队。
+   *
+   * 供异步子代理完成后调用（通过 bootstrap 注入到 sub_agent 工具的依赖中）。
+   * 通知以低优先级入队，保证用户输入永远先被处理。
+   *
+   * 对标 CC：enqueuePendingNotification() + enqueueAgentNotification()。
+   *
+   * @param sessionId 通知所属的会话 ID
+   * @param notificationText task-notification XML 文本
+   */
+  enqueueAgentNotification(sessionId: string, notificationText: string): void {
+    this.messageQueue.enqueueNotification({
+      sessionId,
+      text: notificationText,
+    });
   }
 
   /**
@@ -203,6 +283,10 @@ export class Backend extends EventEmitter {
     await this.storage.clearHistory(sessionId);
     this.undoRedo.clearRedo(sessionId);
     this.lastSessionTokens.delete(sessionId);
+    // 清空该会话在队列中的残留消息（如未处理的异步子代理通知）
+    this.messageQueue.clearSession(sessionId);
+    // 清除该会话的 turn 锁记录
+    this.turnLock.clear(sessionId);
 
     for (const hook of this.pluginHooks) {
       try {
@@ -285,15 +369,11 @@ export class Backend extends EventEmitter {
     return summaryText;
   }
 
-  /** 清空指定会话的 redo 栈。任何新的写入都应使 redo 失效。 */
+  /** 清空指定会话的 redo 栈 */
   clearRedo(sessionId: string): void {
     this.undoRedo.clearRedo(sessionId);
   }
 
-  /**
-   * 统一 undo：由 Backend 决定本次应删除哪一组 Content，
-   * 并将其压入 redo 栈。平台层只消费返回结果并处理 UI。
-   */
   async undo(sessionId: string, scope: UndoScope = 'last-turn'): Promise<UndoOperationResult | null> {
     const history = await this.storage.getHistory(sessionId);
     const range = this.undoRedo.resolveUndoRange(history, scope);
@@ -313,9 +393,6 @@ export class Backend extends EventEmitter {
     };
   }
 
-  /**
-   * 统一 redo：恢复最近一次 undo 删除的一组 Content。
-   */
   async redo(sessionId: string): Promise<RedoOperationResult | null> {
     const restored = this.undoRedo.popRedoGroup(sessionId);
     if (!restored) return null;
@@ -333,9 +410,6 @@ export class Backend extends EventEmitter {
     };
   }
 
-  /**
-   * 添加消息到会话历史。
-   */
   async addMessage(sessionId: string, content: Content, options?: { clearRedo?: boolean }): Promise<void> {
     if (options?.clearRedo !== false) {
       this.undoRedo.clearRedo(sessionId);
@@ -343,8 +417,6 @@ export class Backend extends EventEmitter {
     await this.storage.addMessage(sessionId, content);
   }
 
-
-  /** 切换工作目录 */
   setCwd(dirPath: string): void {
     const resolved = path.resolve(process.cwd(), dirPath);
     if (!fs.existsSync(resolved)) {
@@ -358,14 +430,10 @@ export class Backend extends EventEmitter {
     logger.info(`工作目录已切换: ${resolved}`);
   }
 
-  /** 获取当前工作目录 */
   getCwd(): string {
     return process.cwd();
   }
 
-  /**
-   * 执行命令
-   */
   runCommand(cmd: string): { output: string; cwd: string } {
     const trimmed = cmd.trim();
 
@@ -373,7 +441,7 @@ export class Backend extends EventEmitter {
     if (cdMatch) {
       const target = cdMatch[1].trim().replace(/^["']|["']$/g, '');
       this.setCwd(target);
-      return { output: `已切换到: ${process.cwd()}`, cwd:process.cwd() };
+      return { output: `已切换到: ${process.cwd()}`, cwd: process.cwd() };
     }
 
     const result = spawnSync(trimmed, {
@@ -394,55 +462,54 @@ export class Backend extends EventEmitter {
     return { output: combined, cwd: process.cwd() };
   }
 
-
-  /** 获取所有工具名称（含已禁用的，供 Web API 状态展示） */
   getToolNames(): string[] {
     return this.tools.getDeclarations().map(d => d.name);
   }
 
-  /** 获取被禁用的工具名称列表 */
   getDisabledTools(): string[] {
     return this.toolLoopConfig.toolsConfig.disabledTools ?? [];
   }
 
-  /** 获取工具注册表引用 */
   getTools(): ToolRegistry {
     return this.tools;
   }
 
-  /** 获取存储引用 */
   getStorage(): StorageProvider {
     return this.storage;
   }
 
-  /** 获取路由器引用 */
   getRouter(): LLMRouter {
     return this.router;
   }
 
-  /** 获取提示词组装器引用 */
   getPrompt(): PromptAssembler {
     return this.prompt;
   }
 
-  /** 获取当前活跃的 sessionId（通过 AsyncLocalStorage 从当前异步上下文读取） */
   getActiveSessionId(): string | undefined {
     return sessionContext.getStore();
   }
 
-  /** 获取模式注册表引用 */
   getModeRegistry(): ModeRegistry | undefined {
     return this.modeRegistry;
   }
 
+  /** 获取消息队列引用（供外部查询队列状态） */
+  getMessageQueue(): MessageQueue {
+    return this.messageQueue;
+  }
+
+  /** 获取 turn 锁引用（供外部查询 turn 状态） */
+  getTurnLock(): TurnLock {
+    return this.turnLock;
+  }
+
   // ============ Skill 管理 ============
 
-  /** 注册 Skill 列表变化回调 */
   setOnSkillsChanged(callback: () => void): void {
     this._onSkillsChanged = callback;
   }
 
-  /** 列出所有已定义的 Skill 摘要 */
   listSkills(): { name: string; path: string; description?: string }[] {
     return this.skills.map(s => ({
       name: s.name,
@@ -451,14 +518,10 @@ export class Backend extends EventEmitter {
     }));
   }
 
-  /** 按 path 标识查找 Skill */
   getSkillByPath(skillPath: string): SkillDefinition | undefined {
     return this.skills.find(s => s.path === skillPath);
   }
 
-  /**
-   * 从文件系统重新扫描 Skill 并合并内联定义，更新内存中的 Skill 列表。
-   */
   reloadSkillsFromFilesystem(dataDir: string, inlineSkills?: SkillDefinition[]): void {
     const fsSkills: SkillDefinition[] = loadSkillsFromFilesystem(dataDir);
 
@@ -483,7 +546,6 @@ export class Backend extends EventEmitter {
 
   // ============ Mode 管理 ============
 
-  /** 列出所有已注册的 Mode */
   listModes(): { name: string; description?: string; current: boolean }[] {
     if (!this.modeRegistry) return [];
     return this.modeRegistry.getAll().map(m => ({
@@ -493,7 +555,6 @@ export class Backend extends EventEmitter {
     }));
   }
 
-  /** 切换当前 Mode */
   switchMode(name: string): boolean {
     if (!this.modeRegistry) return false;
     const mode = this.modeRegistry.get(name);
@@ -503,27 +564,22 @@ export class Backend extends EventEmitter {
     return true;
   }
 
-  /** 获取当前 Mode 名称 */
   getCurrentMode(): string | undefined {
     return this.defaultMode;
   }
 
-  /** 获取当前活动模型名称 */
   getCurrentModelName(): string {
     return this.router.getCurrentModelName();
   }
 
-  /** 获取当前活动模型信息 */
   getCurrentModelInfo() {
     return this.router.getCurrentModelInfo();
   }
 
-  /** 列出所有可用模型 */
   listModels() {
     return this.router.listModels();
   }
 
-  /** 切换当前活动模型 */
   switchModel(modelName: string, platformName?: string) {
     const info = this.router.setCurrentModel(modelName);
     this.currentLLMConfig = this.router.getCurrentConfig();
@@ -540,19 +596,14 @@ export class Backend extends EventEmitter {
     return info;
   }
 
-  /** 获取工具状态管理器 */
   getToolState(): ToolStateManager {
     return this.toolState;
   }
 
-  /** 获取当前工具执行策略 */
   getToolPolicies(): Record<string, ToolPolicyConfig> {
     return this.toolLoopConfig.toolsConfig.permissions;
   }
 
-  /**
-   * 批准或拒绝一个处于 awaiting_approval 状态的工具调用。
-   */
   approveTool(toolId: string, approved: boolean): void {
     if (approved) {
       this.toolState.transition(toolId, 'executing');
@@ -561,9 +612,6 @@ export class Backend extends EventEmitter {
     }
   }
 
-  /**
-   * 在 diff 预览中确认或拒绝执行（二类审批）。
-   */
   applyTool(toolId: string, applied: boolean): void {
     if (applied) {
       this.toolState.transition(toolId, 'executing');
@@ -572,14 +620,12 @@ export class Backend extends EventEmitter {
     }
   }
 
-  /** 获取流式设置 */
   isStreamEnabled(): boolean {
     return this.stream;
   }
 
   // ============ 热重载 ============
 
-  /** 热重载：替换 LLM 路由器 */
   reloadLLM(newRouter: LLMRouter): void {
     this.router = newRouter;
     const modelsDesc = newRouter.listModels()
@@ -588,7 +634,6 @@ export class Backend extends EventEmitter {
     logger.info(`LLM 已热重载: [${modelsDesc}]`);
   }
 
-  /** 热重载：更新运行时参数 */
   reloadConfig(opts: {
     stream?: boolean;
     maxToolRounds?: number;
@@ -615,16 +660,105 @@ export class Backend extends EventEmitter {
     logger.info(`配置已热重载: stream=${this.stream} maxToolRounds=${this.toolLoopConfig.maxRounds} toolPolicies=${Object.keys(this.toolLoopConfig.toolsConfig.permissions).length}`);
   }
 
-  /** 重置配置文件为默认值 */
   resetConfigToDefaults(): { success: boolean; message: string } {
     return doResetConfigToDefaults();
   }
 
-  // ============ 核心流程 ============
+  // ============ 队列调度（对标 CC queueProcessor + useQueueProcessor） ============
 
   /**
-   * 根据当前模型配置解析自动总结阈值（绝对 token 数）。
+   * 自动排空消息队列。
+   *
+   * 遍历队列，对每条消息检查其 session 是否有活跃 turn：
+   *   - 无活跃 turn → 获取锁，fire-and-forget 启动 executeTurn()
+   *   - 有活跃 turn → 消息留在队列，记入 busySessions 使后续
+   *     dequeue 自动跳过，避免反复取出同一 session 的消息
+   *
+   * 重入保护：
+   *   EventEmitter.emit() 同步调用监听器。drainQueue 由 'enqueued'
+   *   和 'released' 事件触发，如果内部操作再次 emit 这些事件，会形成
+   *   同步递归。_draining 标志阻止重入——消息已在队列中不会丢失，
+   *   当前循环会处理它，或 turn 结束后的 'released' 事件触发新一轮 drain。
+   *
+   * 对标 CC：useQueueProcessor.ts 中的 useEffect + processQueueIfReady()。
+   * CC 用 React 渲染周期做天然节流，Iris 用 _draining 标志做等价保护。
    */
+  private drainQueue(): void {
+    if (this._draining) return;
+    this._draining = true;
+    try {
+      // 记录本轮已确认为忙碌的 session。
+      // dequeue 会跳过这些 session，直接取其他 session 的消息，
+      // 避免反复取出→放回同一 session 的消息造成空转。
+      const busySessions = new Set<string>();
+
+      while (true) {
+        const msg = this.messageQueue.dequeue(undefined, busySessions);
+        if (!msg) break;
+
+        if (!this.turnLock.tryAcquire(msg.sessionId)) {
+          // 该 session 正在执行 turn。
+          // 用 requeue 放回（不触发 emit、不覆盖时间戳），
+          // 消息等 turn 结束后 'released' 事件触发新一轮 drain 处理。
+          this.messageQueue.requeue(msg);
+          busySessions.add(msg.sessionId);
+          continue;
+        }
+
+        // fire-and-forget 启动 turn。
+        // executeTurn 的 finally 释放 turnLock → emit 'released' → 触发 drainQueue。
+        void this.executeTurn(msg);
+      }
+    } finally {
+      this._draining = false;
+    }
+  }
+
+  /**
+   * 执行一个 turn（从队列取出的消息到 LLM 响应完成）。
+   *
+   * 包装原有 handleMessage() 逻辑，在 finally 中释放 turn 锁。
+   * 锁释放后 turnLock emit 'released' 事件，触发 drainQueue()
+   * 检查该 session 是否有更多待处理消息。
+   *
+   * 对标 CC：executeUserInput() + handlePromptSubmit() 的核心执行路径。
+   */
+  private async executeTurn(msg: QueuedMessage): Promise<void> {
+    const startTime = Date.now();
+    const abortController = new AbortController();
+    this.activeAbortControllers.set(msg.sessionId, abortController);
+
+    try {
+      if (msg.mode === 'task-notification') {
+        // ---- task-notification 路径（异步子代理完成通知） ----
+        // 不走用户消息的完整流程，直接以 user-role message 注入 LLM 对话历史。
+        await sessionContext.run(msg.sessionId, () =>
+          this.handleNotificationTurn(msg.sessionId, msg.text, msg.turnId, abortController.signal)
+        );
+      } else {
+        // ---- 普通用户消息路径 ----
+        await sessionContext.run(msg.sessionId, () =>
+          this.handleMessage(msg.sessionId, msg.text, msg.turnId, abortController.signal, msg.images, msg.documents, msg.platformName)
+        );
+      }
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        logger.info(`turn 已被中止 (session=${msg.sessionId})`);
+      } else {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logger.error(`turn 执行失败 (session=${msg.sessionId}):`, err);
+        this.emit('error', msg.sessionId, errorMsg);
+      }
+      this.emit('done', msg.sessionId, Date.now() - startTime, msg.turnId);
+    } finally {
+      this.activeAbortControllers.delete(msg.sessionId);
+      // 释放 turn 锁 -> turnLock emit 'released' -> 触发 drainQueue()
+      this.turnLock.release(msg.sessionId);
+    }
+  }
+
+  // ============ 核心流程 ============
+
   private getAutoSummaryThreshold(): number | undefined {
     const config = this.currentLLMConfig;
     if (!config?.autoSummaryThreshold) return undefined;
@@ -644,16 +778,61 @@ export class Backend extends EventEmitter {
     return undefined;
   }
 
-  private async handleMessage(sessionId: string, storedUserParts: Part[], llmUserParts: Part[], signal?: AbortSignal, platformName?: string): Promise<void> {
-    const startTime = Date.now();
+  /**
+   * 处理 task-notification 消息（异步子代理完成通知）的精简路径。
+   *
+   * 跳过用户消息专有步骤（sanitize、auto-compact、undo/redo、token 统计、
+   * meta 更新、插件钩子），直接以 user-role Content 注入 LLM 历史触发 ToolLoop。
+   *
+   * 对标 CC：print.ts 中 TASK_NOTIFICATION_TAG 的处理。
+   */
+  private async handleNotificationTurn(sessionId: string, notificationText: string, turnId: string, signal?: AbortSignal): Promise<void> {
+    this.toolState.clearSession(sessionId);
 
+    const storedHistory = await this.storage.getHistory(sessionId);
+    const history = prepareHistoryForLLM(storedHistory, this.currentLLMConfig);
+
+    // 将通知作为 user-role message 加入历史并持久化（不占用 undo 栈、不计 token）。
+    // 在原始 XML 前追加引导前缀，告诉主 LLM 这不是用户说的话，而是后台任务完成的通知。
+    // 对标 CC：messages.ts 的 wrapCommandText()，
+    //   case 'task-notification': return `A background agent completed a task:\n${raw}`
+    const wrappedText = `后台子代理完成了一个任务：\n${notificationText}`;
+    const notificationContent: Content = {
+      role: 'user',
+      parts: [{ text: wrappedText }],
+      createdAt: Date.now(),
+    };
+    history.push(notificationContent);
+    await this.storage.addMessage(sessionId, notificationContent);
+
+    // 委托公共核心执行 ToolLoop + 结果处理
+    await this.runTurnCore({
+      sessionId,
+      turnId,
+      history,
+      signal,
+      // notification 路径跳过所有用户消息专有后置步骤
+      updateMeta: false,
+      runAfterChatHooks: false,
+      postCompact: false,
+    });
+  }
+
+  private async handleMessage(sessionId: string, text: string, turnId: string, signal?: AbortSignal, images?: ImageInput[], documents?: DocumentInput[], platformName?: string): Promise<void> {
     // 清除本会话上一轮残留的工具调用记录
     this.toolState.clearSession(sessionId);
+
+    // 构建用户消息 parts（处理图片/文档/OCR）
+    const storedUserParts = await buildStoredUserParts(text, images, documents, {
+      currentLLMConfig: this.currentLLMConfig,
+      ocrService: this.ocrService,
+    });
+    const llmUserParts = preparePartsForLLM(storedUserParts, this.currentLLMConfig);
 
     // 1. 加载历史并追加用户消息
     let storedHistory = await this.storage.getHistory(sessionId);
 
-    // 1.1 兜底清理
+    // 1.1 历史兜底清理（notification 路径不需要——通知消息结构简单不会产生异常历史）
     const beforeSanitize = storedHistory.length;
     const sanitizeAppended = sanitizeHistory(storedHistory);
     const keptFromOriginal = storedHistory.length - sanitizeAppended.length;
@@ -664,10 +843,10 @@ export class Backend extends EventEmitter {
       for (const msg of sanitizeAppended) {
         await this.storage.addMessage(sessionId, msg);
       }
-      logger.info(`历史兜底清理: session=${sessionId}, ${beforeSanitize} → ${storedHistory.length} 条`);
+      logger.info(`历史兜底清理: session=${sessionId}, ${beforeSanitize} -> ${storedHistory.length} 条`);
     }
 
-    // 1.2 自动上下文压缩（pre-message）
+    // 1.2 自动上下文压缩（pre-message，notification 路径不需要）
     const autoThreshold = this.getAutoSummaryThreshold();
     if (autoThreshold && storedHistory.length > 0) {
       const lastTokens = this.lastSessionTokens.get(sessionId) ?? 0;
@@ -688,58 +867,10 @@ export class Backend extends EventEmitter {
 
     const history = prepareHistoryForLLM(storedHistory, this.currentLLMConfig);
     const isNewSession = storedHistory.length === 0;
-    const userText = extractText(llmUserParts);
 
     history.push({ role: 'user', parts: llmUserParts });
 
-    // 2. 构建 per-request 额外上下文
-    let extraParts: Part[] | undefined;
-
-    if (this.subAgentGuidance) {
-      if (!extraParts) extraParts = [];
-      extraParts.push({ text: this.subAgentGuidance });
-    }
-
-    const mode = this.resolveMode();
-    if (mode?.systemPrompt) {
-      if (!extraParts) extraParts = [];
-      extraParts.unshift({ text: mode.systemPrompt });
-    }
-
-    // 3. 构建 LLM 调用函数
-    let lastCallTotalTokens = 0;
-    const callLLM: LLMCaller = async (request, modelName, callSignal) => {
-      let content: Content;
-      if (this.stream) {
-        content = await callLLMStream(this.router, this, sessionId, request, modelName, callSignal);
-        if (content.usageMetadata?.totalTokenCount) lastCallTotalTokens = content.usageMetadata.totalTokenCount;
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-      } else {
-        const response = await this.router.chat(request, modelName, callSignal);
-        content = response.content;
-        content.modelName = modelName || this.router.getCurrentModelName();
-        content.createdAt = Date.now();
-        if (response.usageMetadata) {
-          content.usageMetadata = response.usageMetadata;
-          this.emit('usage', sessionId, response.usageMetadata);
-          if (response.usageMetadata.totalTokenCount) lastCallTotalTokens = response.usageMetadata.totalTokenCount;
-        }
-      }
-      return content;
-    };
-
-    // 4. 解析模式工具过滤 + 全局禁用工具
-    let requestTools = mode?.tools ? applyToolFilter(mode, this.tools) : this.tools;
-    const disabled = this.toolLoopConfig.toolsConfig.disabledTools;
-    if (disabled && disabled.length > 0) {
-      requestTools = requestTools.createFiltered(disabled);
-    }
-
-    let loop = this.toolLoop;
-    if (mode?.tools || (disabled && disabled.length > 0)) {
-      loop = new ToolLoop(requestTools, this.prompt, this.toolLoopConfig, this.toolState);
-    }
-    // 5. 新用户消息会让 redo 失效
+    // 2. 新用户消息会让 redo 失效
     this.undoRedo.clearRedo(sessionId);
     const userTextForTokens = extractText(storedUserParts);
     const estimatedUserTokens = userTextForTokens ? estimateTokenCount(userTextForTokens) : 0;
@@ -762,14 +893,101 @@ export class Backend extends EventEmitter {
     if (estimatedUserTokens > 0) this.emit('user:token', sessionId, estimatedUserTokens);
     this.lastSessionTokens.set(sessionId, (this.lastSessionTokens.get(sessionId) ?? 0) + estimatedUserTokens);
 
-    // 6. 执行工具循环
+    // 3. 委托公共核心执行 ToolLoop + 结果处理
+    await this.runTurnCore({
+      sessionId,
+      turnId,
+      history,
+      signal,
+      // 用户消息路径的后置步骤全部启用
+      updateMeta: true,
+      runAfterChatHooks: true,
+      postCompact: true,
+      storedUserParts,
+      platformName,
+    });
+  }
+
+  // ============ Turn 公共核心（提取自 handleMessage/handleNotificationTurn 的重复代码） ============
+
+  /**
+   * Turn 核心执行逻辑：构建 callLLM → 创建 ToolLoop → 运行 → 处理结果。
+   *
+   * handleMessage 和 handleNotificationTurn 在前置准备（历史加载、sanitize、
+   * auto-compact、undo/redo、token 统计）和后置处理（meta 更新、插件钩子、
+   * post-compact）上存在差异，但中间的 LLM 调用 + ToolLoop + 结果处理完全相同。
+   *
+   * 提取此方法消除约 80 行重复代码，差异通过 options 对象控制。
+   * 对标业界 Options Object 模式（避免为同一类内部的路径差异引入继承）。
+   */
+  private async runTurnCore(options: {
+    sessionId: string;
+    turnId: string;
+    history: Content[];
+    signal?: AbortSignal;
+    /** 是否在 turn 结束后更新 session 元数据（handleMessage: true, notification: false） */
+    updateMeta: boolean;
+    /** 是否执行 onAfterChat 插件钩子（handleMessage: true, notification: false） */
+    runAfterChatHooks: boolean;
+    /** 是否在 turn 结束后检查 post-response auto-compact（handleMessage: true, notification: false） */
+    postCompact: boolean;
+    /** 用户消息 parts（仅 handleMessage 路径提供，用于 meta 更新） */
+    storedUserParts?: Part[];
+    /** 平台名称（仅 handleMessage 路径提供，用于 meta 更新） */
+    platformName?: string;
+  }): Promise<void> {
+    const { sessionId, turnId, history, signal } = options;
+    const startTime = Date.now();
+
+    // 1. 构建 per-request 额外上下文（模式系统提示词）
+    let extraParts: Part[] | undefined;
+    const mode = this.resolveMode();
+    if (mode?.systemPrompt) {
+      if (!extraParts) extraParts = [];
+      extraParts.unshift({ text: mode.systemPrompt });
+    }
+
+    // 2. 构建 LLM 调用函数
+    let lastCallTotalTokens = 0;
+    const callLLM: LLMCaller = async (request, modelName, callSignal) => {
+      let content: Content;
+      if (this.stream) {
+        content = await callLLMStream(this.router, this, sessionId, request, modelName, callSignal);
+        if (content.usageMetadata?.totalTokenCount) lastCallTotalTokens = content.usageMetadata.totalTokenCount;
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      } else {
+        const response = await this.router.chat(request, modelName, callSignal);
+        content = response.content;
+        content.modelName = modelName || this.router.getCurrentModelName();
+        content.createdAt = Date.now();
+        if (response.usageMetadata) {
+          content.usageMetadata = response.usageMetadata;
+          this.emit('usage', sessionId, response.usageMetadata);
+          if (response.usageMetadata.totalTokenCount) lastCallTotalTokens = response.usageMetadata.totalTokenCount;
+        }
+      }
+      return content;
+    };
+
+    // 3. 解析模式工具过滤 + 全局禁用工具
+    let requestTools = mode?.tools ? applyToolFilter(mode, this.tools) : this.tools;
+    const disabled = this.toolLoopConfig.toolsConfig.disabledTools;
+    if (disabled && disabled.length > 0) {
+      requestTools = requestTools.createFiltered(disabled);
+    }
+
+    let loop = this.toolLoop;
+    if (mode?.tools || (disabled && disabled.length > 0)) {
+      loop = new ToolLoop(requestTools, this.prompt, this.toolLoopConfig, this.toolState);
+    }
+
+    // 4. 执行工具循环
     const result = await loop.run(history, callLLM, {
       sessionId,
       extraParts,
       onMessageAppend: (content) => this.storage.addMessage(sessionId, content),
       onModelContent: (content) => { this.emit('assistant:content', sessionId, content); },
       onAttachments: (attachments) => {
-        logger.info(`[handleMessage] onAttachments 回调触发: sessionId=${sessionId}, count=${attachments.length}, types=${attachments.map(a => `${a.type}(${a.data.length}B)`).join(',')}`);
         this.emit('attachments', sessionId, attachments);
       },
       signal,
@@ -778,21 +996,21 @@ export class Backend extends EventEmitter {
       },
     });
 
-    // 6.1. 如果被 abort，提前退出
+    // 5. 处理 abort
     if (result.aborted) {
       await this.storage.truncateHistory(sessionId, result.history.length);
-      this.emit('done', sessionId, Date.now() - startTime);
+      this.emit('done', sessionId, Date.now() - startTime, turnId);
       return;
     }
 
-    // 6.2. 如果工具循环返回了错误
+    // 6. 处理错误
     if (result.error) {
       this.emit('error', sessionId, result.error);
-      this.emit('done', sessionId, Date.now() - startTime);
+      this.emit('done', sessionId, Date.now() - startTime, turnId);
       return;
     }
 
-    // 6.5. 补 fallback model 消息
+    // 7. 补 fallback model 消息
     const hasFinalModelMessage = result.history[result.history.length - 1]?.role === 'model';
     let appendedFallbackModel = false;
     if (!hasFinalModelMessage && result.text) {
@@ -807,7 +1025,7 @@ export class Backend extends EventEmitter {
       appendedFallbackModel = true;
     }
 
-    // 7. 将耗时写入最后一条 model 消息
+    // 8. 将耗时写入最后一条 model 消息
     const durationMs = Date.now() - startTime;
     for (let i = result.history.length - 1; i >= 0; i--) {
       if (result.history[i].role === 'model') {
@@ -822,12 +1040,14 @@ export class Backend extends EventEmitter {
       return content;
     });
 
-    // 8. 管理会话元数据
-    await this.updateSessionMeta(sessionId, storedUserParts, false, platformName);
+    // 9. 条件后置步骤：更新会话元数据（仅用户消息路径）
+    if (options.updateMeta && options.storedUserParts) {
+      await this.updateSessionMeta(sessionId, options.storedUserParts, false, options.platformName);
+    }
 
-    // 9. 插件钩子: onAfterChat
+    // 10. 条件后置步骤：插件 onAfterChat 钩子（仅用户消息路径）
     let finalText = result.text;
-    if (finalText) {
+    if (options.runAfterChatHooks && finalText) {
       for (const hook of this.pluginHooks) {
         try {
           const hookResult = await hook.onAfterChat?.({ sessionId, content: finalText });
@@ -838,23 +1058,28 @@ export class Backend extends EventEmitter {
       }
     }
 
-    // 10. 非流式模式：发送最终文本
+    // 11. 非流式模式：发送最终文本
     if ((!this.stream || appendedFallbackModel) && finalText) {
       this.emit('response', sessionId, finalText);
     }
-    this.emit('done', sessionId, durationMs);
+    this.emit('done', sessionId, durationMs, turnId);
 
-    // 11. 更新 session token 追踪
+    // 12. 更新 session token 追踪
     if (lastCallTotalTokens > 0) {
       this.lastSessionTokens.set(sessionId, lastCallTotalTokens);
     }
-    if (autoThreshold && lastCallTotalTokens > autoThreshold) {
-      logger.info(`Auto-compact (post-response): ${lastCallTotalTokens} > ${autoThreshold}`);
-      try {
-        const summaryText = await this.summarize(sessionId);
-        this.emit('auto-compact', sessionId, summaryText);
-      } catch (err) {
-        logger.warn('Auto-compact (post-response) failed:', err);
+
+    // 13. 条件后置步骤：post-response auto-compact（仅用户消息路径）
+    if (options.postCompact) {
+      const autoThreshold = this.getAutoSummaryThreshold();
+      if (autoThreshold && lastCallTotalTokens > autoThreshold) {
+        logger.info(`Auto-compact (post-response): ${lastCallTotalTokens} > ${autoThreshold}`);
+        try {
+          const summaryText = await this.summarize(sessionId);
+          this.emit('auto-compact', sessionId, summaryText);
+        } catch (err) {
+          logger.warn('Auto-compact (post-response) failed:', err);
+        }
       }
     }
   }

@@ -63,6 +63,7 @@ export function parseSubAgentsConfig(raw: any): SubAgentsConfig | undefined {
       maxToolRounds: typeof cfg.maxToolRounds === 'number' && cfg.maxToolRounds > 0
         ? cfg.maxToolRounds
         : 200,
+      background: cfg.background === true,
       stream: cfg.stream === true,
       parallel: cfg.parallel === true,
     });

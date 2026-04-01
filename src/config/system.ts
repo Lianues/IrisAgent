@@ -60,6 +60,7 @@ export function parseSystemConfig(raw: any = {}, dataDir?: string): SystemConfig
     maxRetries: raw.maxRetries ?? 3,
     maxAgentDepth: raw.maxAgentDepth ?? 3,
     logRequests: raw.logRequests ?? false,
+    asyncSubAgents: raw.asyncSubAgents === true,
     skills,
   };
 }

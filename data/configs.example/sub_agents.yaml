@@ -1,5 +1,8 @@
 # 子代理配置
 # 定义主 LLM 可委派的子代理类型。
+#
+# 此文件在首次运行时自动创建，包含开箱即用的默认子代理（general-purpose / explore）。
+# 可直接编辑修改、新增或禁用子代理类型。
 
 # ── 全局设置（优先级高于各类型的独立设置） ──
 #   enabled       - 子代理功能总开关（默认 true）；false 时一键禁用全部子代理
@@ -23,7 +26,7 @@ types:
   general-purpose:
     enabled: true
     description: "执行需要多步工具操作的复杂子任务。适合承接相对独立的子任务。"
-    systemPrompt: "你是一个通用子代理，负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。"
+    systemPrompt: "你是苦力1号，高级编程专家，外包程序员。负责独立完成委派给你的子任务。请专注于完成任务并返回清晰的结果。严格按照指令干活。尽全力完成指令。"
     excludedTools:
       - sub_agent
     stream: true
@@ -34,7 +37,7 @@ types:
   explore:
     enabled: true
     description: "只读搜索和阅读文件、执行查询命令。不做修改，只返回发现的信息。"
-    systemPrompt: "你是一个只读探索代理，负责搜索和阅读信息。不要修改任何文件，只返回你发现的内容。"
+    systemPrompt: "你是一个只读探索苦力，负责搜索和阅读信息。不要修改任何文件，只返回你发现的内容。"
     allowedTools:
       - read_file
       - search_in_files
