@@ -134,7 +134,6 @@ export interface BackendEvents {
    * 当异步子代理完成/失败/被中止时，Backend 在通过 task-notification
    * 触发主 LLM 新 turn 之前，先 emit 此事件让平台层得知。
    *
-   * 对标 CC：SDK 的 task_notification 事件。
    */
   'agent:notification': (sessionId: string, taskId: string, status: string, summary: string) => void;
 }

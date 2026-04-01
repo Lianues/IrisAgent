@@ -7,7 +7,7 @@
  * 子代理直接复用 ToolLoop（与 Orchestrator/CLI 相同的核心引擎），
  * 支持嵌套自我调用。
  *
- * 异步子代理改造说明（对标 Claude Code AgentTool）：
+ * 异步子代理改造说明：
  *   - 新增 run_in_background 参数，设为 true 时子代理在后台运行
  *   - handler 立即返回 { status: 'async_launched', taskId }
  *   - 子代理完成后通过 deps.enqueueNotification() 注入 task-notification
@@ -89,7 +89,6 @@ function formatTypeSuffix(type: SubAgentTypeConfig): string {
 
 /**
  * 构建 task-notification XML 文本。
- * 对标 CC 的 enqueueAgentNotification() 中的 XML 格式。
  */
 function buildNotificationXML(opts: {
   taskId: string;
@@ -117,8 +116,6 @@ function buildNotificationXML(opts: {
  *
  * 所有子代理引导信息（使用原则、异步说明、可用类型列表）全部放在工具描述中，
  * 不注入系统提示词，与 Skill 等工具的做法保持一致。
- *
- * 对标 Claude Code：AgentTool.prompt() 将引导文本放在 tool description 中。
  */
 export function createSubAgentTool(deps: SubAgentToolDeps, currentDepth: number = 0): ToolDefinition {
   const typeDescriptions = deps.subAgentTypes.getAll()
@@ -143,7 +140,6 @@ ${typeDescriptions}
 - 需要拆分多个独立子任务时，可以连续调用多个标记为"可并行调度"的子代理类型`;
 
   // 异步子代理使用说明（仅当异步能力可用时追加）
-  // 对标 CC：AgentTool prompt.ts 中 run_in_background 段落
   if (asyncCapable) {
     toolDescription += `
 
@@ -161,8 +157,7 @@ ${typeDescriptions}
   const properties: Record<string, Record<string, unknown>> = {
     prompt: { type: 'string', description: '交给子代理执行的任务描述，应尽量详细清晰' },
     type: { type: 'string', description: '子代理类型（默认 general-purpose）' },
-    // context 参数：对标 Lim-code 的 subagents 工具中的 context 参数。
-    // 子代理不共享父级对话历史，通过此参数让 AI 自主决定传递哪些背景信息。
+    // context 参数：子代理不共享父级对话历史，通过此参数让 AI 自主决定传递哪些背景信息。
     context: { type: 'string', description: '附加上下文或背景信息（可选）。子代理没有你的对话历史，如果任务需要背景信息（如相关文件路径、已有发现、约束条件），请通过此参数传递。' },
   };
   if (asyncCapable) {
@@ -183,7 +178,6 @@ ${typeDescriptions}
       const runInBackground = args.run_in_background === true;
 
       // 将 context 和 prompt 拼接为子代理的完整输入。
-      // 对标 Lim-code executor.ts: userPrompt = `Context:\n${context}\n\nTask:\n${prompt}`
       // 子代理不共享父级对话历史，context 是 AI 自主精炼后传入的背景信息。
       const fullPrompt = contextText
         ? `Context:\n${contextText}\n\nTask:\n${prompt}`
@@ -223,7 +217,7 @@ ${typeDescriptions}
       }
 
       if (shouldRunAsync) {
-        // ---- 异步路径（对标 CC AgentTool.tsx shouldRunAsync 分支） ----
+        // ---- 异步路径 ----
         const sessionId = deps.getSessionId!();
         if (!sessionId) {
           return { error: '无法确定当前会话 ID，无法启动后台子代理' };
@@ -244,13 +238,13 @@ ${typeDescriptions}
 
         logger.info(`异步子代理启动: taskId=${taskId} type=${typeName} depth=${currentDepth + 1}/${deps.maxDepth}`);
 
-        // fire-and-forget 启动子代理（对标 CC 的 void runWithAgentContext(...))
+        // fire-and-forget 启动子代理
         void runSubAgentAsync(
           deps, typeConfig, subTools, fullPrompt, taskId, sessionId, description,
           task?.abortController?.signal,
         );
 
-        // 立即返回 async_launched（对标 CC 的 return { data: { status: 'async_launched' } }）
+        // 立即返回 async_launched
         return {
           status: 'async_launched',
           taskId,
@@ -329,8 +323,6 @@ ${typeDescriptions}
  *
  * 完成后通过 deps.enqueueNotification() 将 task-notification 入队，
  * 触发主 LLM 的新 turn。
- *
- * 对标 CC：runAsyncAgentLifecycle() + void runAgent() + enqueueAgentNotification()。
  */
 async function runSubAgentAsync(
   deps: SubAgentToolDeps,

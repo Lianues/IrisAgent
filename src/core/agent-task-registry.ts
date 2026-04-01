@@ -9,10 +9,6 @@
  *   主 LLM 立即收到 async_launched 响应。
  *   任务注册表跟踪每个异步子代理的状态，
  *   供 clearSession 时批量中止、供平台层查询后台任务状态。
- *
- * 对标 Claude Code：
- *   AppState.tasks + registerAsyncAgent() / completeAgentTask() /
- *   failAgentTask() / killAsyncAgent()。
  */
 
 import { EventEmitter } from 'events';

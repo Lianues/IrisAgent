@@ -4,7 +4,7 @@
 
 ## 改造背景
 
-Iris 原先的 `Backend.chat()` 是同步阻塞式的：用户发一条消息，`handleMessage()` 从头跑到尾，turn 结束后才能接收下一条。本次改造引入消息队列（MessageQueue）和 per-session turn 锁（TurnLock），将 `chat()` 从"直接执行"改为"入队 + 自动调度"，对标 Claude Code 的 `messageQueueManager` + `QueryGuard` 架构。
+Iris 原先的 `Backend.chat()` 是同步阻塞式的：用户发一条消息，`handleMessage()` 从头跑到尾，turn 结束后才能接收下一条。本次改造引入消息队列（MessageQueue）和 per-session turn 锁（TurnLock），将 `chat()` 从"直接执行"改为"入队 + 自动调度"。
 
 ## 涉及文件
 
@@ -44,7 +44,7 @@ Iris 原先的 `Backend.chat()` 是同步阻塞式的：用户发一条消息，
 
 **根因分析**
 
-Claude Code 用 React 渲染周期做天然节流——`notifySubscribers()` 只更新快照，真正的处理延迟到 React 的 `useEffect` 中。Iris 用 EventEmitter 替代 React 的响应式系统，但 `EventEmitter.emit()` 是同步调用监听器的，没有渲染周期的间隔保护。
+Iris 用 EventEmitter 替代 React 的响应式系统，但 `EventEmitter.emit()` 是同步调用监听器的，没有渲染周期的间隔保护。
 
 **修复方案**
 
@@ -156,19 +156,19 @@ private async runTurnCore(options: {
 
 ---
 
-## 架构对照（Iris vs Claude Code）
+## 架构设计说明
 
-| 组件 | Claude Code | Iris |
-|---|---|---|
-| 消息队列 | `messageQueueManager.ts`（模块级数组 + `createSignal`） | `MessageQueue`（EventEmitter 子类） |
-| 并发保护 | `QueryGuard`（三状态：idle/dispatching/running） | `TurnLock`（两状态：idle/running）+ `_draining` 重入守卫 |
-| 调度触发 | React `useEffect` + `useSyncExternalStore`（渲染周期天然节流） | EventEmitter `on('enqueued'/'released')` + 布尔守卫防递归 |
-| 队列处理 | `processQueueIfReady()`（由 React effect 调用） | `drainQueue()`（由事件监听器调用） |
-| turn 执行 | `handlePromptSubmit()` → `executeUserInput()` → `onQuery()` | `executeTurn()` → `handleMessage()`/`handleNotificationTurn()` → `runTurnCore()` |
-| 优先级 | 三级（now/next/later） | 两级（user/notification） |
-| 事件配对 | 不需要（React 组件状态直接绑定） | turnId 配对 done 事件 |
+| 组件 | 实现 |
+|---|---|
+| 消息队列 | `MessageQueue`（EventEmitter 子类） |
+| 并发保护 | `TurnLock`（两状态：idle/running）+ `_draining` 重入守卫 |
+| 调度触发 | EventEmitter `on('enqueued'/'released')` + 布尔守卫防递归 |
+| 队列处理 | `drainQueue()`（由事件监听器调用） |
+| turn 执行 | `executeTurn()` → `handleMessage()`/`handleNotificationTurn()` → `runTurnCore()` |
+| 优先级 | 两级（user/notification） |
+| 事件配对 | turnId 配对 done 事件 |
 
-Claude Code 的 `dispatching` 状态是为了处理 React 渲染周期中 dequeue 后到 `useEffect` 触发前的异步间隙。Iris 用 EventEmitter 驱动，没有这个间隙，因此简化为两状态。Claude Code 不需要事件配对机制，因为它的 `handlePromptSubmit` 本身同步等待 `onQuery` 完成，不依赖事件传递完成信号。Iris 的 `chat()` 入队后通过 done 事件得知 turn 结束，因此需要 turnId 防止错配。
+TurnLock 采用两状态状态机（idle/running），因为 Iris 用 EventEmitter 驱动，dequeue 和处理之间没有异步间隙，不需要额外的 dispatching 状态。`chat()` 入队后通过 done 事件得知 turn 结束，需要 turnId 防止同 session 上不同 turn 的 done 事件错配。
 
 ---
 

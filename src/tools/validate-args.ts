@@ -14,8 +14,6 @@
  *   2. 已有字段的类型是否匹配（schema 定义为 number 但收到 string 等）
  *   3. 是否有 schema 中未定义的多余字段
  *
- * 对标 Claude Code 的 toolErrors.ts / formatZodValidationError，
- * 以及 Lim-code 的 validateToolArgs.ts。
  */
 
 import type { ToolParameterSchema } from './coerce-args';

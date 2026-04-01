@@ -192,7 +192,7 @@ export interface SystemConfig {
   systemPrompt: string;
   maxToolRounds: number;
   stream: boolean;
-  /** 是否启用异步子代理（默认 false），对标 CC 的 fork subagent gate */
+  /** 是否启用异步子代理（默认 false） */
   asyncSubAgents?: boolean;
   /** LLM 调用报错时是否自动重试，默认 true */
   retryOnError: boolean;

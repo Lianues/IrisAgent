@@ -12,12 +12,6 @@
  *   （消息入队、turn 结束、手动调用等）。
  *   如果没有 turn 锁，同一 session 可能被同时启动两个 turn，
  *   导致对话历史交叉写入、LLM 上下文混乱。
- *
- * 对标 Claude Code：
- *   QueryGuard.ts 的三状态状态机（idle → dispatching → running → idle）。
- *   Iris 不需要 dispatching 状态——CC 的 dispatching 是为了处理
- *   React 渲染周期中的异步间隙（dequeue 后到 useEffect 触发前的窗口），
- *   Iris 用 EventEmitter 驱动，没有这个问题。简化为两状态即可。
  */
 
 import { EventEmitter } from 'events';
@@ -57,8 +51,6 @@ export class TurnLock extends EventEmitter {
    * 切回 idle 状态，然后 emit 'released' 事件。
    * Backend 监听此事件来触发 drainQueue()，
    * 检查该 session 是否还有待处理的消息（如异步子代理通知）。
-   *
-   * 对标 CC：QueryGuard.end() → 状态回到 idle → React effect 重新触发。
    *
    * @param sessionId 会话 ID
    */

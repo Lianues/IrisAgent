@@ -245,7 +245,6 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       maxDepth: config.system.maxAgentDepth,
       // ---- 异步子代理依赖注入（仅在 asyncSubAgents 启用时提供） ----
       // 不提供时子代理只能同步运行（向后兼容）。
-      // 对标 CC：AgentTool.tsx 中 registerAsyncAgent / enqueueAgentNotification 的注入方式。
       ...(asyncSubAgentsEnabled ? {
         enqueueNotification: (sessionId: string, text: string) => backend.enqueueAgentNotification(sessionId, text),
         getSessionId: () => backend.getActiveSessionId(),

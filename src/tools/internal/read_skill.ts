@@ -1,10 +1,8 @@
 /**
  * Skill 读取工具
  *
- * 参考 Claude Code 的 Agent Skills 设计：
- * - 工具声明中只暴露 Skill 摘要（name / path / description）
- * - 模型需要完整 Skill 内容时，再调用本工具按需读取
- *
+ * 工具声明中只暴露 Skill 摘要（name / path / description），
+ * 模型需要完整 Skill 内容时，再调用本工具按需读取。
  * 这样可以避免把 Skill 全文持续拼接到每一轮用户消息，减少重复 token 消耗。
  */
 

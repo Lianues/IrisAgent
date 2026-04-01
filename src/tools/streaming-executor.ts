@@ -8,8 +8,6 @@
  *   - parallel=true 的工具可以与其他 parallel=true 的工具并行执行
  *   - parallel=false 的工具必须独占执行（等待所有先前的工具完成）
  *   - 结果按原始顺序输出（与模型输出顺序一致）
- *
- * 对标 Claude Code 的 StreamingToolExecutor.ts。
  */
 
 import type { FunctionCallPart, FunctionResponsePart, ToolAttachment } from '../types';

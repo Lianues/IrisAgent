@@ -9,7 +9,7 @@
  *
  * Backend 不知道任何平台的存在。
  *
- * 队列化改造说明（对标 Claude Code 的 messageQueueManager + QueryGuard）：
+ * 队列化改造说明：
  *   - chat() 从"直接执行 turn"改为"用户消息入队"
  *   - 所有消息源（用户输入、异步子代理通知）统一通过 MessageQueue 入队
  *   - drainQueue() 按优先级逐条取出消息，通过 TurnLock 防止同 session 并发
@@ -103,13 +103,12 @@ export class Backend extends EventEmitter {
    */
   private _onSkillsChanged?: () => void;
 
-  // ============ 队列化新增成员（对标 CC messageQueueManager + QueryGuard） ============
+  // ============ 队列化新增成员 ============
 
   /**
    * 统一消息队列。
    * 所有消息源（用户输入、异步子代理通知）统一入队，
    * 由 drainQueue() 按优先级逐条取出处理。
-   * 对标 CC 的 messageQueueManager.ts 中的 commandQueue。
    */
   private messageQueue: MessageQueue;
 
@@ -117,7 +116,6 @@ export class Backend extends EventEmitter {
    * Per-session turn 锁。
    * 防止同一 session 并发执行多个 turn。
    * 不同 session 之间互不影响，可以并行。
-   * 对标 CC 的 QueryGuard。
    */
   private turnLock: TurnLock;
 
@@ -175,8 +173,6 @@ export class Backend extends EventEmitter {
 
     // ---- 队列化初始化 ----
     // 创建消息队列和 turn 锁，并监听事件以实现自动调度。
-    // 对标 CC：React useQueueProcessor hook 监听 queueSnapshot + isQueryActive 变化。
-    // Iris 用 EventEmitter 替代 React 的响应式系统，效果等价。
     this.messageQueue = new MessageQueue();
     this.turnLock = new TurnLock();
 
@@ -207,8 +203,6 @@ export class Backend extends EventEmitter {
    *   返回的 Promise 在该消息对应的 turn 完成后 resolve（通过监听 done 事件），
    *   因此 await chat() 的行为与改造前一致——等到 turn 结束才返回。
    *   这保证了所有平台层的 await backend.chat() 调用无需修改。
-   *
-   * 对标 CC：handlePromptSubmit() 中 queryGuard.isActive 时走 enqueue() 路径。
    */
   async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[], platformName?: string): Promise<void> {
     // 插件钩子: onBeforeChat（可修改用户消息文本）
@@ -237,9 +231,6 @@ export class Backend extends EventEmitter {
     // 用 turnId（而非 sessionId）配对 done 事件，避免同一 session 上
     // 其他 turn（如异步子代理 notification turn）的 done 事件将本
     // Promise 错误 resolve。
-    //
-    // 对标搜索结论：Stack Overflow jfriend00 方案——事件携带唯一 payload ID，
-    // 监听器比对后才 resolve，确保 Promise 与事件精确配对。
     return new Promise<void>((resolve) => {
       const onDone = (_sid: string, _dur: number, doneTurnId?: string) => {
         if (doneTurnId !== turnId) return;
@@ -255,8 +246,6 @@ export class Backend extends EventEmitter {
    *
    * 供异步子代理完成后调用（通过 bootstrap 注入到 sub_agent 工具的依赖中）。
    * 通知以低优先级入队，保证用户输入永远先被处理。
-   *
-   * 对标 CC：enqueuePendingNotification() + enqueueAgentNotification()。
    *
    * @param sessionId 通知所属的会话 ID
    * @param notificationText task-notification XML 文本
@@ -673,7 +662,7 @@ export class Backend extends EventEmitter {
     return doResetConfigToDefaults();
   }
 
-  // ============ 队列调度（对标 CC queueProcessor + useQueueProcessor） ============
+  // ============ 队列调度 ============
 
   /**
    * 自动排空消息队列。
@@ -688,9 +677,6 @@ export class Backend extends EventEmitter {
    *   和 'released' 事件触发，如果内部操作再次 emit 这些事件，会形成
    *   同步递归。_draining 标志阻止重入——消息已在队列中不会丢失，
    *   当前循环会处理它，或 turn 结束后的 'released' 事件触发新一轮 drain。
-   *
-   * 对标 CC：useQueueProcessor.ts 中的 useEffect + processQueueIfReady()。
-   * CC 用 React 渲染周期做天然节流，Iris 用 _draining 标志做等价保护。
    */
   private drainQueue(): void {
     if (this._draining) return;
@@ -729,8 +715,6 @@ export class Backend extends EventEmitter {
    * 包装原有 handleMessage() 逻辑，在 finally 中释放 turn 锁。
    * 锁释放后 turnLock emit 'released' 事件，触发 drainQueue()
    * 检查该 session 是否有更多待处理消息。
-   *
-   * 对标 CC：executeUserInput() + handlePromptSubmit() 的核心执行路径。
    */
   private async executeTurn(msg: QueuedMessage): Promise<void> {
     const startTime = Date.now();
@@ -792,8 +776,6 @@ export class Backend extends EventEmitter {
    *
    * 跳过用户消息专有步骤（sanitize、auto-compact、undo/redo、token 统计、
    * meta 更新、插件钩子），直接以 user-role Content 注入 LLM 历史触发 ToolLoop。
-   *
-   * 对标 CC：print.ts 中 TASK_NOTIFICATION_TAG 的处理。
    */
   private async handleNotificationTurn(sessionId: string, notificationText: string, turnId: string, signal?: AbortSignal): Promise<void> {
     this.toolState.clearSession(sessionId);
@@ -803,8 +785,6 @@ export class Backend extends EventEmitter {
 
     // 将通知作为 user-role message 加入历史并持久化（不占用 undo 栈、不计 token）。
     // 在原始 XML 前追加引导前缀，告诉主 LLM 这不是用户说的话，而是后台任务完成的通知。
-    // 对标 CC：messages.ts 的 wrapCommandText()，
-    //   case 'task-notification': return `A background agent completed a task:\n${raw}`
     const wrappedText = `后台子代理完成了一个任务：\n${notificationText}`;
     const notificationContent: Content = {
       role: 'user',
@@ -927,7 +907,6 @@ export class Backend extends EventEmitter {
    * post-compact）上存在差异，但中间的 LLM 调用 + ToolLoop + 结果处理完全相同。
    *
    * 提取此方法消除约 80 行重复代码，差异通过 options 对象控制。
-   * 对标业界 Options Object 模式（避免为同一类内部的路径差异引入继承）。
    */
   private async runTurnCore(options: {
     sessionId: string;

@@ -12,8 +12,6 @@
  *   - 未修改时返回原始对象引用（避免不必要的浅拷贝）
  *   - 仅处理精确匹配的转换（不猜测，不做模糊匹配）
  *
- * 对标 Claude Code 的 semanticBoolean / semanticNumber，
- * 以及 Lim-code 的 coerceToolArgs。
  */
 
 import type { FunctionDeclaration } from '../types';

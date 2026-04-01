@@ -10,12 +10,6 @@
  *   handleMessage() 从头跑到尾，turn 结束后才能接收下一条。
  *   引入消息队列后，所有消息源（用户输入、异步子代理完成通知）
  *   统一入队，由 Backend 的 drainQueue() 按优先级逐条取出处理。
- *
- * 对标 Claude Code：
- *   messageQueueManager.ts 中的 commandQueue + enqueue() +
- *   enqueuePendingNotification() + dequeue()。
- *   CC 用三级优先级（now/next/later），Iris 简化为两级（user/notification），
- *   因为 Iris 没有 CC 的「紧急系统命令」场景。
  */
 
 import { EventEmitter } from 'events';
@@ -33,9 +27,7 @@ let turnIdCounter = 0;
  * 消息优先级。
  *
  * - user：用户直接输入的消息，最高优先级。
- *   对标 CC 的 priority='next'。
  * - notification：异步子代理完成后的通知，低优先级。
- *   对标 CC 的 priority='later'。
  *
  * 用户消息永远优先于子代理通知被出队处理，
  * 避免后台任务密集完成时阻塞用户交互。
@@ -115,7 +107,6 @@ export class MessageQueue extends EventEmitter {
    * 入队后 emit 'enqueued' 事件，触发 Backend.drainQueue() 自动处理。
    *
    * 优先级低于用户消息，确保用户输入永远先被处理。
-   * 对标 CC 的 enqueuePendingNotification()。
    */
   enqueueNotification(msg: Omit<QueuedMessage, 'priority' | 'mode' | 'enqueuedAt' | 'turnId'>): void {
     // notification turn 同样分配 turnId，虽然 notification 不经过 chat()，
@@ -139,8 +130,6 @@ export class MessageQueue extends EventEmitter {
    * 同优先级内按入队顺序（FIFO）。
    * 可选按 sessionId 过滤，仅取指定会话的消息。
    * 可选排除指定的 session 集合（供 drainQueue 跳过正在执行 turn 的 session）。
-   *
-   * 对标 CC 的 dequeue(filter?)。
    *
    * @param sessionId 可选，仅取指定会话的消息
    * @param excludeSessions 可选，排除指定会话的消息（用于跳过 turn 锁占用的 session）
