@@ -230,12 +230,34 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       chunk.textDelta = choice.delta.content;
     }
 
-    // 累积工具调用分片
-    const pending = state.pendingToolCalls as Map<number, { callId?: string; name: string; arguments: string }>;
+    // 流式边执行优化：累积工具调用分片，并在检测到工具参数完整时立即输出。
+    //
+    // OpenAI 的 tool_call 分片按 index 顺序发送，没有"单个工具参数完成"的显式信号。
+    // 但有一个规律：当 delta 中出现新的 tool_call index 时，说明前一个 index 的
+    // 参数已经流完了。利用这个规律，在新 index 出现时立即输出前一个已完成的工具调用，
+    // 让 StreamingToolExecutor 可以在 LLM 还在输出后续工具参数时提前启动执行。
+    // finish_reason 到达时，最后一个工具也输出。
+    const pending = state.pendingToolCalls as Map<number, { callId?: string; name: string; arguments: string; emitted?: boolean }>;
     if (choice?.delta?.tool_calls) {
       for (const tc of choice.delta.tool_calls) {
+        // 新 index 出现时，前面未输出的工具调用的参数一定已经完整，立即输出
+        if (!pending.has(tc.index) && pending.size > 0) {
+          for (const [idx, entry] of pending) {
+            if (!entry.emitted && entry.name) {
+              if (!chunk.functionCalls) chunk.functionCalls = [];
+              chunk.functionCalls.push({
+                functionCall: {
+                  name: entry.name,
+                  args: JSON.parse(entry.arguments),
+                  callId: entry.callId,
+                },
+              });
+              entry.emitted = true;
+            }
+          }
+        }
         if (!pending.has(tc.index)) {
-          pending.set(tc.index, { callId: undefined, name: '', arguments: '' });
+          pending.set(tc.index, { callId: undefined, name: '', arguments: '', emitted: false });
         }
         const entry = pending.get(tc.index)!;
         if (tc.id) entry.callId = normalizeCallId(tc.id) ?? entry.callId;
@@ -243,17 +265,23 @@ export class OpenAICompatibleFormat implements FormatAdapter {
         if (tc.function?.arguments) entry.arguments += tc.function.arguments;
       }
     }
-    // 结束时输出累积的工具调用
+    // finish_reason 到达时，输出最后一个（及所有尚未输出的）工具调用
     if (choice?.finish_reason) {
       chunk.finishReason = choice.finish_reason;
       if (pending.size > 0) {
-        chunk.functionCalls = Array.from(pending.values()).map(tc => ({
-          functionCall: {
-            name: tc.name,
-            args: JSON.parse(tc.arguments),
-            callId: tc.callId,
-          },
-        }));
+        for (const [, entry] of pending) {
+          if (!entry.emitted && entry.name) {
+            if (!chunk.functionCalls) chunk.functionCalls = [];
+            chunk.functionCalls.push({
+              functionCall: {
+                name: entry.name,
+                args: JSON.parse(entry.arguments),
+                callId: entry.callId,
+              },
+            });
+            entry.emitted = true;
+          }
+        }
         pending.clear();
       }
     }
@@ -275,7 +303,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
 
   createStreamState(): StreamDecodeState {
     return {
-      pendingToolCalls: new Map<number, { callId?: string; name: string; arguments: string }>(),
+      pendingToolCalls: new Map<number, { callId?: string; name: string; arguments: string; emitted?: boolean }>(),
     };
   }
 }

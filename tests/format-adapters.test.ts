@@ -674,7 +674,7 @@ describe('ClaudeFormat: decodeResponse', () => {
 describe('ClaudeFormat: stream decode', () => {
   const fmt = new ClaudeFormat('claude-sonnet-4-20250514');
 
-  it('流式工具调用完整流程', () => {
+  it('流式工具调用完整流程：functionCall 在 content_block_stop 时即输出', () => {
     const state = fmt.createStreamState();
     fmt.decodeStreamChunk({
       type: 'content_block_start',
@@ -688,18 +688,24 @@ describe('ClaudeFormat: stream decode', () => {
       type: 'content_block_delta',
       delta: { type: 'input_json_delta', partial_json: '"Tokyo"}' },
     }, state);
-    fmt.decodeStreamChunk({ type: 'content_block_stop' }, state);
-    const chunk = fmt.decodeStreamChunk({
+
+    // 流式边执行优化：functionCall 在 content_block_stop 时立即输出，
+    // 不再等到 message_delta 的 stop_reason。
+    const stopChunk = fmt.decodeStreamChunk({ type: 'content_block_stop' }, state);
+    expect(stopChunk.functionCalls).toHaveLength(1);
+    const fc = stopChunk.functionCalls![0] as FunctionCallPart;
+    expect(fc.functionCall.name).toBe('get_weather');
+    expect(fc.functionCall.callId).toBe('toolu_stream_1');
+    expect(fc.functionCall.args).toEqual({ city: 'Tokyo' });
+
+    // message_delta 只携带 finishReason 和 usage，不再携带 functionCalls
+    const deltaChunk = fmt.decodeStreamChunk({
       type: 'message_delta',
       delta: { stop_reason: 'tool_use' },
       usage: { output_tokens: 50 },
     }, state);
-
-    expect(chunk.functionCalls).toHaveLength(1);
-    const fc = chunk.functionCalls![0] as FunctionCallPart;
-    expect(fc.functionCall.name).toBe('get_weather');
-    expect(fc.functionCall.callId).toBe('toolu_stream_1');
-    expect(fc.functionCall.args).toEqual({ city: 'Tokyo' });
+    expect(deltaChunk.functionCalls).toBeUndefined();
+    expect(deltaChunk.finishReason).toBe('TOOL_CALLS');
   });
 
   it('流式 thinking：thinking_delta + signature_delta', () => {

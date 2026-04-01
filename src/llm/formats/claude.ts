@@ -286,7 +286,11 @@ export class ClaudeFormat implements FormatAdapter {
 
       case 'content_block_stop':
         if (st.currentToolUse) {
-          st.pendingFunctionCalls.push({
+          // 流式边执行优化：content_block_stop 意味着该工具的参数已完整流完，
+          // 立即输出 functionCall 而不是攒到 message_delta。
+          // 这样 callLLMStream 的 onFunctionCallReady 回调可以在流式期间
+          // 逐个触发，让 StreamingToolExecutor 提前启动工具执行。
+          const completedCall: FunctionCallPart = {
             functionCall: {
               name: st.currentToolUse.name,
               args: st.currentToolUse.arguments
@@ -294,7 +298,9 @@ export class ClaudeFormat implements FormatAdapter {
                 : {},
               callId: st.currentToolUse.id,
             },
-          });
+          };
+          if (!chunk.functionCalls) chunk.functionCalls = [];
+          chunk.functionCalls.push(completedCall);
           st.currentToolUse = null;
         }
         if (st.inThinkingBlock) {
@@ -305,11 +311,7 @@ export class ClaudeFormat implements FormatAdapter {
       case 'message_delta':
         if (data.delta?.stop_reason) {
           chunk.finishReason = mapStopReason(data.delta.stop_reason);
-          // 输出累积的工具调用
-          if (st.pendingFunctionCalls.length > 0) {
-            chunk.functionCalls = [...st.pendingFunctionCalls];
-            st.pendingFunctionCalls = [];
-          }
+          // 工具调用已在 content_block_stop 时逐个输出，这里不再需要批量输出
         }
         if (data.usage) {
           chunk.usageMetadata = {
@@ -330,8 +332,9 @@ export class ClaudeFormat implements FormatAdapter {
   createStreamState(): StreamDecodeState {
     return {
       currentToolUse: null,
-      pendingFunctionCalls: [],
       inputTokens: 0,
+      // pendingFunctionCalls 已废弃：工具调用现在在 content_block_stop 时立即输出，
+      // 不再需要攒到 message_delta 批量输出。保留字段兼容 ClaudeStreamState 接口。
       inThinkingBlock: false,
     } as ClaudeStreamState;
   }
@@ -388,7 +391,6 @@ export class ClaudeFormat implements FormatAdapter {
 
 interface ClaudeStreamState extends StreamDecodeState {
   currentToolUse: { id: string; name: string; arguments: string } | null;
-  pendingFunctionCalls: FunctionCallPart[];
   inputTokens: number;
   cachedContentTokens?: number;
   inThinkingBlock: boolean;
