@@ -61,6 +61,7 @@ export function App({
   modelId,
   modelName,
   contextWindow,
+  pluginSettingsTabs,
 }: AppProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [sessionList, setSessionList] = useState<SessionMeta[]>([]);
@@ -208,6 +209,7 @@ export function App({
         onBack={() => setViewMode('chat')}
         onLoad={onLoadSettings}
         onSave={onSaveSettings}
+        pluginTabs={pluginSettingsTabs}
       />
     );
   }

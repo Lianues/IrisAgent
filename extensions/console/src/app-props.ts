@@ -1,4 +1,5 @@
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
+import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
 import type { SwitchModelResult } from './app-types';
 import type { AppHandle } from './hooks/use-app-handle';
 import type { ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './settings';
@@ -31,4 +32,6 @@ export interface AppProps {
   modelId: string;
   modelName: string;
   contextWindow?: number;
+  /** 插件注册的 Console Settings Tab 列表（由 ConsolePlatform 从 IrisAPI 获取后注入） */
+  pluginSettingsTabs?: ConsoleSettingsTabDefinition[];
 }

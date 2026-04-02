@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { C } from '../theme';
 import type { MCPServerInfoLike as MCPServerInfo } from '@irises/extension-sdk';
+import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
 import {
   applyModelProviderChange,
   cloneConsoleSettingsSnapshot,
@@ -31,7 +32,8 @@ import {
 } from '../settings';
 import { getConsoleDiffApprovalViewDescription, supportsConsoleDiffApprovalViewSetting } from '../diff-approval';
 
-type SettingsSection = 'general' | 'mcp' | 'tools';
+// 放宽为 string：插件可注册自定义 tab，section id 不再限于内置三个
+type SettingsSection = string;
 type StatusKind = 'info' | 'success' | 'warning' | 'error';
 type ToolPolicyMode = 'disabled' | 'manual' | 'auto';
 
@@ -44,7 +46,8 @@ type RowTarget =
   | { kind: 'toolApprovalView'; toolIndex: number }
   | { kind: 'toolGlobalToggle'; field: 'autoApproveAll' | 'autoApproveConfirmation' | 'autoApproveDiff' }
   | { kind: 'mcpField'; serverIndex: number; field: 'name' | 'enabled' | 'transport' | 'command' | 'args' | 'cwd' | 'url' | 'authHeader' | 'timeout' }
-  | { kind: 'action'; action: 'addModel' | 'addMcp' };
+  | { kind: 'action'; action: 'addModel' | 'addMcp' }
+  | { kind: 'pluginField'; tabId: string; fieldKey: string; fieldType: 'toggle' | 'number' | 'text' | 'select' | 'readonly' };
 
 function getToolPolicyMode(configured: boolean, autoApprove: boolean): ToolPolicyMode {
   if (!configured) return 'disabled';
@@ -69,17 +72,19 @@ interface SettingsRow {
 }
 
 interface EditorState {
-  target: Extract<RowTarget, { kind: 'modelField' | 'systemField' | 'mcpField' }>;
+  target: Extract<RowTarget, { kind: 'modelField' | 'systemField' | 'mcpField' }> | Extract<RowTarget, { kind: 'pluginField' }>;
   label: string;
   value: string;
   hint?: string;
 }
 
 interface SettingsViewProps {
-  initialSection?: 'general' | 'mcp';
+  initialSection?: string;  // 放宽：插件 tab id 也可作为初始 section
   onBack: () => void;
   onLoad: () => Promise<ConsoleSettingsSnapshot>;
   onSave: (snapshot: ConsoleSettingsSnapshot) => Promise<ConsoleSettingsSaveResult>;
+  /** 插件注册的 Settings Tab 列表 */
+  pluginTabs?: ConsoleSettingsTabDefinition[];
 }
 
 function getStatusColor(kind: StatusKind): string {
@@ -295,18 +300,19 @@ function buildRows(snapshot: ConsoleSettingsSnapshot, termWidth: number): Settin
 }
 
 
-/* 左栏导航分栏定义。
- * 用户按数字键 1/2/3 可直接切换分栏（参考 lazygit 的面板跳转交互）。 */
-const SECTIONS = [
+/* 左栏导航分栏定义（内置部分）。
+ * 插件 tab 在组件内部通过 useMemo 动态拼接到末尾。
+ * 用户按数字键可直接切换分栏（参考 lazygit 的面板跳转交互）。 */
+const BUILTIN_SECTIONS = [
   { id: 'general', label: '模型与系统', icon: '01' },
   { id: 'tools', label: '工具策略', icon: '02' },
   { id: 'mcp', label: 'MCP 服务', icon: '03' }
-] as const;
+];
 
 
 
 
-export function SettingsView({ initialSection = 'general', onBack, onLoad, onSave }: SettingsViewProps) {
+export function SettingsView({ initialSection = 'general', onBack, onLoad, onSave, pluginTabs }: SettingsViewProps) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -319,19 +325,90 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
   const [statusKind, setStatusKind] = useState<StatusKind>('info');
   const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState(false);
 
+  // ── 插件 tab 数据 ──────────────────────────────────────
+  // 插件 tab 的配置值独立于内置 ConsoleSettingsSnapshot，各插件自带 onLoad/onSave。
+  const [pluginDraft, setPluginDraft] = useState<Record<string, Record<string, unknown>>>({});
+  const [pluginBaseline, setPluginBaseline] = useState<Record<string, Record<string, unknown>>>({});
+
+  // 动态拼接 sections：内置 3 个 + 插件注册的 tab
+  const sections = useMemo(() => {
+    const pluginSections = (pluginTabs ?? []).map((tab, i) => ({
+      id: tab.id,
+      label: tab.label,
+      icon: tab.icon ?? String(BUILTIN_SECTIONS.length + i + 1).padStart(2, '0'),
+    }));
+    return [...BUILTIN_SECTIONS, ...pluginSections];
+  }, [pluginTabs]);
+
   const setStatus = useCallback((text: string, kind: StatusKind = 'info') => {
     setStatusText(text);
     setStatusKind(kind);
   }, []);
 
   const isDirty = useMemo(() => {
-    return getEditableFingerprint(draft) !== getEditableFingerprint(baseline);
-  }, [draft, baseline]);
+    const builtinDirty = getEditableFingerprint(draft) !== getEditableFingerprint(baseline);
+    // 插件 tab 数据变更检测
+    const pluginDirty = JSON.stringify(pluginDraft) !== JSON.stringify(pluginBaseline);
+    return builtinDirty || pluginDirty;
+  }, [draft, baseline, pluginDraft, pluginBaseline]);
 
   const rows = useMemo(() => {
     if (!draft) return [] as SettingsRow[];
-    return buildRows(draft, termWidth);
-  }, [draft, termWidth]);
+    const builtinRows = buildRows(draft, termWidth);
+
+    // 追加插件 tab 的 rows（section 头 + 分组头 + 字段行）
+    for (const tab of (pluginTabs ?? [])) {
+      builtinRows.push({
+        id: `plugin-section-${tab.id}`,
+        kind: 'section',
+        section: tab.id,
+        label: tab.label,
+      });
+      let lastGroup = '';
+      for (const field of tab.fields) {
+        // 分组标题行
+        if (field.group && field.group !== lastGroup) {
+          lastGroup = field.group;
+          builtinRows.push({
+            id: `plugin-group-${tab.id}-${field.group}`,
+            kind: 'info',
+            section: tab.id,
+            label: `── ${field.group} ──`,
+          });
+        }
+        // 字段说明行
+        if (field.description) {
+          builtinRows.push({
+            id: `plugin-desc-${tab.id}-${field.key}`,
+            kind: 'info',
+            section: tab.id,
+            label: '',
+            description: field.description,
+          });
+        }
+        // 字段值行
+        const rawValue = pluginDraft[tab.id]?.[field.key] ?? field.defaultValue;
+        let displayValue: string;
+        if (field.type === 'toggle') {
+          displayValue = rawValue ? '开启' : '关闭';
+        } else if (field.type === 'select') {
+          const opt = field.options?.find(o => o.value === String(rawValue));
+          displayValue = opt?.label ?? String(rawValue ?? '');
+        } else {
+          displayValue = String(rawValue ?? '');
+        }
+        builtinRows.push({
+          id: `plugin-${tab.id}-${field.key}`,
+          kind: 'field',
+          section: tab.id,
+          label: field.label,
+          value: displayValue,
+          target: { kind: 'pluginField', tabId: tab.id, fieldKey: field.key, fieldType: field.type },
+        });
+      }
+    }
+    return builtinRows;
+  }, [draft, termWidth, pluginTabs, pluginDraft]);
 
   const selectableRows = useMemo(() => rows.filter((row: SettingsRow) => row.target), [rows]);
   const selectedRow = useMemo(() => rows.find((row: SettingsRow) => row.id === selectedRowId), [rows, selectedRowId]);
@@ -355,6 +432,21 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         setBaseline(cloneConsoleSettingsSnapshot(snapshot));
         setStatus('已加载当前配置', 'success');
         setPendingLeaveConfirm(false);
+
+        // 并行加载所有插件 tab 的配置数据
+        if (pluginTabs && pluginTabs.length > 0) {
+          const entries = await Promise.all(
+            pluginTabs.map(async (tab) => {
+              try { return [tab.id, await tab.onLoad()] as const; }
+              catch { return [tab.id, {}] as const; }
+            })
+          );
+          const data = Object.fromEntries(entries);
+          if (!cancelled) {
+            setPluginDraft(structuredClone(data));
+            setPluginBaseline(structuredClone(data));
+          }
+        }
       } catch (err: unknown) {
         if (cancelled) return;
         setStatus(`加载配置失败：${err instanceof Error ? err.message : String(err)}`, 'error');
@@ -364,7 +456,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
     };
     void load();
     return () => { cancelled = true; };
-  }, [onLoad, setStatus]);
+  }, [onLoad, setStatus, pluginTabs]);
 
   useEffect(() => {
     if (rows.length === 0) return;
@@ -522,6 +614,26 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
 
   const submitEditor = useCallback(() => {
     if (!editor) return;
+    // 插件 tab 字段的编辑器提交
+    if ((editor.target as any).kind === 'pluginField') {
+      const { tabId, fieldKey, fieldType } = editor.target as Extract<RowTarget, { kind: 'pluginField' }>;
+      let finalValue: unknown = editorValue;
+      if (fieldType === 'number') {
+        const parsed = Number(editorValue.trim());
+        if (!Number.isFinite(parsed)) { setStatus('请输入有效数字', 'error'); return; }
+        finalValue = parsed;
+      }
+      setPluginDraft(prev => {
+        const next = structuredClone(prev);
+        (next[tabId] ??= {})[fieldKey] = finalValue;
+        return next;
+      });
+      setStatus('字段已更新，按 S 保存并热重载', 'success');
+      setEditor(null);
+      setEditorValue('');
+      return;
+    }
+
     const value = (editor.target.kind === 'systemField' && editor.target.field === 'systemPrompt')
       ? restoreMultilineFromInput(editorValue)
       : (editor.target.kind === 'mcpField' && editor.target.field === 'args')
@@ -599,12 +711,31 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       }
       setPendingLeaveConfirm(false);
       setStatus(result.message, result.restartRequired ? 'warning' : 'success');
+
+      // 保存插件 tab 的配置数据
+      if (pluginTabs && pluginTabs.length > 0) {
+        const pluginErrors: string[] = [];
+        for (const tab of pluginTabs) {
+          const tabData = pluginDraft[tab.id] ?? {};
+          try {
+            const r = await tab.onSave(tabData);
+            if (!r.success) pluginErrors.push(`${tab.label}: ${r.error ?? '未知错误'}`);
+          } catch (e: unknown) {
+            pluginErrors.push(`${tab.label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        if (pluginErrors.length > 0) {
+          setStatus(`部分插件配置保存失败：${pluginErrors.join('; ')}`, 'warning');
+        } else {
+          setPluginBaseline(structuredClone(pluginDraft));
+        }
+      }
     } catch (err: unknown) {
       setStatus(`保存失败：${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setSaving(false);
     }
-  }, [draft, onSave, saving, setStatus]);
+  }, [draft, onSave, saving, setStatus, pluginTabs, pluginDraft]);
 
   const handleDeleteCurrentModel = useCallback(() => {
     if (!selectedRow?.target || !draft) { setStatus('请先选中某个模型字段后再删除', 'warning'); return; }
@@ -692,10 +823,11 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       return;
     }
     if (key.name === 's') { void handleSave(); return; }
-    /* 数字键 1/2/3 切换左栏分栏（参考 lazygit 的面板跳转交互）。
-     * 按下对应数字后，焦点跳转到该分栏的第一个可选中行。 */
-    if (key.name === '1' || key.name === '2' || key.name === '3') {
-      const targetSection = SECTIONS[Number(key.name) - 1];
+    /* 数字键切换左栏分栏。
+     * 支持任意数量的 tab（内置 + 插件），按数字跳转到对应 tab。 */
+    const numKey = parseInt(key.name ?? '', 10);
+    if (numKey >= 1 && numKey <= sections.length) {
+      const targetSection = sections[numKey - 1];
       if (targetSection) {
         const firstInSection = selectableRows.find((r: SettingsRow) => r.section === targetSection.id);
         if (firstInSection) setSelectedRowId(firstInSection.id);
@@ -718,6 +850,14 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       if (selectedRow.target.kind === 'modelDefault' || selectedRow.target.kind === 'toolApprovalView' || selectedRow.target.kind === 'toolGlobalToggle' || (selectedRow.target.kind === 'systemField' && (selectedRow.target.field === 'stream' || selectedRow.target.field === 'retryOnError' || selectedRow.target.field === 'logRequests' || selectedRow.target.field === 'asyncSubAgents')) || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'enabled')) {
 
         applyToggle(selectedRow.target);
+      } else if (selectedRow.target.kind === 'pluginField' && selectedRow.target.fieldType === 'toggle') {
+        // 插件 tab 的 toggle 字段：空格切换
+        const { tabId, fieldKey } = selectedRow.target;
+        setPluginDraft(prev => {
+          const next = structuredClone(prev);
+          (next[tabId] ??= {})[fieldKey] = !(next[tabId]?.[fieldKey]);
+          return next;
+        });
       } else if (selectedRow.target.kind === 'toolPolicy') {
         applyCycle(selectedRow.target, 1);
       }
@@ -737,6 +877,39 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       }
       if (selectedRow.target.kind === 'modelProvider' || selectedRow.target.kind === 'toolPolicy' || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'transport')) {
         applyCycle(selectedRow.target, 1);
+        return;
+      }
+      // 插件 tab 字段的 Enter 键交互
+      if (selectedRow.target.kind === 'pluginField') {
+        const { tabId, fieldKey, fieldType } = selectedRow.target;
+        if (fieldType === 'toggle') {
+          setPluginDraft(prev => {
+            const next = structuredClone(prev);
+            (next[tabId] ??= {})[fieldKey] = !(next[tabId]?.[fieldKey]);
+            return next;
+          });
+        } else if (fieldType === 'text' || fieldType === 'number') {
+          const currentVal = pluginDraft[tabId]?.[fieldKey] ?? '';
+          setEditor({
+            target: selectedRow.target as any,
+            label: `${tabId}.${fieldKey}`,
+            value: String(currentVal),
+          });
+          setEditorValue(String(currentVal));
+        } else if (fieldType === 'select') {
+          const tab = pluginTabs?.find(t => t.id === tabId);
+          const field = tab?.fields.find(f => f.key === fieldKey);
+          if (field?.options && field.options.length > 0) {
+            const currentVal = String(pluginDraft[tabId]?.[fieldKey] ?? '');
+            const idx = field.options.findIndex(o => o.value === currentVal);
+            const nextIdx = (idx + 1) % field.options.length;
+            setPluginDraft(prev => {
+              const next = structuredClone(prev);
+              (next[tabId] ??= {})[fieldKey] = field.options![nextIdx].value;
+              return next;
+            });
+          }
+        }
         return;
       }
       if (selectedRow.target.kind === 'modelField' || (selectedRow.target.kind === 'systemField' && selectedRow.target.field !== 'stream' && selectedRow.target.field !== 'retryOnError' && selectedRow.target.field !== 'logRequests' && selectedRow.target.field !== 'asyncSubAgents') || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field !== 'enabled' && selectedRow.target.field !== 'transport')) {
@@ -775,7 +948,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         <box width={24} flexDirection="column" paddingTop={1} paddingLeft={2} paddingRight={1}>
           <text fg={C.primary}><strong>IRIS</strong></text>
           <box marginTop={1} flexDirection="column">
-            {SECTIONS.map((sec) => (
+            {sections.map((sec) => (
               <text key={sec.id} fg={currentSection === sec.id ? C.accent : '#555'}>
                 {currentSection === sec.id ? '\u25CF' : '\u25CB'} {sec.icon} {sec.label}
               </text>
@@ -876,7 +1049,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
               <text fg="#888">{'Enter 保存 \u00b7 Esc 取消'}</text>
             </box>
           ) : (
-            <text fg="#888">{'\u2191\u2193 选择  \u2190\u2192 切换  1/2/3 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回'}</text>
+            <text fg="#888">{`\u2191\u2193 选择  \u2190\u2192 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
           )}
         </box>
       </box>

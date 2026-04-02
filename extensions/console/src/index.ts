@@ -438,6 +438,8 @@ export class ConsolePlatform extends PlatformAdapter {
         modelName: this.modelName,
         contextWindow: this.contextWindow,
         initWarnings: this.initWarnings,
+        // 插件注册的 Settings Tab：从 IrisAPI 获取所有已注册的 tab 定义
+        pluginSettingsTabs: this.api?.getConsoleSettingsTabs?.() ?? [],
       });
 
       // CliRenderer 在 console/node_modules 与 Iris/node_modules 中的私有字段声明不同，

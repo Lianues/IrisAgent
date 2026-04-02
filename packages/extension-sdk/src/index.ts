@@ -152,6 +152,8 @@ export type {
   UnifiedDiffHunkLike,
   UnifiedDiffLineLike,
   WebPanelDefinition,
+  ConsoleSettingsField,
+  ConsoleSettingsTabDefinition,
   WriteEntryLike,
 } from './plugin.js';
 

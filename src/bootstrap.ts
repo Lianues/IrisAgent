@@ -46,7 +46,7 @@ import type { PlatformRegistry } from './core/platform-registry';
 import { PluginEventBus } from './extension/event-bus';
 import { patchMethod, patchPrototype } from './extension/patch';
 import { registerExtensionPlatforms } from './extension';
-import type { IrisAPI, InlinePluginEntry, WebPanelDefinition } from '@irises/extension-sdk';
+import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from '@irises/extension-sdk';
 import { readEditableConfig, updateEditableConfig } from './config/manage';
 import { applyRuntimeConfigReload, type RuntimeConfigReloadContext } from './config/runtime';
 import { DEFAULTS, parseLLMConfig } from './config/llm';
@@ -316,6 +316,14 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     res.end(JSON.stringify(webPanels));
   });
 
+  // Console Settings Tab 注册表：
+  // 插件通过 registerConsoleSettingsTab 注册声明式表单 schema，
+  // Console 平台在 start() 时通过 getConsoleSettingsTabs() 读取并渲染。
+  const consoleSettingsTabs: ConsoleSettingsTabDefinition[] = [];
+  const registerConsoleSettingsTab = (tab: ConsoleSettingsTabDefinition) => {
+    if (!consoleSettingsTabs.some(t => t.id === tab.id)) consoleSettingsTabs.push(tab);
+  };
+
 
   // 构建完整内部 API（供插件和平台扩展使用）
   const getMCPManagerFn = () => mcpManager;
@@ -389,6 +397,8 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     patchPrototype,
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
+    registerConsoleSettingsTab,
+    getConsoleSettingsTabs: () => consoleSettingsTabs,
     listAgents: () => loadAgentDefinitions(),
     supportsVision: (modelName?: string) => {
       const cfg = modelName ? router.getModelConfig(modelName) : router.getCurrentConfig();
