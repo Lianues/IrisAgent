@@ -3,13 +3,13 @@ import React9 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// ../../node_modules/@irises/extension-sdk/dist/platform.js
+// ../../packages/extension-sdk/dist/platform.js
 class PlatformAdapter {
   get name() {
     return this.constructor.name;
   }
 }
-// ../../node_modules/@irises/extension-sdk/dist/logger.js
+// ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
   LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
@@ -2225,7 +2225,7 @@ import { useMemo as useMemo3 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// ../../node_modules/@irises/extension-sdk/dist/tool-utils.js
+// ../../packages/extension-sdk/dist/tool-utils.js
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -3536,6 +3536,9 @@ function validateSnapshot(snapshot) {
   if (!Number.isFinite(snapshot.system.maxRetries) || snapshot.system.maxRetries < 0 || snapshot.system.maxRetries > 20) {
     return "最大重试次数必须在 0 到 20 之间";
   }
+  if (!Number.isFinite(snapshot.system.maxAgentDepth) || snapshot.system.maxAgentDepth < 1 || snapshot.system.maxAgentDepth > 20) {
+    return "最大代理深度必须在 1 到 20 之间";
+  }
   if (!Array.isArray(snapshot.models) || snapshot.models.length === 0) {
     return "至少需要保留一个模型";
   }
@@ -3684,7 +3687,11 @@ class ConsoleSettingsController {
         maxToolRounds: system.maxToolRounds ?? 30,
         stream: system.stream !== false,
         retryOnError: system.retryOnError !== false,
-        maxRetries: system.maxRetries ?? 3
+        maxRetries: system.maxRetries ?? 3,
+        logRequests: system.logRequests === true,
+        maxAgentDepth: system.maxAgentDepth ?? 3,
+        defaultMode: system.defaultMode ?? "",
+        asyncSubAgents: system.asyncSubAgents === true
       },
       toolPolicies: allToolNames.map((name) => ({
         name,
@@ -3695,6 +3702,9 @@ class ConsoleSettingsController {
         allowPatterns: permissions[name]?.allowPatterns,
         denyPatterns: permissions[name]?.denyPatterns
       })),
+      autoApproveAll: toolsConfig.autoApproveAll === true,
+      autoApproveConfirmation: toolsConfig.autoApproveConfirmation === true,
+      autoApproveDiff: toolsConfig.autoApproveDiff === true,
       mcpServers: Object.entries(rawMcpServers).map(([name, cfg]) => ({
         name,
         originalName: name,
@@ -3729,22 +3739,31 @@ class ConsoleSettingsController {
         maxToolRounds: draft.system.maxToolRounds,
         stream: draft.system.stream,
         retryOnError: draft.system.retryOnError,
-        maxRetries: draft.system.maxRetries
+        maxRetries: draft.system.maxRetries,
+        logRequests: draft.system.logRequests,
+        maxAgentDepth: draft.system.maxAgentDepth,
+        defaultMode: draft.system.defaultMode || null,
+        asyncSubAgents: draft.system.asyncSubAgents
       },
-      tools: draft.toolPolicies.reduce((result, tool) => {
-        if (!tool.configured) {
+      tools: {
+        autoApproveAll: draft.autoApproveAll || null,
+        autoApproveConfirmation: draft.autoApproveConfirmation || null,
+        autoApproveDiff: draft.autoApproveDiff || null,
+        ...draft.toolPolicies.reduce((result, tool) => {
+          if (!tool.configured) {
+            return result;
+          }
+          const entry = { autoApprove: tool.autoApprove };
+          if (typeof tool.showApprovalView === "boolean")
+            entry.showApprovalView = tool.showApprovalView;
+          if (tool.allowPatterns?.length)
+            entry.allowPatterns = tool.allowPatterns;
+          if (tool.denyPatterns?.length)
+            entry.denyPatterns = tool.denyPatterns;
+          result[tool.name] = entry;
           return result;
-        }
-        const entry = { autoApprove: tool.autoApprove };
-        if (typeof tool.showApprovalView === "boolean")
-          entry.showApprovalView = tool.showApprovalView;
-        if (tool.allowPatterns?.length)
-          entry.allowPatterns = tool.allowPatterns;
-        if (tool.denyPatterns?.length)
-          entry.denyPatterns = tool.denyPatterns;
-        result[tool.name] = entry;
-        return result;
-      }, {}),
+        }, {})
+      },
       mcp: buildMCPPayload(draft)
     };
     let mergedRaw;
@@ -3847,6 +3866,9 @@ function getEditableFingerprint(snapshot) {
     defaultModelName: snapshot.defaultModelName,
     system: snapshot.system,
     toolPolicies: snapshot.toolPolicies,
+    autoApproveAll: snapshot.autoApproveAll,
+    autoApproveConfirmation: snapshot.autoApproveConfirmation,
+    autoApproveDiff: snapshot.autoApproveDiff,
     mcpServers: snapshot.mcpServers,
     mcpOriginalNames: snapshot.mcpOriginalNames
   });
@@ -3913,7 +3935,14 @@ function buildRows(snapshot, termWidth) {
   pushField("system.stream", "general", "System / Stream Output", boolText(snapshot.system.stream), { kind: "systemField", field: "stream" }, "空格切换。");
   pushField("system.retryOnError", "general", "System / 报错自动重试", boolText(snapshot.system.retryOnError), { kind: "systemField", field: "retryOnError" }, "LLM 调用失败时自动重试，空格切换。");
   pushField("system.maxRetries", "general", "System / 最大重试次数", String(snapshot.system.maxRetries), { kind: "systemField", field: "maxRetries" }, "报错重试的最大次数（0-20），回车编辑。");
+  pushField("system.logRequests", "general", "System / 记录请求日志", boolText(snapshot.system.logRequests), { kind: "systemField", field: "logRequests" }, "将 LLM 请求/响应记录到日志文件，空格切换。");
+  pushField("system.maxAgentDepth", "general", "System / 最大代理深度", String(snapshot.system.maxAgentDepth), { kind: "systemField", field: "maxAgentDepth" }, "子代理最大嵌套深度（1-20），回车编辑。");
+  pushField("system.defaultMode", "general", "System / 默认模式", snapshot.system.defaultMode || "(未设置)", { kind: "systemField", field: "defaultMode" }, "启动时默认使用的模式（如 code），回车编辑。");
+  pushField("system.asyncSubAgents", "general", "System / 异步子代理", boolText(snapshot.system.asyncSubAgents), { kind: "systemField", field: "asyncSubAgents" }, "启用后子代理可在后台异步执行，主对话不阻塞。需在 sub_agents.yaml 中定义子代理类型。空格切换。");
   rows.push({ id: "section.tools", kind: "section", section: "tools", label: `工具执行策略（${snapshot.toolPolicies.length}）` });
+  pushField("tools.autoApproveAll", "tools", "全部自动批准", boolText(snapshot.autoApproveAll), { kind: "toolGlobalToggle", field: "autoApproveAll" }, "跳过所有审批（一类确认 + 二类 diff 预览），最高优先级。空格切换。");
+  pushField("tools.autoApproveConfirmation", "tools", "跳过确认审批", boolText(snapshot.autoApproveConfirmation), { kind: "toolGlobalToggle", field: "autoApproveConfirmation" }, "仅跳过一类审批（Y/N 确认），二类审批（diff 预览）仍生效。空格切换。");
+  pushField("tools.autoApproveDiff", "tools", "跳过 Diff 审批", boolText(snapshot.autoApproveDiff), { kind: "toolGlobalToggle", field: "autoApproveDiff" }, "仅跳过二类审批（diff 预览），一类审批（Y/N 确认）仍生效。空格切换。");
   snapshot.toolPolicies.forEach((tool, index) => {
     const mode = getToolPolicyMode(tool.configured, tool.autoApprove);
     rows.push({
@@ -4084,7 +4113,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       return;
     }
     if (target.kind === "systemField") {
-      const rawValue2 = target.field === "maxToolRounds" ? String(draft.system.maxToolRounds) : target.field === "maxRetries" ? String(draft.system.maxRetries) : target.field === "stream" ? String(draft.system.stream) : draft.system.systemPrompt;
+      const rawValue2 = target.field === "maxToolRounds" ? String(draft.system.maxToolRounds) : target.field === "maxRetries" ? String(draft.system.maxRetries) : target.field === "maxAgentDepth" ? String(draft.system.maxAgentDepth) : target.field === "defaultMode" ? draft.system.defaultMode ?? "" : target.field === "stream" ? String(draft.system.stream) : draft.system.systemPrompt;
       const value2 = target.field === "systemPrompt" ? escapeMultilineForInput(rawValue2) : rawValue2;
       setEditor({ target, label: `system.${target.field}`, value: value2, hint: target.field === "systemPrompt" ? "\\n 表示换行" : undefined });
       setEditorValue(value2);
@@ -4143,6 +4172,18 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
         snapshot.system.retryOnError = !snapshot.system.retryOnError;
         return;
       }
+      if (target.kind === "systemField" && target.field === "logRequests") {
+        snapshot.system.logRequests = !snapshot.system.logRequests;
+        return;
+      }
+      if (target.kind === "systemField" && target.field === "asyncSubAgents") {
+        snapshot.system.asyncSubAgents = !snapshot.system.asyncSubAgents;
+        return;
+      }
+      if (target.kind === "toolGlobalToggle") {
+        snapshot[target.field] = !snapshot[target.field];
+        return;
+      }
       if (target.kind === "toolApprovalView") {
         const tool = snapshot.toolPolicies[target.toolIndex];
         if (tool)
@@ -4171,6 +4212,13 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       const parsed = Number(value.trim());
       if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20) {
         setStatus("最大重试次数必须在 0 到 20 之间", "error");
+        return;
+      }
+    }
+    if (editor.target.kind === "systemField" && editor.target.field === "maxAgentDepth") {
+      const parsed = Number(value.trim());
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 20) {
+        setStatus("最大代理深度必须在 1 到 20 之间", "error");
         return;
       }
     }
@@ -4207,6 +4255,10 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
           snapshot.system.maxToolRounds = Number(value.trim());
         else if (editor.target.field === "maxRetries")
           snapshot.system.maxRetries = Number(value.trim());
+        else if (editor.target.field === "maxAgentDepth")
+          snapshot.system.maxAgentDepth = Number(value.trim());
+        else if (editor.target.field === "defaultMode")
+          snapshot.system.defaultMode = value.trim();
         return;
       }
       const server = snapshot.mcpServers[editor.target.serverIndex];
@@ -4302,9 +4354,11 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
         setEditor(null);
         setEditorValue("");
         setStatus("已取消编辑", "warning");
+        key.preventDefault();
       }
       if (key.name === "enter" || key.name === "return") {
         submitEditor();
+        key.preventDefault();
       }
       return;
     }
@@ -4374,7 +4428,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       return;
     }
     if (key.name === "space" && selectedRow?.target) {
-      if (selectedRow.target.kind === "modelDefault" || selectedRow.target.kind === "toolApprovalView" || selectedRow.target.kind === "systemField" && (selectedRow.target.field === "stream" || selectedRow.target.field === "retryOnError") || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "enabled") {
+      if (selectedRow.target.kind === "modelDefault" || selectedRow.target.kind === "toolApprovalView" || selectedRow.target.kind === "toolGlobalToggle" || selectedRow.target.kind === "systemField" && (selectedRow.target.field === "stream" || selectedRow.target.field === "retryOnError" || selectedRow.target.field === "logRequests" || selectedRow.target.field === "asyncSubAgents") || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "enabled") {
         applyToggle(selectedRow.target);
       } else if (selectedRow.target.kind === "toolPolicy") {
         applyCycle(selectedRow.target, 1);
@@ -4389,7 +4443,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
           handleAddModel();
         return;
       }
-      if (selectedRow.target.kind === "modelDefault" || selectedRow.target.kind === "toolApprovalView" || selectedRow.target.kind === "systemField" && (selectedRow.target.field === "stream" || selectedRow.target.field === "retryOnError") || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "enabled") {
+      if (selectedRow.target.kind === "modelDefault" || selectedRow.target.kind === "toolApprovalView" || selectedRow.target.kind === "toolGlobalToggle" || selectedRow.target.kind === "systemField" && (selectedRow.target.field === "stream" || selectedRow.target.field === "retryOnError" || selectedRow.target.field === "logRequests" || selectedRow.target.field === "asyncSubAgents") || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "enabled") {
         applyToggle(selectedRow.target);
         return;
       }
@@ -4397,7 +4451,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
         applyCycle(selectedRow.target, 1);
         return;
       }
-      if (selectedRow.target.kind === "modelField" || selectedRow.target.kind === "systemField" && selectedRow.target.field !== "stream" && selectedRow.target.field !== "retryOnError" || selectedRow.target.kind === "mcpField" && selectedRow.target.field !== "enabled" && selectedRow.target.field !== "transport") {
+      if (selectedRow.target.kind === "modelField" || selectedRow.target.kind === "systemField" && selectedRow.target.field !== "stream" && selectedRow.target.field !== "retryOnError" && selectedRow.target.field !== "logRequests" && selectedRow.target.field !== "asyncSubAgents" || selectedRow.target.kind === "mcpField" && selectedRow.target.field !== "enabled" && selectedRow.target.field !== "transport") {
         startEdit(selectedRow.target);
       }
     }
