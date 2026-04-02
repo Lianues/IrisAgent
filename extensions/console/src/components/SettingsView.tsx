@@ -294,6 +294,18 @@ function buildRows(snapshot: ConsoleSettingsSnapshot, termWidth: number): Settin
   return rows;
 }
 
+
+/* 左栏导航分栏定义。
+ * 用户按数字键 1/2/3 可直接切换分栏（参考 lazygit 的面板跳转交互）。 */
+const SECTIONS = [
+  { id: 'general', label: '模型与系统', icon: '01' },
+  { id: 'tools', label: '工具策略', icon: '02' },
+  { id: 'mcp', label: 'MCP 服务', icon: '03' }
+] as const;
+
+
+
+
 export function SettingsView({ initialSection = 'general', onBack, onLoad, onSave }: SettingsViewProps) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions();
   const [loading, setLoading] = useState(true);
@@ -323,6 +335,10 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
 
   const selectableRows = useMemo(() => rows.filter((row: SettingsRow) => row.target), [rows]);
   const selectedRow = useMemo(() => rows.find((row: SettingsRow) => row.id === selectedRowId), [rows, selectedRowId]);
+  /* currentSection / sectionRows 必须在 rows 和 selectedRow 之后声明，
+   * 否则会触发 "Cannot access before initialization" 的运行时错误。 */
+  const currentSection = useMemo(() => selectedRow?.section ?? initialSection, [selectedRow, initialSection]);
+  const sectionRows = useMemo(() => rows.filter((r: SettingsRow) => r.section === currentSection && r.kind !== 'section'), [rows, currentSection]);
   const selectedSelectableIndex = useMemo(() => {
     return selectableRows.findIndex((row: SettingsRow) => row.id === selectedRowId);
   }, [selectableRows, selectedRowId]);
@@ -676,6 +692,17 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       return;
     }
     if (key.name === 's') { void handleSave(); return; }
+    /* 数字键 1/2/3 切换左栏分栏（参考 lazygit 的面板跳转交互）。
+     * 按下对应数字后，焦点跳转到该分栏的第一个可选中行。 */
+    if (key.name === '1' || key.name === '2' || key.name === '3') {
+      const targetSection = SECTIONS[Number(key.name) - 1];
+      if (targetSection) {
+        const firstInSection = selectableRows.find((r: SettingsRow) => r.section === targetSection.id);
+        if (firstInSection) setSelectedRowId(firstInSection.id);
+      }
+      setPendingLeaveConfirm(false);
+      return;
+    }
     if (key.name === 'r') { void reloadSnapshot(); return; }
     if (key.name === 'a') {
       if (selectedRow?.section === 'mcp') handleAddMcpServer();
@@ -719,23 +746,21 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
     }
   });
 
-  // 滚动窗口计算
-  const listHeight = Math.max(10, termHeight - (editor ? 13 : 10));
-  const selectedRowAbsoluteIndex = Math.max(0, rows.findIndex((row: SettingsRow) => row.id === selectedRowId));
-  let windowStart = Math.max(0, selectedRowAbsoluteIndex - Math.floor(listHeight / 2));
-  let windowEnd = Math.min(rows.length, windowStart + listHeight);
+  // 滚动窗口计算。
+  // 顶部 LOGO 区域占 5 行（3 行文字 + paddingTop=1 + marginTop=1），
+  // 加上底部信息栏，需要从终端高度中减去这些固定占用。
+  const listHeight = Math.max(10, termHeight - (editor ? 26 : 22));
+  const selectedRowSectionIndex = Math.max(0, sectionRows.findIndex((row: SettingsRow) => row.id === selectedRowId));
+  let windowStart = Math.max(0, selectedRowSectionIndex - Math.floor(listHeight / 2));
+  let windowEnd = Math.min(sectionRows.length, windowStart + listHeight);
   if (windowEnd - windowStart < listHeight) {
     windowStart = Math.max(0, windowEnd - listHeight);
   }
-  const visibleRows = rows.slice(windowStart, windowEnd);
+  const visibleRows = sectionRows.slice(windowStart, windowEnd);
 
   if (loading && !draft) {
     return (
-      <box flexDirection="column" width="100%" height="100%">
-        <box marginBottom={1} paddingX={1}>
-          <text fg={C.primary}><strong><em>IRIS</em></strong></text>
-        </box>
-        <text><strong>设置中心</strong></text>
+      <box width="100%" height="100%" justifyContent="center" alignItems="center">
         <text fg="#888">正在加载配置...</text>
       </box>
     );
@@ -743,91 +768,118 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <box marginBottom={1} paddingX={1}>
-        <text fg={C.primary}><strong><em>IRIS</em></strong></text>
-      </box>
-
-      <text><strong>设置中心</strong></text>
-      <text fg="#888">在终端内管理模型池、系统参数、工具策略与 MCP 服务器。</text>
-      <text fg={isDirty ? C.warn : C.accent}>
-        {isDirty ? '\u25CF 有未保存修改' : '\u2713 当前草稿已同步'}
-        {saving ? '  \u00b7  保存中...' : ''}
-      </text>
-
-      <scrollbox flexGrow={1} marginTop={1}>
-        {/* 原先 \u2026 直接写在 JSX 文本节点中不会被解析为 Unicode 字符，改为 JS 表达式 */}
-        {windowStart > 0 && <text fg="#888">{'\u2026'}</text>}
-        {visibleRows.map((row: SettingsRow) => {
-          const isSelected = row.id === selectedRowId && !!row.target;
-          const prefix = row.kind === 'section'
-            ? '\u25A0'
-            : row.kind === 'action'
-              ? (isSelected ? '\u276F' : '\u2022')
-              : row.kind === 'field'
-                ? (isSelected ? '\u276F' : ' ')
-                : ' ';
-
-          if (row.kind === 'section') {
-            return (
-              <box key={row.id} marginTop={1}>
-                <text fg={C.primary}><strong>{prefix} {row.label}</strong></text>
-              </box>
-            );
-          }
-
-          return (
-            <box key={row.id} paddingLeft={row.indent ?? 0}>
-              <text>
-                <span fg={isSelected ? '#00ffff' : C.dim}>{prefix}</span>
-                <span> </span>
-                {isSelected && row.kind !== 'info'
-                  ? <span fg={C.accent}><strong>{row.label}</strong></span>
-                  : <span fg={isSelected ? '#00ffff' : undefined}>{row.label}</span>
-                }
-                {row.value != null && (
-                  <span fg={isSelected ? '#00ffff' : C.dim}>{`  ${row.value}`}</span>
-                )}
+      {/* 主体：左栏导航 + 右栏内容，LOGO 放在右栏顶部居中 */}
+      <box flexDirection="row" flexGrow={1}>
+        {/* 左栏导航：用 paddingRight + 竖线字符模拟分隔线，
+         * 因为 OpenTUI 的 BoxProps 不支持 borderRight 属性。 */}
+        <box width={24} flexDirection="column" paddingTop={1} paddingLeft={2} paddingRight={1}>
+          <text fg={C.primary}><strong>IRIS</strong></text>
+          <box marginTop={1} flexDirection="column">
+            {SECTIONS.map((sec) => (
+              <text key={sec.id} fg={currentSection === sec.id ? C.accent : '#555'}>
+                {currentSection === sec.id ? '\u25CF' : '\u25CB'} {sec.icon} {sec.label}
               </text>
-            </box>
-          );
-        })}
-        {/* 同上，JSX 文本节点中的 \u 转义不会被解析，改为 JS 表达式 */}
-        {windowEnd < rows.length && <text fg="#888">{'\u2026'}</text>}
-      </scrollbox>
-
-      <box marginTop={1} paddingX={1}>
-        <text fg={C.dim}>{'\u2500'.repeat(Math.max(3, termWidth - 6))}</text>
-      </box>
-
-      {selectedRow?.description && !editor && (
-        <text fg="#888">{selectedRow.description}</text>
-      )}
-
-      {statusText && (
-        <text fg={getStatusColor(statusKind)}>{statusText}</text>
-      )}
-
-      {editor ? (
-        <box flexDirection="column" marginTop={1}>
-          <text fg={C.accent}><strong>编辑：{editor.label}</strong></text>
-          {editor.hint && <text fg="#888">{editor.hint}</text>}
-          <box>
-            <text fg={C.accent}>{'\u276F '}</text>
-            <input
-              value={editorValue}
-              onChange={setEditorValue}
-              focused
-            />
+            ))}
           </box>
-          {/* JSX 文本节点中 \u00b7 不会被解析为 · 符号，改为 JS 表达式 */}
-          <text fg="#888">{'Enter 保存 \u00b7 Esc 取消'}</text>
         </box>
-      ) : (
-        <text fg="#888">
-          {/* JSX 文本节点中 \uXXXX 不会被解析为箭头符号，改为 JS 表达式 */}
-          {'\u2191\u2193 选择  \u2190\u2192 切换枚举  Space 切换布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回'}
-        </text>
-      )}
+        <box flexGrow={1} flexDirection="column" paddingTop={1} paddingLeft={2}>
+          {/* ================================================================
+           * LOGO 渲染修复记录
+           * ================================================================
+           *
+           * 原始实现：手动用 Unicode Block Elements（U+2580-259F）拼出
+           *   ▀█▀ █▀█ ▀█▀ █▀▀ / █ █▀▄ █ ▀▀█ / ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀
+           *
+           * 问题：在 SettingsView 复杂布局（左栏+右栏+底栏）中 LOGO 渲染乱码，
+           *       但首页 LogoScreen（全屏居中）显示正常。
+           *
+           * 根因：OpenTUI Zig native 渲染层对 Block Elements 字符的
+           *       displayWidth 计算与终端实际渲染宽度不一致。native 层按
+           *       char_offset（字符偏移）而非 col_offset（列偏移）写入
+           *       渲染 buffer，导致方块字符后续的所有字符列位置整体偏移。
+           *       首页不受影响是因为 LOGO 居中且周围全是空白，偏移不可见。
+           *       SettingsView 有相邻内容，偏移导致字符互相覆盖产生乱码。
+           *       参见 OpenTUI issue #255（CJK displayWidth 错误）、
+           *       issue #609（lineStarts 返回 column offset 而非 byte offset）。
+           *
+           * 已尝试但失败的方案：
+           *   1. wrapMode="none" — native 层仍按错误列宽写入 buffer
+           *   2. minWidth={30} + height={3} — 容器够大但列号仍错位
+           *   3. truncate={false} — 不影响 buffer 写入行为
+           *   4. alignItems="center" — native 层用错误宽度算居中偏移
+           *   5. alignItems="stretch" — 填充空格覆盖方块图形
+           *   6. alignItems="flex-start" — buffer 列号本身就错，仍乱码
+           *   7. padBlock() 补偿空格 — 假设终端把 Block Elements 渲染为
+           *      2 列宽，但实际大多数终端渲染为 1 列宽，反而更乱
+           *   8. padding={2} 复制首页布局 — 无效
+           *
+           * 最终方案：使用 OpenTUI 内置 <ascii-font> 组件。该组件内部
+           *   自行管理 ASCII art 字符的宽度计算和 buffer 写入，
+           *   绕过了 Zig native 层的 displayWidth 错误。
+           *   LOGO 放在右栏顶部居中（flexShrink=0 固定不随列表滚动），
+           *   font="block" 保持与首页一致的视觉风格。
+           * ================================================================ */}
+          <box alignItems="center" paddingBottom={1} flexShrink={0}>
+            <ascii-font text="IRIS" font="block" color={C.primary} />
+          </box>
+          {/* 状态栏：固定不滚动 */}
+          <box flexDirection="column" marginBottom={1} flexShrink={0}>
+            <text fg="#888">在终端内管理模型池、系统参数、工具策略与 MCP 服务器。</text>
+            <text fg={isDirty ? C.warn : C.accent}>
+              {isDirty ? '\u25CF 有未保存修改' : '\u2713 当前草稿已同步'}
+              {saving ? '  \u00b7  保存中...' : ''}
+            </text>
+          </box>
+          {/* 设置项列表：可滚动区域 */}
+          <scrollbox flexGrow={1}>
+            {windowStart > 0 && <text fg="#888">{'\u2026'}</text>}
+            {visibleRows.map((row: SettingsRow) => {
+              const isSelected = row.id === selectedRowId && !!row.target;
+              const prefix = row.kind === 'action'
+                  ? (isSelected ? '\u276F' : '\u2022')
+                  : row.kind === 'field'
+                    ? (isSelected ? '\u276F' : ' ')
+                    : ' ';
+              return (
+                <box key={row.id} paddingLeft={row.indent ?? 0}>
+                  <text>
+                    <span fg={isSelected ? '#00ffff' : C.dim}>{prefix}</span>
+                    <span> </span>
+                    {isSelected && row.kind !== 'info'
+                      ? <span fg={C.accent}><strong>{row.label}</strong></span>
+                      : <span fg={isSelected ? '#00ffff' : undefined}>{row.label}</span>
+                    }
+                    {row.value != null && (
+                      <span fg={isSelected ? '#00ffff' : C.dim}>{`  ${row.value}`}</span>
+                    )}
+                  </text>
+                </box>
+              );
+            })}
+            {windowEnd < sectionRows.length && <text fg="#888">{'\u2026'}</text>}
+          </scrollbox>
+        </box>
+      </box>
+      <box flexDirection="column" marginTop={1} paddingX={2}>
+        <text fg={C.dim}>{'─'.repeat(Math.max(3, termWidth - 4))}</text>
+        <box flexDirection="column" minHeight={4}>
+          {selectedRow?.description && !editor && <text fg="#888">{selectedRow.description}</text>}
+          {statusText && <text fg={getStatusColor(statusKind)}>{statusText}</text>}
+          {editor ? (
+            <box flexDirection="column">
+              <text fg={C.accent}><strong>编辑：{editor.label}</strong></text>
+              {editor.hint && <text fg="#888">{editor.hint}</text>}
+              <box>
+                <text fg={C.accent}>{'\u276F '}</text>
+                <input value={editorValue} onInput={setEditorValue} focused />
+              </box>
+              <text fg="#888">{'Enter 保存 \u00b7 Esc 取消'}</text>
+            </box>
+          ) : (
+            <text fg="#888">{'\u2191\u2193 选择  \u2190\u2192 切换  1/2/3 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回'}</text>
+          )}
+        </box>
+      </box>
     </box>
   );
 }

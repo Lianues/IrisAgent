@@ -3992,6 +3992,11 @@ function buildRows(snapshot, termWidth) {
   });
   return rows;
 }
+var SECTIONS = [
+  { id: "general", label: "模型与系统", icon: "01" },
+  { id: "tools", label: "工具策略", icon: "02" },
+  { id: "mcp", label: "MCP 服务", icon: "03" }
+];
 function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions3();
   const [loading, setLoading] = useState6(true);
@@ -4018,6 +4023,8 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
   }, [draft, termWidth]);
   const selectableRows = useMemo4(() => rows.filter((row) => row.target), [rows]);
   const selectedRow = useMemo4(() => rows.find((row) => row.id === selectedRowId), [rows, selectedRowId]);
+  const currentSection = useMemo4(() => selectedRow?.section ?? initialSection, [selectedRow, initialSection]);
+  const sectionRows = useMemo4(() => rows.filter((r) => r.section === currentSection && r.kind !== "section"), [rows, currentSection]);
   const selectedSelectableIndex = useMemo4(() => {
     return selectableRows.findIndex((row) => row.id === selectedRowId);
   }, [selectableRows, selectedRowId]);
@@ -4409,6 +4416,16 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       handleSave();
       return;
     }
+    if (key.name === "1" || key.name === "2" || key.name === "3") {
+      const targetSection = SECTIONS[Number(key.name) - 1];
+      if (targetSection) {
+        const firstInSection = selectableRows.find((r) => r.section === targetSection.id);
+        if (firstInSection)
+          setSelectedRowId(firstInSection.id);
+      }
+      setPendingLeaveConfirm(false);
+      return;
+    }
     if (key.name === "r") {
       reloadSnapshot();
       return;
@@ -4456,43 +4473,25 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       }
     }
   });
-  const listHeight = Math.max(10, termHeight - (editor ? 13 : 10));
-  const selectedRowAbsoluteIndex = Math.max(0, rows.findIndex((row) => row.id === selectedRowId));
-  let windowStart = Math.max(0, selectedRowAbsoluteIndex - Math.floor(listHeight / 2));
-  let windowEnd = Math.min(rows.length, windowStart + listHeight);
+  const listHeight = Math.max(10, termHeight - (editor ? 26 : 22));
+  const selectedRowSectionIndex = Math.max(0, sectionRows.findIndex((row) => row.id === selectedRowId));
+  let windowStart = Math.max(0, selectedRowSectionIndex - Math.floor(listHeight / 2));
+  let windowEnd = Math.min(sectionRows.length, windowStart + listHeight);
   if (windowEnd - windowStart < listHeight) {
     windowStart = Math.max(0, windowEnd - listHeight);
   }
-  const visibleRows = rows.slice(windowStart, windowEnd);
+  const visibleRows = sectionRows.slice(windowStart, windowEnd);
   if (loading && !draft) {
     return /* @__PURE__ */ jsxDEV30("box", {
-      flexDirection: "column",
       width: "100%",
       height: "100%",
-      children: [
-        /* @__PURE__ */ jsxDEV30("box", {
-          marginBottom: 1,
-          paddingX: 1,
-          children: /* @__PURE__ */ jsxDEV30("text", {
-            fg: C.primary,
-            children: /* @__PURE__ */ jsxDEV30("strong", {
-              children: /* @__PURE__ */ jsxDEV30("em", {
-                children: "IRIS"
-              }, undefined, false, undefined, this)
-            }, undefined, false, undefined, this)
-          }, undefined, false, undefined, this)
-        }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV30("text", {
-          children: /* @__PURE__ */ jsxDEV30("strong", {
-            children: "设置中心"
-          }, undefined, false, undefined, this)
-        }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV30("text", {
-          fg: "#888",
-          children: "正在加载配置..."
-        }, undefined, false, undefined, this)
-      ]
-    }, undefined, true, undefined, this);
+      justifyContent: "center",
+      alignItems: "center",
+      children: /* @__PURE__ */ jsxDEV30("text", {
+        fg: "#888",
+        children: "正在加载配置..."
+      }, undefined, false, undefined, this)
+    }, undefined, false, undefined, this);
   }
   return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
@@ -4500,148 +4499,183 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
     height: "100%",
     children: [
       /* @__PURE__ */ jsxDEV30("box", {
-        marginBottom: 1,
-        paddingX: 1,
-        children: /* @__PURE__ */ jsxDEV30("text", {
-          fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV30("strong", {
-            children: /* @__PURE__ */ jsxDEV30("em", {
-              children: "IRIS"
-            }, undefined, false, undefined, this)
-          }, undefined, false, undefined, this)
-        }, undefined, false, undefined, this)
-      }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV30("text", {
-        children: /* @__PURE__ */ jsxDEV30("strong", {
-          children: "设置中心"
-        }, undefined, false, undefined, this)
-      }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV30("text", {
-        fg: "#888",
-        children: "在终端内管理模型池、系统参数、工具策略与 MCP 服务器。"
-      }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV30("text", {
-        fg: isDirty ? C.warn : C.accent,
-        children: [
-          isDirty ? "● 有未保存修改" : "✓ 当前草稿已同步",
-          saving ? "  ·  保存中..." : ""
-        ]
-      }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV30("scrollbox", {
+        flexDirection: "row",
         flexGrow: 1,
-        marginTop: 1,
         children: [
-          windowStart > 0 && /* @__PURE__ */ jsxDEV30("text", {
-            fg: "#888",
-            children: "…"
-          }, undefined, false, undefined, this),
-          visibleRows.map((row) => {
-            const isSelected = row.id === selectedRowId && !!row.target;
-            const prefix = row.kind === "section" ? "■" : row.kind === "action" ? isSelected ? "❯" : "•" : row.kind === "field" ? isSelected ? "❯" : " " : " ";
-            if (row.kind === "section") {
-              return /* @__PURE__ */ jsxDEV30("box", {
-                marginTop: 1,
-                children: /* @__PURE__ */ jsxDEV30("text", {
-                  fg: C.primary,
-                  children: /* @__PURE__ */ jsxDEV30("strong", {
-                    children: [
-                      prefix,
-                      " ",
-                      row.label
-                    ]
-                  }, undefined, true, undefined, this)
-                }, undefined, false, undefined, this)
-              }, row.id, false, undefined, this);
-            }
-            return /* @__PURE__ */ jsxDEV30("box", {
-              paddingLeft: row.indent ?? 0,
-              children: /* @__PURE__ */ jsxDEV30("text", {
-                children: [
-                  /* @__PURE__ */ jsxDEV30("span", {
-                    fg: isSelected ? "#00ffff" : C.dim,
-                    children: prefix
-                  }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV30("span", {
-                    children: " "
-                  }, undefined, false, undefined, this),
-                  isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV30("span", {
-                    fg: C.accent,
-                    children: /* @__PURE__ */ jsxDEV30("strong", {
-                      children: row.label
-                    }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
-                    fg: isSelected ? "#00ffff" : undefined,
-                    children: row.label
-                  }, undefined, false, undefined, this),
-                  row.value != null && /* @__PURE__ */ jsxDEV30("span", {
-                    fg: isSelected ? "#00ffff" : C.dim,
-                    children: `  ${row.value}`
-                  }, undefined, false, undefined, this)
-                ]
-              }, undefined, true, undefined, this)
-            }, row.id, false, undefined, this);
-          }),
-          windowEnd < rows.length && /* @__PURE__ */ jsxDEV30("text", {
-            fg: "#888",
-            children: "…"
-          }, undefined, false, undefined, this)
-        ]
-      }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV30("box", {
-        marginTop: 1,
-        paddingX: 1,
-        children: /* @__PURE__ */ jsxDEV30("text", {
-          fg: C.dim,
-          children: "─".repeat(Math.max(3, termWidth - 6))
-        }, undefined, false, undefined, this)
-      }, undefined, false, undefined, this),
-      selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV30("text", {
-        fg: "#888",
-        children: selectedRow.description
-      }, undefined, false, undefined, this),
-      statusText && /* @__PURE__ */ jsxDEV30("text", {
-        fg: getStatusColor(statusKind),
-        children: statusText
-      }, undefined, false, undefined, this),
-      editor ? /* @__PURE__ */ jsxDEV30("box", {
-        flexDirection: "column",
-        marginTop: 1,
-        children: [
-          /* @__PURE__ */ jsxDEV30("text", {
-            fg: C.accent,
-            children: /* @__PURE__ */ jsxDEV30("strong", {
-              children: [
-                "编辑：",
-                editor.label
-              ]
-            }, undefined, true, undefined, this)
-          }, undefined, false, undefined, this),
-          editor.hint && /* @__PURE__ */ jsxDEV30("text", {
-            fg: "#888",
-            children: editor.hint
-          }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV30("box", {
+            width: 24,
+            flexDirection: "column",
+            paddingTop: 1,
+            paddingLeft: 2,
+            paddingRight: 1,
             children: [
               /* @__PURE__ */ jsxDEV30("text", {
-                fg: C.accent,
-                children: "❯ "
+                fg: C.primary,
+                children: /* @__PURE__ */ jsxDEV30("strong", {
+                  children: "IRIS"
+                }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV30("input", {
-                value: editorValue,
-                onChange: setEditorValue,
-                focused: true
+              /* @__PURE__ */ jsxDEV30("box", {
+                marginTop: 1,
+                flexDirection: "column",
+                children: SECTIONS.map((sec) => /* @__PURE__ */ jsxDEV30("text", {
+                  fg: currentSection === sec.id ? C.accent : "#555",
+                  children: [
+                    currentSection === sec.id ? "●" : "○",
+                    " ",
+                    sec.icon,
+                    " ",
+                    sec.label
+                  ]
+                }, sec.id, true, undefined, this))
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV30("text", {
-            fg: "#888",
-            children: "Enter 保存 · Esc 取消"
-          }, undefined, false, undefined, this)
+          /* @__PURE__ */ jsxDEV30("box", {
+            flexGrow: 1,
+            flexDirection: "column",
+            paddingTop: 1,
+            paddingLeft: 2,
+            children: [
+              /* @__PURE__ */ jsxDEV30("box", {
+                alignItems: "center",
+                paddingBottom: 1,
+                flexShrink: 0,
+                children: /* @__PURE__ */ jsxDEV30("ascii-font", {
+                  text: "IRIS",
+                  font: "block",
+                  color: C.primary
+                }, undefined, false, undefined, this)
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsxDEV30("box", {
+                flexDirection: "column",
+                marginBottom: 1,
+                flexShrink: 0,
+                children: [
+                  /* @__PURE__ */ jsxDEV30("text", {
+                    fg: "#888",
+                    children: "在终端内管理模型池、系统参数、工具策略与 MCP 服务器。"
+                  }, undefined, false, undefined, this),
+                  /* @__PURE__ */ jsxDEV30("text", {
+                    fg: isDirty ? C.warn : C.accent,
+                    children: [
+                      isDirty ? "● 有未保存修改" : "✓ 当前草稿已同步",
+                      saving ? "  ·  保存中..." : ""
+                    ]
+                  }, undefined, true, undefined, this)
+                ]
+              }, undefined, true, undefined, this),
+              /* @__PURE__ */ jsxDEV30("scrollbox", {
+                flexGrow: 1,
+                children: [
+                  windowStart > 0 && /* @__PURE__ */ jsxDEV30("text", {
+                    fg: "#888",
+                    children: "…"
+                  }, undefined, false, undefined, this),
+                  visibleRows.map((row) => {
+                    const isSelected = row.id === selectedRowId && !!row.target;
+                    const prefix = row.kind === "action" ? isSelected ? "❯" : "•" : row.kind === "field" ? isSelected ? "❯" : " " : " ";
+                    return /* @__PURE__ */ jsxDEV30("box", {
+                      paddingLeft: row.indent ?? 0,
+                      children: /* @__PURE__ */ jsxDEV30("text", {
+                        children: [
+                          /* @__PURE__ */ jsxDEV30("span", {
+                            fg: isSelected ? "#00ffff" : C.dim,
+                            children: prefix
+                          }, undefined, false, undefined, this),
+                          /* @__PURE__ */ jsxDEV30("span", {
+                            children: " "
+                          }, undefined, false, undefined, this),
+                          isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV30("span", {
+                            fg: C.accent,
+                            children: /* @__PURE__ */ jsxDEV30("strong", {
+                              children: row.label
+                            }, undefined, false, undefined, this)
+                          }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
+                            fg: isSelected ? "#00ffff" : undefined,
+                            children: row.label
+                          }, undefined, false, undefined, this),
+                          row.value != null && /* @__PURE__ */ jsxDEV30("span", {
+                            fg: isSelected ? "#00ffff" : C.dim,
+                            children: `  ${row.value}`
+                          }, undefined, false, undefined, this)
+                        ]
+                      }, undefined, true, undefined, this)
+                    }, row.id, false, undefined, this);
+                  }),
+                  windowEnd < sectionRows.length && /* @__PURE__ */ jsxDEV30("text", {
+                    fg: "#888",
+                    children: "…"
+                  }, undefined, false, undefined, this)
+                ]
+              }, undefined, true, undefined, this)
+            ]
+          }, undefined, true, undefined, this)
         ]
-      }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV30("text", {
-        fg: "#888",
-        children: "↑↓ 选择  ←→ 切换枚举  Space 切换布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回"
-      }, undefined, false, undefined, this)
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV30("box", {
+        flexDirection: "column",
+        marginTop: 1,
+        paddingX: 2,
+        children: [
+          /* @__PURE__ */ jsxDEV30("text", {
+            fg: C.dim,
+            children: "─".repeat(Math.max(3, termWidth - 4))
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV30("box", {
+            flexDirection: "column",
+            minHeight: 4,
+            children: [
+              selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV30("text", {
+                fg: "#888",
+                children: selectedRow.description
+              }, undefined, false, undefined, this),
+              statusText && /* @__PURE__ */ jsxDEV30("text", {
+                fg: getStatusColor(statusKind),
+                children: statusText
+              }, undefined, false, undefined, this),
+              editor ? /* @__PURE__ */ jsxDEV30("box", {
+                flexDirection: "column",
+                children: [
+                  /* @__PURE__ */ jsxDEV30("text", {
+                    fg: C.accent,
+                    children: /* @__PURE__ */ jsxDEV30("strong", {
+                      children: [
+                        "编辑：",
+                        editor.label
+                      ]
+                    }, undefined, true, undefined, this)
+                  }, undefined, false, undefined, this),
+                  editor.hint && /* @__PURE__ */ jsxDEV30("text", {
+                    fg: "#888",
+                    children: editor.hint
+                  }, undefined, false, undefined, this),
+                  /* @__PURE__ */ jsxDEV30("box", {
+                    children: [
+                      /* @__PURE__ */ jsxDEV30("text", {
+                        fg: C.accent,
+                        children: "❯ "
+                      }, undefined, false, undefined, this),
+                      /* @__PURE__ */ jsxDEV30("input", {
+                        value: editorValue,
+                        onInput: setEditorValue,
+                        focused: true
+                      }, undefined, false, undefined, this)
+                    ]
+                  }, undefined, true, undefined, this),
+                  /* @__PURE__ */ jsxDEV30("text", {
+                    fg: "#888",
+                    children: "Enter 保存 · Esc 取消"
+                  }, undefined, false, undefined, this)
+                ]
+              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV30("text", {
+                fg: "#888",
+                children: "↑↓ 选择  ←→ 切换  1/2/3 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回"
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this)
+        ]
+      }, undefined, true, undefined, this)
     ]
   }, undefined, true, undefined, this);
 }
