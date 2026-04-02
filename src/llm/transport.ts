@@ -113,7 +113,13 @@ export async function sendRequest(
   }
   // 非流式：clone 后后台读取并记录
   const clone = res.clone();
-  clone.text().then(text => logResponse(loggingDir, timestamp!, text, false)).catch(() => {});
+  clone.text().then(
+    text => logResponse(loggingDir, timestamp!, text, false),
+    err => {
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      try { logResponse(loggingDir, timestamp!, `--- RESPONSE READ ERROR ---\n${detail}`, false); } catch { /* ignore */ }
+    },
+  );
   return res;
 }
 
