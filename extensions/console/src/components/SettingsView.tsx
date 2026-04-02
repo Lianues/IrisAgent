@@ -42,6 +42,7 @@ type RowTarget =
   | { kind: 'systemField'; field: 'systemPrompt' | 'maxToolRounds' | 'stream' | 'retryOnError' | 'maxRetries' | 'logRequests' | 'maxAgentDepth' | 'defaultMode' | 'asyncSubAgents' }
   | { kind: 'toolPolicy'; toolIndex: number }
   | { kind: 'toolApprovalView'; toolIndex: number }
+  | { kind: 'toolGlobalToggle'; field: 'autoApproveAll' | 'autoApproveConfirmation' | 'autoApproveDiff' }
   | { kind: 'mcpField'; serverIndex: number; field: 'name' | 'enabled' | 'transport' | 'command' | 'args' | 'cwd' | 'url' | 'authHeader' | 'timeout' }
   | { kind: 'action'; action: 'addModel' | 'addMcp' };
 
@@ -124,6 +125,9 @@ function getEditableFingerprint(snapshot: ConsoleSettingsSnapshot | null): strin
     defaultModelName: snapshot.defaultModelName,
     system: snapshot.system,
     toolPolicies: snapshot.toolPolicies,
+    autoApproveAll: snapshot.autoApproveAll,
+    autoApproveConfirmation: snapshot.autoApproveConfirmation,
+    autoApproveDiff: snapshot.autoApproveDiff,
     mcpServers: snapshot.mcpServers,
     mcpOriginalNames: snapshot.mcpOriginalNames,
   });
@@ -223,6 +227,10 @@ function buildRows(snapshot: ConsoleSettingsSnapshot, termWidth: number): Settin
   pushField('system.asyncSubAgents', 'general', 'System / 异步子代理', boolText(snapshot.system.asyncSubAgents), { kind: 'systemField', field: 'asyncSubAgents' }, '启用后子代理可在后台异步执行，主对话不阻塞。需在 sub_agents.yaml 中定义子代理类型。空格切换。');
 
   rows.push({ id: 'section.tools', kind: 'section', section: 'tools', label: `工具执行策略（${snapshot.toolPolicies.length}）` });
+
+  pushField('tools.autoApproveAll', 'tools', '全部自动批准', boolText(snapshot.autoApproveAll), { kind: 'toolGlobalToggle', field: 'autoApproveAll' }, '跳过所有审批（一类确认 + 二类 diff 预览），最高优先级。空格切换。');
+  pushField('tools.autoApproveConfirmation', 'tools', '跳过确认审批', boolText(snapshot.autoApproveConfirmation), { kind: 'toolGlobalToggle', field: 'autoApproveConfirmation' }, '仅跳过一类审批（Y/N 确认），二类审批（diff 预览）仍生效。空格切换。');
+  pushField('tools.autoApproveDiff', 'tools', '跳过 Diff 审批', boolText(snapshot.autoApproveDiff), { kind: 'toolGlobalToggle', field: 'autoApproveDiff' }, '仅跳过二类审批（diff 预览），一类审批（Y/N 确认）仍生效。空格切换。');
 
   snapshot.toolPolicies.forEach((tool, index) => {
     const mode = getToolPolicyMode(tool.configured, tool.autoApprove);
@@ -479,6 +487,11 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         return;
       }
 
+      if (target.kind === 'toolGlobalToggle') {
+        snapshot[target.field] = !snapshot[target.field];
+        return;
+      }
+
       if (target.kind === 'toolApprovalView') {
         const tool = snapshot.toolPolicies[target.toolIndex];
         if (tool) tool.showApprovalView = tool.showApprovalView === false;
@@ -675,7 +688,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       return;
     }
     if (key.name === 'space' && selectedRow?.target) {
-      if (selectedRow.target.kind === 'modelDefault' || selectedRow.target.kind === 'toolApprovalView' || (selectedRow.target.kind === 'systemField' && (selectedRow.target.field === 'stream' || selectedRow.target.field === 'retryOnError' || selectedRow.target.field === 'logRequests' || selectedRow.target.field === 'asyncSubAgents')) || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'enabled')) {
+      if (selectedRow.target.kind === 'modelDefault' || selectedRow.target.kind === 'toolApprovalView' || selectedRow.target.kind === 'toolGlobalToggle' || (selectedRow.target.kind === 'systemField' && (selectedRow.target.field === 'stream' || selectedRow.target.field === 'retryOnError' || selectedRow.target.field === 'logRequests' || selectedRow.target.field === 'asyncSubAgents')) || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'enabled')) {
 
         applyToggle(selectedRow.target);
       } else if (selectedRow.target.kind === 'toolPolicy') {
@@ -691,7 +704,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         else handleAddModel();
         return;
       }
-      if (selectedRow.target.kind === 'modelDefault' || selectedRow.target.kind === 'toolApprovalView' || (selectedRow.target.kind === 'systemField' && (selectedRow.target.field === 'stream' || selectedRow.target.field === 'retryOnError' || selectedRow.target.field === 'logRequests' || selectedRow.target.field === 'asyncSubAgents')) || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'enabled')) {
+      if (selectedRow.target.kind === 'modelDefault' || selectedRow.target.kind === 'toolApprovalView' || selectedRow.target.kind === 'toolGlobalToggle' || (selectedRow.target.kind === 'systemField' && (selectedRow.target.field === 'stream' || selectedRow.target.field === 'retryOnError' || selectedRow.target.field === 'logRequests' || selectedRow.target.field === 'asyncSubAgents')) || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'enabled')) {
         applyToggle(selectedRow.target);
         return;
       }

@@ -5,7 +5,8 @@
  *   llm.yaml    — defaultModel, models.*.{provider, model, apiKey, baseUrl}
  *   system.yaml — systemPrompt, maxToolRounds, stream, retryOnError, maxRetries,
  *                 logRequests, maxAgentDepth, defaultMode, asyncSubAgents
- *   tools.yaml  — 按工具的 autoApprove / showApprovalView（allowPatterns/denyPatterns 仅透传）
+ *   tools.yaml  — autoApproveAll, autoApproveConfirmation, autoApproveDiff,
+ *                 按工具的 autoApprove / showApprovalView（allowPatterns/denyPatterns 仅透传）
  *   mcp.yaml    — servers.*.{name, enabled, transport, command, args, cwd, url, headers.Authorization, timeout}
  *
  * TODO: 以下配置项尚未加入 settings 界面，按优先级排列：
@@ -23,7 +24,6 @@
  *
  *  ▸ tools.yaml 高级配置
  *     - shell.allowPatterns / denyPatterns  Shell 白名单/黑名单（数据模型已透传，缺编辑 UI）
- *     - autoApproveAll                  全局自动批准开关
  *     - disabledTools                   禁用工具列表
  *     - limits.*                        各工具防御性参数（maxFiles, maxResults 等）
  *
@@ -117,6 +117,9 @@ export interface ConsoleSettingsSnapshot {
     asyncSubAgents: boolean;
   };
   toolPolicies: ConsoleToolPolicySettings[];
+  autoApproveAll: boolean;
+  autoApproveConfirmation: boolean;
+  autoApproveDiff: boolean;
   mcpServers: ConsoleMCPServerSettings[];
   mcpStatus: MCPServerInfoLike[];
   mcpOriginalNames: string[];
@@ -421,6 +424,9 @@ export class ConsoleSettingsController {
         allowPatterns: permissions[name]?.allowPatterns,
         denyPatterns: permissions[name]?.denyPatterns,
       })),
+      autoApproveAll: toolsConfig.autoApproveAll === true,
+      autoApproveConfirmation: toolsConfig.autoApproveConfirmation === true,
+      autoApproveDiff: toolsConfig.autoApproveDiff === true,
       mcpServers: Object.entries(rawMcpServers).map(([name, cfg]) => ({
         name,
         originalName: name,
@@ -463,7 +469,11 @@ export class ConsoleSettingsController {
         defaultMode: draft.system.defaultMode || null,
         asyncSubAgents: draft.system.asyncSubAgents,
       },
-      tools: draft.toolPolicies.reduce((result: Record<string, Record<string, unknown>>, tool) => {
+      tools: {
+        autoApproveAll: draft.autoApproveAll || null,
+        autoApproveConfirmation: draft.autoApproveConfirmation || null,
+        autoApproveDiff: draft.autoApproveDiff || null,
+        ...draft.toolPolicies.reduce((result: Record<string, Record<string, unknown>>, tool) => {
         if (!tool.configured) {
           return result;
         }
@@ -473,7 +483,8 @@ export class ConsoleSettingsController {
         if (tool.denyPatterns?.length) entry.denyPatterns = tool.denyPatterns;
         result[tool.name] = entry;
         return result;
-      }, {}),
+        }, {}),
+      },
       mcp: buildMCPPayload(draft),
     };
 
