@@ -110,6 +110,42 @@ export class TelegramPlatform extends PlatformAdapter {
     await this.client.start();
     logger.info('Telegram 平台已启动');
 
+    // ── 定时任务结果广播订阅 ──
+    // 通过 PluginEventBus 订阅 'cron:result' 事件，
+    // 将后台定时任务的执行结果推送给所有活跃的 Telegram 聊天。
+    // eventBus 从 factory context 传入的 config 中获取（见 createTelegramPlatform）。
+    const eventBus = (this.config as any).eventBus;
+    if (eventBus && typeof eventBus.on === 'function') {
+      eventBus.on('cron:result', (payload: unknown) => {
+        const p = payload as {
+          jobName?: string;
+          status?: string;
+          result?: string;
+          error?: string;
+          durationMs?: number;
+        };
+        if (!p || typeof p !== 'object') return;
+
+        let text: string;
+        if (p.status === 'completed') {
+          // Telegram 限制消息长度，截断结果到 1000 字符
+          const resultPreview = p.result?.slice(0, 1000) ?? '';
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 完成：\n${resultPreview}`;
+        } else if (p.status === 'killed') {
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 被中止`;
+        } else {
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 失败：${p.error ?? '未知错误'}`;
+        }
+
+        // 向所有活跃（未 stopped）的聊天推送通知
+        for (const cs of this.chatStates.values()) {
+          if (cs.stopped) continue;
+          void this.sendToChat(cs, text, { trackMessage: false });
+        }
+      });
+      logger.info('已订阅 cron:result 事件');
+    }
+
     // 启动对码输出
     if (this.pairingGuard && this.pairingStore?.needsBootstrap()) {
       const code = this.pairingStore.getOrCreateBootstrapCode();
@@ -950,11 +986,15 @@ function hasTelegramUnsupportedMedia(message: ParsedTelegramMessage): boolean {
 
 export const createTelegramPlatform = definePlatformFactory<TelegramConfig, TelegramPlatform>({
   platformName: 'telegram',
-  resolveConfig: (raw) => ({
+  resolveConfig: (raw, context) => ({
     token: raw.token ?? '',
     showToolStatus: raw.showToolStatus,
     groupMentionRequired: raw.groupMentionRequired,
     pairing: raw.pairing,
+    // 将 eventBus 从 factory context 注入到 config 中，
+    // 供 TelegramPlatform.start() 订阅 cron:result 事件。
+    // eventBus 通过 context.eventBus 获取（宿主在 PlatformFactoryContext 中提供）。
+    eventBus: (context as any).eventBus,
   }),
   create: (backend, config) => new TelegramPlatform(backend, config),
 });

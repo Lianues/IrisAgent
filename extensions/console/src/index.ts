@@ -353,6 +353,37 @@ export class ConsolePlatform extends PlatformAdapter {
       }
     });
 
+    // ── 定时任务结果广播订阅 ──
+    // 通过 PluginEventBus 订阅 'cron:result' 事件，
+    // 将后台定时任务的执行结果在 Console TUI 中展示为系统消息。
+    // eventBus 从 api.eventBus 获取，cron 插件 fire 时所有平台均可收到。
+    if (this.api?.eventBus) {
+      const eventBus = this.api.eventBus;
+      eventBus.on('cron:result', (payload: unknown) => {
+        const p = payload as {
+          jobName?: string;
+          status?: string;
+          result?: string;
+          error?: string;
+          durationMs?: number;
+        };
+        if (!p || typeof p !== 'object') return;
+
+        let text: string;
+        if (p.status === 'completed') {
+          const resultPreview = p.result?.slice(0, 200) ?? '';
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 完成：${resultPreview}`;
+        } else if (p.status === 'killed') {
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 被中止`;
+        } else {
+          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 失败：${p.error ?? '未知错误'}`;
+        }
+
+        // 使用 addMessage('assistant', ...) 将通知展示在聊天界面中
+        this.appHandle?.addMessage('assistant', text);
+      });
+    }
+
     this.backend.on('auto-compact', (sid: string, summaryText: string) => {
       if (sid === this.sessionId) {
         const fullText = `[Context Summary]\n\n${summaryText}`;

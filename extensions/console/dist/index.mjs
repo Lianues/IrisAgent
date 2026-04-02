@@ -3992,12 +3992,12 @@ function buildRows(snapshot, termWidth) {
   });
   return rows;
 }
-var SECTIONS = [
+var BUILTIN_SECTIONS = [
   { id: "general", label: "模型与系统", icon: "01" },
   { id: "tools", label: "工具策略", icon: "02" },
   { id: "mcp", label: "MCP 服务", icon: "03" }
 ];
-function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
+function SettingsView({ initialSection = "general", onBack, onLoad, onSave, pluginTabs }) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions3();
   const [loading, setLoading] = useState6(true);
   const [saving, setSaving] = useState6(false);
@@ -4009,18 +4009,78 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
   const [statusText, setStatusText] = useState6("");
   const [statusKind, setStatusKind] = useState6("info");
   const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState6(false);
+  const [pluginDraft, setPluginDraft] = useState6({});
+  const [pluginBaseline, setPluginBaseline] = useState6({});
+  const sections = useMemo4(() => {
+    const pluginSections = (pluginTabs ?? []).map((tab, i) => ({
+      id: tab.id,
+      label: tab.label,
+      icon: tab.icon ?? String(BUILTIN_SECTIONS.length + i + 1).padStart(2, "0")
+    }));
+    return [...BUILTIN_SECTIONS, ...pluginSections];
+  }, [pluginTabs]);
   const setStatus = useCallback3((text, kind = "info") => {
     setStatusText(text);
     setStatusKind(kind);
   }, []);
   const isDirty = useMemo4(() => {
-    return getEditableFingerprint(draft) !== getEditableFingerprint(baseline);
-  }, [draft, baseline]);
+    const builtinDirty = getEditableFingerprint(draft) !== getEditableFingerprint(baseline);
+    const pluginDirty = JSON.stringify(pluginDraft) !== JSON.stringify(pluginBaseline);
+    return builtinDirty || pluginDirty;
+  }, [draft, baseline, pluginDraft, pluginBaseline]);
   const rows = useMemo4(() => {
     if (!draft)
       return [];
-    return buildRows(draft, termWidth);
-  }, [draft, termWidth]);
+    const builtinRows = buildRows(draft, termWidth);
+    for (const tab of pluginTabs ?? []) {
+      builtinRows.push({
+        id: `plugin-section-${tab.id}`,
+        kind: "section",
+        section: tab.id,
+        label: tab.label
+      });
+      let lastGroup = "";
+      for (const field of tab.fields) {
+        if (field.group && field.group !== lastGroup) {
+          lastGroup = field.group;
+          builtinRows.push({
+            id: `plugin-group-${tab.id}-${field.group}`,
+            kind: "info",
+            section: tab.id,
+            label: `── ${field.group} ──`
+          });
+        }
+        if (field.description) {
+          builtinRows.push({
+            id: `plugin-desc-${tab.id}-${field.key}`,
+            kind: "info",
+            section: tab.id,
+            label: "",
+            description: field.description
+          });
+        }
+        const rawValue = pluginDraft[tab.id]?.[field.key] ?? field.defaultValue;
+        let displayValue;
+        if (field.type === "toggle") {
+          displayValue = rawValue ? "开启" : "关闭";
+        } else if (field.type === "select") {
+          const opt = field.options?.find((o) => o.value === String(rawValue));
+          displayValue = opt?.label ?? String(rawValue ?? "");
+        } else {
+          displayValue = String(rawValue ?? "");
+        }
+        builtinRows.push({
+          id: `plugin-${tab.id}-${field.key}`,
+          kind: "field",
+          section: tab.id,
+          label: field.label,
+          value: displayValue,
+          target: { kind: "pluginField", tabId: tab.id, fieldKey: field.key, fieldType: field.type }
+        });
+      }
+    }
+    return builtinRows;
+  }, [draft, termWidth, pluginTabs, pluginDraft]);
   const selectableRows = useMemo4(() => rows.filter((row) => row.target), [rows]);
   const selectedRow = useMemo4(() => rows.find((row) => row.id === selectedRowId), [rows, selectedRowId]);
   const currentSection = useMemo4(() => selectedRow?.section ?? initialSection, [selectedRow, initialSection]);
@@ -4041,6 +4101,20 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
         setBaseline(cloneConsoleSettingsSnapshot(snapshot));
         setStatus("已加载当前配置", "success");
         setPendingLeaveConfirm(false);
+        if (pluginTabs && pluginTabs.length > 0) {
+          const entries = await Promise.all(pluginTabs.map(async (tab) => {
+            try {
+              return [tab.id, await tab.onLoad()];
+            } catch {
+              return [tab.id, {}];
+            }
+          }));
+          const data = Object.fromEntries(entries);
+          if (!cancelled) {
+            setPluginDraft(structuredClone(data));
+            setPluginBaseline(structuredClone(data));
+          }
+        }
       } catch (err) {
         if (cancelled)
           return;
@@ -4054,7 +4128,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
     return () => {
       cancelled = true;
     };
-  }, [onLoad, setStatus]);
+  }, [onLoad, setStatus, pluginTabs]);
   useEffect6(() => {
     if (rows.length === 0)
       return;
@@ -4207,6 +4281,27 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
   const submitEditor = useCallback3(() => {
     if (!editor)
       return;
+    if (editor.target.kind === "pluginField") {
+      const { tabId, fieldKey, fieldType } = editor.target;
+      let finalValue = editorValue;
+      if (fieldType === "number") {
+        const parsed = Number(editorValue.trim());
+        if (!Number.isFinite(parsed)) {
+          setStatus("请输入有效数字", "error");
+          return;
+        }
+        finalValue = parsed;
+      }
+      setPluginDraft((prev) => {
+        const next = structuredClone(prev);
+        (next[tabId] ??= {})[fieldKey] = finalValue;
+        return next;
+      });
+      setStatus("字段已更新，按 S 保存并热重载", "success");
+      setEditor(null);
+      setEditorValue("");
+      return;
+    }
     const value = editor.target.kind === "systemField" && editor.target.field === "systemPrompt" ? restoreMultilineFromInput(editorValue) : editor.target.kind === "mcpField" && editor.target.field === "args" ? restoreMultilineFromInput(editorValue) : editorValue;
     if (editor.target.kind === "systemField" && editor.target.field === "maxToolRounds") {
       const parsed = Number(value.trim());
@@ -4311,12 +4406,30 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       }
       setPendingLeaveConfirm(false);
       setStatus(result.message, result.restartRequired ? "warning" : "success");
+      if (pluginTabs && pluginTabs.length > 0) {
+        const pluginErrors = [];
+        for (const tab of pluginTabs) {
+          const tabData = pluginDraft[tab.id] ?? {};
+          try {
+            const r = await tab.onSave(tabData);
+            if (!r.success)
+              pluginErrors.push(`${tab.label}: ${r.error ?? "未知错误"}`);
+          } catch (e) {
+            pluginErrors.push(`${tab.label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        if (pluginErrors.length > 0) {
+          setStatus(`部分插件配置保存失败：${pluginErrors.join("; ")}`, "warning");
+        } else {
+          setPluginBaseline(structuredClone(pluginDraft));
+        }
+      }
     } catch (err) {
       setStatus(`保存失败：${err instanceof Error ? err.message : String(err)}`, "error");
     } finally {
       setSaving(false);
     }
-  }, [draft, onSave, saving, setStatus]);
+  }, [draft, onSave, saving, setStatus, pluginTabs, pluginDraft]);
   const handleDeleteCurrentModel = useCallback3(() => {
     if (!selectedRow?.target || !draft) {
       setStatus("请先选中某个模型字段后再删除", "warning");
@@ -4416,8 +4529,9 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       handleSave();
       return;
     }
-    if (key.name === "1" || key.name === "2" || key.name === "3") {
-      const targetSection = SECTIONS[Number(key.name) - 1];
+    const numKey = parseInt(key.name ?? "", 10);
+    if (numKey >= 1 && numKey <= sections.length) {
+      const targetSection = sections[numKey - 1];
       if (targetSection) {
         const firstInSection = selectableRows.find((r) => r.section === targetSection.id);
         if (firstInSection)
@@ -4447,6 +4561,13 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
     if (key.name === "space" && selectedRow?.target) {
       if (selectedRow.target.kind === "modelDefault" || selectedRow.target.kind === "toolApprovalView" || selectedRow.target.kind === "toolGlobalToggle" || selectedRow.target.kind === "systemField" && (selectedRow.target.field === "stream" || selectedRow.target.field === "retryOnError" || selectedRow.target.field === "logRequests" || selectedRow.target.field === "asyncSubAgents") || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "enabled") {
         applyToggle(selectedRow.target);
+      } else if (selectedRow.target.kind === "pluginField" && selectedRow.target.fieldType === "toggle") {
+        const { tabId, fieldKey } = selectedRow.target;
+        setPluginDraft((prev) => {
+          const next = structuredClone(prev);
+          (next[tabId] ??= {})[fieldKey] = !next[tabId]?.[fieldKey];
+          return next;
+        });
       } else if (selectedRow.target.kind === "toolPolicy") {
         applyCycle(selectedRow.target, 1);
       }
@@ -4466,6 +4587,38 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
       }
       if (selectedRow.target.kind === "modelProvider" || selectedRow.target.kind === "toolPolicy" || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "transport") {
         applyCycle(selectedRow.target, 1);
+        return;
+      }
+      if (selectedRow.target.kind === "pluginField") {
+        const { tabId, fieldKey, fieldType } = selectedRow.target;
+        if (fieldType === "toggle") {
+          setPluginDraft((prev) => {
+            const next = structuredClone(prev);
+            (next[tabId] ??= {})[fieldKey] = !next[tabId]?.[fieldKey];
+            return next;
+          });
+        } else if (fieldType === "text" || fieldType === "number") {
+          const currentVal = pluginDraft[tabId]?.[fieldKey] ?? "";
+          setEditor({
+            target: selectedRow.target,
+            label: `${tabId}.${fieldKey}`,
+            value: String(currentVal)
+          });
+          setEditorValue(String(currentVal));
+        } else if (fieldType === "select") {
+          const tab = pluginTabs?.find((t) => t.id === tabId);
+          const field = tab?.fields.find((f) => f.key === fieldKey);
+          if (field?.options && field.options.length > 0) {
+            const currentVal = String(pluginDraft[tabId]?.[fieldKey] ?? "");
+            const idx = field.options.findIndex((o) => o.value === currentVal);
+            const nextIdx = (idx + 1) % field.options.length;
+            setPluginDraft((prev) => {
+              const next = structuredClone(prev);
+              (next[tabId] ??= {})[fieldKey] = field.options[nextIdx].value;
+              return next;
+            });
+          }
+        }
         return;
       }
       if (selectedRow.target.kind === "modelField" || selectedRow.target.kind === "systemField" && selectedRow.target.field !== "stream" && selectedRow.target.field !== "retryOnError" && selectedRow.target.field !== "logRequests" && selectedRow.target.field !== "asyncSubAgents" || selectedRow.target.kind === "mcpField" && selectedRow.target.field !== "enabled" && selectedRow.target.field !== "transport") {
@@ -4518,7 +4671,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
               /* @__PURE__ */ jsxDEV30("box", {
                 marginTop: 1,
                 flexDirection: "column",
-                children: SECTIONS.map((sec) => /* @__PURE__ */ jsxDEV30("text", {
+                children: sections.map((sec) => /* @__PURE__ */ jsxDEV30("text", {
                   fg: currentSection === sec.id ? C.accent : "#555",
                   children: [
                     currentSection === sec.id ? "●" : "○",
@@ -4670,7 +4823,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave }) {
                 ]
               }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV30("text", {
                 fg: "#888",
-                children: "↑↓ 选择  ←→ 切换  1/2/3 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回"
+                children: `↑↓ 选择  ←→ 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this)
@@ -5783,7 +5936,8 @@ function App({
   modeName,
   modelId,
   modelName,
-  contextWindow
+  contextWindow,
+  pluginSettingsTabs
 }) {
   const [viewMode, setViewMode] = useState12("chat");
   const [sessionList, setSessionList] = useState12([]);
@@ -5910,7 +6064,8 @@ function App({
       initialSection: settingsInitialSection,
       onBack: () => setViewMode("chat"),
       onLoad: onLoadSettings,
-      onSave: onSaveSettings
+      onSave: onSaveSettings,
+      pluginTabs: pluginSettingsTabs
     }, undefined, false, undefined, this);
   }
   if (viewMode === "session-list") {
@@ -6410,6 +6565,24 @@ class ConsolePlatform extends PlatformAdapter {
         this.appHandle?.setNotificationPayloads(payloads);
       }
     });
+    if (this.api?.eventBus) {
+      const eventBus = this.api.eventBus;
+      eventBus.on("cron:result", (payload) => {
+        const p = payload;
+        if (!p || typeof p !== "object")
+          return;
+        let text;
+        if (p.status === "completed") {
+          const resultPreview = p.result?.slice(0, 200) ?? "";
+          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 完成：${resultPreview}`;
+        } else if (p.status === "killed") {
+          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 被中止`;
+        } else {
+          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 失败：${p.error ?? "未知错误"}`;
+        }
+        this.appHandle?.addMessage("assistant", text);
+      });
+    }
     this.backend.on("auto-compact", (sid, summaryText) => {
       if (sid === this.sessionId) {
         const fullText = `[Context Summary]
@@ -6492,7 +6665,8 @@ ${summaryText}`;
         modelId: this.modelId,
         modelName: this.modelName,
         contextWindow: this.contextWindow,
-        initWarnings: this.initWarnings
+        initWarnings: this.initWarnings,
+        pluginSettingsTabs: this.api?.getConsoleSettingsTabs?.() ?? []
       });
       createRoot(this.renderer).render(element);
     });

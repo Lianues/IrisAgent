@@ -119,6 +119,7 @@ export type {
   InsertEntryLike,
   IrisAPI,
   IrisPlugin,
+  ToolLoopRunnerLike,
   LLMProviderFactory,
   LLMRouterLike,
   MCPManagerLike,

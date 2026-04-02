@@ -35,6 +35,7 @@ import { SubAgentTypeRegistry, createSubAgentTool } from './tools/internal/sub-a
 import { ModeRegistry, DEFAULT_MODE, DEFAULT_MODE_NAME } from './modes';
 import { PromptAssembler } from './prompt/assembler';
 import { AgentTaskRegistry } from './core/agent-task-registry';
+import { ToolLoop } from './core/tool-loop';
 import { createHistorySearchTool } from './tools/internal/history_search';
 import { createReadSkillTool } from './tools/internal/read_skill';
 import { DEFAULT_SYSTEM_PROMPT } from './prompt/templates/default';
@@ -393,8 +394,32 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     getLogLevel: () => getGlobalLogLevel() as number,
     pluginManager: pluginManager!,
     eventBus,
+    // 暴露 agentTaskRegistry 供插件（如 cron）在后台执行任务时复用注册表
+    agentTaskRegistry,
     patchMethod,
     patchPrototype,
+    // 暴露 ToolLoop 工厂方法，供插件（如 cron）创建后台工具循环。
+    // 避免插件直接 import 核心模块，通过 IrisAPI 间接访问。
+    createToolLoop: (options: { tools: any; systemPrompt: string; maxRounds?: number }) => {
+      // 创建独立的 PromptAssembler 实例（不影响前台会话的系统提示词）
+      const loopPrompt = new PromptAssembler();
+      loopPrompt.setSystemPrompt(options.systemPrompt);
+
+      // 构建 ToolLoop 配置
+      const loopConfig = {
+        maxRounds: options.maxRounds ?? 15,
+        toolsConfig: config.tools ?? {},
+        retryOnError: true,
+        maxRetries: 2,
+      };
+
+      // 创建 ToolLoop 实例：
+      // - tools: 调用方传入的工具注册表（可以是过滤后的子集）
+      // - prompt: 独立的 PromptAssembler（定时任务专用系统提示词）
+      // - config: ToolLoop 配置（maxRounds、重试策略等）
+      // - toolState: 不传入（后台任务不需要 toolState 追踪 UI 状态）
+      return new ToolLoop(options.tools as ToolRegistry, loopPrompt, loopConfig);
+    },
     registerWebRoute: registerDeferredWebRoute,
     registerWebPanel,
     registerConsoleSettingsTab,

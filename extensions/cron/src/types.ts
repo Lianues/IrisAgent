@@ -1,0 +1,239 @@
+/**
+ * 定时任务调度插件 — 类型定义
+ *
+ * 包含所有共享的接口和类型。
+ */
+
+// ============ 调度任务定义 ============
+
+/** 调度类型：cron 表达式 / 固定间隔 / 一次性 */
+export type ScheduleType = 'cron' | 'interval' | 'once';
+
+/** 调度配置联合类型 */
+export type ScheduleConfig =
+  | { type: 'cron'; expression: string }
+  | { type: 'interval'; ms: number }
+  | { type: 'once'; at: number };
+
+/** 投递配置 */
+export interface DeliveryConfig {
+  /** 指定目标会话ID，缺省时使用 fallback 策略 */
+  sessionId?: string;
+  /** 回退策略：始终使用最近活跃的会话 */
+  fallback: 'last-active';
+}
+
+/** 任务运行状态 */
+// 统一使用 'completed' 表示完成，和 cron:result / task-notification / 执行记录保持一致。
+// 额外保留历史值 'success' 仅用于兼容旧版持久化文件；新代码不再写入它。
+// 新增 'running'：定时任务在后台 ToolLoop 执行中时标记为 running。
+export type RunStatus =
+  | 'completed' | 'success'
+  | 'error' | 'skipped' | 'missed' | 'running';
+
+/** 一个定时任务的完整定义 */
+export interface ScheduledJob {
+  /** 唯一标识 */
+  id: string;
+  /** 任务名称 */
+  name: string;
+  /** 调度配置 */
+  schedule: ScheduleConfig;
+  /** 任务所属的会话 ID（即投递目标会话） */
+  sessionId: string;
+  /** 执行指令（发送给 LLM 的提示词） */
+  instruction: string;
+  /** 投递配置 */
+  delivery: DeliveryConfig;
+  /** 静默模式：如果没有值得报告的内容则不发送消息 */
+  silent: boolean;
+  /** 紧急任务：可穿透安静时段 */
+  urgent: boolean;
+  /** 是否启用 */
+  enabled: boolean;
+  /** 创建时间戳 */
+  createdAt: number;
+  /** 创建时所在的会话 ID */
+  createdInSession: string;
+  /** 上次运行时间 */
+  lastRunAt?: number;
+  /** 上次运行状态 */
+  lastRunStatus?: RunStatus;
+  /** 上次运行错误信息 */
+  lastRunError?: string;
+}
+
+// ============ 创建/更新参数 ============
+
+/** 创建任务参数 */
+export interface CreateJobParams {
+  name: string;
+  schedule: ScheduleConfig;
+  sessionId: string;
+  instruction: string;
+  delivery?: Partial<DeliveryConfig>;
+  silent?: boolean;
+  urgent?: boolean;
+  createdInSession: string;
+}
+
+/** 更新任务参数（所有字段可选） */
+export interface UpdateJobParams {
+  name?: string;
+  schedule?: ScheduleConfig;
+  instruction?: string;
+  delivery?: Partial<DeliveryConfig>;
+  silent?: boolean;
+  urgent?: boolean;
+}
+
+// ============ 插件配置 ============
+
+/** 时间窗口（HH:MM 格式） */
+export interface TimeWindow {
+  start: string;
+  end: string;
+}
+
+/** 安静时段配置 */
+export interface QuietHoursConfig {
+  enabled: boolean;
+  windows: TimeWindow[];
+  allowUrgent: boolean;
+}
+
+/** 跳过近期活跃配置 */
+export interface SkipRecentActivityConfig {
+  enabled: boolean;
+  withinMinutes: number;
+}
+
+/** 调度器全局配置 */
+export interface SchedulerConfig {
+  enabled: boolean;
+  quietHours: QuietHoursConfig;
+  skipIfRecentActivity: SkipRecentActivityConfig;
+}
+
+/** 默认配置值 */
+export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
+  enabled: true,
+  quietHours: {
+    enabled: false,
+    windows: [{ start: '23:00', end: '07:00' }],
+    allowUrgent: true,
+  },
+  skipIfRecentActivity: {
+    enabled: true,
+    withinMinutes: 5,
+  },
+};
+
+// ============ 投递判断结果 ============
+
+/** 投递判断结果 */
+export interface DeliveryDecision {
+  /** 是否应该跳过 */
+  skip: boolean;
+  /** 跳过原因 */
+  reason?: string;
+}
+
+// ============ Cron 解析器类型 ============
+
+/** Cron 表达式解析后的字段集合 */
+export interface ParsedCronField {
+  /** 该字段匹配的所有具体值 */
+  values: Set<number>;
+}
+
+/** Cron 解析结果：5 个字段 */
+export interface ParsedCron {
+  minute: ParsedCronField;
+  hour: ParsedCronField;
+  dayOfMonth: ParsedCronField;
+  month: ParsedCronField;
+  dayOfWeek: ParsedCronField;
+}
+
+// ============ 后台执行相关类型 ============
+
+/**
+ * PluginEventBus 广播的定时任务执行结果载荷
+ *
+ * cron 插件在后台 ToolLoop 完成后，通过 eventBus.fire('cron:result', payload) 广播此载荷。
+ * 各平台（Console、Telegram、Web 等）自行订阅并决定展示方式。
+ */
+export interface CronResultPayload {
+  /** 任务 ID */
+  jobId: string;
+  /** 后台生成的 taskId（AgentTaskRegistry 注册的） */
+  taskId: string;
+  /** 任务名称 */
+  jobName: string;
+  /** 执行状态 */
+  status: 'completed' | 'failed' | 'killed';
+  /** 执行结果文本（成功时有值） */
+  result?: string;
+  /** 错误信息（失败时有值） */
+  error?: string;
+  /** 执行耗时（毫秒） */
+  durationMs: number;
+}
+
+/**
+ * 定时任务执行记录（持久化到 cron-runs/ 目录）
+ *
+ * 每次后台执行完成后保存一条记录，用于回溯查看历史执行情况。
+ */
+export interface CronRunRecord {
+  /** 执行记录 ID（与 taskId 相同） */
+  runId: string;
+  /** 任务 ID */
+  jobId: string;
+  /** 任务名称（快照，记录执行时的名称） */
+  jobName: string;
+  /** 执行的指令 */
+  instruction: string;
+  /** 执行开始时间（Unix 毫秒时间戳） */
+  startTime: number;
+  /** 执行结束时间（Unix 毫秒时间戳） */
+  endTime: number;
+  /** 执行耗时（毫秒） */
+  durationMs: number;
+  /** 执行状态 */
+  status: 'completed' | 'failed' | 'killed';
+  /** 最终输出文本（成功时有值） */
+  resultText?: string;
+  /** 错误信息（失败时有值） */
+  error?: string;
+}
+
+/**
+ * 后台执行配置
+ *
+ * 控制后台 ToolLoop 的行为参数。
+ * 在 SchedulerConfig 中通过 backgroundExecution 字段配置。
+ */
+export interface CronBackgroundConfig {
+  /** 单次执行超时时间（毫秒），默认 5 分钟 */
+  timeoutMs: number;
+  /** 同时运行的最大后台任务数，默认 3 */
+  maxConcurrent: number;
+  /** 执行记录保留天数，默认 30 */
+  retentionDays: number;
+  /** 执行记录保留条数上限，默认 100 */
+  retentionCount: number;
+  /** 后台 ToolLoop 的最大工具轮次，默认 15 */
+  maxToolRounds: number;
+}
+
+/** 后台执行配置默认值 */
+export const DEFAULT_BACKGROUND_CONFIG: CronBackgroundConfig = {
+  timeoutMs: 5 * 60 * 1000,
+  maxConcurrent: 3,
+  retentionDays: 30,
+  retentionCount: 100,
+  maxToolRounds: 15,
+};
+

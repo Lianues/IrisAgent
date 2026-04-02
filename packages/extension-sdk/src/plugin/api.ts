@@ -193,4 +193,39 @@ export interface IrisAPI {
   registerConsoleSettingsTab?: (tab: ConsoleSettingsTabDefinition) => void;
   /** 获取所有已注册的 Console Settings 插件 Tab */
   getConsoleSettingsTabs?: () => ConsoleSettingsTabDefinition[];
+
+  /**
+   * 异步子代理任务注册表（可选）。
+   * 供插件（如 cron）在后台执行任务时复用，实现 spinner/token 计数等平台层联动。
+   */
+  agentTaskRegistry?: unknown;
+
+  /**
+   * 创建一个 ToolLoop 实例，用于插件后台执行带工具调用的 LLM 循环。
+   *
+   * 这是核心 ToolLoop 类的工厂方法，避免插件直接依赖核心模块。
+   * 返回的对象具有 run() 方法，签名参见 ToolLoopRunnerLike。
+   *
+   * @param options.tools - 工具注册表（可用 api.tools 或其过滤版本）
+   * @param options.systemPrompt - 系统提示词文本
+   * @param options.maxRounds - 最大工具轮次
+   */
+  createToolLoop?(options: {
+    tools: ToolRegistryLike;
+    systemPrompt: string;
+    maxRounds?: number;
+  }): ToolLoopRunnerLike;
+}
+
+/**
+ * ToolLoop 运行器的最小接口（面向插件侧使用）。
+ *
+ * 由 IrisAPI.createToolLoop() 返回，插件无需了解 ToolLoop 的内部实现。
+ */
+export interface ToolLoopRunnerLike {
+  run(
+    history: unknown[],
+    callLLM: (request: unknown, modelName?: string, signal?: AbortSignal) => Promise<unknown>,
+    options?: { signal?: AbortSignal; modelName?: string },
+  ): Promise<{ text: string; error?: string; history: unknown[]; aborted?: boolean }>;
 }

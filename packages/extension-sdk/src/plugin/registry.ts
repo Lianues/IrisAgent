@@ -1,4 +1,6 @@
 import type { Part } from '../message.js';
+import type { FunctionDeclaration } from '../tool.js';
+import type { LLMRequest, LLMResponse, LLMStreamChunk } from '../llm.js';
 import type { ModeDefinition } from '../mode.js';
 import type { IrisModelInfoLike } from '../platform.js';
 import type { ToolDefinition } from '../tool.js';
@@ -8,6 +10,18 @@ export interface ToolRegistryLike {
   registerAll(tools: ToolDefinition[]): void;
   unregister?(name: string): boolean;
   get?(name: string): ToolDefinition | undefined;
+  /** 获取所有已注册工具的函数声明（供 LLM 使用） */
+  getDeclarations?(): FunctionDeclaration[];
+  /** 列出已注册的工具名称 */
+  listTools?(): string[];
+  /** 已注册工具数量 */
+  readonly size?: number;
+  /** 执行指定工具 */
+  execute?(name: string, args: Record<string, unknown>, context?: unknown): Promise<unknown> | AsyncIterable<unknown>;
+  /** 创建仅包含指定工具的子注册表 */
+  createSubset?(names: string[]): ToolRegistryLike;
+  /** 创建排除指定工具的子注册表 */
+  createFiltered?(excludeNames: string[]): ToolRegistryLike;
 }
 
 export interface ModeRegistryLike {
@@ -19,6 +33,10 @@ export interface LLMRouterLike {
   getCurrentModelInfo?(): IrisModelInfoLike | undefined;
   listModels?(): IrisModelInfoLike[];
   resolve?(modelName: string): unknown;
+  /** 非流式 LLM 调用（modelName 省略时使用当前模型） */
+  chat?(request: LLMRequest, modelName?: string, signal?: AbortSignal): Promise<LLMResponse>;
+  /** 流式 LLM 调用（modelName 省略时使用当前模型） */
+  chatStream?(request: LLMRequest, modelName?: string, signal?: AbortSignal): AsyncGenerator<LLMStreamChunk>;
   /** 检查模型是否已注册 */
   hasModel?(modelName: string): boolean;
   /** 动态注册一个模型（modelName 不可重复） */
