@@ -2,6 +2,7 @@
   "extensions": [
     "computer-use",
     "console",
+    "cron",
     "discord",
     "lark",
     "memory",

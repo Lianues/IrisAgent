@@ -1,10 +1,10 @@
 {
   "extensions": [
     {
-      "name": "web"
+      "name": "cron"
     },
     {
-      "name": "lark"
+      "name": "web"
     },
     {
       "name": "console"
