@@ -147,10 +147,17 @@ export const manageScheduledTasksTool: ToolDefinition = {
       properties: {
         action: {
           type: 'string',
+          enum: ['create', 'update', 'delete', 'enable', 'disable', 'list', 'get'],
+          description: '操作类型：create（创建）、update（更新）、delete（删除）、enable（启用）、disable（禁用）、list（列出所有）、get（查询详情）',
+        },
+        name: {
+          type: 'string',
+          description: '任务名称（create / update 时使用）',
+        },
         schedule_type: {
           type: 'string',
           enum: ['cron', 'interval', 'once'],
-          description: '调度类型：cron（cron 表达式）、interval（固定间隔）、once（一次性定时）',
+          description: '调度类型：cron（cron 表达式）、interval（固定间隔毫秒）、once（一次性定时）',
         },
         schedule_value: {
           type: 'string',
@@ -160,31 +167,21 @@ export const manageScheduledTasksTool: ToolDefinition = {
             '- interval: 间隔毫秒数，如 "60000"\n' +
             '- once: 相对延迟如 "30s"、"5m"、"2h"、"1d"，或绝对日期时间如 "2026-04-03 17:30"',
         },
-
-          enum: ['create', 'update', 'delete', 'enable', 'disable', 'list', 'get'],
-          description: '操作类型',
-        },
-        name: {
-          type: 'string',
-          description: '任务名称（create / update 时使用）',
-        },
-        schedule_type: {
-          type: 'string',
-          enum: ['cron', 'interval', 'once'],
-          description: '调度类型（create / update 时使用）',
-        },
-        schedule_value: {
-          type: 'string',
-          description:
-            '调度参数值：cron 表达式（如 "0 9 * * 1-5"）/ 间隔毫秒数（如 "60000"）/ Unix 时间戳（如 "1700000000000"）',
-        },
         instruction: {
           type: 'string',
-          description: '任务触发时发送给 LLM 的指令文本',
+          description: '任务触发时执行的指令文本',
         },
         job_id: {
           type: 'string',
           description: '任务 ID（update / delete / enable / disable / get 时使用）',
+        },
+        silent: {
+          type: 'boolean',
+          description: '是否静默执行（不触发主会话回复，仅发通知）',
+        },
+        urgent: {
+          type: 'boolean',
+          description: '是否为紧急任务（可穿透安静时段）',
         },
       },
       required: ['action'],
