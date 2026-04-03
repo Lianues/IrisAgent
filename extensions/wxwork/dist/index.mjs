@@ -467,7 +467,7 @@ var require_combined_stream = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/form-data/node_modules/mime-db/db.json
+// node_modules/mime-db/db.json
 var require_db = __commonJS((exports, module) => {
   module.exports = {
     "application/1d-interleaved-parityfec": {
@@ -8990,7 +8990,7 @@ var require_db = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/form-data/node_modules/mime-types/index.js
+// node_modules/mime-types/index.js
 var require_mime_types = __commonJS((exports) => {
   /*!
    * mime-types
@@ -10316,74 +10316,7 @@ var require_form_data = __commonJS((exports, module) => {
   module.exports = FormData2;
 });
 
-// node_modules/proxy-from-env/index.js
-var require_proxy_from_env = __commonJS((exports) => {
-  var parseUrl = __require("url").parse;
-  var DEFAULT_PORTS = {
-    ftp: 21,
-    gopher: 70,
-    http: 80,
-    https: 443,
-    ws: 80,
-    wss: 443
-  };
-  var stringEndsWith = String.prototype.endsWith || function(s) {
-    return s.length <= this.length && this.indexOf(s, this.length - s.length) !== -1;
-  };
-  function getProxyForUrl(url) {
-    var parsedUrl = typeof url === "string" ? parseUrl(url) : url || {};
-    var proto = parsedUrl.protocol;
-    var hostname = parsedUrl.host;
-    var port = parsedUrl.port;
-    if (typeof hostname !== "string" || !hostname || typeof proto !== "string") {
-      return "";
-    }
-    proto = proto.split(":", 1)[0];
-    hostname = hostname.replace(/:\d*$/, "");
-    port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
-    if (!shouldProxy(hostname, port)) {
-      return "";
-    }
-    var proxy = getEnv("npm_config_" + proto + "_proxy") || getEnv(proto + "_proxy") || getEnv("npm_config_proxy") || getEnv("all_proxy");
-    if (proxy && proxy.indexOf("://") === -1) {
-      proxy = proto + "://" + proxy;
-    }
-    return proxy;
-  }
-  function shouldProxy(hostname, port) {
-    var NO_PROXY = (getEnv("npm_config_no_proxy") || getEnv("no_proxy")).toLowerCase();
-    if (!NO_PROXY) {
-      return true;
-    }
-    if (NO_PROXY === "*") {
-      return false;
-    }
-    return NO_PROXY.split(/[,\s]/).every(function(proxy) {
-      if (!proxy) {
-        return true;
-      }
-      var parsedProxy = proxy.match(/^(.+):(\d+)$/);
-      var parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
-      var parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
-      if (parsedProxyPort && parsedProxyPort !== port) {
-        return true;
-      }
-      if (!/^[.*]/.test(parsedProxyHostname)) {
-        return hostname !== parsedProxyHostname;
-      }
-      if (parsedProxyHostname.charAt(0) === "*") {
-        parsedProxyHostname = parsedProxyHostname.slice(1);
-      }
-      return !stringEndsWith.call(hostname, parsedProxyHostname);
-    });
-  }
-  function getEnv(key) {
-    return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || "";
-  }
-  exports.getProxyForUrl = getProxyForUrl;
-});
-
-// node_modules/ms/index.js
+// ../../node_modules/ms/index.js
 var require_ms = __commonJS((exports, module) => {
   var s = 1000;
   var m = s * 60;
@@ -10493,7 +10426,7 @@ var require_ms = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/debug/src/common.js
+// ../../node_modules/debug/src/common.js
 var require_common = __commonJS((exports, module) => {
   function setup(env) {
     createDebug.debug = createDebug;
@@ -10668,7 +10601,7 @@ var require_common = __commonJS((exports, module) => {
   module.exports = setup;
 });
 
-// node_modules/debug/src/browser.js
+// ../../node_modules/debug/src/browser.js
 var require_browser = __commonJS((exports, module) => {
   exports.formatArgs = formatArgs;
   exports.save = save;
@@ -10828,7 +10761,7 @@ var require_browser = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/has-flag/index.js
+// ../../node_modules/has-flag/index.js
 var require_has_flag = __commonJS((exports, module) => {
   module.exports = (flag, argv = process.argv) => {
     const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
@@ -10838,7 +10771,7 @@ var require_has_flag = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/supports-color/index.js
+// ../../node_modules/supports-color/index.js
 var require_supports_color = __commonJS((exports, module) => {
   var os = __require("os");
   var tty = __require("tty");
@@ -10937,7 +10870,7 @@ var require_supports_color = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/debug/src/node.js
+// ../../node_modules/debug/src/node.js
 var require_node = __commonJS((exports, module) => {
   var tty = __require("tty");
   var util = __require("util");
@@ -11108,7 +11041,7 @@ var require_node = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/debug/src/index.js
+// ../../node_modules/debug/src/index.js
 var require_src = __commonJS((exports, module) => {
   if (typeof process === "undefined" || process.type === "renderer" || false || process.__nwjs) {
     module.exports = require_browser();
@@ -11602,11 +11535,10 @@ var require_follow_redirects = __commonJS((exports, module) => {
 
 // node_modules/axios/dist/node/axios.cjs
 var require_axios = __commonJS((exports, module) => {
-  /*! Axios v1.13.6 Copyright (c) 2026 Matt Zabriskie and contributors */
+  /*! Axios v1.14.0 Copyright (c) 2026 Matt Zabriskie and contributors */
   var FormData$1 = require_form_data();
   var crypto = __require("crypto");
   var url = __require("url");
-  var proxyFromEnv = require_proxy_from_env();
   var http = __require("http");
   var https = __require("https");
   var http2 = __require("http2");
@@ -11615,28 +11547,21 @@ var require_axios = __commonJS((exports, module) => {
   var zlib = __require("zlib");
   var stream = __require("stream");
   var events = __require("events");
-  function _interopDefaultLegacy(e) {
-    return e && typeof e === "object" && "default" in e ? e : { default: e };
-  }
-  var FormData__default = /* @__PURE__ */ _interopDefaultLegacy(FormData$1);
-  var crypto__default = /* @__PURE__ */ _interopDefaultLegacy(crypto);
-  var url__default = /* @__PURE__ */ _interopDefaultLegacy(url);
-  var proxyFromEnv__default = /* @__PURE__ */ _interopDefaultLegacy(proxyFromEnv);
-  var http__default = /* @__PURE__ */ _interopDefaultLegacy(http);
-  var https__default = /* @__PURE__ */ _interopDefaultLegacy(https);
-  var http2__default = /* @__PURE__ */ _interopDefaultLegacy(http2);
-  var util__default = /* @__PURE__ */ _interopDefaultLegacy(util);
-  var followRedirects__default = /* @__PURE__ */ _interopDefaultLegacy(followRedirects);
-  var zlib__default = /* @__PURE__ */ _interopDefaultLegacy(zlib);
-  var stream__default = /* @__PURE__ */ _interopDefaultLegacy(stream);
   function bind(fn, thisArg) {
     return function wrap() {
       return fn.apply(thisArg, arguments);
     };
   }
-  var { toString } = Object.prototype;
-  var { getPrototypeOf } = Object;
-  var { iterator, toStringTag } = Symbol;
+  var {
+    toString
+  } = Object.prototype;
+  var {
+    getPrototypeOf
+  } = Object;
+  var {
+    iterator,
+    toStringTag
+  } = Symbol;
   var kindOf = ((cache) => (thing) => {
     const str = toString.call(thing);
     return cache[str] || (cache[str] = str.slice(8, -1).toLowerCase());
@@ -11646,7 +11571,9 @@ var require_axios = __commonJS((exports, module) => {
     return (thing) => kindOf(thing) === type;
   };
   var typeOfTest = (type) => (thing) => typeof thing === type;
-  var { isArray } = Array;
+  var {
+    isArray
+  } = Array;
   var isUndefined = typeOfTest("undefined");
   function isBuffer(val) {
     return val !== null && !isUndefined(val) && val.constructor !== null && !isUndefined(val.constructor) && isFunction$1(val.constructor.isBuffer) && val.constructor.isBuffer(val);
@@ -11710,16 +11637,13 @@ var require_axios = __commonJS((exports, module) => {
     return thing && (FormDataCtor && thing instanceof FormDataCtor || isFunction$1(thing.append) && ((kind = kindOf(thing)) === "formdata" || kind === "object" && isFunction$1(thing.toString) && thing.toString() === "[object FormData]"));
   };
   var isURLSearchParams = kindOfTest("URLSearchParams");
-  var [isReadableStream, isRequest, isResponse, isHeaders] = [
-    "ReadableStream",
-    "Request",
-    "Response",
-    "Headers"
-  ].map(kindOfTest);
+  var [isReadableStream, isRequest, isResponse, isHeaders] = ["ReadableStream", "Request", "Response", "Headers"].map(kindOfTest);
   var trim = (str) => {
     return str.trim ? str.trim() : str.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, "");
   };
-  function forEach(obj, fn, { allOwnKeys = false } = {}) {
+  function forEach(obj, fn, {
+    allOwnKeys = false
+  } = {}) {
     if (obj === null || typeof obj === "undefined") {
       return;
     }
@@ -11768,7 +11692,10 @@ var require_axios = __commonJS((exports, module) => {
   })();
   var isContextDefined = (context) => !isUndefined(context) && context !== _global;
   function merge() {
-    const { caseless, skipUndefined } = isContextDefined(this) && this || {};
+    const {
+      caseless,
+      skipUndefined
+    } = isContextDefined(this) && this || {};
     const result = {};
     const assignValue = (val, key) => {
       if (key === "__proto__" || key === "constructor" || key === "prototype") {
@@ -11790,7 +11717,9 @@ var require_axios = __commonJS((exports, module) => {
     }
     return result;
   }
-  var extend = (a, b, thisArg, { allOwnKeys } = {}) => {
+  var extend = (a, b, thisArg, {
+    allOwnKeys
+  } = {}) => {
     forEach(b, (val, key) => {
       if (thisArg && isFunction$1(val)) {
         Object.defineProperty(a, key, {
@@ -11807,7 +11736,9 @@ var require_axios = __commonJS((exports, module) => {
           configurable: true
         });
       }
-    }, { allOwnKeys });
+    }, {
+      allOwnKeys
+    });
     return a;
   };
   var stripBOM = (content) => {
@@ -11902,7 +11833,9 @@ var require_axios = __commonJS((exports, module) => {
       return p1.toUpperCase() + p2;
     });
   };
-  var hasOwnProperty = (({ hasOwnProperty: hasOwnProperty2 }) => (obj, prop) => hasOwnProperty2.call(obj, prop))(Object.prototype);
+  var hasOwnProperty = (({
+    hasOwnProperty: hasOwnProperty2
+  }) => (obj, prop) => hasOwnProperty2.call(obj, prop))(Object.prototype);
   var isRegExp = kindOfTest("RegExp");
   var reduceDescriptors = (obj, reducer) => {
     const descriptors = Object.getOwnPropertyDescriptors(obj);
@@ -11984,7 +11917,10 @@ var require_axios = __commonJS((exports, module) => {
       return setImmediate;
     }
     return postMessageSupported ? ((token, callbacks) => {
-      _global.addEventListener("message", ({ source, data }) => {
+      _global.addEventListener("message", ({
+        source,
+        data
+      }) => {
         if (source === _global && data === token) {
           callbacks.length && callbacks.shift()();
         }
@@ -12116,7 +12052,6 @@ var require_axios = __commonJS((exports, module) => {
   AxiosError.ERR_CANCELED = "ERR_CANCELED";
   AxiosError.ERR_NOT_SUPPORT = "ERR_NOT_SUPPORT";
   AxiosError.ERR_INVALID_URL = "ERR_INVALID_URL";
-  var AxiosError$1 = AxiosError;
   function isVisitable(thing) {
     return utils$1.isPlainObject(thing) || utils$1.isArray(thing);
   }
@@ -12141,7 +12076,7 @@ var require_axios = __commonJS((exports, module) => {
     if (!utils$1.isObject(obj)) {
       throw new TypeError("target must be an object");
     }
-    formData = formData || new (FormData__default["default"] || FormData);
+    formData = formData || new (FormData$1 || FormData);
     options = utils$1.toFlatObject(options, {
       metaTokens: true,
       dots: false,
@@ -12168,7 +12103,7 @@ var require_axios = __commonJS((exports, module) => {
         return value.toString();
       }
       if (!useBlob && utils$1.isBlob(value)) {
-        throw new AxiosError$1("Blob is not supported. Use a Buffer instead.");
+        throw new AxiosError("Blob is not supported. Use a Buffer instead.");
       }
       if (utils$1.isArrayBuffer(value) || utils$1.isTypedArray(value)) {
         return useBlob && typeof Blob === "function" ? new Blob([value]) : Buffer.from(value);
@@ -12315,14 +12250,13 @@ var require_axios = __commonJS((exports, module) => {
       });
     }
   }
-  var InterceptorManager$1 = InterceptorManager;
   var transitionalDefaults = {
     silentJSONParsing: true,
     forcedJSONParsing: true,
     clarifyTimeoutError: false,
     legacyInterceptorReqResOrdering: true
   };
-  var URLSearchParams = url__default["default"].URLSearchParams;
+  var URLSearchParams = url.URLSearchParams;
   var ALPHA = "abcdefghijklmnopqrstuvwxyz";
   var DIGIT = "0123456789";
   var ALPHABET = {
@@ -12332,9 +12266,11 @@ var require_axios = __commonJS((exports, module) => {
   };
   var generateString = (size = 16, alphabet = ALPHABET.ALPHA_DIGIT) => {
     let str = "";
-    const { length } = alphabet;
+    const {
+      length
+    } = alphabet;
     const randomValues = new Uint32Array(size);
-    crypto__default["default"].randomFillSync(randomValues);
+    crypto.randomFillSync(randomValues);
     for (let i = 0;i < size; i++) {
       str += alphabet[randomValues[i] % length];
     }
@@ -12344,7 +12280,7 @@ var require_axios = __commonJS((exports, module) => {
     isNode: true,
     classes: {
       URLSearchParams,
-      FormData: FormData__default["default"],
+      FormData: FormData$1,
       Blob: typeof Blob !== "undefined" && Blob || null
     },
     ALPHABET,
@@ -12361,8 +12297,8 @@ var require_axios = __commonJS((exports, module) => {
   var utils = /* @__PURE__ */ Object.freeze({
     __proto__: null,
     hasBrowserEnv,
-    hasStandardBrowserWebWorkerEnv,
     hasStandardBrowserEnv,
+    hasStandardBrowserWebWorkerEnv,
     navigator: _navigator,
     origin
   });
@@ -12449,70 +12385,68 @@ var require_axios = __commonJS((exports, module) => {
   var defaults = {
     transitional: transitionalDefaults,
     adapter: ["xhr", "http", "fetch"],
-    transformRequest: [
-      function transformRequest(data, headers) {
-        const contentType = headers.getContentType() || "";
-        const hasJSONContentType = contentType.indexOf("application/json") > -1;
-        const isObjectPayload = utils$1.isObject(data);
-        if (isObjectPayload && utils$1.isHTMLForm(data)) {
-          data = new FormData(data);
-        }
-        const isFormData2 = utils$1.isFormData(data);
-        if (isFormData2) {
-          return hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data;
-        }
-        if (utils$1.isArrayBuffer(data) || utils$1.isBuffer(data) || utils$1.isStream(data) || utils$1.isFile(data) || utils$1.isBlob(data) || utils$1.isReadableStream(data)) {
-          return data;
-        }
-        if (utils$1.isArrayBufferView(data)) {
-          return data.buffer;
-        }
-        if (utils$1.isURLSearchParams(data)) {
-          headers.setContentType("application/x-www-form-urlencoded;charset=utf-8", false);
-          return data.toString();
-        }
-        let isFileList2;
-        if (isObjectPayload) {
-          if (contentType.indexOf("application/x-www-form-urlencoded") > -1) {
-            return toURLEncodedForm(data, this.formSerializer).toString();
-          }
-          if ((isFileList2 = utils$1.isFileList(data)) || contentType.indexOf("multipart/form-data") > -1) {
-            const _FormData = this.env && this.env.FormData;
-            return toFormData(isFileList2 ? { "files[]": data } : data, _FormData && new _FormData, this.formSerializer);
-          }
-        }
-        if (isObjectPayload || hasJSONContentType) {
-          headers.setContentType("application/json", false);
-          return stringifySafely(data);
-        }
+    transformRequest: [function transformRequest(data, headers) {
+      const contentType = headers.getContentType() || "";
+      const hasJSONContentType = contentType.indexOf("application/json") > -1;
+      const isObjectPayload = utils$1.isObject(data);
+      if (isObjectPayload && utils$1.isHTMLForm(data)) {
+        data = new FormData(data);
+      }
+      const isFormData2 = utils$1.isFormData(data);
+      if (isFormData2) {
+        return hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data;
+      }
+      if (utils$1.isArrayBuffer(data) || utils$1.isBuffer(data) || utils$1.isStream(data) || utils$1.isFile(data) || utils$1.isBlob(data) || utils$1.isReadableStream(data)) {
         return data;
       }
-    ],
-    transformResponse: [
-      function transformResponse(data) {
-        const transitional = this.transitional || defaults.transitional;
-        const forcedJSONParsing = transitional && transitional.forcedJSONParsing;
-        const JSONRequested = this.responseType === "json";
-        if (utils$1.isResponse(data) || utils$1.isReadableStream(data)) {
-          return data;
+      if (utils$1.isArrayBufferView(data)) {
+        return data.buffer;
+      }
+      if (utils$1.isURLSearchParams(data)) {
+        headers.setContentType("application/x-www-form-urlencoded;charset=utf-8", false);
+        return data.toString();
+      }
+      let isFileList2;
+      if (isObjectPayload) {
+        if (contentType.indexOf("application/x-www-form-urlencoded") > -1) {
+          return toURLEncodedForm(data, this.formSerializer).toString();
         }
-        if (data && utils$1.isString(data) && (forcedJSONParsing && !this.responseType || JSONRequested)) {
-          const silentJSONParsing = transitional && transitional.silentJSONParsing;
-          const strictJSONParsing = !silentJSONParsing && JSONRequested;
-          try {
-            return JSON.parse(data, this.parseReviver);
-          } catch (e) {
-            if (strictJSONParsing) {
-              if (e.name === "SyntaxError") {
-                throw AxiosError$1.from(e, AxiosError$1.ERR_BAD_RESPONSE, this, null, this.response);
-              }
-              throw e;
+        if ((isFileList2 = utils$1.isFileList(data)) || contentType.indexOf("multipart/form-data") > -1) {
+          const _FormData = this.env && this.env.FormData;
+          return toFormData(isFileList2 ? {
+            "files[]": data
+          } : data, _FormData && new _FormData, this.formSerializer);
+        }
+      }
+      if (isObjectPayload || hasJSONContentType) {
+        headers.setContentType("application/json", false);
+        return stringifySafely(data);
+      }
+      return data;
+    }],
+    transformResponse: [function transformResponse(data) {
+      const transitional = this.transitional || defaults.transitional;
+      const forcedJSONParsing = transitional && transitional.forcedJSONParsing;
+      const JSONRequested = this.responseType === "json";
+      if (utils$1.isResponse(data) || utils$1.isReadableStream(data)) {
+        return data;
+      }
+      if (data && utils$1.isString(data) && (forcedJSONParsing && !this.responseType || JSONRequested)) {
+        const silentJSONParsing = transitional && transitional.silentJSONParsing;
+        const strictJSONParsing = !silentJSONParsing && JSONRequested;
+        try {
+          return JSON.parse(data, this.parseReviver);
+        } catch (e) {
+          if (strictJSONParsing) {
+            if (e.name === "SyntaxError") {
+              throw AxiosError.from(e, AxiosError.ERR_BAD_RESPONSE, this, null, this.response);
             }
+            throw e;
           }
         }
-        return data;
       }
-    ],
+      return data;
+    }],
     timeout: 0,
     xsrfCookieName: "XSRF-TOKEN",
     xsrfHeaderName: "X-XSRF-TOKEN",
@@ -12535,26 +12469,7 @@ var require_axios = __commonJS((exports, module) => {
   utils$1.forEach(["delete", "get", "head", "post", "put", "patch"], (method) => {
     defaults.headers[method] = {};
   });
-  var defaults$1 = defaults;
-  var ignoreDuplicateOf = utils$1.toObjectSet([
-    "age",
-    "authorization",
-    "content-length",
-    "content-type",
-    "etag",
-    "expires",
-    "from",
-    "host",
-    "if-modified-since",
-    "if-unmodified-since",
-    "last-modified",
-    "location",
-    "max-forwards",
-    "proxy-authorization",
-    "referer",
-    "retry-after",
-    "user-agent"
-  ]);
+  var ignoreDuplicateOf = utils$1.toObjectSet(["age", "authorization", "content-length", "content-type", "etag", "expires", "from", "host", "if-modified-since", "if-unmodified-since", "last-modified", "location", "max-forwards", "proxy-authorization", "referer", "retry-after", "user-agent"]);
   var parseHeaders = (rawHeaders) => {
     const parsed = {};
     let key;
@@ -12588,7 +12503,7 @@ var require_axios = __commonJS((exports, module) => {
     if (value === false || value == null) {
       return value;
     }
-    return utils$1.isArray(value) ? value.map(normalizeValue) : String(value);
+    return utils$1.isArray(value) ? value.map(normalizeValue) : String(value).replace(/[\r\n]+$/, "");
   }
   function parseTokens(str) {
     const tokens = Object.create(null);
@@ -12798,15 +12713,10 @@ var require_axios = __commonJS((exports, module) => {
       return this;
     }
   }
-  AxiosHeaders.accessor([
-    "Content-Type",
-    "Content-Length",
-    "Accept",
-    "Accept-Encoding",
-    "User-Agent",
-    "Authorization"
-  ]);
-  utils$1.reduceDescriptors(AxiosHeaders.prototype, ({ value }, key) => {
+  AxiosHeaders.accessor(["Content-Type", "Content-Length", "Accept", "Accept-Encoding", "User-Agent", "Authorization"]);
+  utils$1.reduceDescriptors(AxiosHeaders.prototype, ({
+    value
+  }, key) => {
     let mapped = key[0].toUpperCase() + key.slice(1);
     return {
       get: () => value,
@@ -12816,11 +12726,10 @@ var require_axios = __commonJS((exports, module) => {
     };
   });
   utils$1.freezeMethods(AxiosHeaders);
-  var AxiosHeaders$1 = AxiosHeaders;
   function transformData(fns, response) {
-    const config = this || defaults$1;
+    const config = this || defaults;
     const context = response || config;
-    const headers = AxiosHeaders$1.from(context.headers);
+    const headers = AxiosHeaders.from(context.headers);
     let data = context.data;
     utils$1.forEach(fns, function transform(fn) {
       data = fn.call(config, data, headers.normalize(), response ? response.status : undefined);
@@ -12832,20 +12741,19 @@ var require_axios = __commonJS((exports, module) => {
     return !!(value && value.__CANCEL__);
   }
 
-  class CanceledError extends AxiosError$1 {
+  class CanceledError extends AxiosError {
     constructor(message, config, request) {
-      super(message == null ? "canceled" : message, AxiosError$1.ERR_CANCELED, config, request);
+      super(message == null ? "canceled" : message, AxiosError.ERR_CANCELED, config, request);
       this.name = "CanceledError";
       this.__CANCEL__ = true;
     }
   }
-  var CanceledError$1 = CanceledError;
   function settle(resolve, reject, response) {
     const validateStatus = response.config.validateStatus;
     if (!response.status || !validateStatus || validateStatus(response.status)) {
       resolve(response);
     } else {
-      reject(new AxiosError$1("Request failed with status code " + response.status, [AxiosError$1.ERR_BAD_REQUEST, AxiosError$1.ERR_BAD_RESPONSE][Math.floor(response.status / 100) - 4], response.config, response.request, response));
+      reject(new AxiosError("Request failed with status code " + response.status, [AxiosError.ERR_BAD_REQUEST, AxiosError.ERR_BAD_RESPONSE][Math.floor(response.status / 100) - 4], response.config, response.request, response));
     }
   }
   function isAbsoluteURL(url2) {
@@ -12864,7 +12772,72 @@ var require_axios = __commonJS((exports, module) => {
     }
     return requestedURL;
   }
-  var VERSION = "1.13.6";
+  var DEFAULT_PORTS = {
+    ftp: 21,
+    gopher: 70,
+    http: 80,
+    https: 443,
+    ws: 80,
+    wss: 443
+  };
+  function parseUrl(urlString) {
+    try {
+      return new URL(urlString);
+    } catch {
+      return null;
+    }
+  }
+  function getProxyForUrl(url2) {
+    var parsedUrl = (typeof url2 === "string" ? parseUrl(url2) : url2) || {};
+    var proto = parsedUrl.protocol;
+    var hostname = parsedUrl.host;
+    var port = parsedUrl.port;
+    if (typeof hostname !== "string" || !hostname || typeof proto !== "string") {
+      return "";
+    }
+    proto = proto.split(":", 1)[0];
+    hostname = hostname.replace(/:\d*$/, "");
+    port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
+    if (!shouldProxy(hostname, port)) {
+      return "";
+    }
+    var proxy = getEnv(proto + "_proxy") || getEnv("all_proxy");
+    if (proxy && proxy.indexOf("://") === -1) {
+      proxy = proto + "://" + proxy;
+    }
+    return proxy;
+  }
+  function shouldProxy(hostname, port) {
+    var NO_PROXY = getEnv("no_proxy").toLowerCase();
+    if (!NO_PROXY) {
+      return true;
+    }
+    if (NO_PROXY === "*") {
+      return false;
+    }
+    return NO_PROXY.split(/[,\s]/).every(function(proxy) {
+      if (!proxy) {
+        return true;
+      }
+      var parsedProxy = proxy.match(/^(.+):(\d+)$/);
+      var parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
+      var parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
+      if (parsedProxyPort && parsedProxyPort !== port) {
+        return true;
+      }
+      if (!/^[.*]/.test(parsedProxyHostname)) {
+        return hostname !== parsedProxyHostname;
+      }
+      if (parsedProxyHostname.charAt(0) === "*") {
+        parsedProxyHostname = parsedProxyHostname.slice(1);
+      }
+      return !hostname.endsWith(parsedProxyHostname);
+    });
+  }
+  function getEnv(key) {
+    return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || "";
+  }
+  var VERSION = "1.14.0";
   function parseProtocol(url2) {
     const match = /^([-+\w]{1,25})(:?\/\/|:)/.exec(url2);
     return match && match[1] || "";
@@ -12880,7 +12853,7 @@ var require_axios = __commonJS((exports, module) => {
       uri = protocol.length ? uri.slice(protocol.length + 1) : uri;
       const match = DATA_URL_PATTERN.exec(uri);
       if (!match) {
-        throw new AxiosError$1("Invalid URL", AxiosError$1.ERR_INVALID_URL);
+        throw new AxiosError("Invalid URL", AxiosError.ERR_INVALID_URL);
       }
       const mime = match[1];
       const isBase64 = match[2];
@@ -12888,17 +12861,19 @@ var require_axios = __commonJS((exports, module) => {
       const buffer = Buffer.from(decodeURIComponent(body), isBase64 ? "base64" : "utf8");
       if (asBlob) {
         if (!_Blob) {
-          throw new AxiosError$1("Blob is not supported", AxiosError$1.ERR_NOT_SUPPORT);
+          throw new AxiosError("Blob is not supported", AxiosError.ERR_NOT_SUPPORT);
         }
-        return new _Blob([buffer], { type: mime });
+        return new _Blob([buffer], {
+          type: mime
+        });
       }
       return buffer;
     }
-    throw new AxiosError$1("Unsupported protocol " + protocol, AxiosError$1.ERR_NOT_SUPPORT);
+    throw new AxiosError("Unsupported protocol " + protocol, AxiosError.ERR_NOT_SUPPORT);
   }
   var kInternals = Symbol("internals");
 
-  class AxiosTransformStream extends stream__default["default"].Transform {
+  class AxiosTransformStream extends stream.Transform {
     constructor(options) {
       options = utils$1.toFlatObject(options, {
         maxRate: 0,
@@ -13008,8 +12983,9 @@ var require_axios = __commonJS((exports, module) => {
       });
     }
   }
-  var AxiosTransformStream$1 = AxiosTransformStream;
-  var { asyncIterator } = Symbol;
+  var {
+    asyncIterator
+  } = Symbol;
   var readBlob = async function* (blob) {
     if (blob.stream) {
       yield* blob.stream();
@@ -13021,9 +12997,8 @@ var require_axios = __commonJS((exports, module) => {
       yield blob;
     }
   };
-  var readBlob$1 = readBlob;
   var BOUNDARY_ALPHABET = platform.ALPHABET.ALPHA_DIGIT + "-_";
-  var textEncoder = typeof TextEncoder === "function" ? new TextEncoder : new util__default["default"].TextEncoder;
+  var textEncoder = typeof TextEncoder === "function" ? new TextEncoder : new util.TextEncoder;
   var CRLF = `\r
 `;
   var CRLF_BYTES = textEncoder.encode(CRLF);
@@ -13031,7 +13006,9 @@ var require_axios = __commonJS((exports, module) => {
 
   class FormDataPart {
     constructor(name, value) {
-      const { escapeName } = this.constructor;
+      const {
+        escapeName
+      } = this.constructor;
       const isStringValue = utils$1.isString(value);
       let headers = `Content-Disposition: form-data; name="${escapeName(name)}"${!isStringValue && value.name ? `; filename="${escapeName(value.name)}"` : ""}${CRLF}`;
       if (isStringValue) {
@@ -13047,11 +13024,13 @@ var require_axios = __commonJS((exports, module) => {
     }
     async* encode() {
       yield this.headers;
-      const { value } = this;
+      const {
+        value
+      } = this;
       if (utils$1.isTypedArray(value)) {
         yield value;
       } else {
-        yield* readBlob$1(value);
+        yield* readBlob(value);
       }
       yield CRLF_BYTES;
     }
@@ -13100,9 +13079,8 @@ var require_axios = __commonJS((exports, module) => {
       yield footerBytes;
     }());
   };
-  var formDataToStream$1 = formDataToStream;
 
-  class ZlibHeaderTransformStream extends stream__default["default"].Transform {
+  class ZlibHeaderTransformStream extends stream.Transform {
     __transform(chunk, encoding, callback) {
       this.push(chunk);
       callback();
@@ -13120,7 +13098,6 @@ var require_axios = __commonJS((exports, module) => {
       this.__transform(chunk, encoding, callback);
     }
   }
-  var ZlibHeaderTransformStream$1 = ZlibHeaderTransformStream;
   var callbackify = (fn, reducer) => {
     return utils$1.isAsyncFn(fn) ? function(...args) {
       const cb = args.pop();
@@ -13133,7 +13110,6 @@ var require_axios = __commonJS((exports, module) => {
       }, cb);
     } : fn;
   };
-  var callbackify$1 = callbackify;
   function speedometer(samplesCount, min) {
     samplesCount = samplesCount || 10;
     const bytes = new Array(samplesCount);
@@ -13225,14 +13201,11 @@ var require_axios = __commonJS((exports, module) => {
   };
   var progressEventDecorator = (total, throttled) => {
     const lengthComputable = total != null;
-    return [
-      (loaded) => throttled[0]({
-        lengthComputable,
-        total,
-        loaded
-      }),
-      throttled[1]
-    ];
+    return [(loaded) => throttled[0]({
+      lengthComputable,
+      total,
+      loaded
+    }), throttled[1]];
   };
   var asyncDecorator = (fn) => (...args) => utils$1.asap(() => fn(...args));
   function estimateDataURLDecodedBytes(url2) {
@@ -13286,15 +13259,18 @@ var require_axios = __commonJS((exports, module) => {
     return Buffer.byteLength(body, "utf8");
   }
   var zlibOptions = {
-    flush: zlib__default["default"].constants.Z_SYNC_FLUSH,
-    finishFlush: zlib__default["default"].constants.Z_SYNC_FLUSH
+    flush: zlib.constants.Z_SYNC_FLUSH,
+    finishFlush: zlib.constants.Z_SYNC_FLUSH
   };
   var brotliOptions = {
-    flush: zlib__default["default"].constants.BROTLI_OPERATION_FLUSH,
-    finishFlush: zlib__default["default"].constants.BROTLI_OPERATION_FLUSH
+    flush: zlib.constants.BROTLI_OPERATION_FLUSH,
+    finishFlush: zlib.constants.BROTLI_OPERATION_FLUSH
   };
-  var isBrotliSupported = utils$1.isFunction(zlib__default["default"].createBrotliDecompress);
-  var { http: httpFollow, https: httpsFollow } = followRedirects__default["default"];
+  var isBrotliSupported = utils$1.isFunction(zlib.createBrotliDecompress);
+  var {
+    http: httpFollow,
+    https: httpsFollow
+  } = followRedirects;
   var isHttps = /https:?/;
   var supportedProtocols = platform.protocols.map((protocol) => {
     return protocol + ":";
@@ -13317,12 +13293,12 @@ var require_axios = __commonJS((exports, module) => {
         let len = authoritySessions.length;
         for (let i = 0;i < len; i++) {
           const [sessionHandle, sessionOptions] = authoritySessions[i];
-          if (!sessionHandle.destroyed && !sessionHandle.closed && util__default["default"].isDeepStrictEqual(sessionOptions, options)) {
+          if (!sessionHandle.destroyed && !sessionHandle.closed && util.isDeepStrictEqual(sessionOptions, options)) {
             return sessionHandle;
           }
         }
       }
-      const session = http2__default["default"].connect(authority, options);
+      const session = http2.connect(authority, options);
       let removed;
       const removeSession = () => {
         if (removed) {
@@ -13337,12 +13313,17 @@ var require_axios = __commonJS((exports, module) => {
             } else {
               entries.splice(i, 1);
             }
+            if (!session.closed) {
+              session.close();
+            }
             return;
           }
         }
       };
       const originalRequestFn = session.request;
-      const { sessionTimeout } = options;
+      const {
+        sessionTimeout
+      } = options;
       if (sessionTimeout != null) {
         let timer;
         let streamsCount = 0;
@@ -13382,7 +13363,7 @@ var require_axios = __commonJS((exports, module) => {
   function setProxy(options, configProxy, location) {
     let proxy = configProxy;
     if (!proxy && proxy !== false) {
-      const proxyUrl = proxyFromEnv__default["default"].getProxyForUrl(location);
+      const proxyUrl = getProxyForUrl(location);
       if (proxyUrl) {
         proxy = new URL(proxyUrl);
       }
@@ -13396,7 +13377,9 @@ var require_axios = __commonJS((exports, module) => {
         if (validProxyAuth) {
           proxy.auth = (proxy.auth.username || "") + ":" + (proxy.auth.password || "");
         } else if (typeof proxy.auth === "object") {
-          throw new AxiosError$1("Invalid proxy authorization", AxiosError$1.ERR_BAD_OPTION, { proxy });
+          throw new AxiosError("Invalid proxy authorization", AxiosError.ERR_BAD_OPTION, {
+            proxy
+          });
         }
         const base64 = Buffer.from(proxy.auth, "utf8").toString("base64");
         options.headers["Proxy-Authorization"] = "Basic " + base64;
@@ -13437,7 +13420,10 @@ var require_axios = __commonJS((exports, module) => {
       asyncExecutor(_resolve, _reject, (onDoneHandler) => onDone = onDoneHandler).catch(_reject);
     });
   };
-  var resolveFamily = ({ address, family }) => {
+  var resolveFamily = ({
+    address,
+    family
+  }) => {
     if (!utils$1.isString(address)) {
       throw TypeError("address must be a string");
     }
@@ -13446,13 +13432,24 @@ var require_axios = __commonJS((exports, module) => {
       family: family || (address.indexOf(".") < 0 ? 6 : 4)
     };
   };
-  var buildAddressEntry = (address, family) => resolveFamily(utils$1.isObject(address) ? address : { address, family });
+  var buildAddressEntry = (address, family) => resolveFamily(utils$1.isObject(address) ? address : {
+    address,
+    family
+  });
   var http2Transport = {
     request(options, cb) {
       const authority = options.protocol + "//" + options.hostname + ":" + (options.port || (options.protocol === "https:" ? 443 : 80));
-      const { http2Options, headers } = options;
+      const {
+        http2Options,
+        headers
+      } = options;
       const session = http2Sessions.getSession(authority, http2Options);
-      const { HTTP2_HEADER_SCHEME, HTTP2_HEADER_METHOD, HTTP2_HEADER_PATH, HTTP2_HEADER_STATUS } = http2__default["default"].constants;
+      const {
+        HTTP2_HEADER_SCHEME,
+        HTTP2_HEADER_METHOD,
+        HTTP2_HEADER_PATH,
+        HTTP2_HEADER_STATUS
+      } = http2.constants;
       const http2Headers = {
         [HTTP2_HEADER_SCHEME]: options.protocol.replace(":", ""),
         [HTTP2_HEADER_METHOD]: options.method,
@@ -13476,8 +13473,17 @@ var require_axios = __commonJS((exports, module) => {
   };
   var httpAdapter = isHttpAdapterSupported && function httpAdapter2(config) {
     return wrapAsync(async function dispatchHttpRequest(resolve, reject, onDone) {
-      let { data, lookup, family, httpVersion = 1, http2Options } = config;
-      const { responseType, responseEncoding } = config;
+      let {
+        data,
+        lookup,
+        family,
+        httpVersion = 1,
+        http2Options
+      } = config;
+      const {
+        responseType,
+        responseEncoding
+      } = config;
       const method = config.method.toUpperCase();
       let isDone;
       let rejected = false;
@@ -13491,7 +13497,7 @@ var require_axios = __commonJS((exports, module) => {
       }
       const isHttp2 = httpVersion === 2;
       if (lookup) {
-        const _lookup = callbackify$1(lookup, (value) => utils$1.isArray(value) ? value : [value]);
+        const _lookup = callbackify(lookup, (value) => utils$1.isArray(value) ? value : [value]);
         lookup = (hostname, opt, cb) => {
           _lookup(hostname, opt, (err, arg0, arg1) => {
             if (err) {
@@ -13505,7 +13511,7 @@ var require_axios = __commonJS((exports, module) => {
       const abortEmitter = new events.EventEmitter;
       function abort(reason) {
         try {
-          abortEmitter.emit("abort", !reason || reason.type ? new CanceledError$1(null, config, req) : reason);
+          abortEmitter.emit("abort", !reason || reason.type ? new CanceledError(null, config, req) : reason);
         } catch (err) {
           console.warn("emit error", err);
         }
@@ -13533,9 +13539,11 @@ var require_axios = __commonJS((exports, module) => {
           onFinished();
           return;
         }
-        const { data: data2 } = response;
-        if (data2 instanceof stream__default["default"].Readable || data2 instanceof stream__default["default"].Duplex) {
-          const offListeners = stream__default["default"].finished(data2, () => {
+        const {
+          data: data2
+        } = response;
+        if (data2 instanceof stream.Readable || data2 instanceof stream.Duplex) {
+          const offListeners = stream.finished(data2, () => {
             offListeners();
             onFinished();
           });
@@ -13551,7 +13559,7 @@ var require_axios = __commonJS((exports, module) => {
           const dataUrl = String(config.url || fullPath || "");
           const estimated = estimateDataURLDecodedBytes(dataUrl);
           if (estimated > config.maxContentLength) {
-            return reject(new AxiosError$1("maxContentLength size of " + config.maxContentLength + " exceeded", AxiosError$1.ERR_BAD_RESPONSE, config));
+            return reject(new AxiosError("maxContentLength size of " + config.maxContentLength + " exceeded", AxiosError.ERR_BAD_RESPONSE, config));
           }
         }
         let convertedData;
@@ -13568,7 +13576,7 @@ var require_axios = __commonJS((exports, module) => {
             Blob: config.env && config.env.Blob
           });
         } catch (err) {
-          throw AxiosError$1.from(err, AxiosError$1.ERR_BAD_REQUEST, config);
+          throw AxiosError.from(err, AxiosError.ERR_BAD_REQUEST, config);
         }
         if (responseType === "text") {
           convertedData = convertedData.toString(responseEncoding);
@@ -13576,28 +13584,31 @@ var require_axios = __commonJS((exports, module) => {
             convertedData = utils$1.stripBOM(convertedData);
           }
         } else if (responseType === "stream") {
-          convertedData = stream__default["default"].Readable.from(convertedData);
+          convertedData = stream.Readable.from(convertedData);
         }
         return settle(resolve, reject, {
           data: convertedData,
           status: 200,
           statusText: "OK",
-          headers: new AxiosHeaders$1,
+          headers: new AxiosHeaders,
           config
         });
       }
       if (supportedProtocols.indexOf(protocol) === -1) {
-        return reject(new AxiosError$1("Unsupported protocol " + protocol, AxiosError$1.ERR_BAD_REQUEST, config));
+        return reject(new AxiosError("Unsupported protocol " + protocol, AxiosError.ERR_BAD_REQUEST, config));
       }
-      const headers = AxiosHeaders$1.from(config.headers).normalize();
+      const headers = AxiosHeaders.from(config.headers).normalize();
       headers.set("User-Agent", "axios/" + VERSION, false);
-      const { onUploadProgress, onDownloadProgress } = config;
+      const {
+        onUploadProgress,
+        onDownloadProgress
+      } = config;
       const maxRate = config.maxRate;
       let maxUploadRate = undefined;
       let maxDownloadRate = undefined;
       if (utils$1.isSpecCompliantForm(data)) {
         const userBoundary = headers.getContentType(/boundary=([-_\w\d]{10,70})/i);
-        data = formDataToStream$1(data, (formHeaders) => {
+        data = formDataToStream(data, (formHeaders) => {
           headers.set(formHeaders);
         }, {
           tag: `axios-${VERSION}-boundary`,
@@ -13607,14 +13618,14 @@ var require_axios = __commonJS((exports, module) => {
         headers.set(data.getHeaders());
         if (!headers.hasContentLength()) {
           try {
-            const knownLength = await util__default["default"].promisify(data.getLength).call(data);
+            const knownLength = await util.promisify(data.getLength).call(data);
             Number.isFinite(knownLength) && knownLength >= 0 && headers.setContentLength(knownLength);
           } catch (e) {}
         }
       } else if (utils$1.isBlob(data) || utils$1.isFile(data)) {
         data.size && headers.setContentType(data.type || "application/octet-stream");
         headers.setContentLength(data.size || 0);
-        data = stream__default["default"].Readable.from(readBlob$1(data));
+        data = stream.Readable.from(readBlob(data));
       } else if (data && !utils$1.isStream(data)) {
         if (Buffer.isBuffer(data))
           ;
@@ -13623,11 +13634,11 @@ var require_axios = __commonJS((exports, module) => {
         } else if (utils$1.isString(data)) {
           data = Buffer.from(data, "utf-8");
         } else {
-          return reject(new AxiosError$1("Data after transformation must be a string, an ArrayBuffer, a Buffer, or a Stream", AxiosError$1.ERR_BAD_REQUEST, config));
+          return reject(new AxiosError("Data after transformation must be a string, an ArrayBuffer, a Buffer, or a Stream", AxiosError.ERR_BAD_REQUEST, config));
         }
         headers.setContentLength(data.length, false);
         if (config.maxBodyLength > -1 && data.length > config.maxBodyLength) {
-          return reject(new AxiosError$1("Request body larger than maxBodyLength limit", AxiosError$1.ERR_BAD_REQUEST, config));
+          return reject(new AxiosError("Request body larger than maxBodyLength limit", AxiosError.ERR_BAD_REQUEST, config));
         }
       }
       const contentLength = utils$1.toFiniteNumber(headers.getContentLength());
@@ -13639,14 +13650,13 @@ var require_axios = __commonJS((exports, module) => {
       }
       if (data && (onUploadProgress || maxUploadRate)) {
         if (!utils$1.isStream(data)) {
-          data = stream__default["default"].Readable.from(data, { objectMode: false });
+          data = stream.Readable.from(data, {
+            objectMode: false
+          });
         }
-        data = stream__default["default"].pipeline([
-          data,
-          new AxiosTransformStream$1({
-            maxRate: utils$1.toFiniteNumber(maxUploadRate)
-          })
-        ], utils$1.noop);
+        data = stream.pipeline([data, new AxiosTransformStream({
+          maxRate: utils$1.toFiniteNumber(maxUploadRate)
+        })], utils$1.noop);
         onUploadProgress && data.on("progress", flushOnFinish(data, progressEventDecorator(contentLength, progressEventReducer(asyncDecorator(onUploadProgress), false, 3))));
       }
       let auth = undefined;
@@ -13676,7 +13686,10 @@ var require_axios = __commonJS((exports, module) => {
         path,
         method,
         headers: headers.toJSON(),
-        agents: { http: config.httpAgent, https: config.httpsAgent },
+        agents: {
+          http: config.httpAgent,
+          https: config.httpsAgent
+        },
         auth,
         protocol,
         family,
@@ -13701,7 +13714,7 @@ var require_axios = __commonJS((exports, module) => {
         if (config.transport) {
           transport = config.transport;
         } else if (config.maxRedirects === 0) {
-          transport = isHttpsRequest ? https__default["default"] : http__default["default"];
+          transport = isHttpsRequest ? https : http;
         } else {
           if (config.maxRedirects) {
             options.maxRedirects = config.maxRedirects;
@@ -13726,7 +13739,7 @@ var require_axios = __commonJS((exports, module) => {
         const streams = [res];
         const responseLength = utils$1.toFiniteNumber(res.headers["content-length"]);
         if (onDownloadProgress || maxDownloadRate) {
-          const transformStream = new AxiosTransformStream$1({
+          const transformStream = new AxiosTransformStream({
             maxRate: utils$1.toFiniteNumber(maxDownloadRate)
           });
           onDownloadProgress && transformStream.on("progress", flushOnFinish(transformStream, progressEventDecorator(responseLength, progressEventReducer(asyncDecorator(onDownloadProgress), true, 3))));
@@ -13743,26 +13756,26 @@ var require_axios = __commonJS((exports, module) => {
             case "x-gzip":
             case "compress":
             case "x-compress":
-              streams.push(zlib__default["default"].createUnzip(zlibOptions));
+              streams.push(zlib.createUnzip(zlibOptions));
               delete res.headers["content-encoding"];
               break;
             case "deflate":
-              streams.push(new ZlibHeaderTransformStream$1);
-              streams.push(zlib__default["default"].createUnzip(zlibOptions));
+              streams.push(new ZlibHeaderTransformStream);
+              streams.push(zlib.createUnzip(zlibOptions));
               delete res.headers["content-encoding"];
               break;
             case "br":
               if (isBrotliSupported) {
-                streams.push(zlib__default["default"].createBrotliDecompress(brotliOptions));
+                streams.push(zlib.createBrotliDecompress(brotliOptions));
                 delete res.headers["content-encoding"];
               }
           }
         }
-        responseStream = streams.length > 1 ? stream__default["default"].pipeline(streams, utils$1.noop) : streams[0];
+        responseStream = streams.length > 1 ? stream.pipeline(streams, utils$1.noop) : streams[0];
         const response = {
           status: res.statusCode,
           statusText: res.statusMessage,
-          headers: new AxiosHeaders$1(res.headers),
+          headers: new AxiosHeaders(res.headers),
           config,
           request: lastRequest
         };
@@ -13778,21 +13791,21 @@ var require_axios = __commonJS((exports, module) => {
             if (config.maxContentLength > -1 && totalResponseBytes > config.maxContentLength) {
               rejected = true;
               responseStream.destroy();
-              abort(new AxiosError$1("maxContentLength size of " + config.maxContentLength + " exceeded", AxiosError$1.ERR_BAD_RESPONSE, config, lastRequest));
+              abort(new AxiosError("maxContentLength size of " + config.maxContentLength + " exceeded", AxiosError.ERR_BAD_RESPONSE, config, lastRequest));
             }
           });
           responseStream.on("aborted", function handlerStreamAborted() {
             if (rejected) {
               return;
             }
-            const err = new AxiosError$1("stream has been aborted", AxiosError$1.ERR_BAD_RESPONSE, config, lastRequest);
+            const err = new AxiosError("stream has been aborted", AxiosError.ERR_BAD_RESPONSE, config, lastRequest);
             responseStream.destroy(err);
             reject(err);
           });
           responseStream.on("error", function handleStreamError(err) {
             if (req.destroyed)
               return;
-            reject(AxiosError$1.from(err, null, config, lastRequest));
+            reject(AxiosError.from(err, null, config, lastRequest));
           });
           responseStream.on("end", function handleStreamEnd() {
             try {
@@ -13805,7 +13818,7 @@ var require_axios = __commonJS((exports, module) => {
               }
               response.data = responseData;
             } catch (err) {
-              return reject(AxiosError$1.from(err, null, config, response.request, response));
+              return reject(AxiosError.from(err, null, config, response.request, response));
             }
             settle(resolve, reject, response);
           });
@@ -13825,7 +13838,7 @@ var require_axios = __commonJS((exports, module) => {
         }
       });
       req.on("error", function handleRequestError(err) {
-        reject(AxiosError$1.from(err, null, config, req));
+        reject(AxiosError.from(err, null, config, req));
       });
       req.on("socket", function handleRequestSocket(socket) {
         socket.setKeepAlive(true, 1000 * 60);
@@ -13833,7 +13846,7 @@ var require_axios = __commonJS((exports, module) => {
       if (config.timeout) {
         const timeout = parseInt(config.timeout, 10);
         if (Number.isNaN(timeout)) {
-          abort(new AxiosError$1("error trying to parse `config.timeout` to int", AxiosError$1.ERR_BAD_OPTION_VALUE, config, req));
+          abort(new AxiosError("error trying to parse `config.timeout` to int", AxiosError.ERR_BAD_OPTION_VALUE, config, req));
           return;
         }
         req.setTimeout(timeout, function handleRequestTimeout() {
@@ -13844,7 +13857,7 @@ var require_axios = __commonJS((exports, module) => {
           if (config.timeoutErrorMessage) {
             timeoutErrorMessage = config.timeoutErrorMessage;
           }
-          abort(new AxiosError$1(timeoutErrorMessage, transitional.clarifyTimeoutError ? AxiosError$1.ETIMEDOUT : AxiosError$1.ECONNABORTED, config, req));
+          abort(new AxiosError(timeoutErrorMessage, transitional.clarifyTimeoutError ? AxiosError.ETIMEDOUT : AxiosError.ECONNABORTED, config, req));
         });
       } else {
         req.setTimeout(0);
@@ -13861,7 +13874,7 @@ var require_axios = __commonJS((exports, module) => {
         });
         data.on("close", () => {
           if (!ended && !errored) {
-            abort(new CanceledError$1("Request stream has been aborted", config, req));
+            abort(new CanceledError("Request stream has been aborted", config, req));
           }
         });
         data.pipe(req);
@@ -13913,13 +13926,17 @@ var require_axios = __commonJS((exports, module) => {
     },
     remove() {}
   };
-  var headersToObject = (thing) => thing instanceof AxiosHeaders$1 ? { ...thing } : thing;
+  var headersToObject = (thing) => thing instanceof AxiosHeaders ? {
+    ...thing
+  } : thing;
   function mergeConfig(config1, config2) {
     config2 = config2 || {};
     const config = {};
     function getMergedValue(target, source, prop, caseless) {
       if (utils$1.isPlainObject(target) && utils$1.isPlainObject(source)) {
-        return utils$1.merge.call({ caseless }, target, source);
+        return utils$1.merge.call({
+          caseless
+        }, target, source);
       } else if (utils$1.isPlainObject(source)) {
         return utils$1.merge({}, source);
       } else if (utils$1.isArray(source)) {
@@ -13984,7 +14001,10 @@ var require_axios = __commonJS((exports, module) => {
       validateStatus: mergeDirectKeys,
       headers: (a, b, prop) => mergeDeepProperties(headersToObject(a), headersToObject(b), prop, true)
     };
-    utils$1.forEach(Object.keys({ ...config1, ...config2 }), function computeConfigValue(prop) {
+    utils$1.forEach(Object.keys({
+      ...config1,
+      ...config2
+    }), function computeConfigValue(prop) {
       if (prop === "__proto__" || prop === "constructor" || prop === "prototype")
         return;
       const merge2 = utils$1.hasOwnProp(mergeMap, prop) ? mergeMap[prop] : mergeDeepProperties;
@@ -13995,8 +14015,15 @@ var require_axios = __commonJS((exports, module) => {
   }
   var resolveConfig = (config) => {
     const newConfig = mergeConfig({}, config);
-    let { data, withXSRFToken, xsrfHeaderName, xsrfCookieName, headers, auth } = newConfig;
-    newConfig.headers = headers = AxiosHeaders$1.from(headers);
+    let {
+      data,
+      withXSRFToken,
+      xsrfHeaderName,
+      xsrfCookieName,
+      headers,
+      auth
+    } = newConfig;
+    newConfig.headers = headers = AxiosHeaders.from(headers);
     newConfig.url = buildURL(buildFullPath(newConfig.baseURL, newConfig.url, newConfig.allowAbsoluteUrls), config.params, config.paramsSerializer);
     if (auth) {
       headers.set("Authorization", "Basic " + btoa((auth.username || "") + ":" + (auth.password ? unescape(encodeURIComponent(auth.password)) : "")));
@@ -14030,8 +14057,12 @@ var require_axios = __commonJS((exports, module) => {
     return new Promise(function dispatchXhrRequest(resolve, reject) {
       const _config = resolveConfig(config);
       let requestData = _config.data;
-      const requestHeaders = AxiosHeaders$1.from(_config.headers).normalize();
-      let { responseType, onUploadProgress, onDownloadProgress } = _config;
+      const requestHeaders = AxiosHeaders.from(_config.headers).normalize();
+      let {
+        responseType,
+        onUploadProgress,
+        onDownloadProgress
+      } = _config;
       let onCanceled;
       let uploadThrottled, downloadThrottled;
       let flushUpload, flushDownload;
@@ -14048,7 +14079,7 @@ var require_axios = __commonJS((exports, module) => {
         if (!request) {
           return;
         }
-        const responseHeaders = AxiosHeaders$1.from("getAllResponseHeaders" in request && request.getAllResponseHeaders());
+        const responseHeaders = AxiosHeaders.from("getAllResponseHeaders" in request && request.getAllResponseHeaders());
         const responseData = !responseType || responseType === "text" || responseType === "json" ? request.responseText : request.response;
         const response = {
           data: responseData,
@@ -14084,12 +14115,12 @@ var require_axios = __commonJS((exports, module) => {
         if (!request) {
           return;
         }
-        reject(new AxiosError$1("Request aborted", AxiosError$1.ECONNABORTED, config, request));
+        reject(new AxiosError("Request aborted", AxiosError.ECONNABORTED, config, request));
         request = null;
       };
       request.onerror = function handleError(event) {
         const msg = event && event.message ? event.message : "Network Error";
-        const err = new AxiosError$1(msg, AxiosError$1.ERR_NETWORK, config, request);
+        const err = new AxiosError(msg, AxiosError.ERR_NETWORK, config, request);
         err.event = event || null;
         reject(err);
         request = null;
@@ -14100,7 +14131,7 @@ var require_axios = __commonJS((exports, module) => {
         if (_config.timeoutErrorMessage) {
           timeoutErrorMessage = _config.timeoutErrorMessage;
         }
-        reject(new AxiosError$1(timeoutErrorMessage, transitional.clarifyTimeoutError ? AxiosError$1.ETIMEDOUT : AxiosError$1.ECONNABORTED, config, request));
+        reject(new AxiosError(timeoutErrorMessage, transitional.clarifyTimeoutError ? AxiosError.ETIMEDOUT : AxiosError.ECONNABORTED, config, request));
         request = null;
       };
       requestData === undefined && requestHeaders.setContentType(null);
@@ -14129,7 +14160,7 @@ var require_axios = __commonJS((exports, module) => {
           if (!request) {
             return;
           }
-          reject(!cancel || cancel.type ? new CanceledError$1(null, config, request) : cancel);
+          reject(!cancel || cancel.type ? new CanceledError(null, config, request) : cancel);
           request.abort();
           request = null;
         };
@@ -14140,14 +14171,16 @@ var require_axios = __commonJS((exports, module) => {
       }
       const protocol = parseProtocol(_config.url);
       if (protocol && platform.protocols.indexOf(protocol) === -1) {
-        reject(new AxiosError$1("Unsupported protocol " + protocol + ":", AxiosError$1.ERR_BAD_REQUEST, config));
+        reject(new AxiosError("Unsupported protocol " + protocol + ":", AxiosError.ERR_BAD_REQUEST, config));
         return;
       }
       request.send(requestData || null);
     });
   };
   var composeSignals = (signals, timeout) => {
-    const { length } = signals = signals ? signals.filter(Boolean) : [];
+    const {
+      length
+    } = signals = signals ? signals.filter(Boolean) : [];
     if (timeout || length) {
       let controller = new AbortController;
       let aborted;
@@ -14156,12 +14189,12 @@ var require_axios = __commonJS((exports, module) => {
           aborted = true;
           unsubscribe();
           const err = reason instanceof Error ? reason : this.reason;
-          controller.abort(err instanceof AxiosError$1 ? err : new CanceledError$1(err instanceof Error ? err.message : err));
+          controller.abort(err instanceof AxiosError ? err : new CanceledError(err instanceof Error ? err.message : err));
         }
       };
       let timer = timeout && setTimeout(() => {
         timer = null;
-        onabort(new AxiosError$1(`timeout of ${timeout}ms exceeded`, AxiosError$1.ETIMEDOUT));
+        onabort(new AxiosError(`timeout of ${timeout}ms exceeded`, AxiosError.ETIMEDOUT));
       }, timeout);
       const unsubscribe = () => {
         if (signals) {
@@ -14174,15 +14207,16 @@ var require_axios = __commonJS((exports, module) => {
         }
       };
       signals.forEach((signal2) => signal2.addEventListener("abort", onabort));
-      const { signal } = controller;
+      const {
+        signal
+      } = controller;
       signal.unsubscribe = () => utils$1.asap(unsubscribe);
       return signal;
     }
   };
-  var composeSignals$1 = composeSignals;
   var streamChunk = function* (chunk, chunkSize) {
     let len = chunk.byteLength;
-    if (!chunkSize || len < chunkSize) {
+    if (len < chunkSize) {
       yield chunk;
       return;
     }
@@ -14207,7 +14241,10 @@ var require_axios = __commonJS((exports, module) => {
     const reader = stream2.getReader();
     try {
       for (;; ) {
-        const { done, value } = await reader.read();
+        const {
+          done,
+          value
+        } = await reader.read();
         if (done) {
           break;
         }
@@ -14230,7 +14267,10 @@ var require_axios = __commonJS((exports, module) => {
     return new ReadableStream({
       async pull(controller) {
         try {
-          const { done: done2, value } = await iterator2.next();
+          const {
+            done: done2,
+            value
+          } = await iterator2.next();
           if (done2) {
             _onFinish();
             controller.close();
@@ -14256,12 +14296,20 @@ var require_axios = __commonJS((exports, module) => {
     });
   };
   var DEFAULT_CHUNK_SIZE = 64 * 1024;
-  var { isFunction } = utils$1;
-  var globalFetchAPI = (({ Request, Response }) => ({
+  var {
+    isFunction
+  } = utils$1;
+  var globalFetchAPI = (({
+    Request,
+    Response
+  }) => ({
     Request,
     Response
   }))(utils$1.global);
-  var { ReadableStream: ReadableStream$1, TextEncoder: TextEncoder$1 } = utils$1.global;
+  var {
+    ReadableStream: ReadableStream$1,
+    TextEncoder: TextEncoder$1
+  } = utils$1.global;
   var test = (fn, ...args) => {
     try {
       return !!fn(...args);
@@ -14273,7 +14321,11 @@ var require_axios = __commonJS((exports, module) => {
     env = utils$1.merge.call({
       skipUndefined: true
     }, globalFetchAPI, env);
-    const { fetch: envFetch, Request, Response } = env;
+    const {
+      fetch: envFetch,
+      Request,
+      Response
+    } = env;
     const isFetchSupported = envFetch ? isFunction(envFetch) : typeof fetch === "function";
     const isRequestSupported = isFunction(Request);
     const isResponseSupported = isFunction(Response);
@@ -14284,14 +14336,16 @@ var require_axios = __commonJS((exports, module) => {
     const encodeText = isFetchSupported && (typeof TextEncoder$1 === "function" ? ((encoder) => (str) => encoder.encode(str))(new TextEncoder$1) : async (str) => new Uint8Array(await new Request(str).arrayBuffer()));
     const supportsRequestStream = isRequestSupported && isReadableStreamSupported && test(() => {
       let duplexAccessed = false;
+      const body = new ReadableStream$1;
       const hasContentType = new Request(platform.origin, {
-        body: new ReadableStream$1,
+        body,
         method: "POST",
         get duplex() {
           duplexAccessed = true;
           return "half";
         }
       }).headers.has("Content-Type");
+      body.cancel();
       return duplexAccessed && !hasContentType;
     });
     const supportsResponseStream = isResponseSupported && isReadableStreamSupported && test(() => utils$1.isReadableStream(new Response("").body));
@@ -14305,7 +14359,7 @@ var require_axios = __commonJS((exports, module) => {
           if (method) {
             return method.call(res);
           }
-          throw new AxiosError$1(`Response type '${type}' is not supported`, AxiosError$1.ERR_NOT_SUPPORT, config);
+          throw new AxiosError(`Response type '${type}' is not supported`, AxiosError.ERR_NOT_SUPPORT, config);
         });
       });
     })();
@@ -14354,7 +14408,7 @@ var require_axios = __commonJS((exports, module) => {
       } = resolveConfig(config);
       let _fetch = envFetch || fetch;
       responseType = responseType ? (responseType + "").toLowerCase() : "text";
-      let composedSignal = composeSignals$1([signal, cancelToken && cancelToken.toAbortSignal()], timeout);
+      let composedSignal = composeSignals([signal, cancelToken && cancelToken.toAbortSignal()], timeout);
       let request = null;
       const unsubscribe = composedSignal && composedSignal.unsubscribe && (() => {
         composedSignal.unsubscribe();
@@ -14410,7 +14464,7 @@ var require_axios = __commonJS((exports, module) => {
         return await new Promise((resolve, reject) => {
           settle(resolve, reject, {
             data: responseData,
-            headers: AxiosHeaders$1.from(response.headers),
+            headers: AxiosHeaders.from(response.headers),
             status: response.status,
             statusText: response.statusText,
             config,
@@ -14420,18 +14474,22 @@ var require_axios = __commonJS((exports, module) => {
       } catch (err) {
         unsubscribe && unsubscribe();
         if (err && err.name === "TypeError" && /Load failed|fetch/i.test(err.message)) {
-          throw Object.assign(new AxiosError$1("Network Error", AxiosError$1.ERR_NETWORK, config, request, err && err.response), {
+          throw Object.assign(new AxiosError("Network Error", AxiosError.ERR_NETWORK, config, request, err && err.response), {
             cause: err.cause || err
           });
         }
-        throw AxiosError$1.from(err, err && err.code, config, request, err && err.response);
+        throw AxiosError.from(err, err && err.code, config, request, err && err.response);
       }
     };
   };
   var seedCache = new Map;
   var getFetch = (config) => {
     let env = config && config.env || {};
-    const { fetch: fetch2, Request, Response } = env;
+    const {
+      fetch: fetch2,
+      Request,
+      Response
+    } = env;
     const seeds = [Request, Response, fetch2];
     let len = seeds.length, i = len, seed, target, map = seedCache;
     while (i--) {
@@ -14453,16 +14511,22 @@ var require_axios = __commonJS((exports, module) => {
   utils$1.forEach(knownAdapters, (fn, value) => {
     if (fn) {
       try {
-        Object.defineProperty(fn, "name", { value });
+        Object.defineProperty(fn, "name", {
+          value
+        });
       } catch (e) {}
-      Object.defineProperty(fn, "adapterName", { value });
+      Object.defineProperty(fn, "adapterName", {
+        value
+      });
     }
   });
   var renderReason = (reason) => `- ${reason}`;
   var isResolvedHandle = (adapter) => utils$1.isFunction(adapter) || adapter === null || adapter === false;
   function getAdapter(adapters2, config) {
     adapters2 = utils$1.isArray(adapters2) ? adapters2 : [adapters2];
-    const { length } = adapters2;
+    const {
+      length
+    } = adapters2;
     let nameOrAdapter;
     let adapter;
     const rejectedReasons = {};
@@ -14473,7 +14537,7 @@ var require_axios = __commonJS((exports, module) => {
       if (!isResolvedHandle(nameOrAdapter)) {
         adapter = knownAdapters[(id = String(nameOrAdapter)).toLowerCase()];
         if (adapter === undefined) {
-          throw new AxiosError$1(`Unknown adapter '${id}'`);
+          throw new AxiosError(`Unknown adapter '${id}'`);
         }
       }
       if (adapter && (utils$1.isFunction(adapter) || (adapter = adapter.get(config)))) {
@@ -14486,7 +14550,7 @@ var require_axios = __commonJS((exports, module) => {
       let s = length ? reasons.length > 1 ? `since :
 ` + reasons.map(renderReason).join(`
 `) : " " + renderReason(reasons[0]) : "as no adapter specified";
-      throw new AxiosError$1(`There is no suitable adapter to dispatch the request ` + s, "ERR_NOT_SUPPORT");
+      throw new AxiosError(`There is no suitable adapter to dispatch the request ` + s, "ERR_NOT_SUPPORT");
     }
     return adapter;
   }
@@ -14499,28 +14563,28 @@ var require_axios = __commonJS((exports, module) => {
       config.cancelToken.throwIfRequested();
     }
     if (config.signal && config.signal.aborted) {
-      throw new CanceledError$1(null, config);
+      throw new CanceledError(null, config);
     }
   }
   function dispatchRequest(config) {
     throwIfCancellationRequested(config);
-    config.headers = AxiosHeaders$1.from(config.headers);
+    config.headers = AxiosHeaders.from(config.headers);
     config.data = transformData.call(config, config.transformRequest);
     if (["post", "put", "patch"].indexOf(config.method) !== -1) {
       config.headers.setContentType("application/x-www-form-urlencoded", false);
     }
-    const adapter = adapters.getAdapter(config.adapter || defaults$1.adapter, config);
+    const adapter = adapters.getAdapter(config.adapter || defaults.adapter, config);
     return adapter(config).then(function onAdapterResolution(response) {
       throwIfCancellationRequested(config);
       response.data = transformData.call(config, config.transformResponse, response);
-      response.headers = AxiosHeaders$1.from(response.headers);
+      response.headers = AxiosHeaders.from(response.headers);
       return response;
     }, function onAdapterRejection(reason) {
       if (!isCancel(reason)) {
         throwIfCancellationRequested(config);
         if (reason && reason.response) {
           reason.response.data = transformData.call(config, config.transformResponse, reason.response);
-          reason.response.headers = AxiosHeaders$1.from(reason.response.headers);
+          reason.response.headers = AxiosHeaders.from(reason.response.headers);
         }
       }
       return Promise.reject(reason);
@@ -14539,7 +14603,7 @@ var require_axios = __commonJS((exports, module) => {
     }
     return (value, opt, opts) => {
       if (validator2 === false) {
-        throw new AxiosError$1(formatMessage(opt, " has been removed" + (version ? " in " + version : "")), AxiosError$1.ERR_DEPRECATED);
+        throw new AxiosError(formatMessage(opt, " has been removed" + (version ? " in " + version : "")), AxiosError.ERR_DEPRECATED);
       }
       if (version && !deprecatedWarnings[opt]) {
         deprecatedWarnings[opt] = true;
@@ -14556,7 +14620,7 @@ var require_axios = __commonJS((exports, module) => {
   };
   function assertOptions(options, schema, allowUnknown) {
     if (typeof options !== "object") {
-      throw new AxiosError$1("options must be an object", AxiosError$1.ERR_BAD_OPTION_VALUE);
+      throw new AxiosError("options must be an object", AxiosError.ERR_BAD_OPTION_VALUE);
     }
     const keys = Object.keys(options);
     let i = keys.length;
@@ -14567,12 +14631,12 @@ var require_axios = __commonJS((exports, module) => {
         const value = options[opt];
         const result = value === undefined || validator2(value, opt, options);
         if (result !== true) {
-          throw new AxiosError$1("option " + opt + " must be " + result, AxiosError$1.ERR_BAD_OPTION_VALUE);
+          throw new AxiosError("option " + opt + " must be " + result, AxiosError.ERR_BAD_OPTION_VALUE);
         }
         continue;
       }
       if (allowUnknown !== true) {
-        throw new AxiosError$1("Unknown option " + opt, AxiosError$1.ERR_BAD_OPTION);
+        throw new AxiosError("Unknown option " + opt, AxiosError.ERR_BAD_OPTION);
       }
     }
   }
@@ -14586,8 +14650,8 @@ var require_axios = __commonJS((exports, module) => {
     constructor(instanceConfig) {
       this.defaults = instanceConfig || {};
       this.interceptors = {
-        request: new InterceptorManager$1,
-        response: new InterceptorManager$1
+        request: new InterceptorManager,
+        response: new InterceptorManager
       };
     }
     async request(configOrUrl, config) {
@@ -14618,7 +14682,11 @@ var require_axios = __commonJS((exports, module) => {
         config = configOrUrl || {};
       }
       config = mergeConfig(this.defaults, config);
-      const { transitional, paramsSerializer, headers } = config;
+      const {
+        transitional,
+        paramsSerializer,
+        headers
+      } = config;
       if (transitional !== undefined) {
         validator.assertOptions(transitional, {
           silentJSONParsing: validators.transitional(validators.boolean),
@@ -14655,7 +14723,7 @@ var require_axios = __commonJS((exports, module) => {
       headers && utils$1.forEach(["delete", "get", "head", "post", "put", "patch", "common"], (method) => {
         delete headers[method];
       });
-      config.headers = AxiosHeaders$1.concat(contextHeaders, headers);
+      config.headers = AxiosHeaders.concat(contextHeaders, headers);
       const requestInterceptorChain = [];
       let synchronousRequestInterceptors = true;
       this.interceptors.request.forEach(function unshiftRequestInterceptors(interceptor) {
@@ -14744,7 +14812,6 @@ var require_axios = __commonJS((exports, module) => {
     Axios.prototype[method] = generateHTTPMethod();
     Axios.prototype[method + "Form"] = generateHTTPMethod(true);
   });
-  var Axios$1 = Axios;
 
   class CancelToken {
     constructor(executor) {
@@ -14780,7 +14847,7 @@ var require_axios = __commonJS((exports, module) => {
         if (token.reason) {
           return;
         }
-        token.reason = new CanceledError$1(message, config, request);
+        token.reason = new CanceledError(message, config, request);
         resolvePromise(token.reason);
       });
     }
@@ -14829,7 +14896,6 @@ var require_axios = __commonJS((exports, module) => {
       };
     }
   }
-  var CancelToken$1 = CancelToken;
   function spread(callback) {
     return function wrap(arr) {
       return callback.apply(null, arr);
@@ -14912,25 +14978,28 @@ var require_axios = __commonJS((exports, module) => {
   Object.entries(HttpStatusCode).forEach(([key, value]) => {
     HttpStatusCode[value] = key;
   });
-  var HttpStatusCode$1 = HttpStatusCode;
   function createInstance(defaultConfig) {
-    const context = new Axios$1(defaultConfig);
-    const instance = bind(Axios$1.prototype.request, context);
-    utils$1.extend(instance, Axios$1.prototype, context, { allOwnKeys: true });
-    utils$1.extend(instance, context, null, { allOwnKeys: true });
+    const context = new Axios(defaultConfig);
+    const instance = bind(Axios.prototype.request, context);
+    utils$1.extend(instance, Axios.prototype, context, {
+      allOwnKeys: true
+    });
+    utils$1.extend(instance, context, null, {
+      allOwnKeys: true
+    });
     instance.create = function create(instanceConfig) {
       return createInstance(mergeConfig(defaultConfig, instanceConfig));
     };
     return instance;
   }
-  var axios = createInstance(defaults$1);
-  axios.Axios = Axios$1;
-  axios.CanceledError = CanceledError$1;
-  axios.CancelToken = CancelToken$1;
+  var axios = createInstance(defaults);
+  axios.Axios = Axios;
+  axios.CanceledError = CanceledError;
+  axios.CancelToken = CancelToken;
   axios.isCancel = isCancel;
   axios.VERSION = VERSION;
   axios.toFormData = toFormData;
-  axios.AxiosError = AxiosError$1;
+  axios.AxiosError = AxiosError;
   axios.Cancel = axios.CanceledError;
   axios.all = function all(promises) {
     return Promise.all(promises);
@@ -14938,10 +15007,10 @@ var require_axios = __commonJS((exports, module) => {
   axios.spread = spread;
   axios.isAxiosError = isAxiosError;
   axios.mergeConfig = mergeConfig;
-  axios.AxiosHeaders = AxiosHeaders$1;
+  axios.AxiosHeaders = AxiosHeaders;
   axios.formToJSON = (thing) => formDataToJSON(utils$1.isHTMLForm(thing) ? new FormData(thing) : thing);
   axios.getAdapter = adapters.getAdapter;
-  axios.HttpStatusCode = HttpStatusCode$1;
+  axios.HttpStatusCode = HttpStatusCode;
   axios.default = axios;
   module.exports = axios;
 });
@@ -15092,11 +15161,11 @@ var require_permessage_deflate = __commonJS((exports, module) => {
   var zlibLimiter;
 
   class PerMessageDeflate {
-    constructor(options, isServer, maxPayload) {
-      this._maxPayload = maxPayload | 0;
+    constructor(options) {
       this._options = options || {};
       this._threshold = this._options.threshold !== undefined ? this._options.threshold : 1024;
-      this._isServer = !!isServer;
+      this._maxPayload = this._options.maxPayload | 0;
+      this._isServer = !!this._options.isServer;
       this._deflate = null;
       this._inflate = null;
       this.params = null;
@@ -16967,7 +17036,7 @@ var require_websocket = __commonJS((exports, module) => {
     } else {
       try {
         parsedUrl = new URL2(address);
-      } catch (e) {
+      } catch {
         throw new SyntaxError(`Invalid URL: ${address}`);
       }
     }
@@ -17015,7 +17084,11 @@ var require_websocket = __commonJS((exports, module) => {
     opts.path = parsedUrl.pathname + parsedUrl.search;
     opts.timeout = opts.handshakeTimeout;
     if (opts.perMessageDeflate) {
-      perMessageDeflate = new PerMessageDeflate(opts.perMessageDeflate !== true ? opts.perMessageDeflate : {}, false, opts.maxPayload);
+      perMessageDeflate = new PerMessageDeflate({
+        ...opts.perMessageDeflate,
+        isServer: false,
+        maxPayload: opts.maxPayload
+      });
       opts.headers["Sec-WebSocket-Extensions"] = format({
         [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
       });
@@ -17661,7 +17734,11 @@ var require_websocket_server = __commonJS((exports, module) => {
       const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
       const extensions = {};
       if (this.options.perMessageDeflate && secWebSocketExtensions !== undefined) {
-        const perMessageDeflate = new PerMessageDeflate(this.options.perMessageDeflate, true, this.options.maxPayload);
+        const perMessageDeflate = new PerMessageDeflate({
+          ...this.options.perMessageDeflate,
+          isServer: true,
+          maxPayload: this.options.maxPayload
+        });
         try {
           const offers = extension.parse(secWebSocketExtensions);
           if (offers[PerMessageDeflate.extensionName]) {
@@ -17792,13 +17869,23 @@ var require_websocket_server = __commonJS((exports, module) => {
 
 // node_modules/ws/index.js
 var require_ws = __commonJS((exports, module) => {
+  var createWebSocketStream = require_stream();
+  var extension = require_extension();
+  var PerMessageDeflate = require_permessage_deflate();
+  var Receiver = require_receiver();
+  var Sender = require_sender();
+  var subprotocol = require_subprotocol();
   var WebSocket = require_websocket();
-  WebSocket.createWebSocketStream = require_stream();
-  WebSocket.Server = require_websocket_server();
-  WebSocket.Receiver = require_receiver();
-  WebSocket.Sender = require_sender();
+  var WebSocketServer = require_websocket_server();
+  WebSocket.createWebSocketStream = createWebSocketStream;
+  WebSocket.extension = extension;
+  WebSocket.PerMessageDeflate = PerMessageDeflate;
+  WebSocket.Receiver = Receiver;
+  WebSocket.Sender = Sender;
+  WebSocket.Server = WebSocketServer;
+  WebSocket.subprotocol = subprotocol;
   WebSocket.WebSocket = WebSocket;
-  WebSocket.WebSocketServer = WebSocket.Server;
+  WebSocket.WebSocketServer = WebSocketServer;
   module.exports = WebSocket;
 });
 
@@ -17809,6 +17896,22 @@ var require_index_cjs = __commonJS((exports) => {
   var crypto = __require("crypto");
   var axios = require_axios();
   var WebSocket = require_ws();
+
+  class WSAuthFailureError extends Error {
+    constructor(maxAttempts) {
+      super(`Max auth failure attempts exceeded (${maxAttempts})`);
+      this.code = "WS_AUTH_FAILURE_EXHAUSTED";
+      this.name = "WSAuthFailureError";
+    }
+  }
+
+  class WSReconnectExhaustedError extends Error {
+    constructor(maxAttempts) {
+      super(`Max reconnect attempts exceeded (${maxAttempts})`);
+      this.code = "WS_RECONNECT_EXHAUSTED";
+      this.name = "WSReconnectExhaustedError";
+    }
+  }
   exports.MessageType = undefined;
   (function(MessageType) {
     MessageType["Text"] = "text";
@@ -17843,11 +17946,12 @@ var require_index_cjs = __commonJS((exports) => {
     EventType["EnterChat"] = "enter_chat";
     EventType["TemplateCardEvent"] = "template_card_event";
     EventType["FeedbackEvent"] = "feedback_event";
+    EventType["Disconnected"] = "disconnected_event";
   })(exports.EventType || (exports.EventType = {}));
 
   class WeComApiClient {
-    constructor(logger2, timeout = 1e4) {
-      this.logger = logger2;
+    constructor(logger, timeout = 1e4) {
+      this.logger = logger;
       this.httpClient = axios.create({
         timeout,
         headers: {
@@ -17893,39 +17997,55 @@ var require_index_cjs = __commonJS((exports) => {
   var DEFAULT_WS_URL = "wss://openws.work.weixin.qq.com";
 
   class WsConnectionManager {
-    constructor(logger2, heartbeatInterval = 30000, reconnectBaseDelay = 1000, maxReconnectAttempts = 10, wsUrl) {
+    constructor(logger, heartbeatInterval = 30000, reconnectBaseDelay = 1000, maxReconnectAttempts = 10, wsUrl, wsOptions, maxReplyQueueSize, maxAuthFailureAttempts) {
       this.ws = null;
       this.heartbeatTimer = null;
       this.reconnectAttempts = 0;
+      this.authFailureAttempts = 0;
       this.isManualClose = false;
+      this.lastCloseWasAuthFailure = false;
       this.botId = "";
       this.botSecret = "";
+      this.extraAuthParams = {};
       this.missedPongCount = 0;
       this.maxMissedPong = 2;
       this.reconnectBaseDelay = 1000;
       this.reconnectMaxDelay = 30000;
+      this.reconnectTimer = null;
       this.replyQueues = new Map;
       this.pendingAcks = new Map;
+      this.pendingAckSeq = 0;
       this.replyAckTimeout = 5000;
-      this.maxReplyQueueSize = 100;
+      this.maxReplyQueueSize = 500;
       this.onConnected = null;
       this.onAuthenticated = null;
       this.onDisconnected = null;
       this.onMessage = null;
       this.onReconnecting = null;
       this.onError = null;
-      this.logger = logger2;
+      this.onServerDisconnect = null;
+      this.logger = logger;
       this.heartbeatInterval = heartbeatInterval;
       this.reconnectBaseDelay = reconnectBaseDelay;
       this.maxReconnectAttempts = maxReconnectAttempts;
+      this.maxAuthFailureAttempts = maxAuthFailureAttempts ?? 5;
       this.wsUrl = wsUrl || DEFAULT_WS_URL;
+      this.wsOptions = wsOptions || {};
+      if (maxReplyQueueSize !== undefined) {
+        this.maxReplyQueueSize = maxReplyQueueSize;
+      }
     }
-    setCredentials(botId, botSecret) {
+    setCredentials(botId, botSecret, extraAuthParams) {
       this.botId = botId;
       this.botSecret = botSecret;
+      this.extraAuthParams = extraAuthParams || {};
     }
     connect() {
       this.isManualClose = false;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
       if (this.ws) {
         this.ws.removeAllListeners();
         this.ws.terminate();
@@ -17933,7 +18053,7 @@ var require_index_cjs = __commonJS((exports) => {
       }
       this.logger.info(`Connecting to WebSocket: ${this.wsUrl}...`);
       try {
-        this.ws = new WebSocket(this.wsUrl);
+        this.ws = new WebSocket(this.wsUrl, this.wsOptions);
         this.setupEventHandlers();
       } catch (error) {
         this.logger.error("Failed to create WebSocket connection:", error.message);
@@ -17946,8 +18066,8 @@ var require_index_cjs = __commonJS((exports) => {
         return;
       this.ws.on("open", () => {
         this.logger.info("WebSocket connection established, sending auth...");
-        this.reconnectAttempts = 0;
         this.missedPongCount = 0;
+        this.lastCloseWasAuthFailure = false;
         this.sendAuth();
         this.onConnected?.();
       });
@@ -17966,6 +18086,7 @@ var require_index_cjs = __commonJS((exports) => {
         this.stopHeartbeat();
         this.clearPendingMessages(`WebSocket connection closed (${reasonStr})`);
         this.onDisconnected?.(reasonStr);
+        this.ws = null;
         if (!this.isManualClose) {
           this.scheduleReconnect();
         }
@@ -17975,7 +18096,6 @@ var require_index_cjs = __commonJS((exports) => {
         this.onError?.(error);
       });
       this.ws.on("ping", () => {
-        this.logger.debug("Received WebSocket protocol ping, sent pong");
         this.ws?.pong();
       });
     }
@@ -17986,7 +18106,8 @@ var require_index_cjs = __commonJS((exports) => {
           headers: { req_id: generateReqId(WsCmd.SUBSCRIBE) },
           body: {
             bot_id: this.botId,
-            secret: this.botSecret
+            secret: this.botSecret,
+            ...this.extraAuthParams
           }
         });
         this.logger.info("Auth frame sent");
@@ -17998,27 +18119,43 @@ var require_index_cjs = __commonJS((exports) => {
       const cmd = frame.cmd || "";
       const reqId = frame.headers?.req_id || "";
       if (frame.cmd === WsCmd.CALLBACK) {
-        this.logger.info(`[server -> plugin] cmd=${cmd}, reqId=${reqId}, body=${JSON.stringify(frame.body)}`);
+        this.logger.debug(`[server -> plugin] cmd=${cmd}, reqId=${reqId}, body=${JSON.stringify(frame.body)}`);
         this.onMessage?.(frame);
         return;
       }
       if (frame.cmd === WsCmd.EVENT_CALLBACK) {
-        this.logger.info(`[server -> plugin] cmd=${cmd}, reqId=${reqId}, body=${JSON.stringify(frame.body)}`);
+        this.logger.debug(`[server -> plugin] cmd=${cmd}, reqId=${reqId}, body=${JSON.stringify(frame.body)}`);
+        if (frame.body?.event?.eventtype === "disconnected_event") {
+          this.logger.warn("Received disconnected_event: a new connection has been established, this connection will be closed by server");
+          this.onMessage?.(frame);
+          this.stopHeartbeat();
+          this.clearPendingMessages("Server disconnected due to new connection");
+          this.isManualClose = true;
+          this.onServerDisconnect?.("New connection established, server disconnected this connection");
+          if (this.ws) {
+            this.ws.removeAllListeners();
+            this.ws.terminate();
+            this.ws = null;
+          }
+          return;
+        }
         this.onMessage?.(frame);
         return;
       }
       const actualReqId = frame.headers?.req_id || "";
-      if (this.pendingAcks.has(actualReqId)) {
-        this.handleReplyAck(actualReqId, frame);
-        return;
-      }
       if (actualReqId.startsWith(WsCmd.SUBSCRIBE)) {
         if (frame.errcode !== 0) {
           this.logger.error(`Authentication failed: errcode=${frame.errcode}, errmsg=${frame.errmsg}`);
           this.onError?.(new Error(`Authentication failed: ${frame.errmsg} (code: ${frame.errcode})`));
+          this.lastCloseWasAuthFailure = true;
+          if (this.ws) {
+            this.ws.terminate();
+          }
           return;
         }
         this.logger.info("Authentication successful");
+        this.reconnectAttempts = 0;
+        this.authFailureAttempts = 0;
         this.startHeartbeat();
         this.onAuthenticated?.();
         return;
@@ -18029,7 +18166,10 @@ var require_index_cjs = __commonJS((exports) => {
           return;
         }
         this.missedPongCount = 0;
-        this.logger.debug("Received heartbeat ack");
+        return;
+      }
+      if (this.pendingAcks.has(actualReqId)) {
+        this.handleReplyAck(actualReqId, frame);
         return;
       }
       this.logger.warn("Received unknown frame (ignored):", JSON.stringify(frame));
@@ -18063,26 +18203,44 @@ var require_index_cjs = __commonJS((exports) => {
           cmd: WsCmd.HEARTBEAT,
           headers: { req_id: generateReqId(WsCmd.HEARTBEAT) }
         });
-        this.logger.debug(`Heartbeat sent${this.missedPongCount > 1 ? ` (awaiting ${this.missedPongCount} pong)` : ""}`);
       } catch (error) {
         this.logger.error("Failed to send heartbeat:", error.message);
       }
     }
     scheduleReconnect() {
-      if (this.maxReconnectAttempts !== -1 && this.reconnectAttempts >= this.maxReconnectAttempts) {
-        this.logger.error(`Max reconnect attempts reached (${this.maxReconnectAttempts}), giving up`);
-        this.onError?.(new Error("Max reconnect attempts exceeded"));
-        return;
-      }
-      this.reconnectAttempts++;
-      const delay = Math.min(this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts - 1), this.reconnectMaxDelay);
-      this.logger.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})...`);
-      this.onReconnecting?.(this.reconnectAttempts);
-      setTimeout(() => {
-        if (this.isManualClose)
+      if (this.lastCloseWasAuthFailure) {
+        if (this.maxAuthFailureAttempts !== -1 && this.authFailureAttempts >= this.maxAuthFailureAttempts) {
+          this.logger.error(`Max auth failure attempts reached (${this.maxAuthFailureAttempts}), giving up`);
+          this.onError?.(new WSAuthFailureError(this.maxAuthFailureAttempts));
           return;
-        this.connect();
-      }, delay);
+        }
+        this.authFailureAttempts++;
+        const delay = Math.min(this.reconnectBaseDelay * Math.pow(2, this.authFailureAttempts - 1), this.reconnectMaxDelay);
+        this.logger.info(`Auth failed, reconnecting in ${delay}ms (auth attempt ${this.authFailureAttempts}/${this.maxAuthFailureAttempts})...`);
+        this.onReconnecting?.(this.authFailureAttempts);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          if (this.isManualClose)
+            return;
+          this.connect();
+        }, delay);
+      } else {
+        if (this.maxReconnectAttempts !== -1 && this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.logger.error(`Max reconnect attempts reached (${this.maxReconnectAttempts}), giving up`);
+          this.onError?.(new WSReconnectExhaustedError(this.maxReconnectAttempts));
+          return;
+        }
+        this.reconnectAttempts++;
+        const delay = Math.min(this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts - 1), this.reconnectMaxDelay);
+        this.logger.info(`Connection lost, reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+        this.onReconnecting?.(this.reconnectAttempts);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          if (this.isManualClose)
+            return;
+          this.connect();
+        }, delay);
+      }
     }
     send(frame) {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -18093,8 +18251,6 @@ var require_index_cjs = __commonJS((exports) => {
       }
     }
     sendReply(reqId, body, cmd = WsCmd.RESPONSE) {
-      const logBody = body?.base64_data ? { ...body, base64_data: `<${body.base64_data.length} chars>` } : body;
-      this.logger.debug(`[ws] sendReply: reqId=${reqId}, cmd=${cmd}, body=${JSON.stringify(logBody)}`);
       return new Promise((resolve, reject) => {
         const frame = {
           cmd,
@@ -18131,10 +18287,15 @@ var require_index_cjs = __commonJS((exports) => {
         this.logger.error(`Failed to send reply for reqId ${reqId}:`, error.message);
         queue.shift();
         item.reject(error);
-        this.processReplyQueue(reqId);
+        queueMicrotask(() => this.processReplyQueue(reqId));
         return;
       }
+      const seq = ++this.pendingAckSeq;
       const timer = setTimeout(() => {
+        const currentPending = this.pendingAcks.get(reqId);
+        if (!currentPending || currentPending.seq !== seq) {
+          return;
+        }
         this.logger.warn(`Reply ack timeout (${this.replyAckTimeout}ms) for reqId: ${reqId}`);
         this.pendingAcks.delete(reqId);
         queue.shift();
@@ -18144,7 +18305,8 @@ var require_index_cjs = __commonJS((exports) => {
       this.pendingAcks.set(reqId, {
         resolve: item.resolve,
         reject: item.reject,
-        timer
+        timer,
+        seq
       });
     }
     handleReplyAck(reqId, frame) {
@@ -18170,12 +18332,18 @@ var require_index_cjs = __commonJS((exports) => {
       this.processReplyQueue(reqId);
     }
     clearPendingMessages(reason) {
-      for (const [_reqId, pending] of this.pendingAcks) {
+      const pendingRejects = new Set;
+      for (const [reqId, pending] of this.pendingAcks) {
         clearTimeout(pending.timer);
+        pendingRejects.add(pending.reject);
+        pending.reject(new Error(`${reason}, reply for reqId: ${reqId} cancelled`));
       }
       this.pendingAcks.clear();
       for (const [reqId, queue] of this.replyQueues) {
         for (const item of queue) {
+          if (pendingRejects.has(item.reject)) {
+            continue;
+          }
           item.reject(new Error(`${reason}, reply for reqId: ${reqId} cancelled`));
         }
       }
@@ -18185,8 +18353,12 @@ var require_index_cjs = __commonJS((exports) => {
       this.isManualClose = true;
       this.stopHeartbeat();
       this.clearPendingMessages("Connection manually closed");
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
       if (this.ws) {
-        this.ws.close(1000, "Manual disconnect");
+        this.ws.terminate();
         this.ws = null;
       }
       this.logger.info("WebSocket connection manually closed");
@@ -18197,8 +18369,8 @@ var require_index_cjs = __commonJS((exports) => {
   }
 
   class MessageHandler {
-    constructor(logger2) {
-      this.logger = logger2;
+    constructor(logger) {
+      this.logger = logger;
     }
     handleFrame(frame, emitter) {
       try {
@@ -18311,16 +18483,22 @@ var require_index_cjs = __commonJS((exports) => {
       this.options = {
         reconnectInterval: 1000,
         maxReconnectAttempts: 10,
+        maxAuthFailureAttempts: 5,
         heartbeatInterval: 30000,
         requestTimeout: 1e4,
         wsUrl: "",
+        wsOptions: {},
+        maxReplyQueueSize: 500,
         logger: new DefaultLogger,
         ...options
       };
       this.logger = this.options.logger;
       this.apiClient = new WeComApiClient(this.logger, this.options.requestTimeout);
-      this.wsManager = new WsConnectionManager(this.logger, this.options.heartbeatInterval, this.options.reconnectInterval, this.options.maxReconnectAttempts, this.options.wsUrl || undefined);
-      this.wsManager.setCredentials(this.options.botId, this.options.secret);
+      this.wsManager = new WsConnectionManager(this.logger, this.options.heartbeatInterval, this.options.reconnectInterval, this.options.maxReconnectAttempts, this.options.wsUrl || undefined, this.options.wsOptions, this.options.maxReplyQueueSize, this.options.maxAuthFailureAttempts);
+      this.wsManager.setCredentials(this.options.botId, this.options.secret, {
+        ...this.options.scene !== undefined && { scene: this.options.scene },
+        ...this.options.plug_version !== undefined && { plug_version: this.options.plug_version }
+      });
       this.messageHandler = new MessageHandler(this.logger);
       this.setupWsEvents();
     }
@@ -18333,6 +18511,11 @@ var require_index_cjs = __commonJS((exports) => {
         this.emit("authenticated");
       };
       this.wsManager.onDisconnected = (reason) => {
+        this.emit("disconnected", reason);
+      };
+      this.wsManager.onServerDisconnect = (reason) => {
+        this.logger.warn(`Server disconnected this connection: ${reason}`);
+        this.started = false;
         this.emit("disconnected", reason);
       };
       this.wsManager.onReconnecting = (attempt) => {
@@ -18572,7 +18755,9 @@ var require_index_cjs = __commonJS((exports) => {
   };
   exports.DefaultLogger = DefaultLogger;
   exports.MessageHandler = MessageHandler;
+  exports.WSAuthFailureError = WSAuthFailureError;
   exports.WSClient = WSClient;
+  exports.WSReconnectExhaustedError = WSReconnectExhaustedError;
   exports.WeComApiClient = WeComApiClient;
   exports.WsCmd = WsCmd;
   exports.WsConnectionManager = WsConnectionManager;
@@ -18582,7 +18767,7 @@ var require_index_cjs = __commonJS((exports) => {
   exports.generateReqId = generateReqId;
 });
 
-// packages/extension-sdk/src/platform.ts
+// ../../packages/extension-sdk/src/platform.ts
 function getPlatformConfig(context, platformName) {
   const platform = context.config?.platform;
   if (!platform || typeof platform !== "object") {
@@ -18601,25 +18786,88 @@ function definePlatformFactory(options) {
     return await options.create(context.backend, config, context);
   };
 }
-// packages/extension-sdk/src/logger.ts
-function print(level, scope, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[${scope}]`, ...args);
+class PlatformAdapter {
+  get name() {
+    return this.constructor.name;
+  }
 }
+// ../../packages/extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
-    info: (...args) => print("log", scope, args),
-    warn: (...args) => print("warn", scope, args),
-    error: (...args) => print("error", scope, args),
-    debug: (...args) => print("debug", scope, args)
+    debug: (...args) => {
+      if (_logLevel <= 0 /* DEBUG */)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= 1 /* INFO */)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= 2 /* WARN */)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= 3 /* ERROR */)
+        console.error(`[${scope}]`, ...args);
+    }
   };
 }
-// packages/extension-sdk/src/pairing/store.ts
-var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
-// extensions/wxwork/src/index.ts
+// ../../packages/extension-sdk/src/platform-utils.ts
+function detectImageMime(buffer) {
+  if (buffer.length < 4)
+    return null;
+  if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255)
+    return "image/jpeg";
+  if (buffer[0] === 137 && buffer[1] === 80 && buffer[2] === 78 && buffer[3] === 71)
+    return "image/png";
+  if (buffer[0] === 71 && buffer[1] === 73 && buffer[2] === 70)
+    return "image/gif";
+  if (buffer[0] === 82 && buffer[1] === 73 && buffer[2] === 70 && buffer[3] === 70 && buffer.length >= 12 && buffer[8] === 87 && buffer[9] === 69 && buffer[10] === 66 && buffer[11] === 80)
+    return "image/webp";
+  if (buffer[0] === 66 && buffer[1] === 77)
+    return "image/bmp";
+  return null;
+}
+var TOOL_STATUS_ICONS = {
+  queued: "⏳",
+  executing: "\uD83D\uDD27",
+  success: "✅",
+  error: "❌",
+  streaming: "\uD83D\uDCE1",
+  awaiting_approval: "\uD83D\uDD10",
+  awaiting_apply: "\uD83D\uDCCB",
+  warning: "⚠️"
+};
+var TOOL_STATUS_LABELS = {
+  queued: "等待中",
+  executing: "执行中",
+  success: "成功",
+  error: "失败",
+  streaming: "输出中",
+  awaiting_approval: "等待审批",
+  awaiting_apply: "等待应用",
+  warning: "警告"
+};
+function formatToolStatusLine(inv, options) {
+  const icon = TOOL_STATUS_ICONS[inv.status] || "⏳";
+  const label = TOOL_STATUS_LABELS[inv.status] || inv.status;
+  const name = options?.codeStyle ? `\`${inv.toolName}\`` : inv.toolName;
+  return `${icon} ${name} ${label}`;
+}
+function autoApproveTools(backend, invocations) {
+  for (const inv of invocations) {
+    if (inv.status === "awaiting_approval") {
+      try {
+        backend.approveTool(inv.id, true);
+      } catch {}
+    }
+  }
+}
+// src/index.ts
 var import_aibot_node_sdk = __toESM(require_index_cjs(), 1);
-var logger2 = createExtensionLogger("WXWorkExtension", "WXWork");
+var logger = createExtensionLogger("WXWorkExtension", "WXWork");
 var STREAM_THROTTLE_MS = 300;
 var THINKING_PLACEHOLDER = "<think></think>";
 var WS_HEARTBEAT_INTERVAL_MS = 30000;
@@ -18680,13 +18928,14 @@ function withTimeout(promise, timeoutMs, message) {
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
-class WXWorkPlatform {
+class WXWorkPlatform extends PlatformAdapter {
   wsClient;
   backend;
   showToolStatus;
   activeSessions = new Map;
   chatStates = new Map;
   constructor(backend, config) {
+    super();
     this.backend = backend;
     this.showToolStatus = config.showToolStatus !== false;
     this.wsClient = new import_aibot_node_sdk.WSClient({
@@ -18700,7 +18949,7 @@ class WXWorkPlatform {
     this.setupBackendListeners();
     this.setupWsListeners();
     this.wsClient.connect();
-    logger2.info("平台启动中，正在连接企业微信...");
+    logger.info("平台启动中，正在连接企业微信...");
   }
   async stop() {
     this.wsClient.disconnect();
@@ -18709,7 +18958,7 @@ class WXWorkPlatform {
         clearTimeout(cs.stream.throttleTimer);
     }
     this.chatStates.clear();
-    logger2.info("平台已停止");
+    logger.info("平台已停止");
   }
   getChatState(ck) {
     let cs = this.chatStates.get(ck);
@@ -18736,13 +18985,7 @@ class WXWorkPlatform {
   }
   setupBackendListeners() {
     this.backend.on("tool:update", (sid, invocations) => {
-      for (const inv of invocations) {
-        if (inv.status === "awaiting_approval") {
-          try {
-            this.backend.approveTool(inv.id, true);
-          } catch {}
-        }
-      }
+      autoApproveTools(this.backend, invocations);
       if (!this.showToolStatus)
         return;
       const cs = this.findChatStateBySid(sid);
@@ -18753,7 +18996,7 @@ class WXWorkPlatform {
         const isDone = inv.status === "success" || inv.status === "error";
         if (isDone && !cs.stream.committedToolIds.has(inv.id)) {
           cs.stream.committedToolIds.add(inv.id);
-          const line = formatToolLine(inv);
+          const line = formatToolStatusLine(inv, { codeStyle: true });
           cs.stream.buffer = cs.stream.buffer ? `${cs.stream.buffer}
 
 ${line}
@@ -18763,7 +19006,7 @@ ${line}
 `;
         }
       }
-      const activeLine = sorted.filter((inv) => !cs.stream.committedToolIds.has(inv.id)).map((inv) => formatToolLine(inv)).join(`
+      const activeLine = sorted.filter((inv) => !cs.stream.committedToolIds.has(inv.id)).map((inv) => formatToolStatusLine(inv, { codeStyle: true })).join(`
 
 `);
       const displayText = activeLine ? cs.stream.buffer ? `${cs.stream.buffer}
@@ -18772,7 +19015,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
       if (!displayText)
         return;
       this.wsClient.replyStream(cs.frame, cs.stream.streamId, displayText, false).catch((err) => {
-        logger2.error(`工具状态更新失败 (session=${sid}):`, err);
+        logger.error(`工具状态更新失败 (session=${sid}):`, err);
       });
     });
     this.backend.on("stream:start", (sid) => {
@@ -18804,7 +19047,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
             return;
           cs.stream.dirty = false;
           this.wsClient.replyStream(cs.frame, cs.stream.streamId, cs.stream.buffer, false).catch((err) => {
-            logger2.error(`流式发送失败 (session=${sid}):`, err);
+            logger.error(`流式发送失败 (session=${sid}):`, err);
           });
         }, STREAM_THROTTLE_MS);
       }
@@ -18819,13 +19062,13 @@ ${activeLine}` : activeLine : cs.stream.buffer;
           cs.stream.throttleTimer = null;
         }
         this.wsClient.replyStream(cs.frame, cs.stream.streamId, text, true).catch((err) => {
-          logger2.error(`流式关闭失败 (session=${sid}):`, err);
+          logger.error(`流式关闭失败 (session=${sid}):`, err);
         });
         cs.stream = null;
       } else {
         const streamId = import_aibot_node_sdk.generateReqId("stream");
         this.wsClient.replyStream(cs.frame, streamId, text, true).catch((err) => {
-          logger2.error(`回复失败 (session=${sid}):`, err);
+          logger.error(`回复失败 (session=${sid}):`, err);
         });
       }
     });
@@ -18858,7 +19101,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
         if (!cs.stopped) {
           const finalText = cs.stream.buffer || "✅ 处理完成。";
           this.wsClient.replyStream(cs.frame, cs.stream.streamId, finalText, true).catch((err) => {
-            logger2.error(`done 关闭流失败 (session=${sid}):`, err);
+            logger.error(`done 关闭流失败 (session=${sid}):`, err);
           });
         }
         cs.stream = null;
@@ -18873,20 +19116,20 @@ ${activeLine}` : activeLine : cs.stream.buffer;
   }
   setupWsListeners() {
     this.wsClient.on("authenticated", () => {
-      logger2.info("✅ 企业微信机器人已连接并认证成功");
+      logger.info("✅ 企业微信机器人已连接并认证成功");
     });
     this.wsClient.on("disconnected", (reason) => {
-      logger2.warn(`连接断开: ${reason}`);
+      logger.warn(`连接断开: ${reason}`);
     });
     this.wsClient.on("reconnecting", (attempt) => {
-      logger2.info(`正在重连 (第 ${attempt} 次)...`);
+      logger.info(`正在重连 (第 ${attempt} 次)...`);
     });
     this.wsClient.on("error", (error) => {
-      logger2.error(`WebSocket 错误: ${error.message}`);
+      logger.error(`WebSocket 错误: ${error.message}`);
     });
     this.wsClient.on("message", (frame) => {
       this.handleIncomingMessage(frame).catch((err) => {
-        logger2.error("处理入站消息失败:", err);
+        logger.error("处理入站消息失败:", err);
       });
     });
     this.wsClient.on("event.enter_chat", (frame) => {
@@ -18894,7 +19137,7 @@ ${activeLine}` : activeLine : cs.stream.buffer;
         msgtype: "text",
         text: { content: "\uD83D\uDC4B 你好！我是 Iris 助手，有什么可以帮你的？" }
       }).catch((err) => {
-        logger2.error("发送欢迎语失败:", err);
+        logger.error("发送欢迎语失败:", err);
       });
     });
   }
@@ -19026,7 +19269,7 @@ _${date}_`);
         this.wsClient.replyStream(cs.frame, cs.stream.streamId, stopText, true).catch(() => {});
         cs.stream = null;
       }
-      logger2.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
+      logger.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
       return true;
     }
     if (cmd === "/flush") {
@@ -19052,7 +19295,7 @@ _${date}_`);
       } else {
         this.flushPendingMessages(cs);
       }
-      logger2.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
+      logger.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
       return true;
     }
     return false;
@@ -19064,9 +19307,9 @@ _${date}_`);
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const latestFrame = messages[messages.length - 1].frame;
-    logger2.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.dispatchChat(cs, combinedText, latestFrame).catch((err) => {
-      logger2.error(`处理缓冲消息失败:`, err);
+      logger.error(`处理缓冲消息失败:`, err);
     });
   }
   async dispatchChat(cs, text, frame, images) {
@@ -19079,13 +19322,13 @@ _${date}_`);
       try {
         await this.wsClient.replyStream(frame, streamId, THINKING_PLACEHOLDER, false);
       } catch (err) {
-        logger2.error("发送思考中占位失败:", err);
+        logger.error("发送思考中占位失败:", err);
       }
     }
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "wxwork");
     } catch (err) {
-      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
     }
   }
   async handleIncomingMessage(frame) {
@@ -19098,7 +19341,7 @@ _${date}_`);
       return;
     }
     const ck = this.chatKey(chatType, chatId, senderId);
-    logger2.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
+    logger.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, frame, ck);
       if (handled)
@@ -19111,7 +19354,7 @@ _${date}_`);
       const noticeStreamId = import_aibot_node_sdk.generateReqId("stream");
       this.wsClient.replyStream(frame, noticeStreamId, `\uD83D\uDCE5 消息已暂存（共 ${count} 条），等 AI 回复结束后自动发送。
 发送 \`/flush\` 可立即处理，\`/stop\` 可中止当前回复。`, true).catch(() => {});
-      logger2.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
+      logger.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
       return;
     }
     let images;
@@ -19130,53 +19373,13 @@ _${date}_`);
         const mimeType = detectImageMime(buffer) || "image/jpeg";
         const base64 = buffer.toString("base64");
         results.push({ mimeType, data: base64 });
-        logger2.debug(`图片下载成功: size=${buffer.length} bytes`);
+        logger.debug(`图片下载成功: size=${buffer.length} bytes`);
       } catch (err) {
-        logger2.error(`图片下载失败: ${url}`, err);
+        logger.error(`图片下载失败: ${url}`, err);
       }
     }
     return results;
   }
-}
-var STATUS_ICONS = {
-  queued: "⏳",
-  executing: "\uD83D\uDD27",
-  success: "✅",
-  error: "❌",
-  streaming: "\uD83D\uDCE1",
-  awaiting_approval: "\uD83D\uDD10",
-  awaiting_apply: "\uD83D\uDCCB",
-  warning: "⚠️"
-};
-var STATUS_LABELS = {
-  queued: "等待中",
-  executing: "执行中",
-  success: "成功",
-  error: "失败",
-  streaming: "输出中",
-  awaiting_approval: "等待审批",
-  awaiting_apply: "等待应用",
-  warning: "警告"
-};
-function formatToolLine(inv) {
-  const icon = STATUS_ICONS[inv.status] || "⏳";
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} \`${inv.toolName}\` ${label}`;
-}
-function detectImageMime(buffer) {
-  if (buffer.length < 4)
-    return null;
-  if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255)
-    return "image/jpeg";
-  if (buffer[0] === 137 && buffer[1] === 80 && buffer[2] === 78 && buffer[3] === 71)
-    return "image/png";
-  if (buffer[0] === 71 && buffer[1] === 73 && buffer[2] === 70)
-    return "image/gif";
-  if (buffer[0] === 82 && buffer[1] === 73 && buffer[2] === 70 && buffer[3] === 70 && buffer.length >= 12 && buffer[8] === 87 && buffer[9] === 69 && buffer[10] === 66 && buffer[11] === 80)
-    return "image/webp";
-  if (buffer[0] === 66 && buffer[1] === 77)
-    return "image/bmp";
-  return null;
 }
 var createWXWorkPlatform = definePlatformFactory({
   platformName: "wxwork",

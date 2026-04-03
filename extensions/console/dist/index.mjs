@@ -3,13 +3,13 @@ import React9 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// ../../node_modules/@irises/extension-sdk/dist/platform.js
+// ../../packages/extension-sdk/dist/platform.js
 class PlatformAdapter {
   get name() {
     return this.constructor.name;
   }
 }
-// ../../node_modules/@irises/extension-sdk/dist/logger.js
+// ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
   LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
@@ -763,13 +763,14 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
 // src/components/StatusBar.tsx
 import { jsxDEV as jsxDEV6, Fragment as Fragment3 } from "@opentui/react/jsx-dev-runtime";
 var SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, backgroundTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }) {
+function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }) {
   const resolvedModeName = modeName ?? "normal";
   const modeNameCapitalized = resolvedModeName.charAt(0).toUpperCase() + resolvedModeName.slice(1);
   const contextStr = contextTokens > 0 ? contextTokens.toLocaleString() : "-";
   const contextLimitStr = contextWindow ? `/${contextWindow.toLocaleString()}` : "";
   const contextPercent = contextTokens > 0 && contextWindow ? ` (${Math.round(contextTokens / contextWindow * 100)}%)` : "";
   const hasBackgroundTasks = (backgroundTaskCount ?? 0) > 0;
+  const hasDelegateTasks = (delegateTaskCount ?? 0) > 0;
   const spinner = hasBackgroundTasks ? SPINNER_FRAMES[(backgroundTaskSpinnerFrame ?? 0) % SPINNER_FRAMES.length] : "";
   return /* @__PURE__ */ jsxDEV6("box", {
     flexDirection: "row",
@@ -839,6 +840,22 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
                   ]
                 }, undefined, true, undefined, this)
               ]
+            }, undefined, true, undefined, this) : null,
+            hasDelegateTasks ? /* @__PURE__ */ jsxDEV6(Fragment3, {
+              children: [
+                /* @__PURE__ */ jsxDEV6("span", {
+                  fg: C.dim,
+                  children: " · "
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ jsxDEV6("span", {
+                  fg: C.warn,
+                  children: [
+                    "⇢ ",
+                    delegateTaskCount,
+                    " 个委派任务"
+                  ]
+                }, undefined, true, undefined, this)
+              ]
             }, undefined, true, undefined, this) : null
           ]
         }, undefined, true, undefined, this)
@@ -878,6 +895,7 @@ function BottomPanel({
   copyMode,
   exitConfirmArmed,
   backgroundTaskCount,
+  delegateTaskCount,
   backgroundTaskTokens,
   backgroundTaskSpinnerFrame
 }) {
@@ -918,6 +936,7 @@ function BottomPanel({
             contextWindow,
             queueSize,
             backgroundTaskCount,
+            delegateTaskCount,
             backgroundTaskTokens,
             backgroundTaskSpinnerFrame
           }, undefined, false, undefined, this)
@@ -2225,7 +2244,7 @@ import { useMemo as useMemo3 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// ../../node_modules/@irises/extension-sdk/dist/tool-utils.js
+// ../../packages/extension-sdk/dist/tool-utils.js
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -4945,6 +4964,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
   const [pendingApprovals, setPendingApprovals] = useState7([]);
   const [pendingApplies, setPendingApplies] = useState7([]);
   const [backgroundTaskCount, setBackgroundTaskCount] = useState7(0);
+  const [delegateTaskCount, setDelegateTaskCount] = useState7(0);
   const backgroundTaskTokenMapRef = useRef5(new Map);
   const [backgroundTaskTokens, setBackgroundTaskTokens] = useState7(0);
   const spinnerFrameRef = useRef5(0);
@@ -5194,6 +5214,9 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
       updateBackgroundTaskCount(delta) {
         setBackgroundTaskCount((prev) => Math.max(0, prev + delta));
       },
+      updateDelegateTaskCount(delta) {
+        setDelegateTaskCount((prev) => Math.max(0, prev + delta));
+      },
       updateBackgroundTaskTokens(taskId, tokens) {
         backgroundTaskTokenMapRef.current.set(taskId, tokens);
         let total = 0;
@@ -5230,6 +5253,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
     pendingApprovals,
     pendingApplies,
     backgroundTaskCount,
+    delegateTaskCount,
     backgroundTaskTokens,
     backgroundTaskSpinnerFrame,
     setMessages,
@@ -6135,6 +6159,7 @@ function App({
         copyMode,
         exitConfirmArmed: exitConfirm.exitConfirmArmed,
         backgroundTaskCount: appState.backgroundTaskCount,
+        delegateTaskCount: appState.delegateTaskCount,
         backgroundTaskTokens: appState.backgroundTaskTokens,
         backgroundTaskSpinnerFrame: appState.backgroundTaskSpinnerFrame
       }, undefined, false, undefined, this)
@@ -6542,21 +6567,46 @@ class ConsolePlatform extends PlatformAdapter {
         }
       }
     });
-    this.backend.on("agent:notification", (sid, _taskId, status, summary) => {
+    this.backend.on("agent:notification", (sid, _taskId, status, summary, taskType, silent) => {
       if (sid === this.sessionId) {
-        if (status === "registered") {
-          this.appHandle?.updateBackgroundTaskCount(1);
-        } else if (status === "completed" || status === "failed" || status === "killed") {
-          this.appHandle?.updateBackgroundTaskCount(-1);
-          this.appHandle?.removeBackgroundTaskTokens(_taskId);
-          this.appHandle?.setNotificationContext(summary);
-        } else if (status === "token-update") {
-          const tokens = parseInt(summary, 10);
-          if (!isNaN(tokens)) {
-            this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+        const isDelegate = taskType === "delegate";
+        const isCron = taskType === "cron";
+        if (isCron) {
+          if (status === "registered") {
+            this.appHandle?.updateBackgroundTaskCount(1);
+          } else if (status === "completed" || status === "failed" || status === "killed") {
+            this.appHandle?.updateBackgroundTaskCount(-1);
+            this.appHandle?.removeBackgroundTaskTokens(_taskId);
+          } else if (status === "token-update") {
+            const tokens = parseInt(summary, 10);
+            if (!isNaN(tokens)) {
+              this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+            }
+          } else if (status === "chunk-heartbeat") {
+            this.appHandle?.advanceBackgroundTaskSpinner();
           }
-        } else if (status === "chunk-heartbeat") {
-          this.appHandle?.advanceBackgroundTaskSpinner();
+        } else if (isDelegate) {
+          if (status === "registered") {
+            this.appHandle?.updateDelegateTaskCount(1);
+          } else if (status === "completed" || status === "failed" || status === "killed") {
+            this.appHandle?.updateDelegateTaskCount(-1);
+            this.appHandle?.setNotificationContext(summary);
+          }
+        } else {
+          if (status === "registered") {
+            this.appHandle?.updateBackgroundTaskCount(1);
+          } else if (status === "completed" || status === "failed" || status === "killed") {
+            this.appHandle?.updateBackgroundTaskCount(-1);
+            this.appHandle?.removeBackgroundTaskTokens(_taskId);
+            this.appHandle?.setNotificationContext(summary);
+          } else if (status === "token-update") {
+            const tokens = parseInt(summary, 10);
+            if (!isNaN(tokens)) {
+              this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+            }
+          } else if (status === "chunk-heartbeat") {
+            this.appHandle?.advanceBackgroundTaskSpinner();
+          }
         }
       }
     });
@@ -6565,24 +6615,22 @@ class ConsolePlatform extends PlatformAdapter {
         this.appHandle?.setNotificationPayloads(payloads);
       }
     });
-    if (this.api?.eventBus) {
-      const eventBus = this.api.eventBus;
-      eventBus.on("cron:result", (payload) => {
-        const p = payload;
-        if (!p || typeof p !== "object")
-          return;
-        let text;
-        if (p.status === "completed") {
-          const resultPreview = p.result?.slice(0, 200) ?? "";
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 完成：${resultPreview}`;
-        } else if (p.status === "killed") {
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 被中止`;
-        } else {
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 失败：${p.error ?? "未知错误"}`;
-        }
-        this.appHandle?.addMessage("assistant", text);
-      });
-    }
+    this.backend.on("task:result", (sid, _taskId, status, description, _taskType, silent, result) => {
+      if (sid !== this.sessionId)
+        return;
+      if (!silent)
+        return;
+      let text;
+      if (status === "completed") {
+        const preview = (result ?? "").slice(0, 200);
+        text = `⏰ ${description} 完成：${preview}`;
+      } else if (status === "killed") {
+        text = `⏰ ${description} 被中止`;
+      } else {
+        text = `⏰ ${description} 失败：${result ?? "未知错误"}`;
+      }
+      this.appHandle?.addMessage("assistant", text);
+    });
     this.backend.on("auto-compact", (sid, summaryText) => {
       if (sid === this.sessionId) {
         const fullText = `[Context Summary]

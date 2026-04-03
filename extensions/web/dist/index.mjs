@@ -32,7 +32,7 @@ var __toESM = (mod, isNodeMode, target) => {
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
-// ../../node_modules/yaml/dist/nodes/identity.js
+// node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS((exports) => {
   var ALIAS = Symbol.for("yaml.alias");
   var DOC = Symbol.for("yaml.document");
@@ -86,7 +86,7 @@ var require_identity = __commonJS((exports) => {
   exports.isSeq = isSeq;
 });
 
-// ../../node_modules/yaml/dist/visit.js
+// node_modules/yaml/dist/visit.js
 var require_visit = __commonJS((exports) => {
   var identity = require_identity();
   var BREAK = Symbol("break visit");
@@ -241,7 +241,7 @@ var require_visit = __commonJS((exports) => {
   exports.visitAsync = visitAsync;
 });
 
-// ../../node_modules/yaml/dist/doc/directives.js
+// node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -393,7 +393,7 @@ var require_directives = __commonJS((exports) => {
   exports.Directives = Directives;
 });
 
-// ../../node_modules/yaml/dist/doc/anchors.js
+// node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -455,7 +455,7 @@ var require_anchors = __commonJS((exports) => {
   exports.findNewAnchor = findNewAnchor;
 });
 
-// ../../node_modules/yaml/dist/doc/applyReviver.js
+// node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS((exports) => {
   function applyReviver(reviver, obj, key, val) {
     if (val && typeof val === "object") {
@@ -502,7 +502,7 @@ var require_applyReviver = __commonJS((exports) => {
   exports.applyReviver = applyReviver;
 });
 
-// ../../node_modules/yaml/dist/nodes/toJS.js
+// node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS((exports) => {
   var identity = require_identity();
   function toJS(value, arg, ctx) {
@@ -529,7 +529,7 @@ var require_toJS = __commonJS((exports) => {
   exports.toJS = toJS;
 });
 
-// ../../node_modules/yaml/dist/nodes/Node.js
+// node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS((exports) => {
   var applyReviver = require_applyReviver();
   var identity = require_identity();
@@ -566,7 +566,7 @@ var require_Node = __commonJS((exports) => {
   exports.NodeBase = NodeBase;
 });
 
-// ../../node_modules/yaml/dist/nodes/Alias.js
+// node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS((exports) => {
   var anchors = require_anchors();
   var visit = require_visit();
@@ -674,7 +674,7 @@ var require_Alias = __commonJS((exports) => {
   exports.Alias = Alias;
 });
 
-// ../../node_modules/yaml/dist/nodes/Scalar.js
+// node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Node = require_Node();
@@ -702,7 +702,7 @@ var require_Scalar = __commonJS((exports) => {
   exports.isScalarValue = isScalarValue;
 });
 
-// ../../node_modules/yaml/dist/doc/createNode.js
+// node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -774,7 +774,7 @@ var require_createNode = __commonJS((exports) => {
   exports.createNode = createNode;
 });
 
-// ../../node_modules/yaml/dist/nodes/Collection.js
+// node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS((exports) => {
   var createNode = require_createNode();
   var identity = require_identity();
@@ -889,7 +889,7 @@ var require_Collection = __commonJS((exports) => {
   exports.isEmptyPath = isEmptyPath;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyComment.js
+// node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS((exports) => {
   var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
   function indentComment(comment, indent) {
@@ -906,7 +906,7 @@ var require_stringifyComment = __commonJS((exports) => {
   exports.stringifyComment = stringifyComment;
 });
 
-// ../../node_modules/yaml/dist/stringify/foldFlowLines.js
+// node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS((exports) => {
   var FOLD_FLOW = "flow";
   var FOLD_BLOCK = "block";
@@ -1043,7 +1043,7 @@ ${indent}${text.slice(fold + 1, end2)}`;
   exports.foldFlowLines = foldFlowLines;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyString.js
+// node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var foldFlowLines = require_foldFlowLines();
@@ -1341,7 +1341,7 @@ ${indent}`);
   exports.stringifyString = stringifyString;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringify.js
+// node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS((exports) => {
   var anchors = require_anchors();
   var identity = require_identity();
@@ -1364,6 +1364,7 @@ var require_stringify = __commonJS((exports) => {
       nullStr: "null",
       simpleKeys: false,
       singleQuote: null,
+      trailingComma: false,
       trueStr: "true",
       verifyAliasOrder: true
     }, doc.schema.toStringOptions, options);
@@ -1461,7 +1462,7 @@ ${ctx.indent}${str}`;
   exports.stringify = stringify;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyPair.js
+// node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1597,7 +1598,7 @@ ${ctx.indent}`;
   exports.stringifyPair = stringifyPair;
 });
 
-// ../../node_modules/yaml/dist/log.js
+// node_modules/yaml/dist/log.js
 var require_log = __commonJS((exports) => {
   var node_process = __require("process");
   function debug(logLevel, ...messages) {
@@ -1616,7 +1617,7 @@ var require_log = __commonJS((exports) => {
   exports.warn = warn;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1670,7 +1671,7 @@ var require_merge = __commonJS((exports) => {
   exports.merge = merge;
 });
 
-// ../../node_modules/yaml/dist/nodes/addPairToJSMap.js
+// node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS((exports) => {
   var log = require_log();
   var merge = require_merge();
@@ -1731,7 +1732,7 @@ var require_addPairToJSMap = __commonJS((exports) => {
   exports.addPairToJSMap = addPairToJSMap;
 });
 
-// ../../node_modules/yaml/dist/nodes/Pair.js
+// node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyPair = require_stringifyPair();
@@ -1769,7 +1770,7 @@ var require_Pair = __commonJS((exports) => {
   exports.createPair = createPair;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyCollection.js
+// node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -1872,13 +1873,20 @@ ${indent}${line}` : `
       if (comment)
         reqNewline = true;
       let str = stringify.stringify(item, itemCtx, () => comment = null);
-      if (i < items.length - 1)
+      reqNewline || (reqNewline = lines.length > linesAtValue || str.includes(`
+`));
+      if (i < items.length - 1) {
         str += ",";
+      } else if (ctx.options.trailingComma) {
+        if (ctx.options.lineWidth > 0) {
+          reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+        }
+        if (reqNewline) {
+          str += ",";
+        }
+      }
       if (comment)
         str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
-      if (!reqNewline && (lines.length > linesAtValue || str.includes(`
-`)))
-        reqNewline = true;
       lines.push(str);
       linesAtValue = lines.length;
     }
@@ -1914,7 +1922,7 @@ ${indent}${end}`;
   exports.stringifyCollection = stringifyCollection;
 });
 
-// ../../node_modules/yaml/dist/nodes/YAMLMap.js
+// node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS((exports) => {
   var stringifyCollection = require_stringifyCollection();
   var addPairToJSMap = require_addPairToJSMap();
@@ -2041,7 +2049,7 @@ var require_YAMLMap = __commonJS((exports) => {
   exports.findPair = findPair;
 });
 
-// ../../node_modules/yaml/dist/schema/common/map.js
+// node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLMap = require_YAMLMap();
@@ -2060,7 +2068,7 @@ var require_map = __commonJS((exports) => {
   exports.map = map;
 });
 
-// ../../node_modules/yaml/dist/nodes/YAMLSeq.js
+// node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyCollection = require_stringifyCollection();
@@ -2153,7 +2161,7 @@ var require_YAMLSeq = __commonJS((exports) => {
   exports.YAMLSeq = YAMLSeq;
 });
 
-// ../../node_modules/yaml/dist/schema/common/seq.js
+// node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLSeq = require_YAMLSeq();
@@ -2172,7 +2180,7 @@ var require_seq = __commonJS((exports) => {
   exports.seq = seq;
 });
 
-// ../../node_modules/yaml/dist/schema/common/string.js
+// node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS((exports) => {
   var stringifyString = require_stringifyString();
   var string = {
@@ -2188,7 +2196,7 @@ var require_string = __commonJS((exports) => {
   exports.string = string;
 });
 
-// ../../node_modules/yaml/dist/schema/common/null.js
+// node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var nullTag = {
@@ -2203,7 +2211,7 @@ var require_null = __commonJS((exports) => {
   exports.nullTag = nullTag;
 });
 
-// ../../node_modules/yaml/dist/schema/core/bool.js
+// node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var boolTag = {
@@ -2224,7 +2232,7 @@ var require_bool = __commonJS((exports) => {
   exports.boolTag = boolTag;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyNumber.js
+// node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS((exports) => {
   function stringifyNumber({ format, minFractionDigits, tag, value }) {
     if (typeof value === "bigint")
@@ -2248,7 +2256,7 @@ var require_stringifyNumber = __commonJS((exports) => {
   exports.stringifyNumber = stringifyNumber;
 });
 
-// ../../node_modules/yaml/dist/schema/core/float.js
+// node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2291,7 +2299,7 @@ var require_float = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../../node_modules/yaml/dist/schema/core/int.js
+// node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2333,7 +2341,7 @@ var require_int = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../../node_modules/yaml/dist/schema/core/schema.js
+// node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2358,7 +2366,7 @@ var require_schema = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/json/schema.js
+// node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var map = require_map();
@@ -2422,7 +2430,7 @@ var require_schema2 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS((exports) => {
   var node_buffer = __require("buffer");
   var Scalar = require_Scalar();
@@ -2477,7 +2485,7 @@ var require_binary = __commonJS((exports) => {
   exports.binary = binary;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2552,7 +2560,7 @@ ${cn.comment}` : item.comment;
   exports.resolvePairs = resolvePairs;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS((exports) => {
   var identity = require_identity();
   var toJS = require_toJS();
@@ -2624,7 +2632,7 @@ var require_omap = __commonJS((exports) => {
   exports.omap = omap;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function boolStringify({ value, source }, ctx) {
@@ -2653,7 +2661,7 @@ var require_bool2 = __commonJS((exports) => {
   exports.trueTag = trueTag;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/float.js
+// node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2699,7 +2707,7 @@ var require_float2 = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/int.js
+// node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2775,7 +2783,7 @@ var require_int2 = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/set.js
+// node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2858,7 +2866,7 @@ var require_set = __commonJS((exports) => {
   exports.set = set;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   function parseSexagesimal(str, asBigInt) {
@@ -2940,7 +2948,7 @@ var require_timestamp = __commonJS((exports) => {
   exports.timestamp = timestamp;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2981,7 +2989,7 @@ var require_schema3 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/tags.js
+// node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -3072,7 +3080,7 @@ var require_tags = __commonJS((exports) => {
   exports.getTags = getTags;
 });
 
-// ../../node_modules/yaml/dist/schema/Schema.js
+// node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS((exports) => {
   var identity = require_identity();
   var map = require_map();
@@ -3102,7 +3110,7 @@ var require_Schema = __commonJS((exports) => {
   exports.Schema = Schema;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyDocument.js
+// node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -3182,7 +3190,7 @@ var require_stringifyDocument = __commonJS((exports) => {
   exports.stringifyDocument = stringifyDocument;
 });
 
-// ../../node_modules/yaml/dist/doc/Document.js
+// node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS((exports) => {
   var Alias = require_Alias();
   var Collection = require_Collection();
@@ -3417,7 +3425,7 @@ var require_Document = __commonJS((exports) => {
   exports.Document = Document;
 });
 
-// ../../node_modules/yaml/dist/errors.js
+// node_modules/yaml/dist/errors.js
 var require_errors = __commonJS((exports) => {
   class YAMLError extends Error {
     constructor(name, pos, code, message) {
@@ -3482,7 +3490,7 @@ ${pointer}
   exports.prettifyError = prettifyError;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-props.js
+// node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS((exports) => {
   function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
     let spaceBefore = false;
@@ -3612,7 +3620,7 @@ var require_resolve_props = __commonJS((exports) => {
   exports.resolveProps = resolveProps;
 });
 
-// ../../node_modules/yaml/dist/compose/util-contains-newline.js
+// node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS((exports) => {
   function containsNewline(key) {
     if (!key)
@@ -3652,7 +3660,7 @@ var require_util_contains_newline = __commonJS((exports) => {
   exports.containsNewline = containsNewline;
 });
 
-// ../../node_modules/yaml/dist/compose/util-flow-indent-check.js
+// node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS((exports) => {
   var utilContainsNewline = require_util_contains_newline();
   function flowIndentCheck(indent, fc, onError) {
@@ -3667,7 +3675,7 @@ var require_util_flow_indent_check = __commonJS((exports) => {
   exports.flowIndentCheck = flowIndentCheck;
 });
 
-// ../../node_modules/yaml/dist/compose/util-map-includes.js
+// node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS((exports) => {
   var identity = require_identity();
   function mapIncludes(ctx, items, search) {
@@ -3680,7 +3688,7 @@ var require_util_map_includes = __commonJS((exports) => {
   exports.mapIncludes = mapIncludes;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-map.js
+// node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS((exports) => {
   var Pair = require_Pair();
   var YAMLMap = require_YAMLMap();
@@ -3787,7 +3795,7 @@ var require_resolve_block_map = __commonJS((exports) => {
   exports.resolveBlockMap = resolveBlockMap;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-seq.js
+// node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS((exports) => {
   var YAMLSeq = require_YAMLSeq();
   var resolveProps = require_resolve_props();
@@ -3835,7 +3843,7 @@ var require_resolve_block_seq = __commonJS((exports) => {
   exports.resolveBlockSeq = resolveBlockSeq;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-end.js
+// node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS((exports) => {
   function resolveEnd(end, offset, reqSpace, onError) {
     let comment = "";
@@ -3875,7 +3883,7 @@ var require_resolve_end = __commonJS((exports) => {
   exports.resolveEnd = resolveEnd;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-flow-collection.js
+// node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -4066,7 +4074,7 @@ var require_resolve_flow_collection = __commonJS((exports) => {
   exports.resolveFlowCollection = resolveFlowCollection;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-collection.js
+// node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4128,7 +4136,7 @@ var require_compose_collection = __commonJS((exports) => {
   exports.composeCollection = composeCollection;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-scalar.js
+// node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function resolveBlockScalar(ctx, scalar, onError) {
@@ -4321,7 +4329,7 @@ var require_resolve_block_scalar = __commonJS((exports) => {
   exports.resolveBlockScalar = resolveBlockScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var resolveEnd = require_resolve_end();
@@ -4537,7 +4545,7 @@ var require_resolve_flow_scalar = __commonJS((exports) => {
   exports.resolveFlowScalar = resolveFlowScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-scalar.js
+// node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4615,7 +4623,7 @@ var require_compose_scalar = __commonJS((exports) => {
   exports.composeScalar = composeScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS((exports) => {
   function emptyScalarPosition(offset, before, pos) {
     if (before) {
@@ -4642,7 +4650,7 @@ var require_util_empty_scalar_position = __commonJS((exports) => {
   exports.emptyScalarPosition = emptyScalarPosition;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-node.js
+// node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -4673,17 +4681,22 @@ var require_compose_node = __commonJS((exports) => {
       case "block-map":
       case "block-seq":
       case "flow-collection":
-        node = composeCollection.composeCollection(CN, ctx, token, props, onError);
-        if (anchor)
-          node.anchor = anchor.source.substring(1);
+        try {
+          node = composeCollection.composeCollection(CN, ctx, token, props, onError);
+          if (anchor)
+            node.anchor = anchor.source.substring(1);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          onError(token, "RESOURCE_EXHAUSTION", message);
+        }
         break;
       default: {
         const message = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
         onError(token, "UNEXPECTED_TOKEN", message);
-        node = composeEmptyNode(ctx, token.offset, undefined, null, props, onError);
         isSrcToken = false;
       }
     }
+    node ?? (node = composeEmptyNode(ctx, token.offset, undefined, null, props, onError));
     if (anchor && node.anchor === "")
       onError(anchor, "BAD_ALIAS", "Anchor cannot be an empty string");
     if (atKey && ctx.options.stringKeys && (!identity.isScalar(node) || typeof node.value !== "string" || node.tag && node.tag !== "tag:yaml.org,2002:str")) {
@@ -4740,7 +4753,7 @@ var require_compose_node = __commonJS((exports) => {
   exports.composeNode = composeNode;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-doc.js
+// node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS((exports) => {
   var Document = require_Document();
   var composeNode = require_compose_node();
@@ -4780,7 +4793,7 @@ var require_compose_doc = __commonJS((exports) => {
   exports.composeDoc = composeDoc;
 });
 
-// ../../node_modules/yaml/dist/compose/composer.js
+// node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS((exports) => {
   var node_process = __require("process");
   var directives = require_directives();
@@ -4969,7 +4982,7 @@ ${end.comment}` : end.comment;
   exports.Composer = Composer;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-scalar.js
+// node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS((exports) => {
   var resolveBlockScalar = require_resolve_block_scalar();
   var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5159,7 +5172,7 @@ var require_cst_scalar = __commonJS((exports) => {
   exports.setScalarValue = setScalarValue;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-stringify.js
+// node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS((exports) => {
   var stringify = (cst) => ("type" in cst) ? stringifyToken(cst) : stringifyItem(cst);
   function stringifyToken(token) {
@@ -5217,7 +5230,7 @@ var require_cst_stringify = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-visit.js
+// node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS((exports) => {
   var BREAK = Symbol("break visit");
   var SKIP = Symbol("skip children");
@@ -5276,7 +5289,7 @@ var require_cst_visit = __commonJS((exports) => {
   exports.visit = visit;
 });
 
-// ../../node_modules/yaml/dist/parse/cst.js
+// node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS((exports) => {
   var cstScalar = require_cst_scalar();
   var cstStringify = require_cst_stringify();
@@ -5377,7 +5390,7 @@ var require_cst = __commonJS((exports) => {
   exports.tokenType = tokenType;
 });
 
-// ../../node_modules/yaml/dist/parse/lexer.js
+// node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS((exports) => {
   var cst = require_cst();
   function isEmpty(ch) {
@@ -5963,7 +5976,7 @@ var require_lexer = __commonJS((exports) => {
   exports.Lexer = Lexer;
 });
 
-// ../../node_modules/yaml/dist/parse/line-counter.js
+// node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS((exports) => {
   class LineCounter {
     constructor() {
@@ -5991,7 +6004,7 @@ var require_line_counter = __commonJS((exports) => {
   exports.LineCounter = LineCounter;
 });
 
-// ../../node_modules/yaml/dist/parse/parser.js
+// node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS((exports) => {
   var node_process = __require("process");
   var cst = require_cst();
@@ -6840,7 +6853,7 @@ var require_parser = __commonJS((exports) => {
   exports.Parser = Parser;
 });
 
-// ../../node_modules/yaml/dist/public-api.js
+// node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS((exports) => {
   var composer = require_composer();
   var Document = require_Document();
@@ -6934,7 +6947,7 @@ var require_public_api = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../../node_modules/yaml/dist/index.js
+// node_modules/yaml/dist/index.js
 var require_dist = __commonJS((exports) => {
   var composer = require_composer();
   var Document = require_Document();
@@ -7024,24 +7037,33 @@ function isFunctionResponsePart(part) {
   return "functionResponse" in part;
 }
 // ../../packages/extension-sdk/src/logger.ts
-function print(level, scope, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[${scope}]`, ...args);
-}
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
-    info: (...args) => print("log", scope, args),
-    warn: (...args) => print("warn", scope, args),
-    error: (...args) => print("error", scope, args),
-    debug: (...args) => print("debug", scope, args)
+    debug: (...args) => {
+      if (_logLevel <= 0 /* DEBUG */)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= 1 /* INFO */)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= 2 /* WARN */)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= 3 /* ERROR */)
+        console.error(`[${scope}]`, ...args);
+    }
   };
 }
 // src/web-platform.ts
 import * as crypto4 from "crypto";
 import * as http from "http";
 import * as fs8 from "fs";
-import * as path11 from "path";
+import * as path12 from "path";
 import { fileURLToPath } from "url";
 
 // src/router.ts
@@ -7690,13 +7712,32 @@ function normalizeOptions(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const portValue = typeof source.port === "number" ? source.port : Number(source.port);
   return {
-    domain: typeof source.domain === "string" ? source.domain.trim() : "",
+    domain: typeof source.domain === "string" ? source.domain.trim().replace(/[^a-z0-9.\-]/gi, "") : "",
     port: Number.isFinite(portValue) ? Math.trunc(portValue) : 8192,
     deployPath: normalizeDeployPath(typeof source.deployPath === "string" ? source.deployPath : process.cwd()),
-    user: typeof source.user === "string" ? source.user.trim() : "",
+    user: typeof source.user === "string" ? source.user.trim().replace(/[^a-z0-9_$\-]/gi, "") : "",
     enableHttps: !!source.enableHttps,
     enableAuth: !!source.enableAuth
   };
+}
+function isValidDomain(value) {
+  if (!value || value.length > 253)
+    return false;
+  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(value);
+}
+function isValidLinuxUser(value) {
+  if (!value || value.length > 32)
+    return false;
+  return /^[a-z_][a-z0-9_-]*\$?$/i.test(value);
+}
+function isValidDeployPath(value) {
+  if (!value || !value.startsWith("/"))
+    return false;
+  if (/[\x00-\x1f\x7f;`]|\$\(/.test(value))
+    return false;
+  if (/(^|\/)\.\.($|\/)/.test(value))
+    return false;
+  return true;
 }
 function buildNginxConfig(options) {
   const authBlock = options.enableAuth ? [
@@ -7858,6 +7899,8 @@ async function buildPreview(configDir, rawOptions) {
   const recommendations = [];
   if (!options.domain) {
     errors.push("请填写域名后再部署");
+  } else if (!isValidDomain(options.domain)) {
+    errors.push("域名格式无效（仅允许字母、数字、连字符和点号）");
   }
   if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535) {
     errors.push("后端端口必须在 1-65535 之间");
@@ -7866,9 +7909,13 @@ async function buildPreview(configDir, rawOptions) {
     errors.push("请填写部署路径");
   } else if (!options.deployPath.startsWith("/")) {
     errors.push("部署路径必须是 Linux 绝对路径");
+  } else if (!isValidDeployPath(options.deployPath)) {
+    errors.push("部署路径包含不允许的字符");
   }
   if (!options.user) {
     errors.push("请填写运行用户");
+  } else if (!isValidLinuxUser(options.user)) {
+    errors.push("用户名格式无效（仅允许小写字母、数字、下划线和连字符）");
   }
   if (isLinuxHost()) {
     if (options.user) {
@@ -9184,7 +9231,7 @@ function createDiffPreviewHandler(backend, utils) {
 // src/handlers/extensions.ts
 var import_yaml = __toESM(require_dist(), 1);
 import * as fs6 from "fs";
-import * as path9 from "path";
+import * as path10 from "path";
 
 // ../../packages/extension-sdk/src/utils/types.ts
 var DISABLED_MARKER_FILE = ".disabled";
@@ -9292,17 +9339,23 @@ function collectRelativeFilesFromDir(rootDir) {
   }
   return files;
 }
+// ../../packages/extension-sdk/src/runtime-paths.ts
+import os2 from "node:os";
+import path7 from "node:path";
+function resolveDefaultDataDir2(customDataDir) {
+  return path7.resolve(customDataDir || process.env.IRIS_DATA_DIR || path7.join(os2.homedir(), ".iris"));
+}
+
 // ../../packages/extension-sdk/src/utils/runtime-paths.ts
-import * as os2 from "node:os";
-import * as path7 from "node:path";
+import * as path8 from "node:path";
 function resolveRuntimeDataDir() {
-  return path7.resolve(process.env.IRIS_DATA_DIR || path7.join(os2.homedir(), ".iris"));
+  return resolveDefaultDataDir2();
 }
 function resolveRuntimeConfigDir() {
-  return path7.join(resolveRuntimeDataDir(), "configs");
+  return path8.join(resolveRuntimeDataDir(), "configs");
 }
 function getInstalledExtensionsDir() {
-  return path7.join(resolveRuntimeDataDir(), "extensions");
+  return path8.join(resolveRuntimeDataDir(), "extensions");
 }
 // ../../packages/extension-sdk/src/utils/remote.ts
 var DEFAULT_REMOTE_EXTENSION_INDEX_URL = "https://raw.githubusercontent.com/Lianues/Iris/main/extensions/index.json";
@@ -9375,7 +9428,7 @@ async function fetchRemoteManifest(requestedPath, options) {
   return parseExtensionManifest(raw, `${buildRemoteExtensionPath(requestedPath, options)}/${MANIFEST_FILE}`);
 }
 // ../../packages/extension-sdk/src/utils/runtime-analysis.ts
-import * as path8 from "node:path";
+import * as path9 from "node:path";
 var SOURCE_FILE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
 var RUNTIME_FILE_EXTENSIONS = new Set([".mjs", ".js", ".cjs"]);
 function collectRuntimeEntryGroups(manifest) {
@@ -9403,9 +9456,9 @@ function analyzeRuntimeEntries(availableFiles, manifest) {
   const normalizedFiles = new Set(availableFiles.map((file) => file.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "")));
   return collectRuntimeEntryGroups(manifest).map((group) => {
     const existingAlternatives = group.alternatives.filter((relativePath) => normalizedFiles.has(relativePath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "")));
-    const runnableAlternatives = existingAlternatives.filter((relativePath) => RUNTIME_FILE_EXTENSIONS.has(path8.extname(relativePath).toLowerCase()));
+    const runnableAlternatives = existingAlternatives.filter((relativePath) => RUNTIME_FILE_EXTENSIONS.has(path9.extname(relativePath).toLowerCase()));
     const sourceAlternatives = existingAlternatives.filter((relativePath) => {
-      const ext = path8.extname(relativePath).toLowerCase();
+      const ext = path9.extname(relativePath).toLowerCase();
       return SOURCE_FILE_EXTENSIONS.has(ext) || /(^|[\\/])src([\\/]|$)/.test(relativePath);
     });
     const needsBuild = runnableAlternatives.length === 0 || sourceAlternatives.length > 0;
@@ -9432,7 +9485,7 @@ function describeRuntimeIssues(analyses) {
 }
 // src/handlers/extensions.ts
 function getEmbeddedExtensionsDir(installDir) {
-  return path9.join(path9.resolve(installDir), "extensions");
+  return path10.join(path10.resolve(installDir), "extensions");
 }
 function getPlatformCount(manifest) {
   return Array.isArray(manifest.platforms) ? manifest.platforms.filter((p) => !!normalizeText(p?.name) && !!normalizeText(p?.entry)).length : 0;
@@ -9473,7 +9526,7 @@ function analyzeDistribution(files, manifest) {
   };
 }
 function readEditablePluginEntries() {
-  const pluginsPath = path9.join(resolveRuntimeConfigDir(), "plugins.yaml");
+  const pluginsPath = path10.join(resolveRuntimeConfigDir(), "plugins.yaml");
   if (!fs6.existsSync(pluginsPath))
     return [];
   try {
@@ -9492,7 +9545,7 @@ function readEditablePluginEntries() {
 }
 function writeEditablePluginEntries(entries) {
   const configDir = resolveRuntimeConfigDir();
-  const pluginsPath = path9.join(configDir, "plugins.yaml");
+  const pluginsPath = path10.join(configDir, "plugins.yaml");
   ensureDirectory(configDir);
   fs6.writeFileSync(pluginsPath, `# 插件配置
 
@@ -9518,10 +9571,10 @@ function getPluginEnabledState(name) {
   return entry.enabled !== false;
 }
 function hasDisabledMarker(rootDir) {
-  return fs6.existsSync(path9.join(rootDir, DISABLED_MARKER_FILE));
+  return fs6.existsSync(path10.join(rootDir, DISABLED_MARKER_FILE));
 }
 function setDisabledMarker(rootDir, disabled) {
-  const markerPath = path9.join(rootDir, DISABLED_MARKER_FILE);
+  const markerPath = path10.join(rootDir, DISABLED_MARKER_FILE);
   if (disabled) {
     fs6.writeFileSync(markerPath, `disabled
 `, "utf-8");
@@ -9567,7 +9620,7 @@ function loadInstalledExtensions() {
   for (const entry of fs6.readdirSync(rootDir, { withFileTypes: true })) {
     if (!entry.isDirectory())
       continue;
-    const extDir = path9.join(rootDir, entry.name);
+    const extDir = path10.join(rootDir, entry.name);
     const manifest = readManifestFromDir(extDir);
     if (!manifest)
       continue;
@@ -9587,7 +9640,7 @@ function loadInstalledExtensions() {
 }
 function loadEmbeddedExtensions(installDir) {
   const embeddedRoot = getEmbeddedExtensionsDir(installDir);
-  const configPath = path9.join(embeddedRoot, "embedded.json");
+  const configPath = path10.join(embeddedRoot, "embedded.json");
   if (!fs6.existsSync(configPath))
     return [];
   try {
@@ -9595,7 +9648,7 @@ function loadEmbeddedExtensions(installDir) {
     const names = Array.isArray(raw.extensions) ? raw.extensions.map((i) => normalizeText(i?.name)).filter((n) => !!n) : [];
     const results = [];
     for (const name of names) {
-      const extDir = path9.join(embeddedRoot, name);
+      const extDir = path10.join(embeddedRoot, name);
       const manifest = readManifestFromDir(extDir);
       if (!manifest)
         continue;
@@ -9673,15 +9726,15 @@ function collectExtensionPlatforms(installDir) {
   for (const root of roots) {
     if (!fs6.existsSync(root) || !fs6.statSync(root).isDirectory())
       continue;
-    const resolvedRoot = path9.resolve(root);
+    const resolvedRoot = path10.resolve(root);
     if (deduped.has(resolvedRoot))
       continue;
     deduped.add(resolvedRoot);
     for (const entry of fs6.readdirSync(resolvedRoot, { withFileTypes: true })) {
       if (!entry.isDirectory())
         continue;
-      const extDir = path9.join(resolvedRoot, entry.name);
-      const manifestPath = path9.join(extDir, "manifest.json");
+      const extDir = path10.join(resolvedRoot, entry.name);
+      const manifestPath = path10.join(extDir, "manifest.json");
       if (!fs6.existsSync(manifestPath))
         continue;
       let manifest;
@@ -9793,14 +9846,14 @@ function createExtensionHandlers(installDir) {
           const manifest = await fetchRemoteManifest(requested);
           const files = getRemoteDistributionFiles(manifest);
           ensureDirectory(tempDir);
-          fs6.writeFileSync(path9.join(tempDir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}
+          fs6.writeFileSync(path10.join(tempDir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}
 `, "utf-8");
           for (const relativePath of files) {
             const normalized = normalizeRelativeFilePath(relativePath);
             if (normalized === MANIFEST_FILE)
               continue;
             const dest = resolveSafeRelativePath(tempDir, normalized);
-            ensureDirectory(path9.dirname(dest));
+            ensureDirectory(path10.dirname(dest));
             fs6.writeFileSync(dest, await fetchBuffer(buildRemoteExtensionFileUrl(requested, normalized), "extension 文件"));
           }
           const installed = readManifestFromDir(tempDir);
@@ -9815,7 +9868,7 @@ function createExtensionHandlers(installDir) {
             sendJSON(res, 400, { error: `这不是可直接安装的发行包：${describeRuntimeIssues(analyzeRuntimeEntries(collectRelativeFilesFromDir(tempDir), installed).filter((a) => a.needsBuild))}` });
             return;
           }
-          const targetDir = path9.join(installedRootDir, installed.name);
+          const targetDir = path10.join(installedRootDir, installed.name);
           fs6.rmSync(targetDir, { recursive: true, force: true });
           fs6.renameSync(tempDir, targetDir);
           sendJSON(res, 200, {
@@ -9843,7 +9896,7 @@ function createExtensionHandlers(installDir) {
     async enable(req, res, params) {
       try {
         const name = params.name;
-        const rootDir = path9.join(getInstalledExtensionsDir(), name);
+        const rootDir = path10.join(getInstalledExtensionsDir(), name);
         if (!fs6.existsSync(rootDir)) {
           sendJSON(res, 404, { error: `extension 不存在: ${name}` });
           return;
@@ -9861,7 +9914,7 @@ function createExtensionHandlers(installDir) {
     async disable(req, res, params) {
       try {
         const name = params.name;
-        const rootDir = path9.join(getInstalledExtensionsDir(), name);
+        const rootDir = path10.join(getInstalledExtensionsDir(), name);
         if (!fs6.existsSync(rootDir)) {
           sendJSON(res, 404, { error: `extension 不存在: ${name}` });
           return;
@@ -9879,7 +9932,7 @@ function createExtensionHandlers(installDir) {
     async remove(req, res, params) {
       try {
         const name = params.name;
-        const rootDir = path9.join(getInstalledExtensionsDir(), name);
+        const rootDir = path10.join(getInstalledExtensionsDir(), name);
         if (!fs6.existsSync(rootDir)) {
           sendJSON(res, 404, { error: `extension 不存在: ${name}` });
           return;
@@ -9937,7 +9990,7 @@ function assertManagementToken(req, res, expectedToken) {
 
 // src/handlers/terminal.ts
 import * as os3 from "os";
-import * as path10 from "path";
+import * as path11 from "path";
 import * as fs7 from "fs";
 import { execSync } from "child_process";
 import { WebSocketServer, WebSocket } from "ws";
@@ -9968,7 +10021,7 @@ function createTerminalHandler(isCompiledBinary = false, projectRoot = process.c
       spawnCmd = process.execPath;
       spawnArgs = [];
     } else {
-      const entryFile = path10.join(projectRoot, "src", "index.ts");
+      const entryFile = path11.join(projectRoot, "src", "index.ts");
       let bunPath = null;
       try {
         const whereCmd = os3.platform() === "win32" ? "where bun.exe" : "which bun";
@@ -9979,13 +10032,13 @@ function createTerminalHandler(isCompiledBinary = false, projectRoot = process.c
       } catch {}
       if (!bunPath) {
         const candidates = [
-          path10.join(os3.homedir(), ".bun", "bin", os3.platform() === "win32" ? "bun.exe" : "bun")
+          path11.join(os3.homedir(), ".bun", "bin", os3.platform() === "win32" ? "bun.exe" : "bun")
         ];
         if (os3.platform() === "win32") {
           if (process.env.LOCALAPPDATA)
-            candidates.push(path10.join(process.env.LOCALAPPDATA, "bun", "bun.exe"));
+            candidates.push(path11.join(process.env.LOCALAPPDATA, "bun", "bun.exe"));
           if (process.env.APPDATA)
-            candidates.push(path10.join(process.env.APPDATA, "npm", "bun.cmd"));
+            candidates.push(path11.join(process.env.APPDATA, "npm", "bun.cmd"));
         }
         for (const c of candidates) {
           if (fs7.existsSync(c)) {
@@ -10001,7 +10054,7 @@ function createTerminalHandler(isCompiledBinary = false, projectRoot = process.c
       } else {
         logger.info("未检测到 Bun 运行时，将在终端内自动安装后启动 TUI。");
         if (os3.platform() === "win32") {
-          const bunTarget = path10.join(os3.homedir(), ".bun", "bin", "bun.exe");
+          const bunTarget = path11.join(os3.homedir(), ".bun", "bin", "bun.exe");
           spawnCmd = "powershell.exe";
           spawnArgs = [
             "-NoProfile",
@@ -10101,8 +10154,73 @@ function createTerminalHandler(isCompiledBinary = false, projectRoot = process.c
   };
 }
 
+// src/handlers/notifications.ts
+import { WebSocketServer as WebSocketServer2, WebSocket as WebSocket2 } from "ws";
+var logger2 = createExtensionLogger("Notifications");
+function createNotificationHandler() {
+  const wss = new WebSocketServer2({ noServer: true });
+  const clients = new Set;
+  wss.on("connection", (ws) => {
+    const client = { ws, sessionIds: null };
+    clients.add(client);
+    logger2.info(`通知 WS 已连接 (当前 ${clients.size} 个客户端)`);
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf-8"));
+        if (msg.type === "subscribe" && Array.isArray(msg.sessionIds)) {
+          client.sessionIds = new Set(msg.sessionIds);
+          logger2.info(`WS 客户端订阅 ${msg.sessionIds.length} 个 session`);
+        } else if (msg.type === "subscribe_all") {
+          client.sessionIds = null;
+          logger2.info("WS 客户端订阅全部 session");
+        }
+      } catch {}
+    });
+    ws.on("close", () => {
+      clients.delete(client);
+      logger2.info(`通知 WS 已断开 (剩余 ${clients.size} 个客户端)`);
+    });
+    ws.on("error", (err) => {
+      logger2.warn("通知 WS 错误:", err.message);
+      clients.delete(client);
+    });
+  });
+  function send(client, data) {
+    if (client.ws.readyState === WebSocket2.OPEN) {
+      client.ws.send(JSON.stringify(data));
+    }
+  }
+  return {
+    handleUpgrade(req, socket, head) {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    },
+    pushEvent(sessionId, data) {
+      const payload = typeof data === "object" && data !== null ? { ...data, sessionId } : { sessionId, data };
+      for (const client of clients) {
+        if (client.sessionIds === null || client.sessionIds.has(sessionId)) {
+          send(client, payload);
+        }
+      }
+    },
+    broadcastEvent(data) {
+      for (const client of clients) {
+        send(client, data);
+      }
+    },
+    close() {
+      for (const client of clients) {
+        client.ws.close();
+      }
+      clients.clear();
+      wss.close();
+    }
+  };
+}
+
 // src/web-platform.ts
-var logger2 = createExtensionLogger("WebPlatform");
+var logger3 = createExtensionLogger("WebPlatform");
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -10119,7 +10237,7 @@ var MIME_TYPES = {
   ".ttf": "font/ttf",
   ".wasm": "application/wasm"
 };
-var MODULE_DIR = path11.dirname(fileURLToPath(import.meta.url));
+var MODULE_DIR = path12.dirname(fileURLToPath(import.meta.url));
 
 class WebPlatform extends PlatformAdapter {
   server;
@@ -10132,6 +10250,7 @@ class WebPlatform extends PlatformAdapter {
   pendingResponses = new Map;
   deployToken;
   terminalHandler;
+  notificationHandler;
   reloadHandler;
   platformReloadHandler;
   multiAgentMode = false;
@@ -10151,21 +10270,22 @@ class WebPlatform extends PlatformAdapter {
       setMCPManager: (mgr) => {
         _mcpManager = mgr;
       },
-      dataDir: path11.dirname(config.configPath),
+      dataDir: path12.dirname(config.configPath),
       extensions: undefined
     });
     this.setupRoutes();
     this.deployToken = crypto4.randomBytes(16).toString("hex");
     this.terminalHandler = createTerminalHandler(this.deps.isCompiledBinary, this.deps.projectRoot);
+    this.notificationHandler = createNotificationHandler();
   }
   resolvePublicDir() {
     const root = this.deps.projectRoot ?? process.cwd();
     const candidates = [
-      path11.join(root, "web-ui", "dist"),
-      path11.join(MODULE_DIR, "web-ui/dist"),
-      path11.join(MODULE_DIR, "../web-ui/dist"),
-      path11.join(root, "public"),
-      path11.join(MODULE_DIR, "public")
+      path12.join(root, "web-ui", "dist"),
+      path12.join(MODULE_DIR, "web-ui/dist"),
+      path12.join(MODULE_DIR, "../web-ui/dist"),
+      path12.join(root, "public"),
+      path12.join(MODULE_DIR, "public")
     ];
     for (const candidate of candidates) {
       if (fs8.existsSync(candidate))
@@ -10188,7 +10308,7 @@ class WebPlatform extends PlatformAdapter {
         return;
       }),
       setMCPManager: setMCPManager ?? (() => {}),
-      dataDir: cfg.configPath ? path11.dirname(cfg.configPath) : undefined,
+      dataDir: cfg.configPath ? path12.dirname(cfg.configPath) : undefined,
       extensions
     });
   }
@@ -10249,7 +10369,7 @@ class WebPlatform extends PlatformAdapter {
           configPath: result.configDir
         },
         getMCPManager: () => _mcpManager,
-        dataDir: path11.dirname(result.configDir),
+        dataDir: path12.dirname(result.configDir),
         setMCPManager: (mgr) => {
           _mcpManager = mgr;
         },
@@ -10288,7 +10408,7 @@ class WebPlatform extends PlatformAdapter {
         try {
           const def = name === "__global__" ? { name: "__global__" } : newDefs.find((d) => d.name === name);
           if (!def) {
-            logger2.warn(`Agent「${name}」在定义列表中未找到，跳过。`);
+            logger3.warn(`Agent「${name}」在定义列表中未找到，跳过。`);
             continue;
           }
           await bootstrapAgent(def);
@@ -10297,12 +10417,12 @@ class WebPlatform extends PlatformAdapter {
             this.defaultAgentName = name;
           }
         } catch (err) {
-          logger2.error(`热重载 Agent「${name}」失败:`, err);
+          logger3.error(`热重载 Agent「${name}」失败:`, err);
         }
       }
     }
     const msg = `热重载完成：新增 ${added.length}，移除 ${removed.length}，保留 ${kept.length}。`;
-    logger2.info(msg);
+    logger3.info(msg);
     return { added, removed, kept, message: msg };
   }
   resolveAgent(req) {
@@ -10321,7 +10441,7 @@ class WebPlatform extends PlatformAdapter {
     for (const agent of this.agents.values()) {
       this.wireBackendEvents(agent.backend, agent.name);
     }
-    return new Promise((resolve6) => {
+    return new Promise((resolve5) => {
       this.server = http.createServer(async (req, res) => {
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -10359,7 +10479,7 @@ class WebPlatform extends PlatformAdapter {
             }
           }
         } catch (err) {
-          logger2.error("请求处理异常:", err);
+          logger3.error("请求处理异常:", err);
           if (!res.headersSent) {
             sendJSON(res, 500, { error: "服务器内部错误" });
           }
@@ -10379,34 +10499,48 @@ class WebPlatform extends PlatformAdapter {
             }
           }
           this.terminalHandler.handleUpgrade(req, socket, head);
+        } else if (upgradeUrl.pathname === "/ws/notifications") {
+          if (this.config.authToken) {
+            const token = upgradeUrl.searchParams.get("token") ?? "";
+            if (token !== this.config.authToken) {
+              socket.write(`HTTP/1.1 401 Unauthorized\r
+\r
+`);
+              socket.destroy();
+              return;
+            }
+          }
+          this.notificationHandler.handleUpgrade(req, socket, head);
         } else {
           socket.destroy();
         }
       });
       this.server.listen(this.config.port, this.config.host, () => {
-        logger2.info(`Web GUI 已启动: http://${this.config.host}:${this.config.port}`);
-        logger2.info(`部署令牌（一键部署需要）: ${this.deployToken}`);
+        logger3.info(`Web GUI 已启动: http://${this.config.host}:${this.config.port}`);
+        logger3.info(`部署令牌（一键部署需要）: ${this.deployToken}`);
         if (this.terminalHandler.available) {
-          logger2.info("终端 WebSocket 已就绪: /ws/terminal");
+          logger3.info("终端 WebSocket 已就绪: /ws/terminal");
         } else {
-          logger2.warn("node-pty 不可用，终端功能已禁用");
+          logger3.warn("node-pty 不可用，终端功能已禁用");
         }
-        resolve6();
+        logger3.info("通知 WebSocket 已就绪: /ws/notifications");
+        resolve5();
       });
     });
   }
   async stop() {
     this.terminalHandler.killAll();
+    this.notificationHandler.close();
     for (const [, res] of this.pendingResponses) {
       if (!res.writableEnded)
         res.end();
     }
     this.pendingResponses.clear();
-    return new Promise((resolve6) => {
+    return new Promise((resolve5) => {
       if (this.server) {
-        this.server.close(() => resolve6());
+        this.server.close(() => resolve5());
       } else {
-        resolve6();
+        resolve5();
       }
     });
   }
@@ -10482,6 +10616,17 @@ class WebPlatform extends PlatformAdapter {
     const onUserToken = (sid, tokenCount) => {
       this.writeSSE(sid, { type: "user_token", tokenCount });
     };
+    const onAgentNotification = (sid, taskId, status, summary) => {
+      const data = { type: "agent_notification", taskId, status, summary };
+      const res = this.pendingResponses.get(sid);
+      if (res && !res.writableEnded) {
+        this.writeSSE(sid, data);
+      }
+      this.notificationHandler.pushEvent(sid, data);
+    };
+    const onTurnStart = (sid, turnId, mode) => {
+      this.writeSSE(sid, { type: "turn_start", turnId, mode });
+    };
     backend.on("response", onResponse);
     backend.on("stream:start", onStreamStart);
     backend.on("stream:chunk", onStreamChunk);
@@ -10495,6 +10640,8 @@ class WebPlatform extends PlatformAdapter {
     backend.on("retry", onRetry);
     backend.on("auto-compact", onAutoCompact);
     backend.on("user:token", onUserToken);
+    backend.on("agent:notification", onAgentNotification);
+    backend.on("turn:start", onTurnStart);
     if (agentName) {
       this.backendListenerCleanups.set(agentName, () => {
         backend.off("response", onResponse);
@@ -10510,27 +10657,31 @@ class WebPlatform extends PlatformAdapter {
         backend.off("retry", onRetry);
         backend.off("auto-compact", onAutoCompact);
         backend.off("user:token", onUserToken);
+        backend.off("agent:notification", onAgentNotification);
+        backend.off("turn:start", onTurnStart);
       });
     }
   }
   sseWriteCount = new Map;
   writeSSE(sessionId, data) {
     const res = this.pendingResponses.get(sessionId);
-    if (!res || res.writableEnded)
+    if (!res || res.writableEnded) {
+      this.notificationHandler.pushEvent(sessionId, data);
       return;
+    }
     const count = (this.sseWriteCount.get(sessionId) ?? 0) + 1;
     this.sseWriteCount.set(sessionId, count);
     const ok = res.write(`data: ${JSON.stringify(data)}
 
 `);
     if (data.type === "delta" && (count <= 3 || count % 20 === 0)) {
-      logger2.info(`[SSE #${count}] delta (${data.text?.length ?? 0} chars) write=${ok}`);
+      logger3.info(`[SSE #${count}] delta (${data.text?.length ?? 0} chars) write=${ok}`);
     } else if (data.type !== "delta") {
-      logger2.info(`[SSE #${count}] ${data.type} write=${ok}`);
+      logger3.info(`[SSE #${count}] ${data.type} write=${ok}`);
     }
   }
-  registerRoute(method, path12, handler) {
-    this.router.add(method.toUpperCase(), path12, handler);
+  registerRoute(method, path13, handler) {
+    this.router.add(method.toUpperCase(), path13, handler);
   }
   setupRoutes() {
     const { configPath } = this.config;
@@ -10762,7 +10913,7 @@ class WebPlatform extends PlatformAdapter {
           dataDir: this.deps.dataDir,
           configDir: this.deps.configDir,
           isCompiledBinary: this.deps.isCompiledBinary,
-          configSource: fs8.existsSync(path11.join(pRoot, "data/configs.example")) ? "template" : "embedded"
+          configSource: fs8.existsSync(path12.join(pRoot, "data/configs.example")) ? "template" : "embedded"
         }
       });
     });
@@ -10833,6 +10984,18 @@ class WebPlatform extends PlatformAdapter {
         sendJSON(res, 500, { error: err instanceof Error ? err.message : "重做失败" });
       }
     });
+    this.router.get("/api/sessions/:id/tasks", async (req, res, params) => {
+      const { backend } = this.resolveAgent(req);
+      const tasks = backend.getAgentTasks?.(params.id) ?? [];
+      sendJSON(res, 200, { tasks: tasks.map((t) => ({
+        taskId: t.taskId,
+        sessionId: t.sessionId,
+        description: t.description,
+        status: t.status,
+        startTime: t.startTime,
+        endTime: t.endTime
+      })) });
+    });
     this.router.post("/api/shell", async (req, res) => {
       try {
         const { backend } = this.resolveAgent(req);
@@ -10888,9 +11051,9 @@ class WebPlatform extends PlatformAdapter {
     let pathname = url.pathname;
     if (pathname === "/" || pathname === "")
       pathname = "/index.html";
-    const filePath = path11.resolve(this.publicDir, pathname.slice(1));
-    const relative4 = path11.relative(this.publicDir, filePath);
-    if (relative4.startsWith("..") || path11.isAbsolute(relative4)) {
+    const filePath = path12.resolve(this.publicDir, pathname.slice(1));
+    const relative4 = path12.relative(this.publicDir, filePath);
+    if (relative4.startsWith("..") || path12.isAbsolute(relative4)) {
       sendJSON(res, 403, { error: "禁止访问" });
       return;
     }
@@ -10898,12 +11061,12 @@ class WebPlatform extends PlatformAdapter {
       const stat = await fs8.promises.stat(filePath);
       if (!stat.isFile())
         throw new Error("非文件");
-      const ext = path11.extname(filePath).toLowerCase();
+      const ext = path12.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
       res.writeHead(200, { "Content-Type": contentType, "Content-Length": stat.size });
       fs8.createReadStream(filePath).pipe(res);
     } catch {
-      const indexPath = path11.join(this.publicDir, "index.html");
+      const indexPath = path12.join(this.publicDir, "index.html");
       try {
         const indexStat = await fs8.promises.stat(indexPath);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": indexStat.size });

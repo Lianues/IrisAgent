@@ -23,6 +23,8 @@ import {
   CrossAgentTaskBoard,
   createTaskId,
   formatDuration,
+  type TaskExecutor,
+  type NextTimeResolver,
   type TaskRecord,
   type TaskType,
 } from '../src/core/cross-agent-task-board.js';
@@ -35,6 +37,11 @@ function createMockBackend() {
   return {
     enqueueAgentNotification: vi.fn(),
   };
+}
+
+/** [Phase 2] 简单延迟工具，供内部调度测试等待事件循环推进。 */
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe('CrossAgentTaskBoard', () => {
@@ -744,4 +751,651 @@ describe('CrossAgentTaskBoard', () => {
       expect(formatDuration(120000)).toBe('2m00s');
     });
   });
+
+  // ========================================
+  // 14. cron 任务类型支持
+  // ========================================
+
+  describe('cron 任务类型', () => {
+    it('type: cron 的任务可以正常注册、完成、失败', () => {
+      // 注册 cron 类型任务
+      const task = board.register({
+        taskId: 'cron-1',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '定时任务: 每日报告',
+      });
+
+      expect(task.type).toBe('cron');
+      expect(task.status).toBe('running');
+
+      board.complete('cron-1', '报告结果');
+      expect(board.get('cron-1')!.status).toBe('completed');
+      expect(board.get('cron-1')!.result).toBe('报告结果');
+    });
+
+    it('type: cron 的任务可以正常 fail', () => {
+      board.register({
+        taskId: 'cron-2',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '定时任务: 数据清理',
+      });
+
+      board.fail('cron-2', '权限不足');
+      expect(board.get('cron-2')!.status).toBe('failed');
+      expect(board.get('cron-2')!.error).toBe('权限不足');
+    });
+  });
+
+  // ========================================
+  // 15. TaskBoard 内部调度引擎
+  // ========================================
+
+  describe('内部调度引擎', () => {
+    it('immediate executor: 注册后自动执行并 complete', async () => {
+      const executor = vi.fn(async () => '立即执行完成');
+
+      board.register({
+        taskId: 'sched-immediate',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '立即执行任务',
+        schedule: { type: 'immediate' },
+        executor,
+      });
+
+      await delay(10);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(board.get('sched-immediate')!.status).toBe('completed');
+      expect(board.get('sched-immediate')!.result).toBe('立即执行完成');
+    });
+
+    it('once executor: 到期后延迟执行', async () => {
+      const executor = vi.fn(async () => '一次性执行完成');
+
+      board.register({
+        taskId: 'sched-once',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '一次性延迟任务',
+        schedule: { type: 'once', runAt: Date.now() + 20 },
+        executor,
+      });
+
+      expect(executor).not.toHaveBeenCalled();
+      await delay(40);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(board.get('sched-once')!.status).toBe('completed');
+    });
+
+    it('recurring interval: 执行完成后自动注册下一次', async () => {
+      const executor = vi.fn(async () => '周期执行完成');
+      const nextTimeResolver: NextTimeResolver = () => Date.now() + 60_000;
+
+      board.register({
+        taskId: 'sched-recurring-interval',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '周期 interval 任务',
+        schedule: {
+          type: 'recurring',
+          nextRunAt: Date.now() + 10,
+          source: { kind: 'interval', intervalMs: 60_000 },
+        },
+        executor,
+        nextTimeResolver,
+      });
+
+      await delay(40);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(board.get('sched-recurring-interval')!.status).toBe('completed');
+      const tasks = board.getBySourceSession('session-1');
+      const followUp = tasks.find((task) => task.taskId !== 'sched-recurring-interval');
+      expect(followUp).toBeDefined();
+      expect(followUp!.status).toBe('running');
+      expect(followUp!.schedule?.type).toBe('recurring');
+      board.kill(followUp!.taskId);
+    });
+
+    it('recurring cron with nextTimeResolver: 使用自定义 resolver 续调', async () => {
+      const executor = vi.fn(async () => 'cron 周期执行完成');
+      const nextTimeResolver: NextTimeResolver = vi.fn((source) => {
+        expect(source).toEqual({ kind: 'cron', expression: '*/5 * * * *' });
+        return Date.now() + 60_000;
+      });
+
+      board.register({
+        taskId: 'sched-recurring-cron',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '周期 cron 任务',
+        schedule: {
+          type: 'recurring',
+          nextRunAt: Date.now() + 10,
+          source: { kind: 'cron', expression: '*/5 * * * *' },
+        },
+        executor,
+        nextTimeResolver,
+      });
+
+      await delay(40);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(nextTimeResolver).toHaveBeenCalledTimes(1);
+      const tasks = board.getBySourceSession('session-1');
+      const followUp = tasks.find((task) => task.taskId !== 'sched-recurring-cron');
+      expect(followUp).toBeDefined();
+      expect(followUp!.schedule?.type).toBe('recurring');
+      board.kill(followUp!.taskId);
+    });
+
+    it('executor failure: 执行器抛错后标记 failed', async () => {
+      const executor = vi.fn(async () => {
+        throw new Error('执行器失败');
+      });
+
+      board.register({
+        taskId: 'sched-fail',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '失败任务',
+        schedule: { type: 'immediate' },
+        executor,
+      });
+
+      await delay(10);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(board.get('sched-fail')!.status).toBe('failed');
+      expect(board.get('sched-fail')!.error).toBe('执行器失败');
+    });
+
+    it('executor abort: signal 已中止时抛错，任务保持 killed', async () => {
+      const executor = vi.fn(async (_taskId: string, signal: AbortSignal) => {
+        await delay(20);
+        if (signal.aborted) {
+          throw new Error('任务已中止');
+        }
+        return '不应成功';
+      });
+
+      board.register({
+        taskId: 'sched-abort',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '中止任务',
+        schedule: { type: 'immediate' },
+        executor,
+      });
+
+      board.kill('sched-abort');
+      await delay(40);
+
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(board.get('sched-abort')!.status).toBe('killed');
+    });
+
+    it('kill clears timer: kill 未到期 once 任务后不会再执行', async () => {
+      const executor = vi.fn(async () => '不应执行');
+
+      const task = board.register({
+        taskId: 'sched-kill-timer',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '等待被 kill 的延迟任务',
+        schedule: { type: 'once', runAt: Date.now() + 40 },
+        executor,
+      });
+
+      expect(task._timerId).toBeDefined();
+      board.kill('sched-kill-timer');
+      expect(board.get('sched-kill-timer')!._timerId).toBeUndefined();
+
+      await delay(70);
+      expect(executor).not.toHaveBeenCalled();
+      expect(board.get('sched-kill-timer')!.status).toBe('killed');
+    });
+
+    it('backward compatibility: 不传 executor/schedule 时行为与原来一致', () => {
+      const task = board.register({
+        taskId: 'sched-backward-compatible',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-b',
+        type: 'delegate',
+        description: '兼容旧模式任务',
+      });
+
+      expect(task.status).toBe('running');
+      expect(task.schedule).toBeUndefined();
+      expect(task.executor).toBeUndefined();
+      expect(task._timerId).toBeUndefined();
+      expect(board.get('sched-backward-compatible')!.status).toBe('running');
+    });
+  });
+
+  // ========================================
+  // 16. silent 模式：不推送 notification 到 LLM
+  // ========================================
+
+  describe('silent 模式', () => {
+    it('silent: true 的任务 complete 后不调用 enqueueAgentNotification', () => {
+      // 注册一个 silent 任务
+      board.register({
+        taskId: 'silent-1',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '静默定时任务',
+        silent: true,
+      });
+
+      board.complete('silent-1', '静默结果');
+
+      // silent 任务完成后不应推送 notification 到 sourceAgent 的 backend
+      expect(backendA.enqueueAgentNotification).not.toHaveBeenCalled();
+      // 但状态仍应正确更新
+      expect(board.get('silent-1')!.status).toBe('completed');
+      expect(board.get('silent-1')!.result).toBe('静默结果');
+    });
+
+    it('silent: true 的任务 fail 后不调用 enqueueAgentNotification', () => {
+      board.register({
+        taskId: 'silent-2',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '静默失败任务',
+        silent: true,
+      });
+
+      board.fail('silent-2', '执行错误');
+
+      expect(backendA.enqueueAgentNotification).not.toHaveBeenCalled();
+      expect(board.get('silent-2')!.status).toBe('failed');
+    });
+
+    it('silent: true 的任务 kill 后不调用 enqueueAgentNotification', () => {
+      board.register({
+        taskId: 'silent-3',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '静默中止任务',
+        silent: true,
+      });
+
+      board.kill('silent-3');
+
+      expect(backendA.enqueueAgentNotification).not.toHaveBeenCalled();
+      expect(board.get('silent-3')!.status).toBe('killed');
+    });
+
+    it('silent 未设置（默认）的任务保持原有行为，推送 notification', () => {
+      // 不传 silent 字段 → 默认非 silent → 正常推送
+      board.register({
+        taskId: 'non-silent-1',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-b',
+        type: 'delegate',
+        description: '非静默任务',
+      });
+
+      board.complete('non-silent-1', '正常结果');
+
+      expect(backendA.enqueueAgentNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('silent: false 的任务也正常推送 notification', () => {
+      board.register({
+        taskId: 'explicit-non-silent',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '显式非静默',
+        silent: false,
+      });
+
+      board.complete('explicit-non-silent', '显式结果');
+
+      expect(backendA.enqueueAgentNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('query() 返回的 snapshot 包含 silent 字段', () => {
+      board.register({
+        taskId: 'q-silent',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '查询 silent',
+        silent: true,
+      });
+
+      const snapshot = board.query('q-silent');
+      expect(snapshot).toBeDefined();
+      expect(snapshot!.silent).toBe(true);
+    });
+
+    it('query() 对非 silent 任务返回 silent 为 undefined', () => {
+      board.register({
+        taskId: 'q-non-silent',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'sub_agent',
+        description: '查询非 silent',
+      });
+
+      const snapshot = board.query('q-non-silent');
+      expect(snapshot!.silent).toBeUndefined();
+    });
+
+    it('silent 任务完成时仍然 emit completed 事件', () => {
+      const completedSpy = vi.fn();
+      board.on('completed', completedSpy);
+
+      board.register({
+        taskId: 'silent-emit',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '静默 emit 测试',
+        silent: true,
+      });
+
+      board.complete('silent-emit', '完成');
+
+      // emit 事件仍然触发（平台层靠事件感知任务状态变化）
+      expect(completedSpy).toHaveBeenCalledTimes(1);
+      expect(completedSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'silent-emit', silent: true }),
+      );
+      // 但 notification 不推送
+      expect(backendA.enqueueAgentNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  // ========================================
+  // 17. task:result 轻量级结果广播
+  // ========================================
+
+  describe('task:result 轻量级结果广播', () => {
+    it('所有终态任务都 emit task:result，不绑定 silent', () => {
+      const resultSpy = vi.fn();
+      board.on('task:result', resultSpy);
+
+      // 非 silent 任务
+      board.register({
+        taskId: 'tr-1',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-b',
+        type: 'delegate',
+        description: '非静默任务',
+      });
+      board.complete('tr-1', '结果内容');
+
+      // silent 任务
+      board.register({
+        taskId: 'tr-2',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '静默任务',
+        silent: true,
+      });
+      board.complete('tr-2', '静默结果');
+
+      // 两个都应该 emit
+      expect(resultSpy).toHaveBeenCalledTimes(2);
+      // 验证第一个（非 silent）
+      expect(resultSpy.mock.calls[0][0]).toMatchObject({
+        taskId: 'tr-1', status: 'completed', result: '结果内容',
+      });
+      expect(resultSpy.mock.calls[0][0].silent).toBeUndefined();
+      // 验证第二个（silent）
+      expect(resultSpy.mock.calls[1][0]).toMatchObject({
+        taskId: 'tr-2', status: 'completed', result: '静默结果', silent: true,
+      });
+    });
+
+    it('fail 终态也 emit task:result，携带 error', () => {
+      const resultSpy = vi.fn();
+      board.on('task:result', resultSpy);
+
+      board.register({
+        taskId: 'tr-fail',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'sub_agent',
+        description: '失败任务',
+      });
+      board.fail('tr-fail', 'LLM 超时');
+
+      expect(resultSpy).toHaveBeenCalledTimes(1);
+      expect(resultSpy.mock.calls[0][0]).toMatchObject({
+        taskId: 'tr-fail', status: 'failed', error: 'LLM 超时',
+      });
+    });
+
+    it('kill 终态也 emit task:result', () => {
+      const resultSpy = vi.fn();
+      board.on('task:result', resultSpy);
+
+      board.register({
+        taskId: 'tr-kill',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-b',
+        type: 'delegate',
+        description: '中止任务',
+      });
+      board.kill('tr-kill');
+
+      expect(resultSpy).toHaveBeenCalledTimes(1);
+      expect(resultSpy.mock.calls[0][0]).toMatchObject({
+        taskId: 'tr-kill', status: 'killed',
+      });
+    });
+
+    it('task:result 与 completed/failed/killed 事件独立，不干扰', () => {
+      const completedSpy = vi.fn();
+      const resultSpy = vi.fn();
+      board.on('completed', completedSpy);
+      board.on('task:result', resultSpy);
+
+      board.register({
+        taskId: 'tr-both',
+        sourceAgent: 'agent-a',
+        sourceSessionId: 'session-1',
+        targetAgent: 'agent-a',
+        type: 'cron',
+        description: '双事件测试',
+        silent: true,
+      });
+      board.complete('tr-both', '双通道结果');
+
+      // 两个事件都应触发
+      expect(completedSpy).toHaveBeenCalledTimes(1);
+      expect(resultSpy).toHaveBeenCalledTimes(1);
+      // 且 silent 任务不推送 notification
+      expect(backendA.enqueueAgentNotification).not.toHaveBeenCalled();
+    });
+  });
+
+
+
+  describe('TaskBoard 调度引擎', () => {
+    it('immediate 模式：注册后立即执行 executor', async () => {
+      const board = new CrossAgentTaskBoard();
+      let executed = false;
+      const executor: TaskExecutor = async () => {
+        executed = true;
+        return 'done';
+      };
+      board.register({
+        taskId: 'sched_1',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'sub_agent',
+        description: 'test immediate',
+        schedule: { type: 'immediate' },
+        executor,
+      });
+      // [TaskBoard 调度升级] executor 是异步的，等一个 tick。
+      await new Promise(r => setTimeout(r, 50));
+      expect(executed).toBe(true);
+      expect(board.query('sched_1')?.status).toBe('completed');
+      board.dispose();
+    });
+
+    it('once 模式：延迟执行', async () => {
+      const board = new CrossAgentTaskBoard();
+      let executed = false;
+      const executor: TaskExecutor = async () => {
+        executed = true;
+        return 'delayed-done';
+      };
+      board.register({
+        taskId: 'sched_2',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'sub_agent',
+        description: 'test once',
+        schedule: { type: 'once', runAt: Date.now() + 100 },
+        executor,
+      });
+      expect(executed).toBe(false);
+      await new Promise(r => setTimeout(r, 200));
+      expect(executed).toBe(true);
+      expect(board.query('sched_2')?.status).toBe('completed');
+      board.dispose();
+    });
+
+    it('executor 抛错时标记为 failed', async () => {
+      const board = new CrossAgentTaskBoard();
+      const executor: TaskExecutor = async () => {
+        throw new Error('boom');
+      };
+      board.register({
+        taskId: 'sched_3',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'sub_agent',
+        description: 'test error',
+        schedule: { type: 'immediate' },
+        executor,
+      });
+      await new Promise(r => setTimeout(r, 50));
+      expect(board.query('sched_3')?.status).toBe('failed');
+      expect(board.query('sched_3')?.error).toBe('boom');
+      board.dispose();
+    });
+
+    it('recurring 模式：完成后自动排下一次', async () => {
+      const board = new CrossAgentTaskBoard();
+      let executionCount = 0;
+      const executor: TaskExecutor = async () => {
+        executionCount++;
+        return `run-${executionCount}`;
+      };
+      const nextTimeResolver: NextTimeResolver = () => Date.now() + 50;
+
+      board.register({
+        taskId: 'sched_4',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'cron',
+        description: 'test recurring',
+        schedule: {
+          type: 'recurring',
+          nextRunAt: Date.now(),
+          source: { kind: 'interval', intervalMs: 50 },
+        },
+        executor,
+        nextTimeResolver,
+      });
+
+      // [TaskBoard 调度升级] 等够两次执行。
+      await new Promise(r => setTimeout(r, 300));
+      expect(executionCount).toBeGreaterThanOrEqual(2);
+      board.dispose();
+    });
+
+    it('kill 时清除未触发的定时器', async () => {
+      const board = new CrossAgentTaskBoard();
+      let executed = false;
+      const executor: TaskExecutor = async () => {
+        executed = true;
+      };
+      board.register({
+        taskId: 'sched_5',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'sub_agent',
+        description: 'test kill timer',
+        schedule: { type: 'once', runAt: Date.now() + 5000 },
+        executor,
+      });
+      board.kill('sched_5');
+      await new Promise(r => setTimeout(r, 100));
+      expect(executed).toBe(false);
+      expect(board.query('sched_5')?.status).toBe('killed');
+      board.dispose();
+    });
+
+    it('无 executor 时行为不变（向后兼容）', () => {
+      const board = new CrossAgentTaskBoard();
+      const task = board.register({
+        taskId: 'sched_compat',
+        sourceAgent: 'a',
+        sourceSessionId: 's1',
+        targetAgent: 'a',
+        type: 'sub_agent',
+        description: 'no executor',
+      });
+      expect(task.status).toBe('running');
+      // [TaskBoard 调度升级] 旧模式仍支持手动完成。
+      board.complete('sched_compat', 'manual result');
+      expect(board.query('sched_compat')?.status).toBe('completed');
+      board.dispose();
+    });
+  });
+
 });

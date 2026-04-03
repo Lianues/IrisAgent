@@ -195,10 +195,39 @@ export interface IrisAPI {
   getConsoleSettingsTabs?: () => ConsoleSettingsTabDefinition[];
 
   /**
-   * 异步子代理任务注册表（可选）。
-   * 供插件（如 cron）在后台执行任务时复用，实现 spinner/token 计数等平台层联动。
+   * 全局任务板（可选）。
+   * 供插件（如 cron）注册后台任务，统一管理生命周期和通知路由。
+   * 类型为最小接口，避免引入核心模块的循环依赖。
+   *
+   * [cron 重构] 替换原 agentTaskRegistry?: unknown，
+   * 使用 CrossAgentTaskBoard 的最小接口代替 per-Agent 的 AgentTaskRegistry。
    */
-  agentTaskRegistry?: unknown;
+  taskBoard?: {
+    register(input: {
+      taskId: string;
+      sourceAgent: string;
+      sourceSessionId: string;
+      targetAgent: string;
+      type: string;
+      description: string;
+      silent?: boolean;
+    }): { taskId: string; abortController?: AbortController };
+    complete(taskId: string, result?: string): void;
+    fail(taskId: string, error: string): void;
+    kill(taskId: string): void;
+    getRunningByTargetAgent(agentName: string): Array<{ taskId: string; type: string }>;
+    emitChunkHeartbeat(taskId: string): void;
+    updateTokens(taskId: string, tokens: number): void;
+  };
+
+  /**
+   * 当前 Agent 名称。
+   * 多 Agent 模式下由 bootstrap 注入，单 Agent 模式下为 '__global__'。
+   * 供插件（如 cron）在注册任务时标识 sourceAgent / targetAgent。
+   *
+   * [cron 重构] 新增字段，替代 cron 之前硬编码虚拟 sessionId 的做法。
+   */
+  agentName?: string;
 
   /**
    * 创建一个 ToolLoop 实例，用于插件后台执行带工具调用的 LLM 循环。

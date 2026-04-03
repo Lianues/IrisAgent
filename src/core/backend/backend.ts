@@ -250,17 +250,21 @@ export class Backend extends EventEmitter {
     // 通知合并逻辑也只看 sub_agent 类型的 running 任务，
     // 避免委派任务（由另一个 Agent 执行、不会回到本 backend 的队列）
     // 阻塞子代理通知的合并与发送。
+    // [cron 重构] 所有 emit 追加 task.silent 参数（第 6 个位置），
+    // 让平台层可以区分 silent 任务（仅渲染通知卡片）和非 silent 任务（LLM 会回复，不需重复渲染）。
+    // agent:notification 只负责状态变更（驱动 StatusBar），不携带结果内容。
+    // 结果内容由独立的 task:result 事件广播（见下方 onTaskResult）。
     const onRegistered = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'registered', task.description, task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'registered', task.description, task.type, task.silent);
     };
     const onCompleted = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'completed', task.description, task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'completed', task.description, task.type, task.silent);
     };
     const onFailed = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'failed', task.description, task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'failed', task.description, task.type, task.silent);
     };
     const onKilled = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'killed', task.description, task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'killed', task.description, task.type, task.silent);
     };
 
     board.on('registered', onRegistered);
@@ -271,16 +275,27 @@ export class Backend extends EventEmitter {
     // 转发任务的实时 token 更新事件。
     // 平台层（如 Console StatusBar）通过此事件展示后台任务的 token 消耗。
     const onTokenUpdate = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'token-update', String(task.totalTokens ?? 0), task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'token-update', String(task.totalTokens ?? 0), task.type, task.silent);
     };
     board.on('token-update', onTokenUpdate);
 
     // 转发任务的 chunk 心跳事件。
     // 平台层用此事件驱动 spinner 动画帧——只有数据真正流动时 spinner 才转。
     const onChunkHeartbeat = (task: TaskRecord) => {
-      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'chunk-heartbeat', '', task.type);
+      this.emit('agent:notification', task.sourceSessionId, task.taskId, 'chunk-heartbeat', '', task.type, task.silent);
     };
     board.on('chunk-heartbeat', onChunkHeartbeat);
+
+    // 轻量级结果广播：所有终态任务都 emit task:result，不绑定 silent。
+    // 三层通知体系的最轻量级通道，平台层自行决定是否消费（如渲染通知卡片、推送消息）。
+    const onTaskResult = (task: TaskRecord) => {
+      this.emit('task:result',
+        task.sourceSessionId, task.taskId, task.status,
+        task.description, task.type, task.silent,
+        task.result ?? task.error,
+      );
+    };
+    board.on('task:result', onTaskResult);
 
     this.taskBoardCleanup = () => {
       board.off('registered', onRegistered);
@@ -289,6 +304,7 @@ export class Backend extends EventEmitter {
       board.off('killed', onKilled);
       board.off('token-update', onTokenUpdate);
       board.off('chunk-heartbeat', onChunkHeartbeat);
+      board.off('task:result', onTaskResult);
     };
   }
 

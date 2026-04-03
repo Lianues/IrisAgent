@@ -252,6 +252,11 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // 将任务板注入 Backend，使 board 生命周期事件转发为 BackendEvents
   backend.setTaskBoard(taskBoard);
 
+  // [cron 重构] 单 Agent 模式下也需要注册 backend 到 taskBoard，
+  // 否则 cron 任务 complete() 时 pushNotification() 找不到 backend 会静默失败。
+  // 多 Agent 模式下此步骤由 runMultiAgent() 中的循环统一完成（会覆盖这里的注册）。
+  taskBoard.registerBackend(options?.agentName ?? '__global__', backend);
+
   // 注册子代理工具（需要 backend 引用；无类型定义时跳过）
   if (hasSubAgents) {
     tools.register(createSubAgentTool({
@@ -414,6 +419,8 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     eventBus,
     // 暴露 taskBoard 供插件（如 cron）在后台执行任务时复用任务板
     taskBoard,
+    // [cron 重构] 暴露 agentName 供插件在注册任务时标识 sourceAgent / targetAgent
+    agentName: options?.agentName ?? '__global__',
     patchMethod,
     patchPrototype,
     // 暴露 ToolLoop 工厂方法，供插件（如 cron）创建后台工具循环。

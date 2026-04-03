@@ -12,7 +12,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { definePlugin, createPluginLogger } from '@irises/extension-sdk';
-import type { PluginContext, IrisAPI, PluginEventBusLike } from '@irises/extension-sdk';
+// [cron 重构] 删除 PluginEventBusLike import（不再使用 eventBus 广播）
+import type { PluginContext, IrisAPI } from '@irises/extension-sdk';
 import { CronScheduler } from './scheduler.js';
 import {
   manageScheduledTasksTool,
@@ -63,18 +64,13 @@ export default definePlugin({
 
     // 4. onReady：系统启动完成后初始化调度器和各种注册
     ctx.onReady(async (api) => {
-      // 获取 agentTaskRegistry（后台执行需要），通过 api.agentTaskRegistry 访问
-      // IrisAPI 已声明 agentTaskRegistry?: unknown，scheduler 内部通过 AgentTaskRegistryLike 接口约束
-      // 类型从 unknown 断言为 AgentTaskRegistryLike（运行时由 bootstrap 注入的实际实例满足此接口）
-      const agentTaskRegistry = (api.agentTaskRegistry ?? null) as Record<string, unknown> | null;
+      // [cron 重构] 从 IrisAPI 获取 taskBoard 和 agentName，
+      // 替代原有的 agentTaskRegistry + eventBus 注入方式。
+      const taskBoard = (api as any).taskBoard ?? null;
+      const agentName: string = (api as any).agentName ?? '__global__';
 
-      // 获取 eventBus（结果广播需要），优先从 ctx.getEventBus()，回退到 api.eventBus
-      const eventBus: PluginEventBusLike | null =
-        (typeof ctx.getEventBus === 'function' ? ctx.getEventBus() : null)
-        ?? (api.eventBus ?? null);
-
-      // 创建调度器实例：传入 agentTaskRegistry 和 eventBus 以启用后台执行模式
-      schedulerInstance = new CronScheduler(api, config, agentTaskRegistry, eventBus);
+      // 创建调度器实例：传入 taskBoard 和 agentName 以启用后台执行模式
+      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName);
 
       // 将调度器实例注入给工具模块
       injectScheduler(schedulerInstance);
