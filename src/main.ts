@@ -70,17 +70,17 @@ if (command === '-v' || command === '--version') {
 
 // ── 子命令路由 ──
 
-// Terminal TUI 命令
+// 修正：原路由使用并列 if，匹配到命令后执行完仍会 fall-through 到末尾的"未知命令"。
+// 改为 if/else if 链，确保每个命令分支互斥，不再误报。
+
+// Terminal TUI 命令（onboard / platforms / models / settings）
 if (command && TERMINAL_COMMANDS.has(command)) {
   runTerminalCommand(command, args.slice(1));
-}
-
-// Extension（TUI / 子命令）
-if (command === 'extension' || command === 'extensions' || command === 'ext') {
+} else if (command === 'extension' || command === 'extensions' || command === 'ext') {
+  // Extension（TUI / 子命令）
   if (args.length === 1) {
     runTerminalCommand('extension');
   }
-
   try {
     const { runExtensionCommand } = await import('./extension/command');
     await runExtensionCommand(args);
@@ -89,23 +89,19 @@ if (command === 'extension' || command === 'extensions' || command === 'ext') {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
-}
-
-// CLI 提示词模式
-if (command === 'chat') {
+} else if (command === 'chat') {
+  // CLI 提示词模式
   process.argv.splice(2, 1); // 移除 'chat'，让 cli.ts 解析剩余参数
   await import('./cli');
-}
-
-// 平台服务
-if (!command || command === 'serve' || command === 'start') {
+} else if (!command || command === 'serve' || command === 'start') {
+  // 平台服务（默认命令）
   if (command) {
     process.argv.splice(2, 1);
   }
   await import('./index');
+} else {
+  // 未知命令
+  console.error(`未知命令: ${command}`);
+  console.error('运行 iris --help 查看可用命令。');
+  process.exit(1);
 }
-
-// 未知命令
-console.error(`未知命令: ${command}`);
-console.error('运行 iris --help 查看可用命令。');
-process.exit(1);
