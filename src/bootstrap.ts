@@ -48,6 +48,7 @@ import type { PlatformRegistry } from './core/platform-registry';
 import { PluginEventBus } from './extension/event-bus';
 import { patchMethod, patchPrototype } from './extension/patch';
 import { registerExtensionPlatforms } from './extension';
+import { ensureDevSourceSdkShims } from './extension';
 import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from '@irises/extension-sdk';
 import { readEditableConfig, updateEditableConfig } from './config/manage';
 import { applyRuntimeConfigReload, type RuntimeConfigReloadContext } from './config/runtime';
@@ -122,6 +123,9 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   registerExtensionPlatforms(extensions.platforms, undefined, config.system.devSourceExtensions);
 
   if (config.system.devSourceExtensions?.length) {
+    if (config.system.devSourceSdk) {
+      ensureDevSourceSdkShims();
+    }
     console.log(`[Iris] DevSource 模式已启用，以下扩展将从源码加载: ${config.system.devSourceExtensions.join(', ')}`);
   }
 

@@ -68,3 +68,6 @@ maxRetries: 3
 # devSourceExtensions:
 #   - cron
 #   - memory
+#
+# 是否将 @irises/extension-sdk 也从源码加载（需配合 devSourceExtensions）
+# devSourceSdk: true

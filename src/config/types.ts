@@ -243,6 +243,13 @@ export interface SystemConfig {
    * 适用于本地开发时使用 npm run dev 等热编译工具的场景。
    */
   devSourceExtensions?: string[];
+
+  /**
+   * 开发模式：是否将 @irises/extension-sdk 也从源码加载。
+   * 启用后会在 SDK 的 dist/ 中生成轻量 shim，将模块解析重定向到 packages/extension-sdk/src/。
+   * 需配合 devSourceExtensions 使用，仅在非编译二进制环境下生效。
+   */
+  devSourceSdk?: boolean;
 }
 
 export interface MCPServerConfig {

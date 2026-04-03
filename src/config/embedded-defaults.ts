@@ -87,6 +87,7 @@ maxRetries: 3
 # devSourceExtensions:
 #   - cron
 #   - memory
+# devSourceSdk: true
 `,
 
   'tools.yaml': `# 工具配置

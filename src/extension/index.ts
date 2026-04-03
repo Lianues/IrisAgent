@@ -9,6 +9,7 @@ export {
   importLocalExtensionModule,
   registerExtensionPlatforms,
   resolveLocalPluginSource,
+  ensureDevSourceSdkShims,
 } from './registry';
 
 export {
