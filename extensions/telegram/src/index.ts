@@ -110,41 +110,34 @@ export class TelegramPlatform extends PlatformAdapter {
     await this.client.start();
     logger.info('Telegram 平台已启动');
 
-    // ── 定时任务结果广播订阅 ──
-    // 通过 PluginEventBus 订阅 'cron:result' 事件，
-    // 将后台定时任务的执行结果推送给所有活跃的 Telegram 聊天。
-    // eventBus 从 factory context 传入的 config 中获取（见 createTelegramPlatform）。
-    const eventBus = (this.config as any).eventBus;
-    if (eventBus && typeof eventBus.on === 'function') {
-      eventBus.on('cron:result', (payload: unknown) => {
-        const p = payload as {
-          jobName?: string;
-          status?: string;
-          result?: string;
-          error?: string;
-          durationMs?: number;
-        };
-        if (!p || typeof p !== 'object') return;
+    // ── 轻量级任务结果广播：通用的 task:result 通道 ──
+    // 所有终态任务都会 emit 此事件，不绑定 silent 或任务类型。
+    // 当前策略：仅 silent 任务渲染通知推送（非 silent 由 LLM 通过 stream 事件回复）。
+    this.backend.on('task:result' as any, (
+      _sid: string, _taskId: string, status: string,
+      description: string, _taskType?: string, silent?: boolean, result?: string,
+    ) => {
+      // 非 silent 任务的结果由 LLM 通过 stream 事件回复，不在此推送
+      if (!silent) return;
 
-        let text: string;
-        if (p.status === 'completed') {
-          // Telegram 限制消息长度，截断结果到 1000 字符
-          const resultPreview = p.result?.slice(0, 1000) ?? '';
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 完成：\n${resultPreview}`;
-        } else if (p.status === 'killed') {
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 被中止`;
-        } else {
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 失败：${p.error ?? '未知错误'}`;
-        }
+      let text: string;
+      if (status === 'completed') {
+        // Telegram 限制消息长度，截断结果摘要到 1000 字符
+        const preview = (result ?? '').slice(0, 1000);
+        text = `⏰ ${description} 完成：\n${preview}`;
+      } else if (status === 'killed') {
+        text = `⏰ ${description} 被中止`;
+      } else {
+        text = `⏰ ${description} 失败：${result ?? '未知错误'}`;
+      }
 
-        // 向所有活跃（未 stopped）的聊天推送通知
-        for (const cs of this.chatStates.values()) {
-          if (cs.stopped) continue;
-          void this.sendToChat(cs, text, { trackMessage: false });
-        }
-      });
-      logger.info('已订阅 cron:result 事件');
-    }
+      // 向所有活跃（未 stopped）的聊天推送通知
+      for (const cs of this.chatStates.values()) {
+        if (cs.stopped) continue;
+        void this.sendToChat(cs, text, { trackMessage: false });
+      }
+    });
+    logger.info('已通过 task:result 监听任务结果广播');
 
     // 启动对码输出
     if (this.pairingGuard && this.pairingStore?.needsBootstrap()) {
@@ -766,7 +759,8 @@ export class TelegramPlatform extends PlatformAdapter {
         }
 
         // 平台 UI 只回放最终可见文本，不重新调 LLM。
-        await this.replayRedoResult(cs, redoResult.assistantText);
+        // redoResult.assistantText 可能为 undefined（例如 redo 恢复的轮次没有助手回复），兜底为空字符串。
+        await this.replayRedoResult(cs, redoResult.assistantText ?? '');
         return true;
       }
 
@@ -991,9 +985,8 @@ export const createTelegramPlatform = definePlatformFactory<TelegramConfig, Tele
     showToolStatus: raw.showToolStatus,
     groupMentionRequired: raw.groupMentionRequired,
     pairing: raw.pairing,
-    // 将 eventBus 从 factory context 注入到 config 中，
-    // 供 TelegramPlatform.start() 订阅 cron:result 事件。
-    // eventBus 通过 context.eventBus 获取（宿主在 PlatformFactoryContext 中提供）。
+    // [cron 重构] eventBus 仍保留在 config 中供其他插件使用。
+    // cron 通知已改走 backend agent:notification 事件，不再依赖 eventBus。
     eventBus: (context as any).eventBus,
   }),
   create: (backend, config) => new TelegramPlatform(backend, config),

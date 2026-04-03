@@ -8641,7 +8641,7 @@ var require_mod = __commonJS((exports) => {
   } });
 });
 
-// ../../node_modules/@irises/extension-sdk/dist/pairing/code-gen.js
+// ../../packages/extension-sdk/dist/pairing/code-gen.js
 import { randomInt } from "node:crypto";
 var CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generatePairingCode(length = 6) {
@@ -8652,7 +8652,7 @@ function generatePairingCode(length = 6) {
   return code;
 }
 
-// ../../node_modules/@irises/extension-sdk/dist/pairing/guard.js
+// ../../packages/extension-sdk/dist/pairing/guard.js
 class PairingGuard {
   platform;
   config;
@@ -8800,11 +8800,11 @@ class PairingGuard {
     }
   }
 }
-// ../../node_modules/@irises/extension-sdk/dist/pairing/store.js
+// ../../packages/extension-sdk/dist/pairing/store.js
 import fs from "node:fs";
 import path2 from "node:path";
 
-// ../../node_modules/@irises/extension-sdk/dist/logger.js
+// ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
   LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
@@ -8836,14 +8836,14 @@ function createExtensionLogger(extensionName, tag) {
   };
 }
 
-// ../../node_modules/@irises/extension-sdk/dist/runtime-paths.js
+// ../../packages/extension-sdk/dist/runtime-paths.js
 import os from "node:os";
 import path from "node:path";
 function resolveDefaultDataDir(customDataDir) {
   return path.resolve(customDataDir || process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
 }
 
-// ../../node_modules/@irises/extension-sdk/dist/pairing/store.js
+// ../../packages/extension-sdk/dist/pairing/store.js
 var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
 var NEVER_EXPIRE = 253402272000000;
 
@@ -9512,30 +9512,26 @@ class TelegramPlatform extends PlatformAdapter {
     this.client.onCallbackQuery((ctx) => this.handleCallbackQuery(ctx));
     await this.client.start();
     logger5.info("Telegram 平台已启动");
-    const eventBus = this.config.eventBus;
-    if (eventBus && typeof eventBus.on === "function") {
-      eventBus.on("cron:result", (payload) => {
-        const p = payload;
-        if (!p || typeof p !== "object")
-          return;
-        let text;
-        if (p.status === "completed") {
-          const resultPreview = p.result?.slice(0, 1000) ?? "";
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 完成：
-${resultPreview}`;
-        } else if (p.status === "killed") {
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 被中止`;
-        } else {
-          text = `⏰ 定时任务 "${p.jobName ?? "未知"}" 失败：${p.error ?? "未知错误"}`;
-        }
-        for (const cs of this.chatStates.values()) {
-          if (cs.stopped)
-            continue;
-          this.sendToChat(cs, text, { trackMessage: false });
-        }
-      });
-      logger5.info("已订阅 cron:result 事件");
-    }
+    this.backend.on("task:result", (_sid, _taskId, status, description, _taskType, silent, result) => {
+      if (!silent)
+        return;
+      let text;
+      if (status === "completed") {
+        const preview = (result ?? "").slice(0, 1000);
+        text = `⏰ ${description} 完成：
+${preview}`;
+      } else if (status === "killed") {
+        text = `⏰ ${description} 被中止`;
+      } else {
+        text = `⏰ ${description} 失败：${result ?? "未知错误"}`;
+      }
+      for (const cs of this.chatStates.values()) {
+        if (cs.stopped)
+          continue;
+        this.sendToChat(cs, text, { trackMessage: false });
+      }
+    });
+    logger5.info("已通过 task:result 监听任务结果广播");
     if (this.pairingGuard && this.pairingStore?.needsBootstrap()) {
       const code = this.pairingStore.getOrCreateBootstrapCode();
       logger5.info("");
@@ -10025,7 +10021,7 @@ ${activeLines}` : activeLines : cs.stream.buffer;
           await reply("ℹ️ 没有可以恢复的对话。");
           return true;
         }
-        await this.replayRedoResult(cs, redoResult.assistantText);
+        await this.replayRedoResult(cs, redoResult.assistantText ?? "");
         return true;
       }
       case "skill":

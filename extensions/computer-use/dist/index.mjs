@@ -6917,21 +6917,38 @@ var require_public_api = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 // ../../packages/extension-sdk/dist/logger.js
-function print(level, scope, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[${scope}]`, ...args);
-}
+var LogLevel;
+(function(LogLevel2) {
+  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
+})(LogLevel || (LogLevel = {}));
+var _logLevel = LogLevel.INFO;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
-    info: (...args) => print("log", scope, args),
-    warn: (...args) => print("warn", scope, args),
-    error: (...args) => print("error", scope, args),
-    debug: (...args) => print("debug", scope, args)
+    debug: (...args) => {
+      if (_logLevel <= LogLevel.DEBUG)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= LogLevel.INFO)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= LogLevel.WARN)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= LogLevel.ERROR)
+        console.error(`[${scope}]`, ...args);
+    }
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin.js
+// ../../packages/extension-sdk/dist/plugin/context.js
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -8565,6 +8582,36 @@ var src_default = definePlugin({
       }
       await initEnvironment(cuConfig, api);
       lastConfigSnapshot = JSON.stringify(rawConfig ?? null);
+    });
+    ctx.addHook({
+      name: "computer-use:strip-old-screenshots",
+      onBeforeLLMCall({ request }) {
+        if (!activeEnv)
+          return;
+        const rawCfg = ctx.readConfigSection("computer_use");
+        const cuCfg = rawCfg ? parseComputerUseConfig(rawCfg) : undefined;
+        const max = cuCfg?.maxRecentScreenshots ?? 3;
+        if (max === Infinity)
+          return;
+        let imageRounds = 0;
+        for (let i = request.contents.length - 1;i >= 0; i--) {
+          const content = request.contents[i];
+          if (content.role !== "user")
+            continue;
+          const hasScreenshot = content.parts.some((p) => ("functionResponse" in p) && p.functionResponse.parts?.length && COMPUTER_USE_FUNCTION_NAMES.has(p.functionResponse.name));
+          if (!hasScreenshot)
+            continue;
+          imageRounds++;
+          if (imageRounds > max) {
+            for (const part of content.parts) {
+              if ("functionResponse" in part && part.functionResponse.parts?.length && COMPUTER_USE_FUNCTION_NAMES.has(part.functionResponse.name)) {
+                part.functionResponse.parts = undefined;
+              }
+            }
+          }
+        }
+        return { request };
+      }
     });
     ctx.addHook({
       name: "computer-use:config-reload",

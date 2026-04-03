@@ -61,6 +61,8 @@ export interface ScheduledJob {
   lastRunStatus?: RunStatus;
   /** 上次运行错误信息 */
   lastRunError?: string;
+  /** 当前关联的 TaskBoard 任务 ID（运行时字段；不写入持久化文件） */
+  currentTaskId?: string;
 }
 
 // ============ 创建/更新参数 ============
@@ -139,47 +141,11 @@ export interface DeliveryDecision {
   reason?: string;
 }
 
-// ============ Cron 解析器类型 ============
-
-/** Cron 表达式解析后的字段集合 */
-export interface ParsedCronField {
-  /** 该字段匹配的所有具体值 */
-  values: Set<number>;
-}
-
-/** Cron 解析结果：5 个字段 */
-export interface ParsedCron {
-  minute: ParsedCronField;
-  hour: ParsedCronField;
-  dayOfMonth: ParsedCronField;
-  month: ParsedCronField;
-  dayOfWeek: ParsedCronField;
-}
-
 // ============ 后台执行相关类型 ============
 
-/**
- * PluginEventBus 广播的定时任务执行结果载荷
- *
- * cron 插件在后台 ToolLoop 完成后，通过 eventBus.fire('cron:result', payload) 广播此载荷。
- * 各平台（Console、Telegram、Web 等）自行订阅并决定展示方式。
- */
-export interface CronResultPayload {
-  /** 任务 ID */
-  jobId: string;
-  /** 后台生成的 taskId（AgentTaskRegistry 注册的） */
-  taskId: string;
-  /** 任务名称 */
-  jobName: string;
-  /** 执行状态 */
-  status: 'completed' | 'failed' | 'killed';
-  /** 执行结果文本（成功时有值） */
-  result?: string;
-  /** 错误信息（失败时有值） */
-  error?: string;
-  /** 执行耗时（毫秒） */
-  durationMs: number;
-}
+// [cron 重构] CronResultPayload 已删除。
+// 通知路由改由 CrossAgentTaskBoard 内部处理（emit 事件 → Backend 转发 agent:notification → 平台层渲染）。
+// 不再需要 eventBus.fire('cron:result', payload) 的单独载荷类型。
 
 /**
  * 定时任务执行记录（持久化到 cron-runs/ 目录）

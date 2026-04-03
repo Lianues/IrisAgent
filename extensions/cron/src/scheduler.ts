@@ -2,24 +2,25 @@
  * 定时任务调度器核心模块
  *
  * 包含：
- * - 自实现的 Cron 表达式解析器（不依赖外部库）
+ * - [croner 迁移] 基于 croner 的 Cron 时间计算工具
  * - CronScheduler 类：内存调度 + setTimeout 驱动 + JSON 持久化
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { createPluginLogger } from '@irises/extension-sdk';
-import type { IrisAPI, PluginEventBusLike } from '@irises/extension-sdk';
+// [croner 迁移] 用 croner 替换自实现 cron 解析器，避免继续维护手写解析/逐分钟扫描逻辑。
+import { Cron } from 'croner';
+// [cron 重构] 删除 PluginEventBusLike import（不再使用 eventBus 广播）
+import type { IrisAPI } from '@irises/extension-sdk';
 import type {
   ScheduledJob,
   SchedulerConfig,
   CreateJobParams,
   UpdateJobParams,
-  ParsedCron,
-  ParsedCronField,
-  CronResultPayload,
   CronRunRecord,
   CronBackgroundConfig,
+  RunStatus,
 } from './types.js';
 import { DEFAULT_SCHEDULER_CONFIG, DEFAULT_BACKGROUND_CONFIG } from './types.js';
 import { shouldSkip } from './delivery-gate.js';
@@ -37,177 +38,80 @@ function generateId(): string {
   });
 }
 
-// ============ Cron 解析器 ============
+// ============ Cron 工具（基于 croner） ============
 
 /**
- * 解析 cron 表达式中的单个字段
- *
- * 支持的语法：
- * - *        所有值
- * - 5        精确匹配
- * - 1,3,5    逗号分隔多值
- * - 1-5      连字符范围
- * - 星号/5   步进（从 min 开始，每隔 step）
- * - 1-10/2   范围内步进
- *
- * @param field 字段字符串
- * @param min 该字段的最小合法值
- * @param max 该字段的最大合法值
- * @returns 解析后的字段（包含所有匹配值的 Set）
- */
-function parseCronField(field: string, min: number, max: number): ParsedCronField {
-  const values = new Set<number>();
-  // 逗号分隔的每一段独立解析
-  const segments = field.split(',');
-
-  for (const segment of segments) {
-    const trimmed = segment.trim();
-
-    if (trimmed.includes('/')) {
-      // 步进语法：*/5 或 1-10/2
-      const [rangePart, stepStr] = trimmed.split('/');
-      const step = parseInt(stepStr, 10);
-      if (isNaN(step) || step <= 0) {
-        throw new Error(`无效的步进值: "${trimmed}"`);
-      }
-
-      let start = min;
-      let end = max;
-      if (rangePart !== '*') {
-        if (rangePart.includes('-')) {
-          // 范围步进：1-10/2
-          const [rs, re] = rangePart.split('-');
-          start = parseInt(rs, 10);
-          end = parseInt(re, 10);
-        } else {
-          // 单值步进：5/10 → 从 5 开始
-          start = parseInt(rangePart, 10);
-        }
-      }
-
-      for (let i = start; i <= end; i += step) {
-        values.add(i);
-      }
-    } else if (trimmed.includes('-')) {
-      // 范围语法：1-5
-      const [rs, re] = trimmed.split('-');
-      const start = parseInt(rs, 10);
-      const end = parseInt(re, 10);
-      if (isNaN(start) || isNaN(end)) {
-        throw new Error(`无效的范围: "${trimmed}"`);
-      }
-      for (let i = start; i <= end; i++) {
-        values.add(i);
-      }
-    } else if (trimmed === '*') {
-      // 通配：所有值
-      for (let i = min; i <= max; i++) {
-        values.add(i);
-      }
-    } else {
-      // 精确数字
-      const num = parseInt(trimmed, 10);
-      if (isNaN(num)) {
-        throw new Error(`无效的 cron 字段值: "${trimmed}"`);
-      }
-      values.add(num);
-    }
-  }
-
-  return { values };
-}
-
-/**
- * 解析完整的 5 字段 cron 表达式
- *
- * 字段顺序：分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6, 0=周日)
- *
- * @param expression cron 表达式字符串
- * @returns 解析后的 ParsedCron 对象
- */
-export function parseCronExpression(expression: string): ParsedCron {
-  const fields = expression.trim().split(/\s+/);
-  if (fields.length !== 5) {
-    throw new Error(
-      `Cron 表达式必须包含 5 个字段（分 时 日 月 周），实际收到 ${fields.length} 个字段: "${expression}"`
-    );
-  }
-
-  return {
-    minute: parseCronField(fields[0], 0, 59),
-    hour: parseCronField(fields[1], 0, 23),
-    dayOfMonth: parseCronField(fields[2], 1, 31),
-    month: parseCronField(fields[3], 1, 12),
-    dayOfWeek: parseCronField(fields[4], 0, 6),
-  };
-}
-
-/**
- * 判断指定时间是否匹配已解析的 cron 表达式
- *
- * @param parsed 解析后的 cron 对象
- * @param date 待检测的时间
- * @returns 是否匹配
- */
-function matchesCron(parsed: ParsedCron, date: Date): boolean {
-  return (
-    parsed.minute.values.has(date.getMinutes()) &&
-    parsed.hour.values.has(date.getHours()) &&
-    parsed.dayOfMonth.values.has(date.getDate()) &&
-    parsed.month.values.has(date.getMonth() + 1) && // JS 月份从 0 开始
-    parsed.dayOfWeek.values.has(date.getDay())       // 0=周日
-  );
-}
-
-/**
- * 计算 cron 表达式的下一次触发时间
- *
- * 从 after 的下一分钟开始，逐分钟向前扫描，最多扫描 366 天（527040 分钟）。
- * 如果在此范围内未找到匹配时间，抛出错误。
- *
- * @param expression cron 表达式字符串
- * @param after 起始时间（默认为当前时间）
- * @returns 下一次匹配的 Date 对象
+ * [croner 迁移] 计算 cron 表达式的下一次触发时间。
+ * [croner 迁移] 替换自实现的逐分钟扫描解析器，改用 croner 包。
+ * [croner 迁移] croner 零依赖、支持 5/6/7 字段、L/W/#、时区、秒级精度。
  */
 export function getNextCronTime(expression: string, after?: Date): Date {
-  const parsed = parseCronExpression(expression);
-  const cursor = after ? new Date(after.getTime()) : new Date();
-
-  // 从下一分钟开始扫描（秒和毫秒清零）
-  cursor.setSeconds(0, 0);
-  cursor.setMinutes(cursor.getMinutes() + 1);
-
-  // 最多扫描 366 天
-  const maxIterations = 527040;
-
-  for (let i = 0; i < maxIterations; i++) {
-    if (matchesCron(parsed, cursor)) {
-      return cursor;
-    }
-    cursor.setMinutes(cursor.getMinutes() + 1);
+  const job = new Cron(expression);
+  const next = after ? job.nextRun(after) : job.nextRun();
+  if (!next) {
+    throw new Error(`未找到匹配的 cron 触发时间: "${expression}"`);
   }
-
-  throw new Error(`在 366 天内未找到匹配的 cron 触发时间: "${expression}"`);
+  return next;
 }
 
 // ============ CronScheduler 类 ============
 
 /**
- * AgentTaskRegistry 的最小接口（面向插件侧使用）。
- *
- * 避免 cron 插件直接依赖核心模块的 AgentTaskRegistry 类型，
- * 只声明 cron 实际需要用到的方法。
- * 运行时由 bootstrap 注入的实际 AgentTaskRegistry 实例满足此接口。
+ * [Phase 3] scheduler 侧只关心与 TaskBoard 协作所需的最小调度原语，
+ * 这里用本地类型描述，避免 cron 插件直接耦合核心模块的完整实现细节。
  */
-interface AgentTaskRegistryLike {
-  register(taskId: string, sessionId: string, description: string): {
+type TaskBoardScheduleSource =
+  | { kind: 'interval'; intervalMs: number }
+  | { kind: 'cron'; expression: string };
+
+type TaskBoardScheduleConfig =
+  | { type: 'immediate' }
+  | { type: 'once'; runAt: number }
+  | { type: 'recurring'; nextRunAt: number; source: TaskBoardScheduleSource };
+
+type TaskBoardExecutor = (taskId: string, signal: AbortSignal) => Promise<string | void>;
+
+// [TaskBoard 调度升级对齐] 这里与核心 TaskBoard 的 nextTimeResolver 命名保持一致，
+// 避免 cron 插件注册任务时把续调回调写到错误字段，导致 recurring 任务无法自动续排。
+// 返回值保留 number | null，方便插件侧在“无法计算下一次时间”时显式放弃续调。
+type TaskBoardNextTimeResolver = (source: TaskBoardScheduleSource) => number | null;
+
+/**
+ * CrossAgentTaskBoard 的最小接口（面向插件侧使用）。
+ *
+ * [cron 重构] 替换原 AgentTaskRegistryLike。
+ * 避免 cron 插件直接依赖核心模块的 CrossAgentTaskBoard 类型，
+ * 只声明 cron 实际需要用到的方法。
+ * 运行时由 bootstrap 注入的实际 CrossAgentTaskBoard 实例满足此接口。
+ */
+interface TaskBoardLike {
+  register(input: {
+    taskId: string;
+    sourceAgent: string;
+    sourceSessionId: string;
+    targetAgent: string;
+    type: 'cron';
+    description: string;
+    silent?: boolean;
+    schedule?: TaskBoardScheduleConfig;
+    executor?: TaskBoardExecutor;
+    nextTimeResolver?: TaskBoardNextTimeResolver;
+  }): {
     taskId: string;
     abortController?: AbortController;
   };
+  on?(
+    event: 'registered',
+    listener: (task: { taskId: string; type: string; executor?: TaskBoardExecutor }) => void,
+  ): void;
+  off?(
+    event: 'registered',
+    listener: (task: { taskId: string; type: string; executor?: TaskBoardExecutor }) => void,
+  ): void;
   complete(taskId: string, result?: string): void;
   fail(taskId: string, error: string): void;
   kill(taskId: string): void;
-  getRunningBySession(sessionId: string): Array<{ taskId: string }>;
+  getRunningByTargetAgent(agentName: string): Array<{ taskId: string; type: string }>;
   emitChunkHeartbeat(taskId: string): void;
   updateTokens(taskId: string, tokens: number): void;
 }
@@ -253,8 +157,6 @@ function normalizeRunStatus(status?: string): RunStatus | undefined {
 export class CronScheduler {
   /** 所有任务（id → job） */
   private jobs: Map<string, ScheduledJob> = new Map();
-  /** 活跃的 setTimeout 定时器（jobId → timer） */
-  private timers: Map<string, NodeJS.Timeout> = new Map();
   /** 会话最后活跃时间（sessionId → timestamp），供投递门控使用 */
   private lastActivityMap: Map<string, number> = new Map();
   /** 调度器配置 */
@@ -271,40 +173,46 @@ export class CronScheduler {
   private lastFileModTime: number = 0;
   /** 调度器是否正在运行 */
   private running: boolean = false;
-  /** 异步子代理任务注册表（后台执行时复用） */
-  private agentTaskRegistry: AgentTaskRegistryLike | null = null;
-  /** 插件事件总线（用于广播执行结果到各平台） */
-  private eventBus: PluginEventBusLike | null = null;
+  /** [cron 重构] 全局任务板（替代原 agentTaskRegistry），用于后台任务注册/生命周期管理 */
+  private taskBoard: TaskBoardLike | null = null;
+  /** [cron 重构] 当前 Agent 名称，注册任务时标识 sourceAgent / targetAgent */
+  private agentName: string = '__global__';
   /** 后台执行配置 */
   private backgroundConfig: CronBackgroundConfig;
   /** 执行记录持久化目录 */
   private runsDir: string;
-  /** 当前正在后台运行的任务数 */
-  private activeBackgroundCount: number = 0;
   /**
-   * 按任务 ID 跟踪当前正在执行的任务。
-   * 目的：即使文件同步产生了旧对象 / 新对象两个实例，也只允许同一个 jobId 同时执行一次。
+   * [Phase 3] 用 WeakMap 跟踪“executor 闭包 → ScheduledJob”，
+   * 这样 TaskBoard 在 recurring 任务续调并重新 emit('registered') 时，
+   * scheduler 可以把新的 TaskBoard taskId 反向写回到 job.currentTaskId，
+   * 从而在 update/disable/delete/stop 时精准 kill 当前关联任务。
    */
-  private executingJobIds: Set<string> = new Set();
+  private executorJobMap: WeakMap<TaskBoardExecutor, ScheduledJob> = new WeakMap();
+  private readonly handleTaskBoardRegistered = (task: { taskId: string; type: string; executor?: TaskBoardExecutor }) => {
+    if (task.type !== 'cron' || !task.executor) return;
+    const job = this.executorJobMap.get(task.executor);
+    if (!job) return;
+    job.currentTaskId = task.taskId;
+  };
 
   /**
    * @param api Iris API 实例（用于投递通知和获取数据目录）
    * @param config 调度器配置（缺省使用默认值）
-   * @param agentTaskRegistry 异步任务注册表（可选，不提供时退回到旧的前台投递方式）
-   * @param eventBus 插件事件总线（可选，不提供时不广播结果）
+   * @param taskBoard 全局任务板（可选，不提供时跳过后台执行）
+   * @param agentName 当前 Agent 名称（可选，默认 '__global__'）
    * @param backgroundConfig 后台执行配置（可选，缺省使用默认值）
    */
   constructor(
     api: IrisAPI,
     config?: SchedulerConfig,
-    agentTaskRegistry?: AgentTaskRegistryLike | null,
-    eventBus?: PluginEventBusLike | null,
+    taskBoard?: TaskBoardLike | null,
+    agentName?: string,
     backgroundConfig?: Partial<CronBackgroundConfig>,
   ) {
     this.api = api;
     this.config = config ? { ...config } : { ...DEFAULT_SCHEDULER_CONFIG };
-    this.agentTaskRegistry = agentTaskRegistry ?? null;
-    this.eventBus = eventBus ?? null;
+    this.taskBoard = taskBoard ?? null;
+    this.agentName = agentName ?? '__global__';
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
 
     // 根据 api.dataDir 确定持久化文件路径
@@ -336,10 +244,14 @@ export class CronScheduler {
     // 避免 scheduleNext() 混入业务状态判断。
     this.reconcileJobsOnStartup();
 
-    // 为每个已启用的任务设置定时器
+    // [Phase 3] 监听 TaskBoard 的 registered 事件，
+    // 用于把 recurring 续调后生成的新 taskId 回写到对应 job.currentTaskId。
+    this.taskBoard?.on?.('registered', this.handleTaskBoardRegistered);
+
+    // [Phase 3] 启动时不再自己挂 setTimeout，而是把每个已启用任务注册到 TaskBoard 调度引擎。
     for (const job of this.jobs.values()) {
       if (job.enabled) {
-        this.scheduleNext(job);
+        this.registerJobToTaskBoard(job);
       }
     }
 
@@ -355,11 +267,14 @@ export class CronScheduler {
   stop(): void {
     this.running = false;
 
-    // 清除所有任务定时器
-    for (const [, timer] of this.timers) {
-      clearTimeout(timer);
+    // [Phase 3] 任务的定时器已迁入 TaskBoard，停止时只需 kill 仍关联的 TaskBoard 任务。
+    for (const job of this.jobs.values()) {
+      if (job.currentTaskId) {
+        this.taskBoard?.kill(job.currentTaskId);
+        job.currentTaskId = undefined;
+      }
     }
-    this.timers.clear();
+    this.taskBoard?.off?.('registered', this.handleTaskBoardRegistered);
 
     // 停止文件监听
     this.stopFileWatcher();
@@ -403,9 +318,9 @@ export class CronScheduler {
 
     this.jobs.set(job.id, job);
 
-    // 如果任务启用则立即调度
+    // [Phase 3] 如果任务启用则立即注册到 TaskBoard，由 TaskBoard 统一负责后续调度与执行。
     if (job.enabled) {
-      this.scheduleNext(job);
+      this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
 
@@ -433,10 +348,14 @@ export class CronScheduler {
     if (params.silent !== undefined) job.silent = params.silent;
     if (params.urgent !== undefined) job.urgent = params.urgent;
 
-    // 调度参数可能变了，需要重新设置定时器
-    this.clearTimer(id);
+    // [Phase 3] 更新会改变后续调度/执行语义，因此先 kill 当前关联的 TaskBoard 任务，
+    // 再按新配置重新注册，避免旧 executor 继续执行过期参数。
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+      job.currentTaskId = undefined;
+    }
     if (job.enabled) {
-      this.scheduleNext(job);
+      this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
 
@@ -453,7 +372,11 @@ export class CronScheduler {
     const job = this.jobs.get(id);
     if (!job) return false;
 
-    this.clearTimer(id);
+    // [Phase 3] 删除任务时同步 kill 当前关联的 TaskBoard 任务，
+    // 避免已经排进 TaskBoard 的调度继续触发已删除 job。
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+    }
     this.jobs.delete(id);
     this.debouncePersist();
 
@@ -481,7 +404,11 @@ export class CronScheduler {
     }
 
     job.enabled = true;
-    this.scheduleNext(job);
+    // [Phase 3] 重新启用时重新注册到 TaskBoard，恢复后续调度。
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+    }
+    this.registerJobToTaskBoard(job);
     this.debouncePersist();
 
     logger.info(`任务已启用: ${job.name} (${id})`);
@@ -498,7 +425,12 @@ export class CronScheduler {
     if (!job) return null;
 
     job.enabled = false;
-    this.clearTimer(id);
+    // [Phase 3] 禁用时必须 kill 现有 TaskBoard 任务，
+    // 否则已经排好的下一次触发仍会继续执行。
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+      job.currentTaskId = undefined;
+    }
     this.debouncePersist();
 
     logger.info(`任务已禁用: ${job.name} (${id})`);
@@ -619,222 +551,150 @@ export class CronScheduler {
 
 
   /**
-   * 为指定任务计算下次触发时间并设置 setTimeout
+   * [Phase 3] 把一个 ScheduledJob 注册到 TaskBoard 调度引擎。
    *
-   * - cron：自行解析 cron 表达式，计算距离下次匹配的毫秒数
-   * - interval：直接用 ms 值
-   * - once：计算 at - now，已过期则跳过（过期判定由 reconcileJobsOnStartup 负责）
+   * scheduler 只负责：
+   * 1. 把 cron/interval/once 翻译成 TaskBoard 能理解的 ScheduleConfig
+   * 2. 构造 executor 闭包，把原后台执行逻辑折叠进去
+   * 3. 保存当前关联的 taskId，便于 update/disable/delete/stop 时精准 kill
    */
-  private scheduleNext(job: ScheduledJob): void {
-    // 先清除可能存在的旧定时器
-    this.clearTimer(job.id);
+  private registerJobToTaskBoard(job: ScheduledJob): void {
+    if (!this.taskBoard || !job.enabled || !this.running) return;
 
-    // 这里故意只依赖 job.id，不依赖闭包里捕获的 job 对象本身。
-    // 原因：文件同步 onFileChanged() 可能把 Map 中的任务替换为新对象。
-    // 如果定时器继续持有旧对象引用，旧对象上的 running 状态就无法阻止新对象再次触发，
-    // 会出现同一任务被并发执行多次的情况。
-    const jobId = job.id;
-
-    if (!job.enabled || !this.running) return;
-
-    let delayMs: number;
-
-    switch (job.schedule.type) {
-      case 'cron': {
-        try {
-          const nextTime = getNextCronTime(job.schedule.expression);
-          delayMs = nextTime.getTime() - Date.now();
-        } catch (err) {
-          logger.error(`计算 cron 下次触发时间失败 (${job.name}): ${err}`);
-          return;
-        }
-        break;
-      }
-      case 'interval': {
-        delayMs = job.schedule.ms;
-        break;
-      }
-      case 'once': {
-        delayMs = job.schedule.at - Date.now();
-        if (delayMs <= 0) {
-          // 已过期：不在此处修改任何业务状态。
-          // 过期判定和 missed 标记统一由 reconcileJobsOnStartup() 在启动阶段处理。
-          // 这里只需跳过调度即可。
-          logger.debug(`一次性任务已过期，跳过调度: ${job.name} (${job.id})`);
-          return;
-        }
-        break;
-      }
+    const schedule = this.buildScheduleConfig(job);
+    if (!schedule) {
+      logger.warn(`任务未注册到 TaskBoard（无有效下次执行时间）: ${job.name} (${job.id})`);
+      return;
     }
 
-    const timer = setTimeout(() => {
-      // 定时器一旦触发，先从表中移除，避免 once 任务留下失效句柄，
-      // 也避免后续逻辑误以为“下次触发已排好”。
-      this.timers.delete(jobId);
+    const executor: TaskBoardExecutor = async (taskId, signal) => {
+      return this.executeCronJob(job, taskId, signal);
+    };
 
-      // 触发时重新从 jobs Map 读取当前权威对象。
-      // 这样即使文件同步更新了任务对象，也只会执行最新状态对应的那一份。
-      const currentJob = this.jobs.get(jobId);
-      if (!currentJob) return;
+    // [Phase 3] 记录 executor → job 的关系，
+    // 让 recurring 续调后产生的新 TaskBoard 任务也能回写 currentTaskId。
+    this.executorJobMap.set(executor, job);
 
-      void this.executeJob(currentJob);
-    }, delayMs);
+    // [TaskBoard 调度升级对齐] 计算“下一次执行时间”的回调由插件提供给 TaskBoard。
+    const nextTimeResolver: TaskBoardNextTimeResolver | undefined =
+      job.schedule.type === 'cron'
+        ? (source) => {
+            if (source.kind !== 'cron') return null;
+            const next = new Cron(source.expression).nextRun();
+            return next?.getTime() ?? null;
+          }
+        : undefined;
 
-    // 防止定时器阻止 Node.js 进程退出
-    if (timer.unref) {
-      timer.unref();
-    }
+    const taskId = createCronTaskId();
+    const targetSessionId = job.delivery.sessionId ?? job.sessionId;
 
-    this.timers.set(job.id, timer);
+    this.taskBoard.register({
+      taskId,
+      sourceAgent: this.agentName,
+      sourceSessionId: targetSessionId,
+      targetAgent: this.agentName,
+      type: 'cron',
+      description: `定时任务: ${job.name}`,
+      silent: job.silent,
+      // [Phase 3] 调度配置/执行器/续调解析器都交给 TaskBoard，
+      // 让 scheduler 从“自己管定时器”退化为“注册任务薄壳”，字段名与核心保持一致。
+      schedule,
+      executor,
+      nextTimeResolver,
+    });
+
+    job.currentTaskId = taskId;
+    this.debouncePersist();
   }
 
   /**
-   * 执行一个定时任务
+   * [Phase 3] 把 cron 插件的调度配置转换成 TaskBoard 的 ScheduleConfig。
    *
-   * 改造后的流程（后台执行模式）：
-   * 1. 投递门控检查（shouldSkip）
-   * 2. 并发限制检查
-   * 3. 向 AgentTaskRegistry 注册任务
-   * 4. fire-and-forget 启动后台 ToolLoop（runCronJobInBackground）
-   * 5. 更新任务状态为 running
-   * 6. 非一次性任务立即调度下次执行
-   *
-   * 如果 agentTaskRegistry 不可用，退回到旧的前台投递方式。
+   * TaskBoard 不理解 cron 表达式，所以这里提前计算 nextRunAt；
+   * 后续 recurring 的续调再通过 nextRunResolver 完成。
    */
-  private async executeJob(job: ScheduledJob): Promise<void> {
-    // 每次执行前都重新从 Map 读取权威对象，
-    // 防止调用方传入的是文件同步前留下的旧对象。
+  private buildScheduleConfig(job: ScheduledJob): TaskBoardScheduleConfig | null {
+    switch (job.schedule.type) {
+      case 'cron': {
+        const next = new Cron(job.schedule.expression).nextRun();
+        if (!next) return null;
+        return {
+          type: 'recurring',
+          nextRunAt: next.getTime(),
+          source: { kind: 'cron', expression: job.schedule.expression },
+        };
+      }
+      case 'interval':
+        return {
+          type: 'recurring',
+          nextRunAt: Date.now() + job.schedule.ms,
+          source: { kind: 'interval', intervalMs: job.schedule.ms },
+        };
+      case 'once': {
+        const delayMs = job.schedule.at - Date.now();
+        if (delayMs <= 0) return null;
+        return { type: 'once', runAt: job.schedule.at };
+      }
+    }
+  }
+
+  /**
+   * [Phase 3] executor 闭包调用的核心执行逻辑。
+   *
+   * 这里保留原 scheduler 的业务行为：投递门控、并发检查、
+   * ToolLoop 构建、LLM 调用、执行记录保存、状态更新。
+   * 区别只是“什么时候触发、下一次怎么排”已经交给 TaskBoard。
+   */
+  private async executeCronJob(job: ScheduledJob, taskId: string, signal: AbortSignal): Promise<string | void> {
     const currentJob = this.jobs.get(job.id) ?? job;
 
-    // 第一层防重入：按 jobId 去重，而不是按对象实例去重。
-    // 这样即使旧定时器闭包里拿着旧对象，也无法绕过并发保护。
-    if (this.executingJobIds.has(currentJob.id)) {
-      logger.info(`任务正在执行中，跳过本次触发: ${currentJob.name} (${currentJob.id})`);
+    // [Phase 3] 如果任务在等待期间被禁用/删除，TaskBoard 可能仍尝试触发 executor；
+    // 这里再做一次运行时守卫，保证不会执行已失效 job。
+    if (!currentJob.enabled) {
+      logger.info(`任务已禁用，跳过执行: ${currentJob.name} (${currentJob.id})`);
       return;
     }
 
-    // 第二层防重入：兼容外部状态已经被写成 running 的场景。
-    if (currentJob.lastRunStatus === 'running') {
-      logger.info(`任务状态仍为 running，跳过本次触发: ${currentJob.name} (${currentJob.id})`);
-      return;
-    }
-
-    // 投递门控检查
     const decision = shouldSkip(currentJob, this.config, this.lastActivityMap);
     if (decision.skip) {
       currentJob.lastRunAt = Date.now();
       currentJob.lastRunStatus = 'skipped';
-      // once 任务在它的唯一触发点被跳过后，也应当视为已消费，
-      // 否则它会继续保持 enabled=true，后续容易被误判为 missed 或 pending。
       if (currentJob.schedule.type === 'once') {
         currentJob.enabled = false;
       }
+      currentJob.currentTaskId = undefined;
       logger.info(`任务被跳过: ${currentJob.name} — ${decision.reason}`);
       this.debouncePersist();
-
-      // 被跳过的非一次性任务仍需调度下次执行
-      if (currentJob.schedule.type !== 'once') {
-        this.scheduleNext(currentJob);
-      }
       return;
     }
 
-    // 非一次性任务立即调度下次执行（不等后台执行完成）
-    if (currentJob.schedule.type !== 'once') {
-      this.scheduleNext(currentJob);
-    }
-
-    // 并发限制检查
-    if (this.activeBackgroundCount >= this.backgroundConfig.maxConcurrent) {
+    const cronRunning = this.taskBoard
+      ? this.taskBoard.getRunningByTargetAgent(this.agentName)
+        .filter((task) => task.type === 'cron' && task.taskId !== taskId)
+      : [];
+    if (cronRunning.length >= this.backgroundConfig.maxConcurrent) {
       currentJob.lastRunAt = Date.now();
       currentJob.lastRunStatus = 'skipped';
       currentJob.lastRunError = `并发后台任务数已达上限 (${this.backgroundConfig.maxConcurrent})`;
       if (currentJob.schedule.type === 'once') {
         currentJob.enabled = false;
       }
+      currentJob.currentTaskId = undefined;
       logger.warn(`任务被跳过（并发上限）: ${currentJob.name}`);
       this.debouncePersist();
       return;
     }
 
-    // 检查 agentTaskRegistry 是否可用——可用则走后台 ToolLoop，否则退回旧方式
-    if (!this.agentTaskRegistry) {
-      // 退回到旧的前台投递方式（兼容未注入 registry 的场景）
-      this.executeJobLegacy(currentJob);
-      return;
-    }
-
-    // ---- 后台执行路径 ----
-
-    // 生成任务 ID 并注册到 AgentTaskRegistry
-    const taskId = createCronTaskId();
-    // 使用虚拟 sessionId：cron:<jobId>，定时任务不关联实际 session
-    const virtualSessionId = `cron:${currentJob.id}`;
-    const description = `定时任务: ${currentJob.name}`;
-    const task = this.agentTaskRegistry.register(taskId, virtualSessionId, description);
-
-    // 更新任务状态为 running
     currentJob.lastRunAt = Date.now();
     currentJob.lastRunStatus = 'running';
-    // once 任务一旦进入 running，就应立即从未来调度中移除。
-    // 这样即使执行尚未完成，也不会再被文件同步或重载逻辑当成“尚未触发的一次性任务”。
+    currentJob.lastRunError = undefined;
     if (currentJob.schedule.type === 'once') {
       currentJob.enabled = false;
     }
+    currentJob.currentTaskId = taskId;
     this.debouncePersist();
 
-    // fire-and-forget 启动后台执行
-    this.executingJobIds.add(currentJob.id);
-    this.activeBackgroundCount++;
-    void this.runCronJobInBackground(currentJob, taskId, task.abortController?.signal).finally(() => {
-      this.activeBackgroundCount--;
-      this.executingJobIds.delete(currentJob.id);
-
-      // 如果任务在运行中被文件同步改动过，旧定时器可能已经被清空。
-      // 对非 once 任务在收尾阶段补一次“缺定时器则重排”，保证后续周期不会丢。
-      if (currentJob.schedule.type !== 'once' && currentJob.enabled && !this.timers.has(currentJob.id) && this.running) {
-        this.scheduleNext(currentJob);
-      }
-    });
-
-    logger.info(`后台任务已启动: ${currentJob.name} (taskId=${taskId})`);
-  }
-
-  /**
-   * 旧的前台投递方式（退回兼容）
-   *
-   * 当 agentTaskRegistry 不可用时，仍通过 backend.enqueueAgentNotification
-   * 投递到前台会话。保留此方法确保向后兼容。
-   */
-  private executeJobLegacy(job: ScheduledJob): void {
-    try {
-      const targetSessionId = job.delivery.sessionId ?? job.sessionId;
-
-      // 旧路径同样遵守 once 任务“只消费一次”的语义。
-      if (job.schedule.type === 'once') {
-        job.enabled = false;
-      }
-      let instruction = job.instruction;
-      if (job.silent) {
-        instruction = '如果没有值得报告的内容，不要发送任何消息。\n' + instruction;
-      }
-      const xml = `<task-notification task-id="${job.id}" task-name="${job.name}">${instruction}</task-notification>`;
-      const backend = this.api.backend as any;
-      if (typeof backend.enqueueAgentNotification === 'function') {
-        backend.enqueueAgentNotification(targetSessionId, xml);
-        job.lastRunAt = Date.now();
-        job.lastRunStatus = 'completed';
-        logger.info(`任务已投递（旧方式）: ${job.name} → 会话 ${targetSessionId}`);
-      } else {
-        throw new Error('backend.enqueueAgentNotification 方法不可用');
-      }
-    } catch (err) {
-      job.lastRunAt = Date.now();
-      job.lastRunStatus = 'error';
-      job.lastRunError = err instanceof Error ? err.message : String(err);
-      logger.error(`任务执行失败: ${job.name} — ${err}`);
-    }
-    this.debouncePersist();
+    await this.runCronJobInBackground(currentJob, taskId, signal);
   }
 
   // ──────────── 后台执行 ────────────
@@ -842,12 +702,13 @@ export class CronScheduler {
   /**
    * 在后台独立执行一个定时任务（fire-and-forget）
    *
+   * [cron 重构] 使用 taskBoard 替代 agentTaskRegistry，删除 silent prompt 注入和 fireCronResult 调用。
    * 核心流程：
    * 1. 通过 IrisAPI.createToolLoop 创建独立的 ToolLoop（定时任务专用系统提示词 + 过滤后的工具集）
-   * 2. 构建流式 LLMCaller（回调指向 AgentTaskRegistry）
+   * 2. 构建流式 LLMCaller（回调指向 taskBoard）
    * 3. 执行 ToolLoop.run()
    * 4. 保存执行记录
-   * 5. 通过 eventBus 广播结果
+   * （通知路由由 taskBoard.complete/fail 内部自动处理）
    */
   private async runCronJobInBackground(
     job: ScheduledJob,
@@ -855,11 +716,11 @@ export class CronScheduler {
     signal?: AbortSignal,
   ): Promise<void> {
     const startTime = Date.now();
-    const registry = this.agentTaskRegistry!;
+    const board = this.taskBoard!;
 
     // 设置执行超时：超时后通过 AbortController 中止 ToolLoop
     const timeoutHandle = setTimeout(() => {
-      registry.kill(taskId);
+      board.kill(taskId);
       logger.warn(`后台任务超时 (${this.backgroundConfig.timeoutMs}ms): ${job.name}`);
     }, this.backgroundConfig.timeoutMs);
     // 超时定时器不应阻止进程退出
@@ -875,12 +736,8 @@ export class CronScheduler {
       // ToolRegistryLike 已声明 createFiltered?()，直接使用类型安全的调用
       const cronTools = this.api.tools.createFiltered?.(excludedTools) ?? this.api.tools;
 
-      // ---- 构建系统提示词 ----
-      // silent 模式时在提示词中追加 no-report 指示
-      let systemPrompt = CRON_SYSTEM_PROMPT;
-      if (job.silent) {
-        systemPrompt += '\n- 如果没有值得报告的内容，请回复 `[no-report]`。';
-      }
+      // ---- 构建系统提示词（静态，不再拼接 silent 的 [no-report] 指示） ----
+      const systemPrompt = CRON_SYSTEM_PROMPT;
 
       // ---- 通过 IrisAPI.createToolLoop 创建 ToolLoop 实例 ----
       // 使用核心 ToolLoop 替代手写简化版循环，获得完整的重试、abort 清理、钩子支持
@@ -894,7 +751,7 @@ export class CronScheduler {
         maxRounds: this.backgroundConfig.maxToolRounds,
       });
 
-      // ---- 构建 LLMCaller：流式调用，回调指向 AgentTaskRegistry 以驱动心跳和 token 计数 ----
+      // ---- 构建 LLMCaller：流式调用，回调指向 taskBoard 以驱动心跳和 token 计数 ----
       // LLMRouterLike 已声明 chat?() 和 chatStream?()，直接使用类型安全的调用
       const router = this.api.router;
       const callLLM = async (request: any, modelName?: string, sig?: AbortSignal) => {
@@ -902,7 +759,7 @@ export class CronScheduler {
           const parts: any[] = [];
           let usageMetadata: any;
           for await (const chunk of router.chatStream(request, modelName, sig)) {
-            registry.emitChunkHeartbeat(taskId);
+            board.emitChunkHeartbeat(taskId);
             if (chunk.partsDelta && chunk.partsDelta.length > 0) {
               for (const part of chunk.partsDelta) {
                 parts.push(part);
@@ -917,7 +774,7 @@ export class CronScheduler {
               usageMetadata = chunk.usageMetadata;
               const tokens = usageMetadata.totalTokenCount ?? usageMetadata.candidatesTokenCount ?? 0;
               if (tokens > 0) {
-                registry.updateTokens(taskId, tokens);
+                board.updateTokens(taskId, tokens);
               }
             }
           }
@@ -936,10 +793,8 @@ export class CronScheduler {
 
       // ---- 构建用户消息并执行 ToolLoop ----
       const history: any[] = [];
-      let userInstruction = job.instruction;
-      if (job.silent) {
-        userInstruction = '如果没有值得报告的内容，请回复 `[no-report]`。\n' + userInstruction;
-      }
+      // [cron 重构] 不再拼接 silent 的 [no-report] 指示，直接使用原始 instruction
+      const userInstruction = job.instruction;
       history.push({ role: 'user', parts: [{ text: userInstruction }] });
 
       // 调用核心 ToolLoop.run()
@@ -954,7 +809,7 @@ export class CronScheduler {
 
       if (result.aborted) {
         // 被中止
-        registry.kill(taskId);
+        board.kill(taskId);
         job.lastRunStatus = 'error';
         job.lastRunError = '后台任务被中止';
         this.saveRunRecord({
@@ -962,12 +817,12 @@ export class CronScheduler {
           instruction: job.instruction, startTime, endTime,
           durationMs, status: 'killed',
         });
-        this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: 'killed', durationMs });
+        // [cron 重构] 删除 fireCronResult 调用——通知路由由 taskBoard.kill() 内部自动处理
         logger.info(`后台任务被中止: ${job.name} (taskId=${taskId})`);
 
       } else if (loopError) {
         // 执行失败
-        registry.fail(taskId, loopError);
+        board.fail(taskId, loopError);
         job.lastRunStatus = 'error';
         job.lastRunError = loopError;
         this.saveRunRecord({
@@ -975,14 +830,13 @@ export class CronScheduler {
           instruction: job.instruction, startTime, endTime,
           durationMs, status: 'failed', error: loopError,
         });
-        this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: 'failed', error: loopError, durationMs });
+        // [cron 重构] 删除 fireCronResult 调用
         logger.error(`后台任务失败: ${job.name} (taskId=${taskId}), error="${loopError}"`);
 
       } else {
-        // 成功：silent 模式检查——输出包含 [no-report] 时不广播
-        const isSilentNoReport = job.silent && finalText.includes('[no-report]');
-
-        registry.complete(taskId, finalText);
+        // [cron 重构] 成功：直接调用 board.complete()，
+        // silent 模式的通知控制已由 TaskBoard 内部的 silent 标记处理。
+        board.complete(taskId, finalText);
         job.lastRunStatus = 'completed';
         job.lastRunError = undefined;
         this.saveRunRecord({
@@ -991,10 +845,7 @@ export class CronScheduler {
           durationMs, status: 'completed', resultText: finalText,
         });
 
-        if (!isSilentNoReport) {
-          this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: 'completed', result: finalText, durationMs });
-        }
-        logger.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms, silent_skip=${isSilentNoReport}`);
+        logger.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms`);
       }
 
     } catch (err) {
@@ -1002,7 +853,7 @@ export class CronScheduler {
       const endTime = Date.now();
       const durationMs = endTime - startTime;
       const errorMsg = err instanceof Error ? err.message : String(err);
-      registry.fail(taskId, errorMsg);
+      board.fail(taskId, errorMsg);
       job.lastRunStatus = 'error';
       job.lastRunError = errorMsg;
       this.saveRunRecord({
@@ -1010,33 +861,13 @@ export class CronScheduler {
         instruction: job.instruction, startTime, endTime,
         durationMs, status: 'failed', error: errorMsg,
       });
-      this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: 'failed', error: errorMsg, durationMs });
+      // [cron 重构] 删除 fireCronResult 调用
       logger.error(`后台任务异常: ${job.name} (taskId=${taskId}), error="${errorMsg}"`);
     } finally {
+      job.currentTaskId = undefined;
       clearTimeout(timeoutHandle);
       this.debouncePersist();
       this.cleanupOldRuns();
-    }
-  }
-
-  // ──────────── 结果广播 (事件总线) ────────────
-
-  /**
-   * 通过 PluginEventBus 广播定时任务执行结果
-   *
-   * 各平台（Console、Telegram、Web 等）自行订阅 'cron:result' 事件。
-   * 无人监听时仅静默忽略。
-   */
-  private fireCronResult(payload: CronResultPayload): void {
-    if (!this.eventBus) return;
-    try {
-      if (typeof this.eventBus.fire === 'function') {
-        this.eventBus.fire('cron:result', payload);
-      } else {
-        this.eventBus.emit('cron:result', payload);
-      }
-    } catch (err) {
-      logger.warn(`广播 cron:result 事件失败: ${err}`);
     }
   }
 
@@ -1349,7 +1180,12 @@ export class CronScheduler {
       // 删除：内存中有但文件中没有的任务
       for (const id of currentIds) {
         if (!newIds.has(id)) {
-          this.clearTimer(id);
+          const existing = this.jobs.get(id);
+          // [Phase 3] 文件同步删除任务时同步 kill TaskBoard 里的当前任务，
+          // 避免已经排好的执行继续落到内存中已不存在的 job 上。
+          if (existing?.currentTaskId) {
+            this.taskBoard?.kill(existing.currentTaskId);
+          }
           this.jobs.delete(id);
           logger.info(`文件同步: 删除任务 ${id}`);
         }
@@ -1361,7 +1197,7 @@ export class CronScheduler {
         if (!existing) {
           // 新增
           this.jobs.set(job.id, job);
-          if (job.enabled) this.scheduleNext(job);
+          if (job.enabled) this.registerJobToTaskBoard(job);
           logger.info(`文件同步: 新增任务 ${job.name} (${job.id})`);
         } else {
           // 对比序列化后的字符串来检测是否有变化
@@ -1374,11 +1210,13 @@ export class CronScheduler {
 
             // 只有调度相关字段变化时才重排定时器。
             if (shouldReschedule) {
-              this.clearTimer(existing.id);
-              // 如果任务当前正在执行，就不要在文件同步阶段立刻补排新 timer，
-              // 留给后台执行 finally 中的“缺定时器兜底补排”处理，避免并发竞争。
-              if (existing.enabled && !this.executingJobIds.has(existing.id) && this.running) {
-                this.scheduleNext(existing);
+              // [Phase 3] 文件同步触发调度变更时，通过 kill + 重新注册切换到新配置。
+              if (existing.currentTaskId) {
+                this.taskBoard?.kill(existing.currentTaskId);
+                existing.currentTaskId = undefined;
+              }
+              if (existing.enabled && this.running) {
+                this.registerJobToTaskBoard(existing);
               }
             }
             logger.info(`文件同步: 更新任务 ${job.name} (${job.id})`);
@@ -1389,17 +1227,6 @@ export class CronScheduler {
       logger.info(`文件同步完成，当前共 ${this.jobs.size} 个任务`);
     } catch (err) {
       logger.error(`文件同步失败: ${err}`);
-    }
-  }
-
-  // ──────────── 内部辅助 ────────────
-
-  /** 清除指定任务的 setTimeout 定时器 */
-  private clearTimer(id: string): void {
-    const timer = this.timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.timers.delete(id);
     }
   }
 }

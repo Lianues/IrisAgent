@@ -1,7 +1,7 @@
 // src/index.ts
 import * as fs2 from "fs";
 import * as path2 from "path";
-// ../../packages/extension-sdk/dist/logger.js
+// ../../node_modules/@irises/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
   LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
@@ -33,7 +33,7 @@ function createExtensionLogger(extensionName, tag) {
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin/context.js
+// ../../node_modules/@irises/extension-sdk/dist/plugin/context.js
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -44,6 +44,780 @@ function definePlugin(plugin) {
 // src/scheduler.ts
 import * as fs from "fs";
 import * as path from "path";
+
+// node_modules/croner/dist/croner.js
+function T(s) {
+  return Date.UTC(s.y, s.m - 1, s.d, s.h, s.i, s.s);
+}
+function D(s, e) {
+  return s.y === e.y && s.m === e.m && s.d === e.d && s.h === e.h && s.i === e.i && s.s === e.s;
+}
+function A(s, e) {
+  let t = new Date(Date.parse(s));
+  if (isNaN(t))
+    throw new Error("Invalid ISO8601 passed to timezone parser.");
+  let r = s.substring(9);
+  return r.includes("Z") || r.includes("+") || r.includes("-") ? b(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds(), "Etc/UTC") : b(t.getFullYear(), t.getMonth() + 1, t.getDate(), t.getHours(), t.getMinutes(), t.getSeconds(), e);
+}
+function v(s, e, t) {
+  return k(A(s, e), t);
+}
+function k(s, e) {
+  let t = new Date(T(s)), r = g(t, s.tz), n = T(s), i = T(r), a = n - i, o = new Date(t.getTime() + a), h = g(o, s.tz);
+  if (D(h, s)) {
+    let u = new Date(o.getTime() - 3600000), d = g(u, s.tz);
+    return D(d, s) ? u : o;
+  }
+  let l = new Date(o.getTime() + T(s) - T(h)), y = g(l, s.tz);
+  if (D(y, s))
+    return l;
+  if (e)
+    throw new Error("Invalid date passed to fromTZ()");
+  return o.getTime() > l.getTime() ? o : l;
+}
+function g(s, e) {
+  let t, r;
+  try {
+    t = new Intl.DateTimeFormat("en-US", { timeZone: e, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hour12: false }), r = t.formatToParts(s);
+  } catch (i) {
+    let a = i instanceof Error ? i.message : String(i);
+    throw new RangeError(`toTZ: Invalid timezone '${e}' or date. Please provide a valid IANA timezone (e.g., 'America/New_York', 'Europe/Stockholm'). Original error: ${a}`);
+  }
+  let n = { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0 };
+  for (let i of r)
+    (i.type === "year" || i.type === "month" || i.type === "day" || i.type === "hour" || i.type === "minute" || i.type === "second") && (n[i.type] = parseInt(i.value, 10));
+  if (isNaN(n.year) || isNaN(n.month) || isNaN(n.day) || isNaN(n.hour) || isNaN(n.minute) || isNaN(n.second))
+    throw new Error(`toTZ: Failed to parse all date components from timezone '${e}'. This may indicate an invalid date or timezone configuration. Parsed components: ${JSON.stringify(n)}`);
+  return n.hour === 24 && (n.hour = 0), { y: n.year, m: n.month, d: n.day, h: n.hour, i: n.minute, s: n.second, tz: e };
+}
+function b(s, e, t, r, n, i, a) {
+  return { y: s, m: e, d: t, h: r, i: n, s: i, tz: a };
+}
+var O = [1, 2, 4, 8, 16];
+var C = class {
+  pattern;
+  timezone;
+  mode;
+  alternativeWeekdays;
+  sloppyRanges;
+  second;
+  minute;
+  hour;
+  day;
+  month;
+  dayOfWeek;
+  year;
+  lastDayOfMonth;
+  lastWeekday;
+  nearestWeekdays;
+  starDOM;
+  starDOW;
+  starYear;
+  useAndLogic;
+  constructor(e, t, r) {
+    this.pattern = e, this.timezone = t, this.mode = r?.mode ?? "auto", this.alternativeWeekdays = r?.alternativeWeekdays ?? false, this.sloppyRanges = r?.sloppyRanges ?? false, this.second = Array(60).fill(0), this.minute = Array(60).fill(0), this.hour = Array(24).fill(0), this.day = Array(31).fill(0), this.month = Array(12).fill(0), this.dayOfWeek = Array(7).fill(0), this.year = Array(1e4).fill(0), this.lastDayOfMonth = false, this.lastWeekday = false, this.nearestWeekdays = Array(31).fill(0), this.starDOM = false, this.starDOW = false, this.starYear = false, this.useAndLogic = false, this.parse();
+  }
+  parse() {
+    if (!(typeof this.pattern == "string" || this.pattern instanceof String))
+      throw new TypeError("CronPattern: Pattern has to be of type string.");
+    this.pattern.indexOf("@") >= 0 && (this.pattern = this.handleNicknames(this.pattern).trim());
+    let e = this.pattern.match(/\S+/g) || [""], t = e.length;
+    if (e.length < 5 || e.length > 7)
+      throw new TypeError("CronPattern: invalid configuration format ('" + this.pattern + "'), exactly five, six, or seven space separated parts are required.");
+    if (this.mode !== "auto") {
+      let n;
+      switch (this.mode) {
+        case "5-part":
+          n = 5;
+          break;
+        case "6-part":
+          n = 6;
+          break;
+        case "7-part":
+          n = 7;
+          break;
+        case "5-or-6-parts":
+          n = [5, 6];
+          break;
+        case "6-or-7-parts":
+          n = [6, 7];
+          break;
+        default:
+          n = 0;
+      }
+      if (!(Array.isArray(n) ? n.includes(t) : t === n)) {
+        let a = Array.isArray(n) ? n.join(" or ") : n.toString();
+        throw new TypeError(`CronPattern: mode '${this.mode}' requires exactly ${a} parts, but pattern '${this.pattern}' has ${t} parts.`);
+      }
+    }
+    if (e.length === 5 && e.unshift("0"), e.length === 6 && e.push("*"), e[3].toUpperCase() === "LW" ? (this.lastWeekday = true, e[3] = "") : e[3].toUpperCase().indexOf("L") >= 0 && (e[3] = e[3].replace(/L/gi, ""), this.lastDayOfMonth = true), e[3] == "*" && (this.starDOM = true), e[6] == "*" && (this.starYear = true), e[4].length >= 3 && (e[4] = this.replaceAlphaMonths(e[4])), e[5].length >= 3 && (e[5] = this.alternativeWeekdays ? this.replaceAlphaDaysQuartz(e[5]) : this.replaceAlphaDays(e[5])), e[5].startsWith("+") && (this.useAndLogic = true, e[5] = e[5].substring(1), e[5] === ""))
+      throw new TypeError("CronPattern: Day-of-week field cannot be empty after '+' modifier.");
+    switch (e[5] == "*" && (this.starDOW = true), this.pattern.indexOf("?") >= 0 && (e[0] = e[0].replace(/\?/g, "*"), e[1] = e[1].replace(/\?/g, "*"), e[2] = e[2].replace(/\?/g, "*"), e[3] = e[3].replace(/\?/g, "*"), e[4] = e[4].replace(/\?/g, "*"), e[5] = e[5].replace(/\?/g, "*"), e[6] && (e[6] = e[6].replace(/\?/g, "*"))), this.mode) {
+      case "5-part":
+        e[0] = "0", e[6] = "*";
+        break;
+      case "6-part":
+        e[6] = "*";
+        break;
+      case "5-or-6-parts":
+        e[6] = "*";
+        break;
+      case "6-or-7-parts":
+        break;
+      case "7-part":
+      case "auto":
+        break;
+    }
+    this.throwAtIllegalCharacters(e), this.partToArray("second", e[0], 0, 1), this.partToArray("minute", e[1], 0, 1), this.partToArray("hour", e[2], 0, 1), this.partToArray("day", e[3], -1, 1), this.partToArray("month", e[4], -1, 1);
+    let r = this.alternativeWeekdays ? -1 : 0;
+    this.partToArray("dayOfWeek", e[5], r, 63), this.partToArray("year", e[6], 0, 1), !this.alternativeWeekdays && this.dayOfWeek[7] && (this.dayOfWeek[0] = this.dayOfWeek[7]);
+  }
+  partToArray(e, t, r, n) {
+    let i = this[e], a = e === "day" && this.lastDayOfMonth, o = e === "day" && this.lastWeekday;
+    if (t === "" && !a && !o)
+      throw new TypeError("CronPattern: configuration entry " + e + " (" + t + ") is empty, check for trailing spaces.");
+    if (t === "*")
+      return i.fill(n);
+    let h = t.split(",");
+    if (h.length > 1)
+      for (let l = 0;l < h.length; l++)
+        this.partToArray(e, h[l], r, n);
+    else
+      t.indexOf("-") !== -1 && t.indexOf("/") !== -1 ? this.handleRangeWithStepping(t, e, r, n) : t.indexOf("-") !== -1 ? this.handleRange(t, e, r, n) : t.indexOf("/") !== -1 ? this.handleStepping(t, e, r, n) : t !== "" && this.handleNumber(t, e, r, n);
+  }
+  throwAtIllegalCharacters(e) {
+    for (let t = 0;t < e.length; t++)
+      if ((t === 3 ? /[^/*0-9,\-WwLl]+/ : t === 5 ? /[^/*0-9,\-#Ll]+/ : /[^/*0-9,\-]+/).test(e[t]))
+        throw new TypeError("CronPattern: configuration entry " + t + " (" + e[t] + ") contains illegal characters.");
+  }
+  handleNumber(e, t, r, n) {
+    let i = this.extractNth(e, t), a = e.toUpperCase().includes("W");
+    if (t !== "day" && a)
+      throw new TypeError("CronPattern: Nearest weekday modifier (W) only allowed in day-of-month.");
+    a && (t = "nearestWeekdays");
+    let o = parseInt(i[0], 10) + r;
+    if (isNaN(o))
+      throw new TypeError("CronPattern: " + t + " is not a number: '" + e + "'");
+    this.setPart(t, o, i[1] || n);
+  }
+  setPart(e, t, r) {
+    if (!Object.prototype.hasOwnProperty.call(this, e))
+      throw new TypeError("CronPattern: Invalid part specified: " + e);
+    if (e === "dayOfWeek") {
+      if (t === 7 && (t = 0), t < 0 || t > 6)
+        throw new RangeError("CronPattern: Invalid value for dayOfWeek: " + t);
+      this.setNthWeekdayOfMonth(t, r);
+      return;
+    }
+    if (e === "second" || e === "minute") {
+      if (t < 0 || t >= 60)
+        throw new RangeError("CronPattern: Invalid value for " + e + ": " + t);
+    } else if (e === "hour") {
+      if (t < 0 || t >= 24)
+        throw new RangeError("CronPattern: Invalid value for " + e + ": " + t);
+    } else if (e === "day" || e === "nearestWeekdays") {
+      if (t < 0 || t >= 31)
+        throw new RangeError("CronPattern: Invalid value for " + e + ": " + t);
+    } else if (e === "month") {
+      if (t < 0 || t >= 12)
+        throw new RangeError("CronPattern: Invalid value for " + e + ": " + t);
+    } else if (e === "year" && (t < 1 || t >= 1e4))
+      throw new RangeError("CronPattern: Invalid value for " + e + ": " + t + " (supported range: 1-9999)");
+    this[e][t] = r;
+  }
+  validateNotNaN(e, t) {
+    if (isNaN(e))
+      throw new TypeError(t);
+  }
+  validateRange(e, t, r, n, i) {
+    if (e > t)
+      throw new TypeError("CronPattern: From value is larger than to value: '" + i + "'");
+    if (r !== undefined) {
+      if (r === 0)
+        throw new TypeError("CronPattern: Syntax error, illegal stepping: 0");
+      if (r > this[n].length)
+        throw new TypeError("CronPattern: Syntax error, steps cannot be greater than maximum value of part (" + this[n].length + ")");
+    }
+  }
+  handleRangeWithStepping(e, t, r, n) {
+    if (e.toUpperCase().includes("W"))
+      throw new TypeError("CronPattern: Syntax error, W is not allowed in ranges with stepping.");
+    let i = this.extractNth(e, t), a = i[0].match(/^(\d+)-(\d+)\/(\d+)$/);
+    if (a === null)
+      throw new TypeError("CronPattern: Syntax error, illegal range with stepping: '" + e + "'");
+    let [, o, h, l] = a, y = parseInt(o, 10) + r, u = parseInt(h, 10) + r, d = parseInt(l, 10);
+    this.validateNotNaN(y, "CronPattern: Syntax error, illegal lower range (NaN)"), this.validateNotNaN(u, "CronPattern: Syntax error, illegal upper range (NaN)"), this.validateNotNaN(d, "CronPattern: Syntax error, illegal stepping: (NaN)"), this.validateRange(y, u, d, t, e);
+    for (let c = y;c <= u; c += d)
+      this.setPart(t, c, i[1] || n);
+  }
+  extractNth(e, t) {
+    let r = e, n;
+    if (r.includes("#")) {
+      if (t !== "dayOfWeek")
+        throw new Error("CronPattern: nth (#) only allowed in day-of-week field");
+      n = r.split("#")[1], r = r.split("#")[0];
+    } else if (r.toUpperCase().endsWith("L")) {
+      if (t !== "dayOfWeek")
+        throw new Error("CronPattern: L modifier only allowed in day-of-week field (use L alone for day-of-month)");
+      n = "L", r = r.slice(0, -1);
+    }
+    return [r, n];
+  }
+  handleRange(e, t, r, n) {
+    if (e.toUpperCase().includes("W"))
+      throw new TypeError("CronPattern: Syntax error, W is not allowed in a range.");
+    let i = this.extractNth(e, t), a = i[0].split("-");
+    if (a.length !== 2)
+      throw new TypeError("CronPattern: Syntax error, illegal range: '" + e + "'");
+    let o = parseInt(a[0], 10) + r, h = parseInt(a[1], 10) + r;
+    this.validateNotNaN(o, "CronPattern: Syntax error, illegal lower range (NaN)"), this.validateNotNaN(h, "CronPattern: Syntax error, illegal upper range (NaN)"), this.validateRange(o, h, undefined, t, e);
+    for (let l = o;l <= h; l++)
+      this.setPart(t, l, i[1] || n);
+  }
+  handleStepping(e, t, r, n) {
+    if (e.toUpperCase().includes("W"))
+      throw new TypeError("CronPattern: Syntax error, W is not allowed in parts with stepping.");
+    let i = this.extractNth(e, t), a = i[0].split("/");
+    if (a.length !== 2)
+      throw new TypeError("CronPattern: Syntax error, illegal stepping: '" + e + "'");
+    if (this.sloppyRanges)
+      a[0] === "" && (a[0] = "*");
+    else {
+      if (a[0] === "")
+        throw new TypeError("CronPattern: Syntax error, stepping with missing prefix ('" + e + "') is not allowed. Use wildcard (*/step) or range (min-max/step) instead.");
+      if (a[0] !== "*")
+        throw new TypeError("CronPattern: Syntax error, stepping with numeric prefix ('" + e + "') is not allowed. Use wildcard (*/step) or range (min-max/step) instead.");
+    }
+    let o = 0;
+    a[0] !== "*" && (o = parseInt(a[0], 10) + r);
+    let h = parseInt(a[1], 10);
+    this.validateNotNaN(h, "CronPattern: Syntax error, illegal stepping: (NaN)"), this.validateRange(0, this[t].length - 1, h, t, e);
+    for (let l = o;l < this[t].length; l += h)
+      this.setPart(t, l, i[1] || n);
+  }
+  replaceAlphaDays(e) {
+    return e.replace(/-sun/gi, "-7").replace(/sun/gi, "0").replace(/mon/gi, "1").replace(/tue/gi, "2").replace(/wed/gi, "3").replace(/thu/gi, "4").replace(/fri/gi, "5").replace(/sat/gi, "6");
+  }
+  replaceAlphaDaysQuartz(e) {
+    return e.replace(/sun/gi, "1").replace(/mon/gi, "2").replace(/tue/gi, "3").replace(/wed/gi, "4").replace(/thu/gi, "5").replace(/fri/gi, "6").replace(/sat/gi, "7");
+  }
+  replaceAlphaMonths(e) {
+    return e.replace(/jan/gi, "1").replace(/feb/gi, "2").replace(/mar/gi, "3").replace(/apr/gi, "4").replace(/may/gi, "5").replace(/jun/gi, "6").replace(/jul/gi, "7").replace(/aug/gi, "8").replace(/sep/gi, "9").replace(/oct/gi, "10").replace(/nov/gi, "11").replace(/dec/gi, "12");
+  }
+  handleNicknames(e) {
+    let t = e.trim().toLowerCase();
+    if (t === "@yearly" || t === "@annually")
+      return "0 0 1 1 *";
+    if (t === "@monthly")
+      return "0 0 1 * *";
+    if (t === "@weekly")
+      return "0 0 * * 0";
+    if (t === "@daily" || t === "@midnight")
+      return "0 0 * * *";
+    if (t === "@hourly")
+      return "0 * * * *";
+    if (t === "@reboot")
+      throw new TypeError("CronPattern: @reboot is not supported in this environment. This is an event-based trigger that requires system startup detection.");
+    return e;
+  }
+  setNthWeekdayOfMonth(e, t) {
+    if (typeof t != "number" && t.toUpperCase() === "L")
+      this.dayOfWeek[e] = this.dayOfWeek[e] | 32;
+    else if (t === 63)
+      this.dayOfWeek[e] = 63;
+    else if (t < 6 && t > 0)
+      this.dayOfWeek[e] = this.dayOfWeek[e] | O[t - 1];
+    else
+      throw new TypeError(`CronPattern: nth weekday out of range, should be 1-5 or L. Value: ${t}, Type: ${typeof t}`);
+  }
+};
+var P = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+var f = [["month", "year", 0], ["day", "month", -1], ["hour", "day", 0], ["minute", "hour", 0], ["second", "minute", 0]];
+var m = class s {
+  tz;
+  ms;
+  second;
+  minute;
+  hour;
+  day;
+  month;
+  year;
+  constructor(e, t) {
+    if (this.tz = t, e && e instanceof Date)
+      if (!isNaN(e))
+        this.fromDate(e);
+      else
+        throw new TypeError("CronDate: Invalid date passed to CronDate constructor");
+    else if (e == null)
+      this.fromDate(new Date);
+    else if (e && typeof e == "string")
+      this.fromString(e);
+    else if (e instanceof s)
+      this.fromCronDate(e);
+    else
+      throw new TypeError("CronDate: Invalid type (" + typeof e + ") passed to CronDate constructor");
+  }
+  getLastDayOfMonth(e, t) {
+    return t !== 1 ? P[t] : new Date(Date.UTC(e, t + 1, 0)).getUTCDate();
+  }
+  getLastWeekday(e, t) {
+    let r = this.getLastDayOfMonth(e, t), i = new Date(Date.UTC(e, t, r)).getUTCDay();
+    return i === 0 ? r - 2 : i === 6 ? r - 1 : r;
+  }
+  getNearestWeekday(e, t, r) {
+    let n = this.getLastDayOfMonth(e, t);
+    if (r > n)
+      return -1;
+    let a = new Date(Date.UTC(e, t, r)).getUTCDay();
+    return a === 0 ? r === n ? r - 2 : r + 1 : a === 6 ? r === 1 ? r + 2 : r - 1 : r;
+  }
+  isNthWeekdayOfMonth(e, t, r, n) {
+    let a = new Date(Date.UTC(e, t, r)).getUTCDay(), o = 0;
+    for (let h = 1;h <= r; h++)
+      new Date(Date.UTC(e, t, h)).getUTCDay() === a && o++;
+    if (n & 63 && O[o - 1] & n)
+      return true;
+    if (n & 32) {
+      let h = this.getLastDayOfMonth(e, t);
+      for (let l = r + 1;l <= h; l++)
+        if (new Date(Date.UTC(e, t, l)).getUTCDay() === a)
+          return false;
+      return true;
+    }
+    return false;
+  }
+  fromDate(e) {
+    if (this.tz !== undefined)
+      if (typeof this.tz == "number")
+        this.ms = e.getUTCMilliseconds(), this.second = e.getUTCSeconds(), this.minute = e.getUTCMinutes() + this.tz, this.hour = e.getUTCHours(), this.day = e.getUTCDate(), this.month = e.getUTCMonth(), this.year = e.getUTCFullYear(), this.apply();
+      else
+        try {
+          let t = g(e, this.tz);
+          this.ms = e.getMilliseconds(), this.second = t.s, this.minute = t.i, this.hour = t.h, this.day = t.d, this.month = t.m - 1, this.year = t.y;
+        } catch (t) {
+          let r = t instanceof Error ? t.message : String(t);
+          throw new TypeError(`CronDate: Failed to convert date to timezone '${this.tz}'. This may happen with invalid timezone names or dates. Original error: ${r}`);
+        }
+    else
+      this.ms = e.getMilliseconds(), this.second = e.getSeconds(), this.minute = e.getMinutes(), this.hour = e.getHours(), this.day = e.getDate(), this.month = e.getMonth(), this.year = e.getFullYear();
+  }
+  fromCronDate(e) {
+    this.tz = e.tz, this.year = e.year, this.month = e.month, this.day = e.day, this.hour = e.hour, this.minute = e.minute, this.second = e.second, this.ms = e.ms;
+  }
+  apply() {
+    if (this.month > 11 || this.month < 0 || this.day > P[this.month] || this.day < 1 || this.hour > 59 || this.minute > 59 || this.second > 59 || this.hour < 0 || this.minute < 0 || this.second < 0) {
+      let e = new Date(Date.UTC(this.year, this.month, this.day, this.hour, this.minute, this.second, this.ms));
+      return this.ms = e.getUTCMilliseconds(), this.second = e.getUTCSeconds(), this.minute = e.getUTCMinutes(), this.hour = e.getUTCHours(), this.day = e.getUTCDate(), this.month = e.getUTCMonth(), this.year = e.getUTCFullYear(), true;
+    } else
+      return false;
+  }
+  fromString(e) {
+    if (typeof this.tz == "number") {
+      let t = v(e);
+      this.ms = t.getUTCMilliseconds(), this.second = t.getUTCSeconds(), this.minute = t.getUTCMinutes(), this.hour = t.getUTCHours(), this.day = t.getUTCDate(), this.month = t.getUTCMonth(), this.year = t.getUTCFullYear(), this.apply();
+    } else
+      return this.fromDate(v(e, this.tz));
+  }
+  findNext(e, t, r, n) {
+    return this._findMatch(e, t, r, n, 1);
+  }
+  _findMatch(e, t, r, n, i) {
+    let a = this[t], o;
+    r.lastDayOfMonth && (o = this.getLastDayOfMonth(this.year, this.month));
+    let h = !r.starDOW && t == "day" ? new Date(Date.UTC(this.year, this.month, 1, 0, 0, 0, 0)).getUTCDay() : undefined, l = this[t] + n, y = i === 1 ? (u) => u < r[t].length : (u) => u >= 0;
+    for (let u = l;y(u); u += i) {
+      let d = r[t][u];
+      if (t === "day" && !d) {
+        for (let c = 0;c < r.nearestWeekdays.length; c++)
+          if (r.nearestWeekdays[c]) {
+            let M = this.getNearestWeekday(this.year, this.month, c - n);
+            if (M === -1)
+              continue;
+            if (M === u - n) {
+              d = 1;
+              break;
+            }
+          }
+      }
+      if (t === "day" && r.lastWeekday) {
+        let c = this.getLastWeekday(this.year, this.month);
+        u - n === c && (d = 1);
+      }
+      if (t === "day" && r.lastDayOfMonth && u - n == o && (d = 1), t === "day" && !r.starDOW) {
+        let c = r.dayOfWeek[(h + (u - n - 1)) % 7];
+        if (c && c & 63)
+          c = this.isNthWeekdayOfMonth(this.year, this.month, u - n, c) ? 1 : 0;
+        else if (c)
+          throw new Error(`CronDate: Invalid value for dayOfWeek encountered. ${c}`);
+        r.useAndLogic ? d = d && c : !e.domAndDow && !r.starDOM ? d = d || c : d = d && c;
+      }
+      if (d)
+        return this[t] = u - n, a !== this[t] ? 2 : 1;
+    }
+    return 3;
+  }
+  recurse(e, t, r) {
+    if (r === 0 && !e.starYear) {
+      if (this.year >= 0 && this.year < e.year.length && e.year[this.year] === 0) {
+        let i = -1;
+        for (let a = this.year + 1;a < e.year.length && a < 1e4; a++)
+          if (e.year[a] === 1) {
+            i = a;
+            break;
+          }
+        if (i === -1)
+          return null;
+        this.year = i, this.month = 0, this.day = 1, this.hour = 0, this.minute = 0, this.second = 0, this.ms = 0;
+      }
+      if (this.year >= 1e4)
+        return null;
+    }
+    let n = this.findNext(t, f[r][0], e, f[r][2]);
+    if (n > 1) {
+      let i = r + 1;
+      for (;i < f.length; )
+        this[f[i][0]] = -f[i][2], i++;
+      if (n === 3) {
+        if (this[f[r][1]]++, this[f[r][0]] = -f[r][2], this.apply(), r === 0 && !e.starYear) {
+          for (;this.year >= 0 && this.year < e.year.length && e.year[this.year] === 0 && this.year < 1e4; )
+            this.year++;
+          if (this.year >= 1e4 || this.year >= e.year.length)
+            return null;
+        }
+        return this.recurse(e, t, 0);
+      } else if (this.apply())
+        return this.recurse(e, t, r - 1);
+    }
+    return r += 1, r >= f.length ? this : (e.starYear ? this.year >= 3000 : this.year >= 1e4) ? null : this.recurse(e, t, r);
+  }
+  increment(e, t, r) {
+    return this.second += t.interval !== undefined && t.interval > 1 && r ? t.interval : 1, this.ms = 0, this.apply(), this.recurse(e, t, 0);
+  }
+  decrement(e, t) {
+    return this.second -= t.interval !== undefined && t.interval > 1 ? t.interval : 1, this.ms = 0, this.apply(), this.recurseBackward(e, t, 0, 0);
+  }
+  recurseBackward(e, t, r, n = 0) {
+    if (n > 1e4)
+      return null;
+    if (r === 0 && !e.starYear) {
+      if (this.year >= 0 && this.year < e.year.length && e.year[this.year] === 0) {
+        let a = -1;
+        for (let o = this.year - 1;o >= 0; o--)
+          if (e.year[o] === 1) {
+            a = o;
+            break;
+          }
+        if (a === -1)
+          return null;
+        this.year = a, this.month = 11, this.day = 31, this.hour = 23, this.minute = 59, this.second = 59, this.ms = 0;
+      }
+      if (this.year < 0)
+        return null;
+    }
+    let i = this.findPrevious(t, f[r][0], e, f[r][2]);
+    if (i > 1) {
+      let a = r + 1;
+      for (;a < f.length; ) {
+        let o = f[a][0], h = f[a][2], l = this.getMaxPatternValue(o, e, h);
+        this[o] = l, a++;
+      }
+      if (i === 3) {
+        if (this[f[r][1]]--, r === 0) {
+          let y = this.getLastDayOfMonth(this.year, this.month);
+          this.day > y && (this.day = y);
+        }
+        if (r === 1)
+          if (this.day <= 0)
+            this.day = 1;
+          else {
+            let y = this.year, u = this.month;
+            for (;u < 0; )
+              u += 12, y--;
+            for (;u > 11; )
+              u -= 12, y++;
+            let d = u !== 1 ? P[u] : new Date(Date.UTC(y, u + 1, 0)).getUTCDate();
+            this.day > d && (this.day = d);
+          }
+        this.apply();
+        let o = f[r][0], h = f[r][2], l = this.getMaxPatternValue(o, e, h);
+        if (o === "day") {
+          let y = this.getLastDayOfMonth(this.year, this.month);
+          this[o] = Math.min(l, y);
+        } else
+          this[o] = l;
+        if (this.apply(), r === 0) {
+          let y = f[1][2], u = this.getMaxPatternValue("day", e, y), d = this.getLastDayOfMonth(this.year, this.month), c = Math.min(u, d);
+          c !== this.day && (this.day = c, this.hour = this.getMaxPatternValue("hour", e, f[2][2]), this.minute = this.getMaxPatternValue("minute", e, f[3][2]), this.second = this.getMaxPatternValue("second", e, f[4][2]));
+        }
+        if (r === 0 && !e.starYear) {
+          for (;this.year >= 0 && this.year < e.year.length && e.year[this.year] === 0; )
+            this.year--;
+          if (this.year < 0)
+            return null;
+        }
+        return this.recurseBackward(e, t, 0, n + 1);
+      } else if (this.apply())
+        return this.recurseBackward(e, t, r - 1, n + 1);
+    }
+    return r += 1, r >= f.length ? this : this.year < 0 ? null : this.recurseBackward(e, t, r, n + 1);
+  }
+  getMaxPatternValue(e, t, r) {
+    if (e === "day" && t.lastDayOfMonth)
+      return this.getLastDayOfMonth(this.year, this.month);
+    if (e === "day" && !t.starDOW)
+      return this.getLastDayOfMonth(this.year, this.month);
+    for (let n = t[e].length - 1;n >= 0; n--)
+      if (t[e][n])
+        return n - r;
+    return t[e].length - 1 - r;
+  }
+  findPrevious(e, t, r, n) {
+    return this._findMatch(e, t, r, n, -1);
+  }
+  getDate(e) {
+    return e || this.tz === undefined ? new Date(this.year, this.month, this.day, this.hour, this.minute, this.second, this.ms) : typeof this.tz == "number" ? new Date(Date.UTC(this.year, this.month, this.day, this.hour, this.minute - this.tz, this.second, this.ms)) : k(b(this.year, this.month + 1, this.day, this.hour, this.minute, this.second, this.tz), false);
+  }
+  getTime() {
+    return this.getDate(false).getTime();
+  }
+  match(e, t) {
+    if (!e.starYear && (this.year < 0 || this.year >= e.year.length || e.year[this.year] === 0))
+      return false;
+    for (let r = 0;r < f.length; r++) {
+      let n = f[r][0], i = f[r][2], a = this[n];
+      if (a + i < 0 || a + i >= e[n].length)
+        return false;
+      let o = e[n][a + i];
+      if (n === "day") {
+        if (!o) {
+          for (let h = 0;h < e.nearestWeekdays.length; h++)
+            if (e.nearestWeekdays[h]) {
+              let l = this.getNearestWeekday(this.year, this.month, h - i);
+              if (l !== -1 && l === a) {
+                o = 1;
+                break;
+              }
+            }
+        }
+        if (e.lastWeekday) {
+          let h = this.getLastWeekday(this.year, this.month);
+          a === h && (o = 1);
+        }
+        if (e.lastDayOfMonth) {
+          let h = this.getLastDayOfMonth(this.year, this.month);
+          a === h && (o = 1);
+        }
+        if (!e.starDOW) {
+          let h = new Date(Date.UTC(this.year, this.month, 1, 0, 0, 0, 0)).getUTCDay(), l = e.dayOfWeek[(h + (a - 1)) % 7];
+          l && l & 63 && (l = this.isNthWeekdayOfMonth(this.year, this.month, a, l) ? 1 : 0), e.useAndLogic ? o = o && l : !t.domAndDow && !e.starDOM ? o = o || l : o = o && l;
+        }
+      }
+      if (!o)
+        return false;
+    }
+    return true;
+  }
+};
+function R(s2) {
+  if (s2 === undefined && (s2 = {}), delete s2.name, s2.legacyMode !== undefined && s2.domAndDow === undefined ? s2.domAndDow = !s2.legacyMode : s2.domAndDow === undefined && (s2.domAndDow = false), s2.legacyMode = !s2.domAndDow, s2.paused = s2.paused === undefined ? false : s2.paused, s2.maxRuns = s2.maxRuns === undefined ? 1 / 0 : s2.maxRuns, s2.catch = s2.catch === undefined ? false : s2.catch, s2.interval = s2.interval === undefined ? 0 : parseInt(s2.interval.toString(), 10), s2.utcOffset = s2.utcOffset === undefined ? undefined : parseInt(s2.utcOffset.toString(), 10), s2.dayOffset = s2.dayOffset === undefined ? 0 : parseInt(s2.dayOffset.toString(), 10), s2.unref = s2.unref === undefined ? false : s2.unref, s2.mode = s2.mode === undefined ? "auto" : s2.mode, s2.alternativeWeekdays = s2.alternativeWeekdays === undefined ? false : s2.alternativeWeekdays, s2.sloppyRanges = s2.sloppyRanges === undefined ? false : s2.sloppyRanges, !["auto", "5-part", "6-part", "7-part", "5-or-6-parts", "6-or-7-parts"].includes(s2.mode))
+    throw new Error("CronOptions: mode must be one of 'auto', '5-part', '6-part', '7-part', '5-or-6-parts', or '6-or-7-parts'.");
+  if (s2.startAt && (s2.startAt = new m(s2.startAt, s2.timezone)), s2.stopAt && (s2.stopAt = new m(s2.stopAt, s2.timezone)), s2.interval !== null) {
+    if (isNaN(s2.interval))
+      throw new Error("CronOptions: Supplied value for interval is not a number");
+    if (s2.interval < 0)
+      throw new Error("CronOptions: Supplied value for interval can not be negative");
+  }
+  if (s2.utcOffset !== undefined) {
+    if (isNaN(s2.utcOffset))
+      throw new Error("CronOptions: Invalid value passed for utcOffset, should be number representing minutes offset from UTC.");
+    if (s2.utcOffset < -870 || s2.utcOffset > 870)
+      throw new Error("CronOptions: utcOffset out of bounds.");
+    if (s2.utcOffset !== undefined && s2.timezone)
+      throw new Error("CronOptions: Combining 'utcOffset' with 'timezone' is not allowed.");
+  }
+  if (s2.unref !== true && s2.unref !== false)
+    throw new Error("CronOptions: Unref should be either true, false or undefined(false).");
+  if (s2.dayOffset !== undefined && s2.dayOffset !== 0 && isNaN(s2.dayOffset))
+    throw new Error("CronOptions: Invalid value passed for dayOffset, should be a number representing days to offset.");
+  return s2;
+}
+function p(s2) {
+  return Object.prototype.toString.call(s2) === "[object Function]" || typeof s2 == "function" || s2 instanceof Function;
+}
+function _(s2) {
+  return p(s2);
+}
+function x(s2) {
+  typeof Deno < "u" && typeof Deno.unrefTimer < "u" ? Deno.unrefTimer(s2) : s2 && typeof s2.unref < "u" && s2.unref();
+}
+var W = 30 * 1000;
+var w = [];
+var E = class {
+  name;
+  options;
+  _states;
+  fn;
+  getTz() {
+    return this.options.timezone || this.options.utcOffset;
+  }
+  applyDayOffset(e) {
+    if (this.options.dayOffset !== undefined && this.options.dayOffset !== 0) {
+      let t = this.options.dayOffset * 24 * 60 * 60 * 1000;
+      return new Date(e.getTime() + t);
+    }
+    return e;
+  }
+  constructor(e, t, r) {
+    let n, i;
+    if (p(t))
+      i = t;
+    else if (typeof t == "object")
+      n = t;
+    else if (t !== undefined)
+      throw new Error("Cron: Invalid argument passed for optionsIn. Should be one of function, or object (options).");
+    if (p(r))
+      i = r;
+    else if (typeof r == "object")
+      n = r;
+    else if (r !== undefined)
+      throw new Error("Cron: Invalid argument passed for funcIn. Should be one of function, or object (options).");
+    if (this.name = n?.name, this.options = R(n), this._states = { kill: false, blocking: false, previousRun: undefined, currentRun: undefined, once: undefined, currentTimeout: undefined, maxRuns: n ? n.maxRuns : undefined, paused: n ? n.paused : false, pattern: new C("* * * * *", undefined, { mode: "auto" }) }, e && (e instanceof Date || typeof e == "string" && e.indexOf(":") > 0) ? this._states.once = new m(e, this.getTz()) : this._states.pattern = new C(e, this.options.timezone, { mode: this.options.mode, alternativeWeekdays: this.options.alternativeWeekdays, sloppyRanges: this.options.sloppyRanges }), this.name) {
+      if (w.find((o) => o.name === this.name))
+        throw new Error("Cron: Tried to initialize new named job '" + this.name + "', but name already taken.");
+      w.push(this);
+    }
+    return i !== undefined && _(i) && (this.fn = i, this.schedule()), this;
+  }
+  nextRun(e) {
+    let t = this._next(e);
+    return t ? this.applyDayOffset(t.getDate(false)) : null;
+  }
+  nextRuns(e, t) {
+    this._states.maxRuns !== undefined && e > this._states.maxRuns && (e = this._states.maxRuns);
+    let r = t || this._states.currentRun || undefined;
+    return this._enumerateRuns(e, r, "next");
+  }
+  previousRuns(e, t) {
+    return this._enumerateRuns(e, t || undefined, "previous");
+  }
+  _enumerateRuns(e, t, r) {
+    let n = [], i = t ? new m(t, this.getTz()) : null, a = r === "next" ? this._next : this._previous;
+    for (;e--; ) {
+      let o = a.call(this, i);
+      if (!o)
+        break;
+      let h = o.getDate(false);
+      n.push(this.applyDayOffset(h)), i = o;
+    }
+    return n;
+  }
+  match(e) {
+    if (this._states.once) {
+      let r = new m(e, this.getTz());
+      r.ms = 0;
+      let n = new m(this._states.once, this.getTz());
+      return n.ms = 0, r.getTime() === n.getTime();
+    }
+    let t = new m(e, this.getTz());
+    return t.ms = 0, t.match(this._states.pattern, this.options);
+  }
+  getPattern() {
+    if (!this._states.once)
+      return this._states.pattern ? this._states.pattern.pattern : undefined;
+  }
+  getOnce() {
+    return this._states.once ? this._states.once.getDate() : null;
+  }
+  isRunning() {
+    let e = this.nextRun(this._states.currentRun), t = !this._states.paused, r = this.fn !== undefined, n = !this._states.kill;
+    return t && r && n && e !== null;
+  }
+  isStopped() {
+    return this._states.kill;
+  }
+  isBusy() {
+    return this._states.blocking;
+  }
+  currentRun() {
+    return this._states.currentRun ? this._states.currentRun.getDate() : null;
+  }
+  previousRun() {
+    return this._states.previousRun ? this._states.previousRun.getDate() : null;
+  }
+  msToNext(e) {
+    let t = this._next(e);
+    return t ? e instanceof m || e instanceof Date ? t.getTime() - e.getTime() : t.getTime() - new m(e).getTime() : null;
+  }
+  stop() {
+    this._states.kill = true, this._states.currentTimeout && clearTimeout(this._states.currentTimeout);
+    let e = w.indexOf(this);
+    e >= 0 && w.splice(e, 1);
+  }
+  pause() {
+    return this._states.paused = true, !this._states.kill;
+  }
+  resume() {
+    return this._states.paused = false, !this._states.kill;
+  }
+  schedule(e) {
+    if (e && this.fn)
+      throw new Error("Cron: It is not allowed to schedule two functions using the same Croner instance.");
+    e && (this.fn = e);
+    let t = this.msToNext(), r = this.nextRun(this._states.currentRun);
+    return t == null || isNaN(t) || r === null ? this : (t > W && (t = W), this._states.currentTimeout = setTimeout(() => this._checkTrigger(r), t), this._states.currentTimeout && this.options.unref && x(this._states.currentTimeout), this);
+  }
+  async _trigger(e) {
+    this._states.blocking = true, this._states.currentRun = new m(undefined, this.getTz());
+    try {
+      if (this.options.catch)
+        try {
+          this.fn !== undefined && await this.fn(this, this.options.context);
+        } catch (t) {
+          if (p(this.options.catch))
+            try {
+              this.options.catch(t, this);
+            } catch {}
+        }
+      else
+        this.fn !== undefined && await this.fn(this, this.options.context);
+    } finally {
+      this._states.previousRun = new m(e, this.getTz()), this._states.blocking = false;
+    }
+  }
+  async trigger() {
+    await this._trigger();
+  }
+  runsLeft() {
+    return this._states.maxRuns;
+  }
+  _checkTrigger(e) {
+    let t = new Date, r = !this._states.paused && t.getTime() >= e.getTime(), n = this._states.blocking && this.options.protect;
+    r && !n ? (this._states.maxRuns !== undefined && this._states.maxRuns--, this._trigger()) : r && n && p(this.options.protect) && setTimeout(() => this.options.protect(this), 0), this.schedule();
+  }
+  _next(e) {
+    let t = !!(e || this._states.currentRun), r = false;
+    !e && this.options.startAt && this.options.interval && ([e, t] = this._calculatePreviousRun(e, t), r = !e), e = new m(e, this.getTz()), this.options.startAt && e && e.getTime() < this.options.startAt.getTime() && (e = this.options.startAt);
+    let n = this._states.once || new m(e, this.getTz());
+    return !r && n !== this._states.once && (n = n.increment(this._states.pattern, this.options, t)), this._states.once && this._states.once.getTime() <= e.getTime() || n === null || this._states.maxRuns !== undefined && this._states.maxRuns <= 0 || this._states.kill || this.options.stopAt && n.getTime() >= this.options.stopAt.getTime() ? null : n;
+  }
+  _previous(e) {
+    let t = new m(e, this.getTz());
+    this.options.stopAt && t.getTime() > this.options.stopAt.getTime() && (t = this.options.stopAt);
+    let r = new m(t, this.getTz());
+    return this._states.once ? this._states.once.getTime() < t.getTime() ? this._states.once : null : (r = r.decrement(this._states.pattern, this.options), r === null || this.options.startAt && r.getTime() < this.options.startAt.getTime() ? null : r);
+  }
+  _calculatePreviousRun(e, t) {
+    let r = new m(undefined, this.getTz()), n = e;
+    if (this.options.startAt.getTime() <= r.getTime()) {
+      n = this.options.startAt;
+      let i = n.getTime() + this.options.interval * 1000;
+      for (;i <= r.getTime(); )
+        n = new m(n, this.getTz()).increment(this._states.pattern, this.options, true), i = n.getTime() + this.options.interval * 1000;
+      t = true;
+    }
+    return n === null && (n = undefined), [n, t];
+  }
+};
 
 // src/types.ts
 var DEFAULT_SCHEDULER_CONFIG = {
@@ -134,88 +908,9 @@ var logger = createPluginLogger("cron");
 function generateId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
-    const v = c === "x" ? r : r & 3 | 8;
-    return v.toString(16);
+    const v2 = c === "x" ? r : r & 3 | 8;
+    return v2.toString(16);
   });
-}
-function parseCronField(field, min, max) {
-  const values = new Set;
-  const segments = field.split(",");
-  for (const segment of segments) {
-    const trimmed = segment.trim();
-    if (trimmed.includes("/")) {
-      const [rangePart, stepStr] = trimmed.split("/");
-      const step = parseInt(stepStr, 10);
-      if (isNaN(step) || step <= 0) {
-        throw new Error(`无效的步进值: "${trimmed}"`);
-      }
-      let start = min;
-      let end = max;
-      if (rangePart !== "*") {
-        if (rangePart.includes("-")) {
-          const [rs, re] = rangePart.split("-");
-          start = parseInt(rs, 10);
-          end = parseInt(re, 10);
-        } else {
-          start = parseInt(rangePart, 10);
-        }
-      }
-      for (let i = start;i <= end; i += step) {
-        values.add(i);
-      }
-    } else if (trimmed.includes("-")) {
-      const [rs, re] = trimmed.split("-");
-      const start = parseInt(rs, 10);
-      const end = parseInt(re, 10);
-      if (isNaN(start) || isNaN(end)) {
-        throw new Error(`无效的范围: "${trimmed}"`);
-      }
-      for (let i = start;i <= end; i++) {
-        values.add(i);
-      }
-    } else if (trimmed === "*") {
-      for (let i = min;i <= max; i++) {
-        values.add(i);
-      }
-    } else {
-      const num = parseInt(trimmed, 10);
-      if (isNaN(num)) {
-        throw new Error(`无效的 cron 字段值: "${trimmed}"`);
-      }
-      values.add(num);
-    }
-  }
-  return { values };
-}
-function parseCronExpression(expression) {
-  const fields = expression.trim().split(/\s+/);
-  if (fields.length !== 5) {
-    throw new Error(`Cron 表达式必须包含 5 个字段（分 时 日 月 周），实际收到 ${fields.length} 个字段: "${expression}"`);
-  }
-  return {
-    minute: parseCronField(fields[0], 0, 59),
-    hour: parseCronField(fields[1], 0, 23),
-    dayOfMonth: parseCronField(fields[2], 1, 31),
-    month: parseCronField(fields[3], 1, 12),
-    dayOfWeek: parseCronField(fields[4], 0, 6)
-  };
-}
-function matchesCron(parsed, date) {
-  return parsed.minute.values.has(date.getMinutes()) && parsed.hour.values.has(date.getHours()) && parsed.dayOfMonth.values.has(date.getDate()) && parsed.month.values.has(date.getMonth() + 1) && parsed.dayOfWeek.values.has(date.getDay());
-}
-function getNextCronTime(expression, after) {
-  const parsed = parseCronExpression(expression);
-  const cursor = after ? new Date(after.getTime()) : new Date;
-  cursor.setSeconds(0, 0);
-  cursor.setMinutes(cursor.getMinutes() + 1);
-  const maxIterations = 527040;
-  for (let i = 0;i < maxIterations; i++) {
-    if (matchesCron(parsed, cursor)) {
-      return cursor;
-    }
-    cursor.setMinutes(cursor.getMinutes() + 1);
-  }
-  throw new Error(`在 366 天内未找到匹配的 cron 触发时间: "${expression}"`);
 }
 var CRON_SYSTEM_PROMPT = `你是一个自动化定时任务执行器。
 
@@ -240,7 +935,6 @@ function normalizeRunStatus(status) {
 
 class CronScheduler {
   jobs = new Map;
-  timers = new Map;
   lastActivityMap = new Map;
   config;
   filePath;
@@ -249,17 +943,24 @@ class CronScheduler {
   fileWatcherActive = false;
   lastFileModTime = 0;
   running = false;
-  agentTaskRegistry = null;
-  eventBus = null;
+  taskBoard = null;
+  agentName = "__global__";
   backgroundConfig;
   runsDir;
-  activeBackgroundCount = 0;
-  executingJobIds = new Set;
-  constructor(api, config, agentTaskRegistry, eventBus, backgroundConfig) {
+  executorJobMap = new WeakMap;
+  handleTaskBoardRegistered = (task) => {
+    if (task.type !== "cron" || !task.executor)
+      return;
+    const job = this.executorJobMap.get(task.executor);
+    if (!job)
+      return;
+    job.currentTaskId = task.taskId;
+  };
+  constructor(api, config, taskBoard, agentName, backgroundConfig) {
     this.api = api;
     this.config = config ? { ...config } : { ...DEFAULT_SCHEDULER_CONFIG };
-    this.agentTaskRegistry = agentTaskRegistry ?? null;
-    this.eventBus = eventBus ?? null;
+    this.taskBoard = taskBoard ?? null;
+    this.agentName = agentName ?? "__global__";
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
     const dataDir = api.dataDir ?? path.join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".iris");
     this.filePath = path.join(dataDir, "cron-jobs.json");
@@ -271,9 +972,10 @@ class CronScheduler {
     this.running = true;
     this.loadFromFile();
     this.reconcileJobsOnStartup();
+    this.taskBoard?.on?.("registered", this.handleTaskBoardRegistered);
     for (const job of this.jobs.values()) {
       if (job.enabled) {
-        this.scheduleNext(job);
+        this.registerJobToTaskBoard(job);
       }
     }
     this.startFileWatcher();
@@ -281,10 +983,13 @@ class CronScheduler {
   }
   stop() {
     this.running = false;
-    for (const [, timer] of this.timers) {
-      clearTimeout(timer);
+    for (const job of this.jobs.values()) {
+      if (job.currentTaskId) {
+        this.taskBoard?.kill(job.currentTaskId);
+        job.currentTaskId = undefined;
+      }
     }
-    this.timers.clear();
+    this.taskBoard?.off?.("registered", this.handleTaskBoardRegistered);
     this.stopFileWatcher();
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -312,7 +1017,7 @@ class CronScheduler {
     };
     this.jobs.set(job.id, job);
     if (job.enabled) {
-      this.scheduleNext(job);
+      this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
     logger.info(`任务已创建: ${job.name} (${job.id})`);
@@ -335,9 +1040,12 @@ class CronScheduler {
       job.silent = params.silent;
     if (params.urgent !== undefined)
       job.urgent = params.urgent;
-    this.clearTimer(id);
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+      job.currentTaskId = undefined;
+    }
     if (job.enabled) {
-      this.scheduleNext(job);
+      this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
     logger.info(`任务已更新: ${job.name} (${id})`);
@@ -347,7 +1055,9 @@ class CronScheduler {
     const job = this.jobs.get(id);
     if (!job)
       return false;
-    this.clearTimer(id);
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+    }
     this.jobs.delete(id);
     this.debouncePersist();
     logger.info(`任务已删除: ${job.name} (${id})`);
@@ -362,7 +1072,10 @@ class CronScheduler {
       return null;
     }
     job.enabled = true;
-    this.scheduleNext(job);
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+    }
+    this.registerJobToTaskBoard(job);
     this.debouncePersist();
     logger.info(`任务已启用: ${job.name} (${id})`);
     return job;
@@ -372,7 +1085,10 @@ class CronScheduler {
     if (!job)
       return null;
     job.enabled = false;
-    this.clearTimer(id);
+    if (job.currentTaskId) {
+      this.taskBoard?.kill(job.currentTaskId);
+      job.currentTaskId = undefined;
+    }
     this.debouncePersist();
     logger.info(`任务已禁用: ${job.name} (${id})`);
     return job;
@@ -444,56 +1160,71 @@ class CronScheduler {
       this.debouncePersist();
     }
   }
-  scheduleNext(job) {
-    this.clearTimer(job.id);
-    const jobId = job.id;
-    if (!job.enabled || !this.running)
+  registerJobToTaskBoard(job) {
+    if (!this.taskBoard || !job.enabled || !this.running)
       return;
-    let delayMs;
+    const schedule = this.buildScheduleConfig(job);
+    if (!schedule) {
+      logger.warn(`任务未注册到 TaskBoard（无有效下次执行时间）: ${job.name} (${job.id})`);
+      return;
+    }
+    const executor = async (taskId2, signal) => {
+      return this.executeCronJob(job, taskId2, signal);
+    };
+    this.executorJobMap.set(executor, job);
+    const nextTimeResolver = job.schedule.type === "cron" ? (source) => {
+      if (source.kind !== "cron")
+        return null;
+      const next = new E(source.expression).nextRun();
+      return next?.getTime() ?? null;
+    } : undefined;
+    const taskId = createCronTaskId();
+    const targetSessionId = job.delivery.sessionId ?? job.sessionId;
+    this.taskBoard.register({
+      taskId,
+      sourceAgent: this.agentName,
+      sourceSessionId: targetSessionId,
+      targetAgent: this.agentName,
+      type: "cron",
+      description: `定时任务: ${job.name}`,
+      silent: job.silent,
+      schedule,
+      executor,
+      nextTimeResolver
+    });
+    job.currentTaskId = taskId;
+    this.debouncePersist();
+  }
+  buildScheduleConfig(job) {
     switch (job.schedule.type) {
       case "cron": {
-        try {
-          const nextTime = getNextCronTime(job.schedule.expression);
-          delayMs = nextTime.getTime() - Date.now();
-        } catch (err) {
-          logger.error(`计算 cron 下次触发时间失败 (${job.name}): ${err}`);
-          return;
-        }
-        break;
+        const next = new E(job.schedule.expression).nextRun();
+        if (!next)
+          return null;
+        return {
+          type: "recurring",
+          nextRunAt: next.getTime(),
+          source: { kind: "cron", expression: job.schedule.expression }
+        };
       }
-      case "interval": {
-        delayMs = job.schedule.ms;
-        break;
-      }
+      case "interval":
+        return {
+          type: "recurring",
+          nextRunAt: Date.now() + job.schedule.ms,
+          source: { kind: "interval", intervalMs: job.schedule.ms }
+        };
       case "once": {
-        delayMs = job.schedule.at - Date.now();
-        if (delayMs <= 0) {
-          logger.debug(`一次性任务已过期，跳过调度: ${job.name} (${job.id})`);
-          return;
-        }
-        break;
+        const delayMs = job.schedule.at - Date.now();
+        if (delayMs <= 0)
+          return null;
+        return { type: "once", runAt: job.schedule.at };
       }
     }
-    const timer = setTimeout(() => {
-      this.timers.delete(jobId);
-      const currentJob = this.jobs.get(jobId);
-      if (!currentJob)
-        return;
-      this.executeJob(currentJob);
-    }, delayMs);
-    if (timer.unref) {
-      timer.unref();
-    }
-    this.timers.set(job.id, timer);
   }
-  async executeJob(job) {
+  async executeCronJob(job, taskId, signal) {
     const currentJob = this.jobs.get(job.id) ?? job;
-    if (this.executingJobIds.has(currentJob.id)) {
-      logger.info(`任务正在执行中，跳过本次触发: ${currentJob.name} (${currentJob.id})`);
-      return;
-    }
-    if (currentJob.lastRunStatus === "running") {
-      logger.info(`任务状态仍为 running，跳过本次触发: ${currentJob.name} (${currentJob.id})`);
+    if (!currentJob.enabled) {
+      logger.info(`任务已禁用，跳过执行: ${currentJob.name} (${currentJob.id})`);
       return;
     }
     const decision = shouldSkip(currentJob, this.config, this.lastActivityMap);
@@ -503,86 +1234,39 @@ class CronScheduler {
       if (currentJob.schedule.type === "once") {
         currentJob.enabled = false;
       }
+      currentJob.currentTaskId = undefined;
       logger.info(`任务被跳过: ${currentJob.name} — ${decision.reason}`);
       this.debouncePersist();
-      if (currentJob.schedule.type !== "once") {
-        this.scheduleNext(currentJob);
-      }
       return;
     }
-    if (currentJob.schedule.type !== "once") {
-      this.scheduleNext(currentJob);
-    }
-    if (this.activeBackgroundCount >= this.backgroundConfig.maxConcurrent) {
+    const cronRunning = this.taskBoard ? this.taskBoard.getRunningByTargetAgent(this.agentName).filter((task) => task.type === "cron" && task.taskId !== taskId) : [];
+    if (cronRunning.length >= this.backgroundConfig.maxConcurrent) {
       currentJob.lastRunAt = Date.now();
       currentJob.lastRunStatus = "skipped";
       currentJob.lastRunError = `并发后台任务数已达上限 (${this.backgroundConfig.maxConcurrent})`;
       if (currentJob.schedule.type === "once") {
         currentJob.enabled = false;
       }
+      currentJob.currentTaskId = undefined;
       logger.warn(`任务被跳过（并发上限）: ${currentJob.name}`);
       this.debouncePersist();
       return;
     }
-    if (!this.agentTaskRegistry) {
-      this.executeJobLegacy(currentJob);
-      return;
-    }
-    const taskId = createCronTaskId();
-    const virtualSessionId = `cron:${currentJob.id}`;
-    const description = `定时任务: ${currentJob.name}`;
-    const task = this.agentTaskRegistry.register(taskId, virtualSessionId, description);
     currentJob.lastRunAt = Date.now();
     currentJob.lastRunStatus = "running";
+    currentJob.lastRunError = undefined;
     if (currentJob.schedule.type === "once") {
       currentJob.enabled = false;
     }
+    currentJob.currentTaskId = taskId;
     this.debouncePersist();
-    this.executingJobIds.add(currentJob.id);
-    this.activeBackgroundCount++;
-    this.runCronJobInBackground(currentJob, taskId, task.abortController?.signal).finally(() => {
-      this.activeBackgroundCount--;
-      this.executingJobIds.delete(currentJob.id);
-      if (currentJob.schedule.type !== "once" && currentJob.enabled && !this.timers.has(currentJob.id) && this.running) {
-        this.scheduleNext(currentJob);
-      }
-    });
-    logger.info(`后台任务已启动: ${currentJob.name} (taskId=${taskId})`);
-  }
-  executeJobLegacy(job) {
-    try {
-      const targetSessionId = job.delivery.sessionId ?? job.sessionId;
-      if (job.schedule.type === "once") {
-        job.enabled = false;
-      }
-      let instruction = job.instruction;
-      if (job.silent) {
-        instruction = `如果没有值得报告的内容，不要发送任何消息。
-` + instruction;
-      }
-      const xml = `<task-notification task-id="${job.id}" task-name="${job.name}">${instruction}</task-notification>`;
-      const backend = this.api.backend;
-      if (typeof backend.enqueueAgentNotification === "function") {
-        backend.enqueueAgentNotification(targetSessionId, xml);
-        job.lastRunAt = Date.now();
-        job.lastRunStatus = "completed";
-        logger.info(`任务已投递（旧方式）: ${job.name} → 会话 ${targetSessionId}`);
-      } else {
-        throw new Error("backend.enqueueAgentNotification 方法不可用");
-      }
-    } catch (err) {
-      job.lastRunAt = Date.now();
-      job.lastRunStatus = "error";
-      job.lastRunError = err instanceof Error ? err.message : String(err);
-      logger.error(`任务执行失败: ${job.name} — ${err}`);
-    }
-    this.debouncePersist();
+    await this.runCronJobInBackground(currentJob, taskId, signal);
   }
   async runCronJobInBackground(job, taskId, signal) {
     const startTime = Date.now();
-    const registry = this.agentTaskRegistry;
+    const board = this.taskBoard;
     const timeoutHandle = setTimeout(() => {
-      registry.kill(taskId);
+      board.kill(taskId);
       logger.warn(`后台任务超时 (${this.backgroundConfig.timeoutMs}ms): ${job.name}`);
     }, this.backgroundConfig.timeoutMs);
     if (timeoutHandle.unref)
@@ -590,10 +1274,7 @@ class CronScheduler {
     try {
       const excludedTools = ["sub_agent", "history_search", "manage_scheduled_tasks"];
       const cronTools = this.api.tools.createFiltered?.(excludedTools) ?? this.api.tools;
-      let systemPrompt = CRON_SYSTEM_PROMPT;
-      if (job.silent) {
-        systemPrompt += "\n- 如果没有值得报告的内容，请回复 `[no-report]`。";
-      }
+      const systemPrompt = CRON_SYSTEM_PROMPT;
       if (typeof this.api.createToolLoop !== "function") {
         throw new Error("IrisAPI.createToolLoop 不可用，无法执行后台任务");
       }
@@ -608,7 +1289,7 @@ class CronScheduler {
           const parts = [];
           let usageMetadata;
           for await (const chunk of router.chatStream(request, modelName, sig)) {
-            registry.emitChunkHeartbeat(taskId);
+            board.emitChunkHeartbeat(taskId);
             if (chunk.partsDelta && chunk.partsDelta.length > 0) {
               for (const part of chunk.partsDelta) {
                 parts.push(part);
@@ -625,7 +1306,7 @@ class CronScheduler {
               usageMetadata = chunk.usageMetadata;
               const tokens = usageMetadata.totalTokenCount ?? usageMetadata.candidatesTokenCount ?? 0;
               if (tokens > 0) {
-                registry.updateTokens(taskId, tokens);
+                board.updateTokens(taskId, tokens);
               }
             }
           }
@@ -643,10 +1324,7 @@ class CronScheduler {
         return response.content;
       };
       const history = [];
-      let userInstruction = job.instruction;
-      if (job.silent) {
-        userInstruction = "如果没有值得报告的内容，请回复 `[no-report]`。\n" + userInstruction;
-      }
+      const userInstruction = job.instruction;
       history.push({ role: "user", parts: [{ text: userInstruction }] });
       const result = await toolLoop.run(history, callLLM, { signal });
       const endTime = Date.now();
@@ -654,7 +1332,7 @@ class CronScheduler {
       const finalText = result.text ?? "";
       const loopError = result.error;
       if (result.aborted) {
-        registry.kill(taskId);
+        board.kill(taskId);
         job.lastRunStatus = "error";
         job.lastRunError = "后台任务被中止";
         this.saveRunRecord({
@@ -667,10 +1345,9 @@ class CronScheduler {
           durationMs,
           status: "killed"
         });
-        this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: "killed", durationMs });
         logger.info(`后台任务被中止: ${job.name} (taskId=${taskId})`);
       } else if (loopError) {
-        registry.fail(taskId, loopError);
+        board.fail(taskId, loopError);
         job.lastRunStatus = "error";
         job.lastRunError = loopError;
         this.saveRunRecord({
@@ -684,11 +1361,9 @@ class CronScheduler {
           status: "failed",
           error: loopError
         });
-        this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: "failed", error: loopError, durationMs });
         logger.error(`后台任务失败: ${job.name} (taskId=${taskId}), error="${loopError}"`);
       } else {
-        const isSilentNoReport = job.silent && finalText.includes("[no-report]");
-        registry.complete(taskId, finalText);
+        board.complete(taskId, finalText);
         job.lastRunStatus = "completed";
         job.lastRunError = undefined;
         this.saveRunRecord({
@@ -702,16 +1377,13 @@ class CronScheduler {
           status: "completed",
           resultText: finalText
         });
-        if (!isSilentNoReport) {
-          this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: "completed", result: finalText, durationMs });
-        }
-        logger.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms, silent_skip=${isSilentNoReport}`);
+        logger.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms`);
       }
     } catch (err) {
       const endTime = Date.now();
       const durationMs = endTime - startTime;
       const errorMsg = err instanceof Error ? err.message : String(err);
-      registry.fail(taskId, errorMsg);
+      board.fail(taskId, errorMsg);
       job.lastRunStatus = "error";
       job.lastRunError = errorMsg;
       this.saveRunRecord({
@@ -725,25 +1397,12 @@ class CronScheduler {
         status: "failed",
         error: errorMsg
       });
-      this.fireCronResult({ jobId: job.id, taskId, jobName: job.name, status: "failed", error: errorMsg, durationMs });
       logger.error(`后台任务异常: ${job.name} (taskId=${taskId}), error="${errorMsg}"`);
     } finally {
+      job.currentTaskId = undefined;
       clearTimeout(timeoutHandle);
       this.debouncePersist();
       this.cleanupOldRuns();
-    }
-  }
-  fireCronResult(payload) {
-    if (!this.eventBus)
-      return;
-    try {
-      if (typeof this.eventBus.fire === "function") {
-        this.eventBus.fire("cron:result", payload);
-      } else {
-        this.eventBus.emit("cron:result", payload);
-      }
-    } catch (err) {
-      logger.warn(`广播 cron:result 事件失败: ${err}`);
     }
   }
   saveRunRecord(record) {
@@ -762,7 +1421,7 @@ class CronScheduler {
     try {
       if (!fs.existsSync(this.runsDir))
         return;
-      const files = fs.readdirSync(this.runsDir).filter((f) => f.endsWith(".json")).sort();
+      const files = fs.readdirSync(this.runsDir).filter((f2) => f2.endsWith(".json")).sort();
       const now = Date.now();
       const retentionMs = this.backgroundConfig.retentionDays * 24 * 60 * 60 * 1000;
       let deleted = 0;
@@ -778,7 +1437,7 @@ class CronScheduler {
           }
         }
       }
-      const remaining = fs.readdirSync(this.runsDir).filter((f) => f.endsWith(".json")).sort();
+      const remaining = fs.readdirSync(this.runsDir).filter((f2) => f2.endsWith(".json")).sort();
       if (remaining.length > this.backgroundConfig.retentionCount) {
         const toDelete = remaining.slice(0, remaining.length - this.backgroundConfig.retentionCount);
         for (const file of toDelete) {
@@ -799,7 +1458,7 @@ class CronScheduler {
     try {
       if (!fs.existsSync(this.runsDir))
         return [];
-      const files = fs.readdirSync(this.runsDir).filter((f) => f.endsWith(".json")).sort().reverse().slice(0, limit);
+      const files = fs.readdirSync(this.runsDir).filter((f2) => f2.endsWith(".json")).sort().reverse().slice(0, limit);
       const records = [];
       for (const file of files) {
         try {
@@ -816,7 +1475,7 @@ class CronScheduler {
     try {
       if (!fs.existsSync(this.runsDir))
         return null;
-      const files = fs.readdirSync(this.runsDir).filter((f) => f.endsWith(".json"));
+      const files = fs.readdirSync(this.runsDir).filter((f2) => f2.endsWith(".json"));
       for (const file of files) {
         try {
           const raw = fs.readFileSync(path.join(this.runsDir, file), "utf-8");
@@ -932,7 +1591,10 @@ class CronScheduler {
       const currentIds = new Set(this.jobs.keys());
       for (const id of currentIds) {
         if (!newIds.has(id)) {
-          this.clearTimer(id);
+          const existing = this.jobs.get(id);
+          if (existing?.currentTaskId) {
+            this.taskBoard?.kill(existing.currentTaskId);
+          }
           this.jobs.delete(id);
           logger.info(`文件同步: 删除任务 ${id}`);
         }
@@ -942,7 +1604,7 @@ class CronScheduler {
         if (!existing) {
           this.jobs.set(job.id, job);
           if (job.enabled)
-            this.scheduleNext(job);
+            this.registerJobToTaskBoard(job);
           logger.info(`文件同步: 新增任务 ${job.name} (${job.id})`);
         } else {
           const shouldReschedule = this.shouldRescheduleAfterFileSync(existing, job);
@@ -951,9 +1613,12 @@ class CronScheduler {
           if (existingStr !== newStr) {
             this.syncJobInPlace(existing, job);
             if (shouldReschedule) {
-              this.clearTimer(existing.id);
-              if (existing.enabled && !this.executingJobIds.has(existing.id) && this.running) {
-                this.scheduleNext(existing);
+              if (existing.currentTaskId) {
+                this.taskBoard?.kill(existing.currentTaskId);
+                existing.currentTaskId = undefined;
+              }
+              if (existing.enabled && this.running) {
+                this.registerJobToTaskBoard(existing);
               }
             }
             logger.info(`文件同步: 更新任务 ${job.name} (${job.id})`);
@@ -965,21 +1630,60 @@ class CronScheduler {
       logger.error(`文件同步失败: ${err}`);
     }
   }
-  clearTimer(id) {
-    const timer = this.timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.timers.delete(id);
-    }
-  }
 }
 
 // src/tool.ts
+function parseOnceScheduleValue(value) {
+  const trimmed = value.trim();
+  const relativeMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days)$/i);
+  if (relativeMatch) {
+    const amount = parseFloat(relativeMatch[1]);
+    const unit = relativeMatch[2].toLowerCase();
+    let ms;
+    if (unit.startsWith("s")) {
+      ms = amount * 1000;
+    } else if (unit.startsWith("m") && !unit.startsWith("mi")) {
+      ms = amount * 60 * 1000;
+    } else if (unit.startsWith("mi")) {
+      ms = amount * 60 * 1000;
+    } else if (unit.startsWith("h")) {
+      ms = amount * 3600 * 1000;
+    } else if (unit.startsWith("d")) {
+      ms = amount * 86400 * 1000;
+    } else {
+      return { error: `无法识别的时间单位: "${unit}"` };
+    }
+    if (ms <= 0) {
+      return { error: `延迟时间必须为正数: "${trimmed}"` };
+    }
+    return { at: Date.now() + Math.round(ms) };
+  }
+  if (/^-?\d+$/.test(trimmed)) {
+    const numeric = parseInt(trimmed, 10);
+    if (numeric <= 0) {
+      return { error: `无效的数值: "${trimmed}"，应为正数` };
+    }
+    if (numeric > 1577836800000) {
+      return { at: numeric };
+    }
+    return { at: Date.now() + numeric };
+  }
+  const normalized = trimmed.replace(/^(\d{4}-\d{2}-\d{2})\s+/, "$1T");
+  const parsed = Date.parse(normalized);
+  if (!isNaN(parsed)) {
+    const now = Date.now();
+    if (parsed <= now) {
+      return { error: `指定的时间已经过去: "${trimmed}"` };
+    }
+    return { at: parsed };
+  }
+  return { error: `无法解析的 once 时间值: "${trimmed}"。支持的格式：相对延迟（如 "30s", "5m", "2h"）或绝对日期（如 "2026-04-03 17:30"）` };
+}
 var logger2 = createPluginLogger("cron", "tool");
 var scheduler = null;
 var currentSessionId = "default";
-function injectScheduler(s) {
-  scheduler = s;
+function injectScheduler(s2) {
+  scheduler = s2;
 }
 function setCurrentSessionId(sid) {
   currentSessionId = sid;
@@ -988,13 +1692,32 @@ var manageScheduledTasksTool = {
   declaration: {
     name: "manage_scheduled_tasks",
     description: `管理定时调度任务。支持创建（create）、更新（update）、删除（delete）、启用（enable）、禁用（disable）、列出（list）和查询（get）定时任务。
-` + `调度模式：cron（cron 表达式，如 "0 9 * * 1-5" 表示工作日每天早上9点）、interval（固定间隔毫秒数）、once（一次性 Unix 时间戳）。
-` + "任务触发后会在后台独立拉起一个 agent 执行预设的 instruction 指令（拥有独立的工具调用能力），" + "执行完成后将结果报告推送到所有已启动的前端平台，不占用当前对话。",
+` + `调度模式：
+` + `- cron: cron 表达式，如 "0 9 * * 1-5"（工作日每天早上9点）
+` + `- interval: 固定间隔毫秒数，如 "60000"
+` + `- once: 一次性定时，支持相对延迟（如 "30s", "5m", "2h"）或绝对日期时间（如 "2026-04-03 17:30"）
+` + `任务触发后会在后台独立拉起一个 agent 执行预设的 instruction 指令（拥有独立的工具调用能力）。
+` + `执行完成后的行为取决于 silent 参数：
+` + `  - silent=false（默认）：执行结果作为通知注入当前会话，由主 agent 处理并回复用户。
+` + `  - silent=true：仅向各前端平台广播一条轻量通知（任务名+结果摘要），不触发主 agent 处理，不占用对话。
+` + "两种模式下，执行记录都会持久化保存。",
     parameters: {
       type: "object",
       properties: {
         action: {
           type: "string",
+          schedule_type: {
+            type: "string",
+            enum: ["cron", "interval", "once"],
+            description: "调度类型：cron（cron 表达式）、interval（固定间隔）、once（一次性定时）"
+          },
+          schedule_value: {
+            type: "string",
+            description: `调度参数值，根据 schedule_type 不同而不同：
+` + `- cron: cron 表达式，如 "0 9 * * 1-5"
+` + `- interval: 间隔毫秒数，如 "60000"
+` + '- once: 相对延迟如 "30s"、"5m"、"2h"、"1d"，或绝对日期时间如 "2026-04-03 17:30"'
+          },
           enum: ["create", "update", "delete", "enable", "disable", "list", "get"],
           description: "操作类型"
         },
@@ -1014,14 +1737,6 @@ var manageScheduledTasksTool = {
         instruction: {
           type: "string",
           description: "任务触发时发送给 LLM 的指令文本"
-        },
-        silent: {
-          type: "boolean",
-          description: "静默模式：如果没有值得报告的内容则不发送消息"
-        },
-        urgent: {
-          type: "boolean",
-          description: "紧急任务：可穿透安静时段限制"
         },
         job_id: {
           type: "string",
@@ -1062,11 +1777,11 @@ var manageScheduledTasksTool = {
             break;
           }
           case "once": {
-            const at = parseInt(scheduleValue, 10);
-            if (isNaN(at) || at <= 0) {
-              return { error: `无效的时间戳: "${scheduleValue}"，应为正整数 Unix 时间戳` };
+            const result = parseOnceScheduleValue(scheduleValue);
+            if ("error" in result) {
+              return { error: result.error };
             }
-            schedule = { type: "once", at };
+            schedule = { type: "once", at: result.at };
             break;
           }
           default:
@@ -1125,9 +1840,14 @@ var manageScheduledTasksTool = {
             case "interval":
               updateParams.schedule = { type: "interval", ms: parseInt(sv, 10) };
               break;
-            case "once":
-              updateParams.schedule = { type: "once", at: parseInt(sv, 10) };
+            case "once": {
+              const result = parseOnceScheduleValue(sv);
+              if ("error" in result) {
+                return { error: result.error };
+              }
+              updateParams.schedule = { type: "once", at: result.at };
               break;
+            }
           }
         }
         const updated = scheduler.updateJob(jobId, updateParams);
@@ -1232,9 +1952,9 @@ var src_default = definePlugin({
       }
     });
     ctx.onReady(async (api) => {
-      const agentTaskRegistry = api.agentTaskRegistry ?? null;
-      const eventBus = (typeof ctx.getEventBus === "function" ? ctx.getEventBus() : null) ?? (api.eventBus ?? null);
-      schedulerInstance = new CronScheduler(api, config, agentTaskRegistry, eventBus);
+      const taskBoard = api.taskBoard ?? null;
+      const agentName = api.agentName ?? "__global__";
+      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName);
       injectScheduler(schedulerInstance);
       api.backend.on("done", (sessionId) => {
         schedulerInstance?.recordActivity(sessionId);
@@ -1471,9 +2191,9 @@ function buildConfigYaml(config) {
   lines.push("quietHours:");
   lines.push(`  enabled: ${config.quietHours.enabled}`);
   lines.push("  windows:");
-  for (const w of config.quietHours.windows) {
-    lines.push(`    - start: "${w.start}"`);
-    lines.push(`      end: "${w.end}"`);
+  for (const w2 of config.quietHours.windows) {
+    lines.push(`    - start: "${w2.start}"`);
+    lines.push(`      end: "${w2.end}"`);
   }
   lines.push("  # 是否允许紧急任务穿透安静时段");
   lines.push(`  allowUrgent: ${config.quietHours.allowUrgent}`);

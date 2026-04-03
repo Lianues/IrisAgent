@@ -148,9 +148,28 @@ export interface BackendEvents {
    * 异步子代理状态通知（供平台层展示后台任务状态）。
    *
    * 当异步子代理注册/完成/失败/被中止时，Backend emit 此事件让平台层得知。
-   * status 取值：'registered' | 'completed' | 'failed' | 'killed'
+   * status 取值：'registered' | 'completed' | 'failed' | 'killed' | 'token-update' | 'chunk-heartbeat'
+   * 职责：驱动 StatusBar 计数、spinner、token 动画等 UI 状态。
+   * 不携带结果内容——结果内容由 task:result 事件单独广播。
    */
-  'agent:notification': (sessionId: string, taskId: string, status: string, summary: string) => void;
+  'agent:notification': (sessionId: string, taskId: string, status: string, summary: string, taskType?: string, silent?: boolean) => void;
+  /**
+   * 轻量级任务结果广播（所有任务终态时 emit，不绑定 silent）。
+   *
+   * 三层通知体系中的最轻量级通道：
+   *   - task:result：广播结果内容，平台层自行决定是否渲染（如 silent cron 的通知卡片）
+   *   - agent:notification：状态变更，驱动 StatusBar / spinner / token UI
+   *   - pushNotification：重量级，注入 MessageQueue 触发 LLM turn
+   *
+   * @param sessionId     发起方会话 ID
+   * @param taskId        任务 ID
+   * @param status        终态：'completed' | 'failed' | 'killed'
+   * @param description   任务描述（注册时的 description）
+   * @param taskType      任务类型：'sub_agent' | 'delegate' | 'cron'
+   * @param silent        是否为静默任务
+   * @param result        执行结果文本（completed 时）或错误信息（failed 时）
+   */
+  'task:result': (sessionId: string, taskId: string, status: string, description: string, taskType?: string, silent?: boolean, result?: string) => void;
   /** 异步子代理通知的结构化内容（在 turn:start 之前 emit，供前端展示折叠通知区块） */
   'notification:payloads': (sessionId: string, payloads: NotificationPayload[]) => void;
 }

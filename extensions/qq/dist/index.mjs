@@ -178,11 +178,11 @@ var require_permessage_deflate = __commonJS((exports, module) => {
   var zlibLimiter;
 
   class PerMessageDeflate {
-    constructor(options, isServer, maxPayload) {
-      this._maxPayload = maxPayload | 0;
+    constructor(options) {
       this._options = options || {};
       this._threshold = this._options.threshold !== undefined ? this._options.threshold : 1024;
-      this._isServer = !!isServer;
+      this._maxPayload = this._options.maxPayload | 0;
+      this._isServer = !!this._options.isServer;
       this._deflate = null;
       this._inflate = null;
       this.params = null;
@@ -2053,7 +2053,7 @@ var require_websocket = __commonJS((exports, module) => {
     } else {
       try {
         parsedUrl = new URL(address);
-      } catch (e) {
+      } catch {
         throw new SyntaxError(`Invalid URL: ${address}`);
       }
     }
@@ -2101,7 +2101,11 @@ var require_websocket = __commonJS((exports, module) => {
     opts.path = parsedUrl.pathname + parsedUrl.search;
     opts.timeout = opts.handshakeTimeout;
     if (opts.perMessageDeflate) {
-      perMessageDeflate = new PerMessageDeflate(opts.perMessageDeflate !== true ? opts.perMessageDeflate : {}, false, opts.maxPayload);
+      perMessageDeflate = new PerMessageDeflate({
+        ...opts.perMessageDeflate,
+        isServer: false,
+        maxPayload: opts.maxPayload
+      });
       opts.headers["Sec-WebSocket-Extensions"] = format({
         [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
       });
@@ -2747,7 +2751,11 @@ var require_websocket_server = __commonJS((exports, module) => {
       const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
       const extensions = {};
       if (this.options.perMessageDeflate && secWebSocketExtensions !== undefined) {
-        const perMessageDeflate = new PerMessageDeflate(this.options.perMessageDeflate, true, this.options.maxPayload);
+        const perMessageDeflate = new PerMessageDeflate({
+          ...this.options.perMessageDeflate,
+          isServer: true,
+          maxPayload: this.options.maxPayload
+        });
         try {
           const offers = extension.parse(secWebSocketExtensions);
           if (offers[PerMessageDeflate.extensionName]) {
@@ -2876,7 +2884,7 @@ var require_websocket_server = __commonJS((exports, module) => {
   }
 });
 
-// packages/extension-sdk/src/platform.ts
+// ../../packages/extension-sdk/src/platform.ts
 function getPlatformConfig(context, platformName) {
   const platform = context.config?.platform;
   if (!platform || typeof platform !== "object") {
@@ -2914,32 +2922,99 @@ function splitText(text, maxLen) {
   }
   return chunks;
 }
-// packages/extension-sdk/src/logger.ts
-function print(level, scope, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[${scope}]`, ...args);
+
+class PlatformAdapter {
+  get name() {
+    return this.constructor.name;
+  }
 }
+// ../../packages/extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
-    info: (...args) => print("log", scope, args),
-    warn: (...args) => print("warn", scope, args),
-    error: (...args) => print("error", scope, args),
-    debug: (...args) => print("debug", scope, args)
+    debug: (...args) => {
+      if (_logLevel <= 0 /* DEBUG */)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= 1 /* INFO */)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= 2 /* WARN */)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= 3 /* ERROR */)
+        console.error(`[${scope}]`, ...args);
+    }
   };
 }
-// packages/extension-sdk/src/pairing/store.ts
-var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
+// ../../packages/extension-sdk/src/platform-utils.ts
+function detectImageMime(buffer) {
+  if (buffer.length < 4)
+    return null;
+  if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255)
+    return "image/jpeg";
+  if (buffer[0] === 137 && buffer[1] === 80 && buffer[2] === 78 && buffer[3] === 71)
+    return "image/png";
+  if (buffer[0] === 71 && buffer[1] === 73 && buffer[2] === 70)
+    return "image/gif";
+  if (buffer[0] === 82 && buffer[1] === 73 && buffer[2] === 70 && buffer[3] === 70 && buffer.length >= 12 && buffer[8] === 87 && buffer[9] === 69 && buffer[10] === 66 && buffer[11] === 80)
+    return "image/webp";
+  if (buffer[0] === 66 && buffer[1] === 77)
+    return "image/bmp";
+  return null;
+}
+var TOOL_STATUS_ICONS = {
+  queued: "⏳",
+  executing: "\uD83D\uDD27",
+  success: "✅",
+  error: "❌",
+  streaming: "\uD83D\uDCE1",
+  awaiting_approval: "\uD83D\uDD10",
+  awaiting_apply: "\uD83D\uDCCB",
+  warning: "⚠️"
+};
+var TOOL_STATUS_LABELS = {
+  queued: "等待中",
+  executing: "执行中",
+  success: "成功",
+  error: "失败",
+  streaming: "输出中",
+  awaiting_approval: "等待审批",
+  awaiting_apply: "等待应用",
+  warning: "警告"
+};
+function formatToolStatusLine(inv, options) {
+  const icon = TOOL_STATUS_ICONS[inv.status] || "⏳";
+  const label = TOOL_STATUS_LABELS[inv.status] || inv.status;
+  const name = options?.codeStyle ? `\`${inv.toolName}\`` : inv.toolName;
+  return `${icon} ${name} ${label}`;
+}
+function autoApproveTools(backend, invocations) {
+  for (const inv of invocations) {
+    if (inv.status === "awaiting_approval") {
+      try {
+        backend.approveTool(inv.id, true);
+      } catch {}
+    }
+  }
+}
 // node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
+var import_extension = __toESM(require_extension(), 1);
+var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
 var import_receiver = __toESM(require_receiver(), 1);
 var import_sender = __toESM(require_sender(), 1);
+var import_subprotocol = __toESM(require_subprotocol(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
-// extensions/qq/src/index.ts
-var logger2 = createExtensionLogger("QQExtension", "QQ");
+// src/index.ts
+var logger = createExtensionLogger("QQExtension", "QQ");
 var MESSAGE_MAX_LENGTH = 4500;
 var IMAGE_DOWNLOAD_TIMEOUT_MS = 30000;
 var WS_RECONNECT_INTERVAL_MS = 5000;
@@ -2971,7 +3046,7 @@ function parseOneBotMessage(segments, selfId) {
   };
 }
 
-class QQPlatform {
+class QQPlatform extends PlatformAdapter {
   ws = null;
   backend;
   config;
@@ -2985,6 +3060,7 @@ class QQPlatform {
   pendingActions = new Map;
   notifiedToolIds = new Set;
   constructor(backend, config) {
+    super();
     this.backend = backend;
     this.config = config;
     this.showToolStatus = config.showToolStatus !== false;
@@ -2992,7 +3068,7 @@ class QQPlatform {
   async start() {
     this.setupBackendListeners();
     this.connect();
-    logger2.info("平台启动中，正在连接 NapCat...");
+    logger.info("平台启动中，正在连接 NapCat...");
   }
   async stop() {
     this.stopping = true;
@@ -3010,39 +3086,39 @@ class QQPlatform {
       this.ws = null;
     }
     this.chatStates.clear();
-    logger2.info("平台已停止");
+    logger.info("平台已停止");
   }
   connect() {
     const url = this.config.accessToken ? `${this.config.wsUrl}?access_token=${encodeURIComponent(this.config.accessToken)}` : this.config.wsUrl;
     this.ws = new wrapper_default(url);
     this.ws.on("open", () => {
-      logger2.info("✅ WebSocket 已连接到 NapCat");
+      logger.info("✅ WebSocket 已连接到 NapCat");
       this.reconnectAttempts = 0;
     });
     this.ws.on("message", (raw) => {
       try {
         this.handleWsMessage(String(raw));
       } catch (err) {
-        logger2.error("处理 WS 消息失败:", err);
+        logger.error("处理 WS 消息失败:", err);
       }
     });
     this.ws.on("close", (code, reason) => {
-      logger2.warn(`WebSocket 断开: code=${code} reason=${reason.toString()}`);
+      logger.warn(`WebSocket 断开: code=${code} reason=${reason.toString()}`);
       if (!this.stopping) {
         this.scheduleReconnect();
       }
     });
     this.ws.on("error", (err) => {
-      logger2.error(`WebSocket 错误: ${err.message}`);
+      logger.error(`WebSocket 错误: ${err.message}`);
     });
   }
   scheduleReconnect() {
     if (this.reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      logger2.error(`达到最大重连次数 (${WS_MAX_RECONNECT_ATTEMPTS})，停止重连`);
+      logger.error(`达到最大重连次数 (${WS_MAX_RECONNECT_ATTEMPTS})，停止重连`);
       return;
     }
     this.reconnectAttempts++;
-    logger2.info(`正在重连 (第 ${this.reconnectAttempts} 次)...`);
+    logger.info(`正在重连 (第 ${this.reconnectAttempts} 次)...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -3074,7 +3150,7 @@ class QQPlatform {
     try {
       data = JSON.parse(raw);
     } catch {
-      logger2.warn("收到非 JSON 消息，忽略");
+      logger.warn("收到非 JSON 消息，忽略");
       return;
     }
     if (data.echo) {
@@ -3093,13 +3169,13 @@ class QQPlatform {
     switch (data.post_type) {
       case "message":
         this.handleIncomingMessage(data).catch((err) => {
-          logger2.error("处理入站消息失败:", err);
+          logger.error("处理入站消息失败:", err);
         });
         break;
       case "meta_event": {
         const meta = data;
         if (meta.meta_event_type === "lifecycle" && meta.sub_type === "connect") {
-          logger2.info("✅ NapCat 生命周期事件: 连接成功");
+          logger.info("✅ NapCat 生命周期事件: 连接成功");
         }
         break;
       }
@@ -3130,13 +3206,7 @@ class QQPlatform {
   }
   setupBackendListeners() {
     this.backend.on("tool:update", (sid, invocations) => {
-      for (const inv of invocations) {
-        if (inv.status === "awaiting_approval") {
-          try {
-            this.backend.approveTool(inv.id, true);
-          } catch {}
-        }
-      }
+      autoApproveTools(this.backend, invocations);
       if (!this.showToolStatus)
         return;
       const cs = this.findChatStateBySid(sid);
@@ -3145,9 +3215,9 @@ class QQPlatform {
       for (const inv of invocations) {
         if (inv.status === "executing" && !this.notifiedToolIds.has(inv.id)) {
           this.notifiedToolIds.add(inv.id);
-          const line = formatToolLine(inv);
+          const line = formatToolStatusLine(inv);
           this.sendMessage(line, cs.target).catch((err) => {
-            logger2.error(`工具状态通知失败 (session=${sid}):`, err);
+            logger.error(`工具状态通知失败 (session=${sid}):`, err);
           });
         }
       }
@@ -3167,7 +3237,7 @@ class QQPlatform {
       if (!finalText)
         return;
       this.sendMessage(finalText, cs.target).catch((err) => {
-        logger2.error(`回复失败 (session=${sid}):`, err);
+        logger.error(`回复失败 (session=${sid}):`, err);
       });
     });
     this.backend.on("error", (sid, errorMsg) => {
@@ -3184,7 +3254,7 @@ class QQPlatform {
         const text = cs.streamBuffer;
         cs.streamBuffer = "";
         this.sendMessage(text, cs.target).catch((err) => {
-          logger2.error(`done 兜底发送失败 (session=${sid}):`, err);
+          logger.error(`done 兜底发送失败 (session=${sid}):`, err);
         });
       }
       cs.busy = false;
@@ -3310,7 +3380,7 @@ ${date}`);
       }
       cs.stopped = true;
       this.backend.abortChat(cs.sessionId);
-      logger2.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
+      logger.info(`[${cs.sessionId}] 用户中止了 AI 回复`);
       await reply("⏹ 已中止回复。");
       return true;
     }
@@ -3326,7 +3396,7 @@ ${date}`);
       } else {
         this.flushPendingMessages(cs);
       }
-      logger2.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
+      logger.info(`[${cs.sessionId}] 用户 /flush：${cs.busy ? "已中止当前回复，等待 done 后自动处理缓冲" : "直接处理缓冲消息"}`);
       return true;
     }
     return false;
@@ -3338,9 +3408,9 @@ ${date}`);
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const latestTarget = messages[messages.length - 1].target;
-    logger2.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger.info(`[${cs.sessionId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.dispatchChat(cs, combinedText, latestTarget).catch((err) => {
-      logger2.error("处理缓冲消息失败:", err);
+      logger.error("处理缓冲消息失败:", err);
     });
   }
   async dispatchChat(cs, text, target, images) {
@@ -3350,7 +3420,7 @@ ${date}`);
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "qq");
     } catch (err) {
-      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
     }
   }
   async handleIncomingMessage(event) {
@@ -3370,7 +3440,7 @@ ${date}`);
     }
     const ck = this.chatKey(messageType, senderId, groupId);
     const target = messageType === "group" ? { groupId } : { userId: senderId };
-    logger2.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
+    logger.info(`[${ck}] from=${senderId}: text="${parsed.text.slice(0, 50)}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, ck, target);
       if (handled)
@@ -3382,7 +3452,7 @@ ${date}`);
       const count = cs.pendingMessages.length;
       this.sendMessage(`\uD83D\uDCE5 消息已暂存（共 ${count} 条），等 AI 回复结束后自动发送。
 发送 /flush 可立即处理，/stop 可中止当前回复。`, target).catch(() => {});
-      logger2.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
+      logger.info(`[${cs.sessionId}] 消息已暂存 (共 ${count} 条)`);
       return;
     }
     let images;
@@ -3408,7 +3478,7 @@ ${date}`);
           });
         }
       } catch (err) {
-        logger2.error("发送消息失败:", err);
+        logger.error("发送消息失败:", err);
       }
     }
   }
@@ -3420,59 +3490,19 @@ ${date}`);
           signal: AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS)
         });
         if (!response.ok) {
-          logger2.error(`图片下载 HTTP 错误: ${response.status} ${url}`);
+          logger.error(`图片下载 HTTP 错误: ${response.status} ${url}`);
           continue;
         }
         const buffer = Buffer.from(await response.arrayBuffer());
         const mimeType = detectImageMime(buffer) || "image/jpeg";
         results.push({ mimeType, data: buffer.toString("base64") });
-        logger2.debug(`图片下载成功: size=${buffer.length} bytes`);
+        logger.debug(`图片下载成功: size=${buffer.length} bytes`);
       } catch (err) {
-        logger2.error(`图片下载失败: ${url}`, err);
+        logger.error(`图片下载失败: ${url}`, err);
       }
     }
     return results;
   }
-}
-var STATUS_ICONS = {
-  queued: "⏳",
-  executing: "\uD83D\uDD27",
-  success: "✅",
-  error: "❌",
-  streaming: "\uD83D\uDCE1",
-  awaiting_approval: "\uD83D\uDD10",
-  awaiting_apply: "\uD83D\uDCCB",
-  warning: "⚠️"
-};
-var STATUS_LABELS = {
-  queued: "等待中",
-  executing: "执行中",
-  success: "成功",
-  error: "失败",
-  streaming: "输出中",
-  awaiting_approval: "等待审批",
-  awaiting_apply: "等待应用",
-  warning: "警告"
-};
-function formatToolLine(inv) {
-  const icon = STATUS_ICONS[inv.status] || "⏳";
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} ${inv.toolName} ${label}`;
-}
-function detectImageMime(buffer) {
-  if (buffer.length < 4)
-    return null;
-  if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255)
-    return "image/jpeg";
-  if (buffer[0] === 137 && buffer[1] === 80 && buffer[2] === 78 && buffer[3] === 71)
-    return "image/png";
-  if (buffer[0] === 71 && buffer[1] === 73 && buffer[2] === 70)
-    return "image/gif";
-  if (buffer[0] === 82 && buffer[1] === 73 && buffer[2] === 70 && buffer[3] === 70 && buffer.length >= 12 && buffer[8] === 87 && buffer[9] === 69 && buffer[10] === 66 && buffer[11] === 80)
-    return "image/webp";
-  if (buffer[0] === 66 && buffer[1] === 77)
-    return "image/bmp";
-  return null;
 }
 var createQQPlatform = definePlatformFactory({
   platformName: "qq",

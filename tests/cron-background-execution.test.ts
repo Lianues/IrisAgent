@@ -1,14 +1,14 @@
 /**
- * Cron 定时任务后台执行机制测试
+ * Cron 定时任务后台执行机制测试（cron 重构后）
  *
  * 覆盖：
- *   - CronScheduler 构造函数接受 agentTaskRegistry 和 eventBus 参数
- *   - executeJob 在有 registry 时走后台路径，标记 running 状态
- *   - executeJob 在无 registry 时退回旧的前台投递方式
+ *   - CronScheduler 构造函数接受 taskBoard 和 agentName 参数
+ *   - scheduler 通过 taskBoard.register() 注册 schedule/executor/nextRunResolver
+ *   - executor 闭包触发后台执行并更新任务状态
  *   - 并发限制：超过 maxConcurrent 时跳过
  *   - 投递门控：被跳过的任务标记 skipped
- *   - eventBus 广播：完成后 fire('cron:result', payload)
- *   - silent 模式：输出含 [no-report] 时不广播
+ *   - silent 模式：通过 taskBoard.register() 的 silent 字段传递
+ *   - update/enable/disable/delete 通过 currentTaskId 与 TaskBoard 协调生命周期
  *   - 执行记录保存和查询
  *   - 执行记录清理
  *   - types 新增字段正确性
@@ -21,13 +21,15 @@ import * as os from 'os';
 import type {
   ScheduledJob,
   SchedulerConfig,
-  CronResultPayload,
+  // [cron 重构] CronResultPayload 已删除
   CronRunRecord,
   CronBackgroundConfig,
   RunStatus,
 } from '../extensions/cron/src/types.js';
 import { DEFAULT_SCHEDULER_CONFIG } from '../extensions/cron/src/types.js';
-import { CronScheduler, parseCronExpression, getNextCronTime } from '../extensions/cron/src/scheduler.js';
+// [croner 迁移测试修复] 显式导入 getNextCronTime，
+// 让底部的 croner 集成测试直接验证插件对外暴露的时间计算包装函数。
+import { CronScheduler, getNextCronTime } from '../extensions/cron/src/scheduler.js';
 
 // DEFAULT_BACKGROUND_CONFIG 可能因模块别名导致导入为 undefined，
 // 此处手动定义预期的默认值用于断言。
@@ -91,33 +93,42 @@ function createMockAPI(overrides?: Record<string, unknown>) {
   };
 }
 
-/** 创建最小可用的 AgentTaskRegistry mock */
-function createMockRegistry() {
+/**
+ * [cron 重构] 创建最小可用的 TaskBoard mock。
+ * 替代原 createMockRegistry，mock 对象的 register() 签名改为接收一个对象参数。
+ */
+function createMockTaskBoard() {
+  const registeredListeners = new Set<(task: any) => void>();
+
   return {
-    register: vi.fn((taskId: string, sessionId: string, description: string) => ({
-      taskId,
-      sessionId,
-      description,
-      status: 'running',
-      abortController: new AbortController(),
-      startTime: Date.now(),
-    })),
+    // [测试类型修复] 这里故意把 input 放宽为 any。
+    // 原因：TaskBoardLike.register 的函数参数是逆变检查，
+    // 测试 mock 如果写成更宽但结构化的匿名类型，反而会因为续调回调参数不完全同构而报类型错。
+    // 用 any 保持测试关注行为而不是与核心私有接口做逐字段博弈。
+    register: vi.fn((input: any) => {
+      // [Phase 3] mock 对齐真实 TaskBoard 行为：register 后会 emit('registered')，
+      // 这样 scheduler 可以在测试里拿到 recurring 续调后的最新 currentTaskId。
+      for (const listener of registeredListeners) {
+        listener(input);
+      }
+      return {
+        taskId: input.taskId,
+        status: 'running',
+        abortController: new AbortController(),
+      };
+    }),
+    on: vi.fn((event: string, listener: (task: any) => void) => {
+      if (event === 'registered') registeredListeners.add(listener);
+    }),
+    off: vi.fn((event: string, listener: (task: any) => void) => {
+      if (event === 'registered') registeredListeners.delete(listener);
+    }),
     complete: vi.fn(),
     fail: vi.fn(),
     kill: vi.fn(),
-    getRunningBySession: vi.fn(() => []),
+    getRunningByTargetAgent: vi.fn(() => []),
     emitChunkHeartbeat: vi.fn(),
     updateTokens: vi.fn(),
-  };
-}
-
-/** 创建最小可用的 eventBus mock */
-function createMockEventBus() {
-  return {
-    emit: vi.fn(),
-    on: vi.fn(),
-    off: vi.fn(),
-    fire: vi.fn(),
   };
 }
 
@@ -155,26 +166,10 @@ function delay(ms: number) {
 
 describe('Cron 后台执行机制 - 类型定义', () => {
   it('RunStatus 包含 running 值', () => {
-    // 验证 RunStatus 类型确实包含 running
     const status: RunStatus = 'running';
     expect(status).toBe('running');
-
-    // 验证所有合法值
     const allStatuses: RunStatus[] = ['completed', 'success', 'error', 'skipped', 'missed', 'running'];
     expect(allStatuses).toHaveLength(6);
-  });
-
-  it('CronResultPayload 接口可正确构造', () => {
-    const payload: CronResultPayload = {
-      jobId: 'job-1',
-      taskId: 'cron_task_1_123',
-      jobName: '测试任务',
-      status: 'completed',
-      result: '执行成功',
-      durationMs: 1000,
-    };
-    expect(payload.status).toBe('completed');
-    expect(payload.durationMs).toBe(1000);
   });
 
   it('CronRunRecord 接口可正确构造', () => {
@@ -210,18 +205,17 @@ describe('CronScheduler 构造函数', () => {
     if (tmpDir) cleanupTmpDir(tmpDir);
   });
 
-  it('接受 agentTaskRegistry 和 eventBus 参数', () => {
+  it('接受 taskBoard 和 agentName 参数', () => {
     const { api, tmpDir: td } = createMockAPI();
     tmpDir = td;
-    const registry = createMockRegistry();
-    const eventBus = createMockEventBus();
+    const taskBoard = createMockTaskBoard();
 
     // 不应抛异常
-    const scheduler = new CronScheduler(api, undefined, registry, eventBus);
+    const scheduler = new CronScheduler(api, undefined, taskBoard, 'test-agent');
     expect(scheduler).toBeDefined();
   });
 
-  it('不传 agentTaskRegistry 时不报错（向后兼容）', () => {
+  it('不传 taskBoard 时不报错', () => {
     const { api, tmpDir: td } = createMockAPI();
     tmpDir = td;
 
@@ -232,10 +226,9 @@ describe('CronScheduler 构造函数', () => {
   it('接受自定义 backgroundConfig', () => {
     const { api, tmpDir: td } = createMockAPI();
     tmpDir = td;
-    const registry = createMockRegistry();
-    const eventBus = createMockEventBus();
+    const taskBoard = createMockTaskBoard();
 
-    const scheduler = new CronScheduler(api, undefined, registry, eventBus, {
+    const scheduler = new CronScheduler(api, undefined, taskBoard, 'test-agent', {
       timeoutMs: 10000,
       maxConcurrent: 1,
     });
@@ -247,17 +240,15 @@ describe('CronScheduler 后台执行', () => {
   let tmpDir: string;
   let scheduler: CronScheduler;
   let mockAPI: any;
-  let mockRegistry: ReturnType<typeof createMockRegistry>;
-  let mockEventBus: ReturnType<typeof createMockEventBus>;
+  let mockTaskBoard: ReturnType<typeof createMockTaskBoard>;
 
   beforeEach(() => {
     const { api, tmpDir: td } = createMockAPI();
     tmpDir = td;
     mockAPI = api;
-    mockRegistry = createMockRegistry();
-    mockEventBus = createMockEventBus();
+    mockTaskBoard = createMockTaskBoard();
     // 使用短超时和低并发限制便于测试
-    scheduler = new CronScheduler(api, undefined, mockRegistry, mockEventBus, {
+    scheduler = new CronScheduler(api, undefined, mockTaskBoard, 'test-agent', {
       timeoutMs: 5000,
       maxConcurrent: 2,
       maxToolRounds: 3,
@@ -324,7 +315,7 @@ describe('CronScheduler 后台执行', () => {
     expect(deleted).toBe(false);
   });
 
-  it('文件同步仅更新运行状态时，不替换任务对象，也不重排已有定时器', async () => {
+  it('文件同步仅更新运行状态时，不替换任务对象，也不重复注册 TaskBoard 任务', async () => {
     await scheduler.start();
 
     const job = scheduler.createJob({
@@ -336,12 +327,14 @@ describe('CronScheduler 后台执行', () => {
     });
 
     const originalJobRef = scheduler.getJob(job.id)!;
-    const originalTimerRef = (scheduler as any).timers.get(job.id);
-    expect(originalTimerRef).toBeDefined();
+    const originalTaskId = originalJobRef.currentTaskId;
+    const registerCallCountBeforeSync = mockTaskBoard.register.mock.calls.length;
+    expect(originalTaskId).toBeDefined();
 
-    // 模拟外部仅同步运行时状态：调度配置不变，
-    // 如果 onFileChanged 错误地把这种变化也当成“需要重排”，
-    // 就会清掉旧 timer 并生成一个新的 timer，后续容易导致重复执行。
+    // [Phase 3 测试适配] 模拟外部仅同步运行时状态：调度配置不变。
+    // 新架构下 scheduler 已不再自己持有 timers，
+    // 所以这里改为验证“不会再次 register 到 TaskBoard”，
+    // 以确保纯运行时状态同步不会误触发重新排程。
     const syncedJobs = scheduler.listJobs().map((item) =>
       item.id === job.id
         ? {
@@ -356,64 +349,42 @@ describe('CronScheduler 后台执行', () => {
     (scheduler as any).onFileChanged();
 
     const currentJobRef = scheduler.getJob(job.id)!;
-    const currentTimerRef = (scheduler as any).timers.get(job.id);
 
     // 关键断言 1：Map 中仍然是原对象，避免旧闭包和新对象状态脱节。
     expect(currentJobRef).toBe(originalJobRef);
-    // 关键断言 2：timer 也应保持不变，说明这次只是状态同步，没有重排调度。
-    expect(currentTimerRef).toBe(originalTimerRef);
+    // 关键断言 2：不会重复 register，说明这次只是状态同步，没有重排调度。
+    expect(mockTaskBoard.register).toHaveBeenCalledTimes(registerCallCountBeforeSync);
+    expect(currentJobRef.currentTaskId).toBe(originalTaskId);
     expect(currentJobRef.lastRunStatus).toBe('running');
   });
 
-  it('同一 jobId 即使通过旧对象重复触发，也只启动一次后台执行', async () => {
-    const deferred: { resolve?: (value: { text: string }) => void } = {};
-    const { api, tmpDir: td } = createMockAPI({
-      createToolLoop: vi.fn(() => ({
-        run: vi.fn(() => new Promise((resolve) => {
-          deferred.resolve = resolve as (value: { text: string }) => void;
-        })),
-      })),
-    });
-    tmpDir = td;
-    mockAPI = api;
-    mockRegistry = createMockRegistry();
-    mockEventBus = createMockEventBus();
-    scheduler.stop();
-    scheduler = new CronScheduler(api, undefined, mockRegistry, mockEventBus, {
-      timeoutMs: 5000,
-      maxConcurrent: 2,
-      maxToolRounds: 3,
-      retentionDays: 30,
-      retentionCount: 10,
-    });
+  it('updateJob 会 kill 旧 currentTaskId 并重新注册新的 TaskBoard 任务', async () => {
     await scheduler.start();
 
     const job = scheduler.createJob({
-      name: '并发去重测试',
-      schedule: { type: 'once', at: Date.now() + 60_000 },
+      name: '更新重注册测试',
+      schedule: { type: 'interval', ms: 60_000 },
       sessionId: 'sess-1',
-      instruction: '只允许执行一次',
+      instruction: '原始指令',
       createdInSession: 'sess-1',
     });
 
-    // 模拟两个旧引用几乎同时调用 executeJob。
-    // 修复前，这类旧对象会绕过 running 判断，造成多次 register 和多次 LLM 调用。
-    const staleA = { ...job };
-    const staleB = { ...job };
+    const originalTaskId = scheduler.getJob(job.id)?.currentTaskId;
+    expect(originalTaskId).toBeDefined();
+    expect(mockTaskBoard.register).toHaveBeenCalledTimes(1);
 
-    await Promise.all([
-      (scheduler as any).executeJob(staleA),
-      (scheduler as any).executeJob(staleB),
-    ]);
+    const updated = scheduler.updateJob(job.id, { instruction: '更新后的指令' });
 
-    expect(mockRegistry.register).toHaveBeenCalledTimes(1);
-    expect(scheduler.getJob(job.id)?.lastRunStatus).toBe('running');
-    expect(scheduler.getJob(job.id)?.enabled).toBe(false);
+    expect(updated).not.toBeNull();
+    // [Phase 3 测试适配] 新架构下更新任务应先 kill 旧的 TaskBoard 任务，
+    // 再重新 register 一个新任务，保证旧 executor 不会继续沿用过期配置。
+    expect(mockTaskBoard.kill).toHaveBeenCalledWith(originalTaskId);
+    expect(mockTaskBoard.register).toHaveBeenCalledTimes(2);
 
-    deferred.resolve?.({ text: '执行完成' });
-    await delay(20);
-
-    expect(mockRegistry.complete).toHaveBeenCalledTimes(1);
+    const currentTaskId = scheduler.getJob(job.id)?.currentTaskId;
+    expect(currentTaskId).toBeDefined();
+    expect(currentTaskId).not.toBe(originalTaskId);
+    expect(scheduler.getJob(job.id)?.instruction).toBe('更新后的指令');
   });
 
   it('完成后将 lastRunStatus 统一写为 completed，并兼容旧 success 持久化值', async () => {
@@ -437,19 +408,33 @@ describe('CronScheduler 后台执行', () => {
     });
 
     const deferred: { resolve?: (value: { text: string }) => void } = {};
+    // [Phase 3 测试适配] 新架构下执行入口已经从 executeJob() 变成
+    // TaskBoard.register() 里注入的 executor 闭包，所以这里通过 mockTaskBoard 捕获真实 executor 来驱动一次执行。
     mockAPI.createToolLoop = vi.fn(() => ({
       run: vi.fn(() => new Promise((resolve) => {
         deferred.resolve = resolve as (value: { text: string }) => void;
       })),
     }));
 
-    await (scheduler as any).executeJob(job);
+    const registerInput = mockTaskBoard.register.mock.calls.at(-1)?.[0] as {
+      taskId: string;
+      executor?: (taskId: string, signal: AbortSignal) => Promise<string | void>;
+    };
+    expect(registerInput?.executor).toBeDefined();
+
+    const signal = new AbortController().signal;
+    const executionPromise = registerInput.executor!(registerInput.taskId, signal);
+
+    // executor 启动后应立即把 job 标成 running。
+    await delay(20);
     expect(scheduler.getJob(job.id)?.lastRunStatus).toBe('running');
 
     deferred.resolve?.({ text: '执行完成' });
+    await executionPromise;
     await delay(20);
 
     expect(scheduler.getJob(job.id)?.lastRunStatus).toBe('completed');
+    expect(mockTaskBoard.complete).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -460,9 +445,8 @@ describe('CronScheduler 执行记录', () => {
   beforeEach(() => {
     const { api, tmpDir: td } = createMockAPI();
     tmpDir = td;
-    const registry = createMockRegistry();
-    const eventBus = createMockEventBus();
-    scheduler = new CronScheduler(api, undefined, registry, eventBus, {
+    const taskBoard = createMockTaskBoard();
+    scheduler = new CronScheduler(api, undefined, taskBoard, 'test-agent', {
       retentionCount: 5,
       retentionDays: 30,
     });
@@ -538,35 +522,130 @@ describe('CronScheduler 执行记录', () => {
   });
 });
 
-describe('Cron 表达式解析器', () => {
-  it('解析标准 5 字段表达式', () => {
-    const parsed = parseCronExpression('0 9 * * 1-5');
-    expect(parsed.minute.values).toContain(0);
-    expect(parsed.hour.values).toContain(9);
-    expect(parsed.dayOfWeek.values).toContain(1);
-    expect(parsed.dayOfWeek.values).toContain(5);
-    expect(parsed.dayOfWeek.values).not.toContain(0);
-    expect(parsed.dayOfWeek.values).not.toContain(6);
-  });
-
-  it('解析步进表达式', () => {
-    const parsed = parseCronExpression('*/15 * * * *');
-    expect(parsed.minute.values).toContain(0);
-    expect(parsed.minute.values).toContain(15);
-    expect(parsed.minute.values).toContain(30);
-    expect(parsed.minute.values).toContain(45);
-    expect(parsed.minute.values.size).toBe(4);
-  });
-
-  it('非 5 字段表达式抛出错误', () => {
-    expect(() => parseCronExpression('* * *')).toThrow('必须包含 5 个字段');
-  });
-
+describe('Cron 时间计算（croner 集成）', () => {
   it('getNextCronTime 返回未来时间', () => {
     const next = getNextCronTime('* * * * *');
     expect(next.getTime()).toBeGreaterThan(Date.now());
   });
+
+  it('getNextCronTime 支持 after 参数', () => {
+    const base = new Date('2025-01-01T00:00:00');
+    const next = getNextCronTime('0 9 * * *', base);
+    expect(next.getHours()).toBe(9);
+    expect(next.getTime()).toBeGreaterThan(base.getTime());
+  });
+
+  it('无效表达式抛出错误', () => {
+    expect(() => getNextCronTime('invalid cron')).toThrow();
+  });
 });
+
+describe('parseOnceScheduleValue 时间解析', () => {
+  // [once 时间解析] 验证 parseOnceScheduleValue 支持相对延迟、绝对日期、纯数字兼容、错误输入
+  let parseOnceScheduleValue: typeof import('../extensions/cron/src/tool.js').parseOnceScheduleValue;
+
+  beforeEach(async () => {
+    const module = await import('../extensions/cron/src/tool.js');
+    parseOnceScheduleValue = module.parseOnceScheduleValue;
+  });
+
+  // ---- 相对延迟格式 ----
+
+  it('"30s" 解析为约 30 秒后的时间戳', () => {
+    const before = Date.now();
+    const result = parseOnceScheduleValue('30s');
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBeGreaterThanOrEqual(before + 29000);
+      expect(result.at).toBeLessThanOrEqual(before + 31000);
+    }
+  });
+
+  it('"5m" 解析为约 5 分钟后', () => {
+    const before = Date.now();
+    const result = parseOnceScheduleValue('5m');
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBeGreaterThanOrEqual(before + 4 * 60 * 1000);
+      expect(result.at).toBeLessThanOrEqual(before + 6 * 60 * 1000);
+    }
+  });
+
+  it('"2h" 解析为约 2 小时后', () => {
+    const before = Date.now();
+    const result = parseOnceScheduleValue('2h');
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBeGreaterThanOrEqual(before + 1.9 * 3600 * 1000);
+      expect(result.at).toBeLessThanOrEqual(before + 2.1 * 3600 * 1000);
+    }
+  });
+
+  it('"1d" 解析为约 1 天后', () => {
+    const before = Date.now();
+    const result = parseOnceScheduleValue('1d');
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBeGreaterThanOrEqual(before + 23 * 3600 * 1000);
+      expect(result.at).toBeLessThanOrEqual(before + 25 * 3600 * 1000);
+    }
+  });
+
+  it('支持英文全称单位："30 seconds"、"5 minutes"、"2 hours"', () => {
+    expect('at' in parseOnceScheduleValue('30 seconds')).toBe(true);
+    expect('at' in parseOnceScheduleValue('5 minutes')).toBe(true);
+    expect('at' in parseOnceScheduleValue('2 hours')).toBe(true);
+    expect('at' in parseOnceScheduleValue('1 day')).toBe(true);
+  });
+
+  // ---- 绝对日期时间格式 ----
+
+  it('未来日期时间解析成功', () => {
+    const futureDate = new Date(Date.now() + 86400000); // 明天
+    const dateStr = futureDate.toISOString().slice(0, 16).replace('T', ' ');
+    const result = parseOnceScheduleValue(dateStr);
+    expect('at' in result).toBe(true);
+  });
+
+  it('已过去的日期返回错误', () => {
+    const result = parseOnceScheduleValue('2020-01-01 00:00');
+    expect('error' in result).toBe(true);
+  });
+
+  // ---- 纯数字兼容 ----
+
+  it('大数字当作 Unix 时间戳', () => {
+    const futureTs = Date.now() + 60000;
+    const result = parseOnceScheduleValue(String(futureTs));
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBe(futureTs);
+    }
+  });
+
+  it('小数字当作毫秒延迟', () => {
+    const before = Date.now();
+    const result = parseOnceScheduleValue('30000');
+    expect('at' in result).toBe(true);
+    if ('at' in result) {
+      expect(result.at).toBeGreaterThanOrEqual(before + 29000);
+      expect(result.at).toBeLessThanOrEqual(before + 31000);
+    }
+  });
+
+  // ---- 错误输入 ----
+
+  it('无法解析的字符串返回错误', () => {
+    const result = parseOnceScheduleValue('tomorrow morning');
+    expect('error' in result).toBe(true);
+  });
+
+  it('负数返回错误', () => {
+    const result = parseOnceScheduleValue('-5000');
+    expect('error' in result).toBe(true);
+  });
+});
+
 
 describe('投递门控 (shouldSkip)', () => {
   // shouldSkip 是从 delivery-gate.ts 导出的，但通过 scheduler 间接使用

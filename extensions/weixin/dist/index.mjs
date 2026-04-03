@@ -34,7 +34,7 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // node_modules/silk-wasm/lib/index.cjs
 var require_lib = __commonJS((exports, module) => {
-  var __filename = "F:\\111\\Iris\\node_modules\\silk-wasm\\lib\\index.cjs";
+  var __filename = "D:\\Software\\Iris\\extensions\\weixin\\node_modules\\silk-wasm\\lib\\index.cjs";
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames2 = Object.getOwnPropertyNames;
@@ -892,7 +892,7 @@ return ret;
   }
 });
 
-// packages/extension-sdk/src/platform.ts
+// ../../packages/extension-sdk/src/platform.ts
 function getPlatformConfig(context, platformName) {
   const platform = context.config?.platform;
   if (!platform || typeof platform !== "object") {
@@ -930,27 +930,67 @@ function splitText(text, maxLen) {
   }
   return chunks;
 }
-// packages/extension-sdk/src/logger.ts
-function print(level, scope, args) {
-  const consoleMethod = console[level] ?? console.log;
-  consoleMethod(`[${scope}]`, ...args);
+
+class PlatformAdapter {
+  get name() {
+    return this.constructor.name;
+  }
 }
+// ../../packages/extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
-    info: (...args) => print("log", scope, args),
-    warn: (...args) => print("warn", scope, args),
-    error: (...args) => print("error", scope, args),
-    debug: (...args) => print("debug", scope, args)
+    debug: (...args) => {
+      if (_logLevel <= 0 /* DEBUG */)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= 1 /* INFO */)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= 2 /* WARN */)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= 3 /* ERROR */)
+        console.error(`[${scope}]`, ...args);
+    }
   };
 }
-// packages/extension-sdk/src/pairing/store.ts
-var logger = createExtensionLogger("ExtensionSDK", "PairingStore");
-// extensions/weixin/src/index.ts
+// ../../packages/extension-sdk/src/platform-utils.ts
+var TOOL_STATUS_ICONS = {
+  queued: "⏳",
+  executing: "\uD83D\uDD27",
+  success: "✅",
+  error: "❌",
+  streaming: "\uD83D\uDCE1",
+  awaiting_approval: "\uD83D\uDD10",
+  awaiting_apply: "\uD83D\uDCCB",
+  warning: "⚠️"
+};
+var TOOL_STATUS_LABELS = {
+  queued: "等待中",
+  executing: "执行中",
+  success: "成功",
+  error: "失败",
+  streaming: "输出中",
+  awaiting_approval: "等待审批",
+  awaiting_apply: "等待应用",
+  warning: "警告"
+};
+function formatToolStatusLine(inv, options) {
+  const icon = TOOL_STATUS_ICONS[inv.status] || "⏳";
+  const label = TOOL_STATUS_LABELS[inv.status] || inv.status;
+  const name = options?.codeStyle ? `\`${inv.toolName}\`` : inv.toolName;
+  return `${icon} ${name} ${label}`;
+}
+// src/index.ts
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-var logger2 = createExtensionLogger("WeixinExtension", "Weixin");
+var logger = createExtensionLogger("WeixinExtension", "Weixin");
 var SILK_SAMPLE_RATE = 24000;
 var WEIXIN_MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 var MESSAGE_MAX_LENGTH = 4000;
@@ -985,7 +1025,7 @@ var TypingStatus = {
   CANCEL: 2
 };
 
-class WeixinPlatform {
+class WeixinPlatform extends PlatformAdapter {
   backend;
   config;
   baseUrl;
@@ -996,6 +1036,7 @@ class WeixinPlatform {
   chatStates = new Map;
   activeSessions = new Map;
   constructor(backend, config) {
+    super();
     this.backend = backend;
     this.config = config;
     this.baseUrl = (config.baseUrl || "https://ilinkai.weixin.qq.com").replace(/\/$/, "");
@@ -1013,10 +1054,10 @@ class WeixinPlatform {
           this.config.botToken = data.botToken;
           if (data.baseUrl)
             this.baseUrl = data.baseUrl.replace(/\/$/, "");
-          logger2.info("从本地缓存加载了微信 Token");
+          logger.info("从本地缓存加载了微信 Token");
         }
       } catch (err) {
-        logger2.debug("读取微信 Token 缓存失败:", err);
+        logger.debug("读取微信 Token 缓存失败:", err);
       }
     }
   }
@@ -1028,14 +1069,14 @@ class WeixinPlatform {
       }
       const cachePath = path.join(dir, "weixin-auth.json");
       fs.writeFileSync(cachePath, JSON.stringify({ botToken, baseUrl }, null, 2));
-      logger2.info(`微信 Token 已保存到本地缓存`);
+      logger.info(`微信 Token 已保存到本地缓存`);
     } catch (err) {
-      logger2.warn("保存微信 Token 到缓存失败:", err);
+      logger.warn("保存微信 Token 到缓存失败:", err);
     }
   }
   async start() {
     if (!this.config.botToken) {
-      logger2.info("未配置 botToken，准备扫码登录...");
+      logger.info("未配置 botToken，准备扫码登录...");
       const { botToken, baseUrl } = await this.performQRLogin();
       this.config.botToken = botToken;
       this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -1044,9 +1085,9 @@ class WeixinPlatform {
     this.setupBackendListeners();
     this.polling = true;
     this.runPollingLoop().catch((err) => {
-      logger2.error("长轮询循环异常退出:", err);
+      logger.error("长轮询循环异常退出:", err);
     });
-    logger2.info(`微信平台启动成功 (BaseUrl: ${this.baseUrl})`);
+    logger.info(`微信平台启动成功 (BaseUrl: ${this.baseUrl})`);
   }
   async performQRLogin(retryCount = 0) {
     const qrcodeResp = await fetch(`${this.baseUrl}/ilink/bot/get_bot_qrcode?bot_type=3`);
@@ -1055,31 +1096,31 @@ class WeixinPlatform {
     const qrcodeData = await qrcodeResp.json();
     const qrcode = qrcodeData.qrcode;
     const qrcodeUrl = qrcodeData.qrcode_img_content ?? qrcodeData.qrcode_url ?? "";
-    logger2.info("----------------------------------------");
-    logger2.info("请在浏览器打开以下链接扫码登录微信：");
-    logger2.info(`
+    logger.info("----------------------------------------");
+    logger.info("请在浏览器打开以下链接扫码登录微信：");
+    logger.info(`
 ${qrcodeUrl}
 `);
-    logger2.info("----------------------------------------");
+    logger.info("----------------------------------------");
     while (true) {
       const statusResp = await fetch(`${this.baseUrl}/ilink/bot/get_qrcode_status?qrcode=${qrcode}`);
       if (!statusResp.ok)
         throw new Error(`获取二维码状态失败: ${await statusResp.text()}`);
       const statusData = await statusResp.json();
       if (statusData.status === "confirmed") {
-        logger2.info("扫码登录成功！");
+        logger.info("扫码登录成功！");
         return {
           botToken: statusData.bot_token,
           baseUrl: statusData.baseurl || this.baseUrl
         };
       } else if (statusData.status === "expired") {
         if (retryCount < 3) {
-          logger2.warn("二维码已过期，正在重新获取...");
+          logger.warn("二维码已过期，正在重新获取...");
           return this.performQRLogin(retryCount + 1);
         }
         throw new Error("二维码已多次过期，请重新启动程序");
       } else if (statusData.status === "scaned") {
-        logger2.info("已扫码，请在微信确认...");
+        logger.info("已扫码，请在微信确认...");
       }
       await this.sleep(2000);
     }
@@ -1087,7 +1128,7 @@ ${qrcodeUrl}
   async stop() {
     this.polling = false;
     this.chatStates.clear();
-    logger2.info("平台已停止");
+    logger.info("平台已停止");
   }
   async apiCall(endpoint, body, label) {
     const url = `${this.baseUrl.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
@@ -1113,7 +1154,7 @@ ${qrcodeUrl}
       }
       return await resp.json();
     } catch (err) {
-      logger2.debug(`${label} 失败:`, err);
+      logger.debug(`${label} 失败:`, err);
       throw err;
     }
   }
@@ -1181,7 +1222,7 @@ ${qrcodeUrl}
         return key ? this.aesEcbDecrypt(raw, key) : raw;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        logger2.warn(`下载媒体失败 (attempt ${attempt}/${maxRetries}): ${lastError.message}`);
+        logger.warn(`下载媒体失败 (attempt ${attempt}/${maxRetries}): ${lastError.message}`);
         if (attempt < maxRetries) {
           await this.sleep(1000 * attempt);
         }
@@ -1232,15 +1273,15 @@ ${qrcodeUrl}
   async silkToWav(silkBuf) {
     try {
       const { decode } = await Promise.resolve().then(() => __toESM(require_lib(), 1));
-      logger2.debug(`silkToWav: 解码 ${silkBuf.length} 字节 SILK`);
+      logger.debug(`silkToWav: 解码 ${silkBuf.length} 字节 SILK`);
       const result = await decode(silkBuf, SILK_SAMPLE_RATE);
       const wav = pcmBytesToWav(result.data, SILK_SAMPLE_RATE);
       return wav;
     } catch (err) {
       if (err.code === "MODULE_NOT_FOUND") {
-        logger2.warn("silk-wasm 未安装，跳过语音转码");
+        logger.warn("silk-wasm 未安装，跳过语音转码");
       } else {
-        logger2.warn("silkToWav 失败:", err);
+        logger.warn("silkToWav 失败:", err);
       }
       return null;
     }
@@ -1257,7 +1298,7 @@ ${qrcodeUrl}
         const errCode = resp.errcode ?? resp.ret ?? 0;
         if (errCode !== 0) {
           if (errCode === -14) {
-            logger2.error("微信会话已失效 (Error -14)，进入1小时冷却期");
+            logger.error("微信会话已失效 (Error -14)，进入1小时冷却期");
             this.cooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
             continue;
           }
@@ -1269,12 +1310,12 @@ ${qrcodeUrl}
         const msgs = resp.msgs || [];
         for (const msg of msgs) {
           this.handleIncomingMessage(msg).catch((err) => {
-            logger2.error("消息处理失败:", err);
+            logger.error("消息处理失败:", err);
           });
         }
         retryDelay = POLL_RETRY_DELAY_MS;
       } catch (err) {
-        logger2.warn(`轮询失败: ${err instanceof Error ? err.message : String(err)}，将在 ${retryDelay}ms 后重试`);
+        logger.warn(`轮询失败: ${err instanceof Error ? err.message : String(err)}，将在 ${retryDelay}ms 后重试`);
         await this.sleep(retryDelay);
         retryDelay = Math.min(retryDelay * 2, POLL_MAX_RETRY_DELAY_MS);
       }
@@ -1319,7 +1360,7 @@ ${qrcodeUrl}
     const parsed = parseMessageBody(msg);
     if (!parsed.text && parsed.imageUrls.length === 0 && parsed.mediaItems.length === 0)
       return;
-    logger2.info(`[${userId}] 收到消息: text="${parsed.text.slice(0, 50)}${parsed.text.length > 50 ? "..." : ""}" images=${parsed.imageUrls.length}`);
+    logger.info(`[${userId}] 收到消息: text="${parsed.text.slice(0, 50)}${parsed.text.length > 50 ? "..." : ""}" images=${parsed.imageUrls.length}`);
     if (parsed.text.startsWith("/")) {
       const handled = await this.handleCommand(parsed.text, msg, userId);
       if (handled)
@@ -1346,11 +1387,11 @@ ${qrcodeUrl}
         } else if (item.type === MessageItemType.VOICE) {
           const wav = await this.silkToWav(buf);
           if (wav) {
-            logger2.debug(`[${userId}] 成功解密并转码语音: ${wav.length} 字节`);
+            logger.debug(`[${userId}] 成功解密并转码语音: ${wav.length} 字节`);
           }
         }
       } catch (err) {
-        logger2.error(`[${userId}] 下载/解密媒体失败:`, err);
+        logger.error(`[${userId}] 下载/解密媒体失败:`, err);
       }
     }
     if (!cs.typingTicket) {
@@ -1379,7 +1420,7 @@ ${qrcodeUrl}
     try {
       await this.backend.chat(cs.sessionId, text, images, undefined, "weixin");
     } catch (err) {
-      logger2.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
+      logger.error(`backend.chat 失败 (session=${cs.sessionId}):`, err);
       cs.busy = false;
     }
   }
@@ -1431,7 +1472,7 @@ ${qrcodeUrl}
       let activeToolsText = "";
       for (const inv of sorted) {
         const isDone = inv.status === "success" || inv.status === "error";
-        const line = formatToolLine(inv);
+        const line = formatToolStatusLine(inv);
         if (isDone) {
           if (!cs.committedToolIds.has(inv.id)) {
             cs.committedToolIds.add(inv.id);
@@ -1491,7 +1532,7 @@ ${qrcodeUrl}
             context_token: cs.contextToken || undefined
           });
         } catch (err) {
-          logger2.error(`[${userId}] 发送附件失败:`, err);
+          logger.error(`[${userId}] 发送附件失败:`, err);
         }
       }
     });
@@ -1511,7 +1552,7 @@ ${qrcodeUrl}
 
 `) || "✅ 处理完成。";
         this.reply(userId, cs.contextToken, finalContent).catch((err) => {
-          logger2.error(`最终消息发送失败 (userId=${userId}):`, err);
+          logger.error(`最终消息发送失败 (userId=${userId}):`, err);
         });
       }
       cs.busy = false;
@@ -1547,7 +1588,7 @@ ${qrcodeUrl}
     const combinedText = messages.map((m) => m.text).join(`
 `);
     const { message: latestMsg } = messages[messages.length - 1];
-    logger2.info(`[${userId}] 合并 ${messages.length} 条缓冲消息发送`);
+    logger.info(`[${userId}] 合并 ${messages.length} 条缓冲消息发送`);
     this.handleIncomingMessage({ ...latestMsg, item_list: [{ type: MessageItemType.TEXT, text_item: { text: combinedText } }] }).catch(() => {});
   }
   async handleCommand(text, msg, userId) {
@@ -1630,7 +1671,7 @@ function parseMessageBody(msg) {
         parts.push(item.text_item.text);
       } else if (item.type === MessageItemType.IMAGE && item.image_item?.url) {
         imageUrls.push(item.image_item.url);
-        logger2.debug(`收到图片消息: ${item.image_item.url}`);
+        logger.debug(`收到图片消息: ${item.image_item.url}`);
       } else if (item.type === MessageItemType.VOICE) {
         if (item.voice_item?.text)
           parts.push(item.voice_item.text);
@@ -1718,25 +1759,6 @@ function markdownToPlainText(text) {
   result = result.replace(/(\*|_)(.*?)\1/g, "$2");
   result = result.replace(/`([^`]+)`/g, "$1");
   return result;
-}
-var STATUS_ICONS = {
-  queued: "⏳",
-  executing: "\uD83D\uDD27",
-  success: "✅",
-  error: "❌",
-  awaiting_approval: "\uD83D\uDD10"
-};
-var STATUS_LABELS = {
-  queued: "等待中",
-  executing: "执行中",
-  success: "成功",
-  error: "失败",
-  awaiting_approval: "等待审批"
-};
-function formatToolLine(inv) {
-  const icon = STATUS_ICONS[inv.status] || "⏳";
-  const label = STATUS_LABELS[inv.status] || inv.status;
-  return `${icon} ${inv.toolName} ${label}`;
 }
 function pcmBytesToWav(pcm, sampleRate) {
   const pcmBytes = pcm.byteLength;

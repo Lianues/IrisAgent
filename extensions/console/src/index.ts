@@ -319,33 +319,61 @@ export class ConsolePlatform extends PlatformAdapter {
       }
     });
 
-    // 监听 agent:notification 获取任务描述（在 turn:start 之前触发）
-    this.backend.on('agent:notification' as any, (sid: string, _taskId: string, status: string, summary: string) => {
+    // 监听 agent:notification 获取任务描述（在 turn:start 之前触发）。
+    // [职责分离] 第 5 个参数 taskType 区分 'sub_agent'、'delegate'、'cron'。
+    // 委派任务走单独的计数器（delegateTaskCount）；cron 任务根据 silent 标记决定渲染方式。
+    // [cron 重构] 第 6 个参数 silent 标识任务是否为静默模式。
+    // backgroundTaskCount / spinner / token 动画混在一起。
+    this.backend.on('agent:notification' as any, (sid: string, _taskId: string, status: string, summary: string, taskType?: string, silent?: boolean) => {
       if (sid === this.sessionId) {
-        // 更新 StatusBar 中的后台任务计数：
-        // registered → 新任务启动，计数 +1
-        // completed / failed / killed → 任务结束，计数 -1
-        // token-update → 实时更新后台任务的 token 消耗
-        if (status === 'registered') {
-          this.appHandle?.updateBackgroundTaskCount(1);
-        } else if (status === 'completed' || status === 'failed' || status === 'killed') {
-          this.appHandle?.updateBackgroundTaskCount(-1);
-          this.appHandle?.removeBackgroundTaskTokens(_taskId);
-          this.appHandle?.setNotificationContext(summary);
-        } else if (status === 'token-update') {
-          // summary 字段携带 token 数值字符串（由 Backend 转发时填入）
-          const tokens = parseInt(summary, 10);
-          if (!isNaN(tokens)) {
-            this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+        const isDelegate = taskType === 'delegate';
+        const isCron = taskType === 'cron';
+
+        if (isCron) {
+          // ── 定时任务：仅更新 StatusBar 状态（计数 / spinner / token） ──
+          // 结果渲染由独立的 task:result 事件处理（见下方），agent:notification 不负责结果内容。
+          if (status === 'registered') {
+            this.appHandle?.updateBackgroundTaskCount(1);
+          } else if (status === 'completed' || status === 'failed' || status === 'killed') {
+            this.appHandle?.updateBackgroundTaskCount(-1);
+            this.appHandle?.removeBackgroundTaskTokens(_taskId);
+          } else if (status === 'token-update') {
+            const tokens = parseInt(summary, 10);
+            if (!isNaN(tokens)) {
+              this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+            }
+          } else if (status === 'chunk-heartbeat') {
+            this.appHandle?.advanceBackgroundTaskSpinner();
           }
-        } else if (status === 'chunk-heartbeat') {
-          // 真实数据流动心跳：推进 spinner 帧
-          this.appHandle?.advanceBackgroundTaskSpinner();
+        } else if (isDelegate) {
+          // ── 委派任务：只更新独立的委派计数，不影响子代理的 spinner/token ──
+          if (status === 'registered') {
+            this.appHandle?.updateDelegateTaskCount(1);
+          } else if (status === 'completed' || status === 'failed' || status === 'killed') {
+            this.appHandle?.updateDelegateTaskCount(-1);
+            this.appHandle?.setNotificationContext(summary);
+          }
+        } else {
+          // ── 异步子代理：保持原有逻辑（计数 / spinner / token） ──
+          if (status === 'registered') {
+            this.appHandle?.updateBackgroundTaskCount(1);
+          } else if (status === 'completed' || status === 'failed' || status === 'killed') {
+            this.appHandle?.updateBackgroundTaskCount(-1);
+            this.appHandle?.removeBackgroundTaskTokens(_taskId);
+            this.appHandle?.setNotificationContext(summary);
+          } else if (status === 'token-update') {
+            const tokens = parseInt(summary, 10);
+            if (!isNaN(tokens)) {
+              this.appHandle?.updateBackgroundTaskTokens(_taskId, tokens);
+            }
+          } else if (status === 'chunk-heartbeat') {
+            this.appHandle?.advanceBackgroundTaskSpinner();
+          }
         }
       }
     });
 
-    // 监听 notification:payloads 获取异步子代理通知的结构化内容
+    // 监听 notification:payloads 获取异步子代理/定时任务通知的结构化内容
     // （在 turn:start 之前触发，供前端渲染折叠通知区块）
     this.backend.on('notification:payloads' as any, (sid: string, payloads: any[]) => {
       if (sid === this.sessionId) {
@@ -353,36 +381,29 @@ export class ConsolePlatform extends PlatformAdapter {
       }
     });
 
-    // ── 定时任务结果广播订阅 ──
-    // 通过 PluginEventBus 订阅 'cron:result' 事件，
-    // 将后台定时任务的执行结果在 Console TUI 中展示为系统消息。
-    // eventBus 从 api.eventBus 获取，cron 插件 fire 时所有平台均可收到。
-    if (this.api?.eventBus) {
-      const eventBus = this.api.eventBus;
-      eventBus.on('cron:result', (payload: unknown) => {
-        const p = payload as {
-          jobName?: string;
-          status?: string;
-          result?: string;
-          error?: string;
-          durationMs?: number;
-        };
-        if (!p || typeof p !== 'object') return;
+    // ── 轻量级任务结果广播：通用的 task:result 通道 ──
+    // 所有终态任务都会 emit 此事件，不绑定 silent 或任务类型。
+    // 平台层自行决定是否消费和如何渲染。
+    // 当前策略：silent 任务渲染通知卡片（因为不会有 LLM 回复），非 silent 跳过（避免重复）。
+    this.backend.on('task:result' as any, (
+      sid: string, _taskId: string, status: string,
+      description: string, _taskType?: string, silent?: boolean, result?: string,
+    ) => {
+      if (sid !== this.sessionId) return;
+      // 非 silent 任务的结果由 LLM 通过 stream 事件回复，不需要在此渲染
+      if (!silent) return;
 
-        let text: string;
-        if (p.status === 'completed') {
-          const resultPreview = p.result?.slice(0, 200) ?? '';
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 完成：${resultPreview}`;
-        } else if (p.status === 'killed') {
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 被中止`;
-        } else {
-          text = `⏰ 定时任务 "${p.jobName ?? '未知'}" 失败：${p.error ?? '未知错误'}`;
-        }
-
-        // 使用 addMessage('assistant', ...) 将通知展示在聊天界面中
-        this.appHandle?.addMessage('assistant', text);
-      });
-    }
+      let text: string;
+      if (status === 'completed') {
+        const preview = (result ?? '').slice(0, 200);
+        text = `⏰ ${description} 完成：${preview}`;
+      } else if (status === 'killed') {
+        text = `⏰ ${description} 被中止`;
+      } else {
+        text = `⏰ ${description} 失败：${result ?? '未知错误'}`;
+      }
+      this.appHandle?.addMessage('assistant', text);
+    });
 
     this.backend.on('auto-compact', (sid: string, summaryText: string) => {
       if (sid === this.sessionId) {
