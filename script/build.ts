@@ -32,7 +32,8 @@ process.chdir(rootDir)
 
 const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8"))
 const version: string = pkg.version
-const webUiDistDir = path.join(rootDir, "src", "platforms", "web", "web-ui", "dist")
+// 修正：Web UI 已从 src/platforms/web/ 重构到 extensions/web/，路径同步更新
+const webUiDistDir = path.join(rootDir, "extensions", "web", "web-ui", "dist")
 const opentuiCoreDir = path.join(rootDir, "node_modules", "@opentui", "core")
 const opentuiRuntimeStagingDir = path.join(rootDir, "dist", ".opentui-runtime")
 const embeddedExtensionsConfigPath = path.join(rootDir, "extensions", "embedded.json")
@@ -305,7 +306,9 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    fs.cpSync(extension.sourceDir, targetDir, { recursive: true })
+    // 修正：Windows 上 extension 的 node_modules 里可能有 symlink/junction（如 @irises/extension-sdk），
+    // cpSync 默认不解引用会 EPERM，加 dereference: true 将链接展开为实际文件再复制
+    fs.cpSync(extension.sourceDir, targetDir, { recursive: true, dereference: true })
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
   }
 }
