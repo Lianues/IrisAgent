@@ -284,6 +284,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
       retryOnError: config.system.retryOnError,
       maxRetries: config.system.maxRetries,
       tools,
+      toolState,
       subAgentTypes,
       maxDepth: config.system.maxAgentDepth,
       // ---- 异步子代理依赖注入（仅在 asyncSubAgents 启用时提供 taskBoard） ----

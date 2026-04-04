@@ -84,6 +84,8 @@ export type {
 export type {
   FunctionDeclaration,
   ToolDefinition,
+  ToolExecutionHandleLike,
+  ToolOutputEntry,
   ToolExecutionContext,
   ToolHandler,
   ToolInvocation,
@@ -178,7 +180,7 @@ export type {
 
 
 export {
-  autoApproveTools,
+  autoApproveHandle,
   detectImageMime,
   formatToolStatusLine,
   TOOL_STATUS_ICONS,

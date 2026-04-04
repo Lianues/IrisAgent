@@ -190,6 +190,7 @@ export class ConsolePlatform extends PlatformAdapter {
   private appHandle?: AppHandle;
   private disposeResizeWatcher?: () => void;
   private api?: IrisAPI;
+  private _activeHandles: any[] = [];
   private isCompiledBinary: boolean;
 
   /** 当前响应周期内的工具调用 ID 集合 */
@@ -271,10 +272,23 @@ export class ConsolePlatform extends PlatformAdapter {
       }
     });
 
-    this.backend.on('tool:update', (sid: string, invocations: ToolInvocation[]) => {
-      if (sid === this.sessionId) {
+    this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
+      if (sid !== this.sessionId) return;
+      // 管理活跃 handles
+      if (!this._activeHandles) this._activeHandles = [];
+      this._activeHandles.push(handle);
+      const refreshUI = () => {
+        const invocations = (this._activeHandles || []).map((h: any) => h.getSnapshot());
         this.appHandle?.setToolInvocations(invocations);
-      }
+      };
+      handle.on('state', refreshUI);
+      handle.on('child', (childHandle: any) => {
+        if (!this._activeHandles) this._activeHandles = [];
+        this._activeHandles.push(childHandle);
+        childHandle.on('state', refreshUI);
+        refreshUI();
+      });
+      refreshUI();
     });
 
     this.backend.on('error', (sid: string, error: string) => {
@@ -467,10 +481,10 @@ export class ConsolePlatform extends PlatformAdapter {
           this.backend.clearRedo?.(this.sessionId);
         },
         onToolApproval: (toolId: string, approved: boolean) => {
-          this.backend.approveTool?.(toolId, approved);
+          (this.backend as any).getToolHandle?.(toolId)?.approve(approved);
         },
         onToolApply: (toolId: string, applied: boolean) => {
-          this.backend.applyTool?.(toolId, applied);
+          (this.backend as any).getToolHandle?.(toolId)?.apply(applied);
         },
         onAbort: () => {
           this.backend.abortChat?.(this.sessionId);
@@ -515,6 +529,7 @@ export class ConsolePlatform extends PlatformAdapter {
   private handleNewSession(): void {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
+    this._activeHandles = [];
   }
 
   private handleRunCommand(cmd: string): { output: string; cwd: string } {
@@ -567,6 +582,7 @@ export class ConsolePlatform extends PlatformAdapter {
   private async handleLoadSession(id: string): Promise<void> {
     this.sessionId = id;
     this.currentToolIds.clear();
+    this._activeHandles = [];
 
     const history = await this.backend.getHistory?.(id) ?? [];
 
