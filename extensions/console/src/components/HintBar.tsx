@@ -69,6 +69,7 @@ export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }:
   } else {
     const parts: string[] = [];
     parts.push(isGenerating ? 'esc 中断生成' : 'ctrl+j 换行');
+    if (!isGenerating) parts.push('shift+\u2190/\u2192 思考');
     if (isGenerating && hasQueue) {
       parts.push('/queue 管理队列');
     }

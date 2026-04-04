@@ -1,6 +1,6 @@
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
 import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
-import type { SwitchModelResult } from './app-types';
+import type { SwitchModelResult, ThinkingEffortLevel } from './app-types';
 import type { AppHandle } from './hooks/use-app-handle';
 import type { ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './settings';
 
@@ -25,6 +25,7 @@ export interface AppProps {
   onExit: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   onSwitchAgent?: () => void;
+  onThinkingEffortChange?: (level: ThinkingEffortLevel) => void;
   agentName?: string;
   /** 初始化过程中的警告信息（首屏展示） */
   initWarnings?: string[];

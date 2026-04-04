@@ -49,6 +49,10 @@ export interface LLMRouterLike {
   getCurrentModelName?(): string;
   /** 获取指定模型的配置（不传参数时获取当前模型） */
   getModelConfig?(modelName?: string): Record<string, unknown>;
+  /** 运行时浅合并当前模型的 requestBody 覆盖 */
+  patchCurrentModelRequestBody?(patch: Record<string, unknown>): void;
+  /** 运行时移除当前模型 requestBody 覆盖中的指定 key */
+  removeCurrentModelRequestBodyKeys?(...keys: string[]): void;
 }
 
 export interface PromptAssemblerLike {

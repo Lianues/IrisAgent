@@ -102,12 +102,15 @@ export function ToolCall({ invocation }: ToolCallProps) {
   const duration = isFinal && durationSec > 0 ? durationSec.toFixed(1) + 's' : '';
 
   const nameColor = isAwaitingApproval ? C.warn : C.dim;
+  const isShellTool = toolName === 'shell' || toolName === 'bash';
 
   return (
     <box flexDirection="column">
       <box flexDirection="row" gap={1}>
         <text>
-          <span fg={nameColor}>{toolName}</span>
+          {isShellTool
+            ? <span bg={C.command} fg={C.cursorFg}> {toolName} </span>
+            : <span fg={nameColor}>{toolName}</span>}
           {argsSummary.length > 0 && <span fg={C.dim}> {argsSummary}</span>}
           {status === 'success' ? <span fg={C.accent}> {'\u2713'}</span> : null}
           {status === 'warning' ? <span fg={C.warn}> !</span> : null}

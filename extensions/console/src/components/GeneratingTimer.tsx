@@ -17,9 +17,10 @@ export interface RetryInfo {
 interface GeneratingTimerProps {
   isGenerating: boolean;
   retryInfo?: RetryInfo | null;
+  label?: string;
 }
 
-export function GeneratingTimer({ isGenerating, retryInfo }: GeneratingTimerProps) {
+export function GeneratingTimer({ isGenerating, retryInfo, label }: GeneratingTimerProps) {
   const [time, setTime] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -62,7 +63,7 @@ export function GeneratingTimer({ isGenerating, retryInfo }: GeneratingTimerProp
   return (
     <text>
       <Spinner />
-      <span fg={C.dim}><em>{` generating... (${time}s)`}</em></span>
+      <span fg={C.dim}><em>{` ${label ?? 'generating...'} (${time}s)`}</em></span>
     </text>
   );
 }

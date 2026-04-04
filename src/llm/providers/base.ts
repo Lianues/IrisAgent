@@ -52,6 +52,10 @@ export interface LLMProviderLike {
   setLogging(logsDir: string): void;
   chat(request: LLMRequest, signal?: AbortSignal): Promise<LLMResponse>;
   chatStream(request: LLMRequest, signal?: AbortSignal): AsyncGenerator<LLMStreamChunk>;
+  /** 运行时浅合并 requestBody 覆盖（顶层 key 整体��换，不递归合并） */
+  patchRequestBodyOverrides?(patch: Record<string, unknown>): void;
+  /** 运行时移除 requestBody 覆盖中的指定 key */
+  removeRequestBodyOverrideKeys?(...keys: string[]): void;
   readonly name: string;
 }
 
@@ -86,6 +90,22 @@ export class LLMProvider implements LLMProviderLike {
     const body = mergeRequestBody(this.format.encodeRequest(request, true), this.requestBodyOverrides);
     const res = await sendRequest(this.endpoint, body, true, undefined, signal, this.loggingDir);
     yield* processStreamResponse(res, this.format);
+  }
+
+  /** 运行时浅合并 requestBody 覆盖（顶层 key 整体替换，不递归合并） */
+  patchRequestBodyOverrides(patch: Record<string, unknown>): void {
+    this.requestBodyOverrides = { ...this.requestBodyOverrides, ...patch };
+  }
+
+  /** 运行时移除 requestBody 覆盖中的指定 key */
+  removeRequestBodyOverrideKeys(...keys: string[]): void {
+    if (!this.requestBodyOverrides) return;
+    for (const key of keys) {
+      delete this.requestBodyOverrides[key];
+    }
+    if (Object.keys(this.requestBodyOverrides).length === 0) {
+      this.requestBodyOverrides = undefined;
+    }
   }
 
   get name(): string {

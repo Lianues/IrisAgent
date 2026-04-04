@@ -2,12 +2,13 @@
 
 import React from 'react';
 import type { ToolInvocation } from '@irises/extension-sdk';
-import type { ApprovalChoice, ConfirmChoice, PendingConfirm } from '../app-types';
+import type { ApprovalChoice, ConfirmChoice, PendingConfirm, ThinkingEffortLevel } from '../app-types';
 import { ApprovalBar } from './ApprovalBar';
 import { ConfirmBar } from './ConfirmBar';
 import { HintBar } from './HintBar';
 import { InputBar } from './InputBar';
 import { StatusBar } from './StatusBar';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import { C } from '../theme';
 
 interface BottomPanelProps {
@@ -35,6 +36,10 @@ interface BottomPanelProps {
   backgroundTaskTokens?: number;
   /** chunk 心跳驱动的 spinner 帧索引 */
   backgroundTaskSpinnerFrame?: number;
+  /** 当前思考强度层级 */
+  thinkingEffort: ThinkingEffortLevel;
+  /** Shift+Left/Right 切换思考强度 */
+  onCycleThinkingEffort: (direction: 1 | -1) => void;
 }
 
 export function BottomPanel({
@@ -58,6 +63,8 @@ export function BottomPanel({
   delegateTaskCount,
   backgroundTaskTokens,
   backgroundTaskSpinnerFrame,
+  thinkingEffort,
+  onCycleThinkingEffort,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -77,15 +84,18 @@ export function BottomPanel({
           flexDirection="column"
           borderStyle="single"
           borderColor={isGenerating ? C.warn : C.border}
-          padding={1}
+          paddingX={1}
+          paddingTop={0}
           paddingBottom={0}
         >
+          <ThinkingIndicator level={thinkingEffort} showHint={!hasMessages} />
           <InputBar
             disabled={inputDisabled}
             isGenerating={isGenerating}
             queueSize={queueSize}
             onSubmit={onSubmit}
             onPrioritySubmit={onPrioritySubmit}
+            onCycleThinkingEffort={onCycleThinkingEffort}
           />
           <StatusBar
             agentName={agentName}

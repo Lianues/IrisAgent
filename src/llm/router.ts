@@ -153,6 +153,16 @@ export class LLMRouter {
     yield* this.resolve(modelName).chatStream(request, signal);
   }
 
+  /** 运行时浅合并当前模型的 requestBody 覆盖 */
+  patchCurrentModelRequestBody(patch: Record<string, unknown>): void {
+    this.resolve().patchRequestBodyOverrides?.(patch);
+  }
+
+  /** 运行时移除当前模型 requestBody 覆盖中的指定 key */
+  removeCurrentModelRequestBodyKeys(...keys: string[]): void {
+    this.resolve().removeRequestBodyOverrideKeys?.(...keys);
+  }
+
   /** 返回当前活动模型名称（用于日志和状态展示） */
   get name(): string {
     return this.getCurrentModelInfo().modelName;

@@ -27,9 +27,11 @@ interface InputBarProps {
   onSubmit: (text: string) => void;
   /** 强制优先发送：中断当前生成，在队列最前面插入并立即发送 */
   onPrioritySubmit: (text: string) => void;
+  /** Shift+Left/Right 切换思考强度 */
+  onCycleThinkingEffort: (direction: 1 | -1) => void;
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
@@ -91,9 +93,7 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
   const applySelection = (index: number) => {
     if (filtered.length === 0) return;
     const normalizedIndex = ((index % filtered.length) + filtered.length) % filtered.length;
-    const cmd = filtered[normalizedIndex];
     setSelectedIndex(normalizedIndex);
-    inputActions.setValue(getCommandInput(cmd));
   };
 
   useKeyboard((key) => {
@@ -144,11 +144,22 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
         inputActions.insert('\n');
         return;
       }
-      const text = value.trim();
+      // 命令面板打开时，Enter 先补全为选中的命令再提交
+      let text = value.trim();
+      if (showCommands && filtered.length > 0) {
+        const cmd = filtered[selectedIndex];
+        if (cmd) text = getCommandInput(cmd);
+      }
       if (!text) return;
       onSubmit(text);
       inputActions.setValue('');
       setSelectedIndex(0);
+      return;
+    }
+
+    // Shift+Left/Right → 切换思考强度
+    if (key.shift && (key.name === 'left' || key.name === 'right')) {
+      onCycleThinkingEffort(key.name === 'right' ? 1 : -1);
       return;
     }
 

@@ -195,6 +195,9 @@ export class ConsolePlatform extends PlatformAdapter {
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
 
+  /** 当前思考强度层级（用于模型切换后重新应用） */
+  private currentThinkingEffort: import('./app-types').ThinkingEffortLevel = 'none';
+
   /** 串行化 undo/redo 持久化操作，防止并发写入。 */
   private historyMutationQueue: Promise<unknown> = Promise.resolve();
 
@@ -484,6 +487,7 @@ export class ConsolePlatform extends PlatformAdapter {
         onExit: () => this.stop(),
         onSummarize: () => this.handleSummarize(),
         onSwitchAgent: this.onSwitchAgent,
+        onThinkingEffortChange: (level: import('./app-types').ThinkingEffortLevel) => this.applyThinkingEffort(level),
         agentName: this.agentName,
         modeName: this.modeName,
         modelId: this.modelId,
@@ -528,6 +532,10 @@ export class ConsolePlatform extends PlatformAdapter {
       this.modelName = info.modelName;
       this.modelId = info.modelId;
       this.contextWindow = info.contextWindow;
+      // 模型切换后重新应用当前思考强度到新 provider
+      if (this.currentThinkingEffort !== 'none') {
+        this.applyThinkingEffort(this.currentThinkingEffort);
+      }
       return {
         ok: true,
         message: `当前模型已切换为：${info.modelName}  ${info.modelId}`,
@@ -538,6 +546,21 @@ export class ConsolePlatform extends PlatformAdapter {
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : String(err);
       return { ok: false, message: `切换模型失败：${detail}` };
+    }
+  }
+
+  private applyThinkingEffort(level: import('./app-types').ThinkingEffortLevel): void {
+    this.currentThinkingEffort = level;
+    const router = this.api?.router as Record<string, any> | undefined;
+    if (!router) return;
+
+    if (level === 'none') {
+      router.removeCurrentModelRequestBodyKeys?.('thinking', 'output_config');
+    } else {
+      router.patchCurrentModelRequestBody?.({
+        thinking: { type: 'enabled', budget_tokens: 10000 },
+        output_config: { effort: level },
+      });
     }
   }
 
@@ -598,6 +621,7 @@ export class ConsolePlatform extends PlatformAdapter {
   }
 
   private async handleSummarize(): Promise<{ ok: boolean; message: string }> {
+    this.appHandle?.setGeneratingLabel('compressing context...');
     this.appHandle?.setGenerating(true);
     try {
       const summaryText = await this.backend.summarize?.(this.sessionId) ?? '';

@@ -22,6 +22,7 @@ export interface AppHandle {
   finalizeAssistantParts(parts: MessagePart[], meta?: MessageMeta): void;
   setToolInvocations(invocations: ToolInvocation[]): void;
   setGenerating(generating: boolean): void;
+  setGeneratingLabel(label: string | undefined): void;
   clearMessages(): void;
   setUserTokens(tokenCount: number): void;
   addSummaryMessage(summaryText: string, tokenCount?: number): void;
@@ -68,6 +69,7 @@ export interface UseAppHandleReturn {
   streamingParts: MessagePart[];
   isStreaming: boolean;
   isGenerating: boolean;
+  generatingLabel: string | undefined;
   contextTokens: number;
   retryInfo: RetryInfo | null;
   pendingApprovals: ToolInvocation[];
@@ -89,6 +91,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingLabel, setGeneratingLabelState] = useState<string | undefined>();
   const [contextTokens, setContextTokens] = useState(0);
   const [retryInfo, setRetryInfo] = useState<RetryInfo | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<ToolInvocation[]>([]);
@@ -271,7 +274,11 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
           });
         }
         setIsGenerating(generating);
+        if (!generating) setGeneratingLabelState(undefined);
         setRetryInfo(null);
+      },
+      setGeneratingLabel(label) {
+        setGeneratingLabelState(label);
       },
       clearMessages() {
         setMessages([]);
@@ -392,6 +399,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
     streamingParts,
     isStreaming,
     isGenerating,
+    generatingLabel,
     contextTokens,
     retryInfo,
     pendingApprovals,

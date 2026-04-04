@@ -28,3 +28,5 @@ export interface PendingConfirm {
   message: string;
   action: () => void;
 }
+
+export type ThinkingEffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max';

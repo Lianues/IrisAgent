@@ -18,7 +18,7 @@ import { ModelListView } from './components/ModelListView';
 import { QueueListView } from './components/QueueListView';
 import { SessionListView } from './components/SessionListView';
 import { SettingsView } from './components/SettingsView';
-import { type ConfirmChoice, type PendingConfirm, type SettingsInitialSection, type ViewMode } from './app-types';
+import { type ConfirmChoice, type PendingConfirm, type SettingsInitialSection, type ThinkingEffortLevel, type ViewMode } from './app-types';
 import type { AppProps } from './app-props';
 import { useAppHandle, type AppHandle } from './hooks/use-app-handle';
 import { useAppKeyboard } from './hooks/use-app-keyboard';
@@ -55,6 +55,7 @@ export function App({
   onExit,
   onSummarize,
   onSwitchAgent,
+  onThinkingEffortChange,
   initWarnings,
   agentName,
   modeName,
@@ -71,6 +72,7 @@ export function App({
   const [copyMode, setCopyMode] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmChoice, setConfirmChoice] = useState<ConfirmChoice>('confirm');
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffortLevel>('none');
 
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
@@ -111,6 +113,18 @@ export function App({
     messageQueue.prepend(text);
     onAbort();
   }, [messageQueue, onAbort]);
+
+  const cycleThinkingEffort = useCallback((direction: 1 | -1) => {
+    const levels: ThinkingEffortLevel[] = ['none', 'low', 'medium', 'high', 'max'];
+    setThinkingEffort(prev => {
+      const idx = levels.indexOf(prev);
+      const next = idx + direction;
+      if (next < 0 || next >= levels.length) return prev;
+      const newLevel = levels[next];
+      onThinkingEffortChange?.(newLevel);
+      return newLevel;
+    });
+  }, [onThinkingEffortChange]);
 
   const handleSubmit = useCommandDispatch({
     onSubmit: queueAwareSubmit,
@@ -261,6 +275,7 @@ export function App({
           isGenerating={appState.isGenerating}
           retryInfo={appState.retryInfo}
           modelName={modelState.currentModelName}
+          generatingLabel={appState.generatingLabel}
         />
       ) : null}
 
@@ -285,6 +300,8 @@ export function App({
         delegateTaskCount={appState.delegateTaskCount}
         backgroundTaskTokens={appState.backgroundTaskTokens}
         backgroundTaskSpinnerFrame={appState.backgroundTaskSpinnerFrame}
+        thinkingEffort={thinkingEffort}
+        onCycleThinkingEffort={cycleThinkingEffort}
       />
     </box>
   );
