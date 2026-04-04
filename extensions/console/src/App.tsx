@@ -73,6 +73,7 @@ export function App({
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmChoice, setConfirmChoice] = useState<ConfirmChoice>('confirm');
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffortLevel>('none');
+  const [thoughtsToggleSignal, setThoughtsToggleSignal] = useState(0);
 
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
@@ -211,6 +212,7 @@ export function App({
     setQueueEditingId,
     queueEditState,
     queueEditActions,
+    onToggleThoughts: () => setThoughtsToggleSignal((prev) => prev + 1),
   });
 
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
@@ -276,6 +278,7 @@ export function App({
           retryInfo={appState.retryInfo}
           modelName={modelState.currentModelName}
           generatingLabel={appState.generatingLabel}
+          thoughtsToggleSignal={thoughtsToggleSignal}
         />
       ) : null}
 

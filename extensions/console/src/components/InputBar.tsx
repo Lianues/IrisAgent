@@ -70,7 +70,12 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     return value;
   }, [inputDisabled, value, exactMatchIndex]);
 
-  const showCommands = commandQuery.length > 0;
+  const [commandsDismissed, setCommandsDismissed] = useState(false);
+
+  // 输入内容变化时重新打开面板
+  useEffect(() => { setCommandsDismissed(false); }, [commandQuery]);
+
+  const showCommands = commandQuery.length > 0 && !commandsDismissed;
 
   const filtered = useMemo(() => {
     if (!showCommands) return [];
@@ -163,9 +168,14 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
       return;
     }
 
-    // 功能键不应作为文本输入（Esc 由 useAppKeyboard 处理 abort/视图切换，
-    // 此处若不拦截，其单字节序列 0x1B 会被 useTextInput 当作可打印字符插入）
-    if (key.name === 'escape') return;
+    // Esc：命令面板打开时收起面板（保留输入内容）；否则交给 useAppKeyboard 处理
+    if (key.name === 'escape') {
+      if (showCommands) {
+        setCommandsDismissed(true);
+        setSelectedIndex(0);
+      }
+      return;
+    }
 
     // 委托给 useTextInput 处理其余按键
     inputActions.handleKey(key);

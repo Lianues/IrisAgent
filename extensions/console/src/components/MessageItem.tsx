@@ -4,7 +4,7 @@
  * 单条消息渲染
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTerminalDimensions } from '@opentui/react';
 import type { ToolInvocation } from '@irises/extension-sdk';
 import { MarkdownText } from './MarkdownText';
@@ -12,12 +12,16 @@ import { GeneratingTimer } from './GeneratingTimer';
 import { ToolCall } from './ToolCall';
 import { C } from '../theme';
 
-function getThoughtTailPreview(text: string, maxChars: number): string {
+function truncateRight(line: string, maxChars: number): string {
+  if (line.length <= maxChars) return line;
+  return `${line.slice(0, maxChars - 1)}\u2026`;
+}
+
+function getThoughtTailPreview(text: string, maxChars: number, lineCount = 2): string[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
-  if (lines.length === 0) return '';
-  const latestLine = lines[lines.length - 1];
-  if (latestLine.length <= maxChars) return latestLine;
-  return `\u2026${latestLine.slice(-(maxChars - 1))}`;
+  if (lines.length === 0) return [];
+  const tail = lines.slice(-lineCount);
+  return tail.map((line) => truncateRight(line, maxChars));
 }
 
 /** 将总结文本截取为单行预览（去掉 [Context Summary] 前缀） */
@@ -98,6 +102,8 @@ interface MessageItemProps {
   liveParts?: MessagePart[];
   isStreaming?: boolean;
   modelName?: string;
+  /** Ctrl+O 信号：每次递增时切换本条消息的 thinking 展开状态 */
+  thoughtsToggleSignal?: number;
 }
 
 /**
@@ -167,9 +173,23 @@ function NotificationPayloadBlock({ payload }: { payload: NotificationPayload })
 }
 
 export const MessageItem = React.memo(function MessageItem(
-  { msg, liveTools, liveParts, isStreaming, modelName }: MessageItemProps
+  { msg, liveTools, liveParts, isStreaming, modelName, thoughtsToggleSignal }: MessageItemProps
 ) {
   const { width: termWidth } = useTerminalDimensions();
+  const [thoughtsExpanded, setThoughtsExpanded] = useState(false);
+
+  // Ctrl+O 信号变化时切换本条消息的展开状态。
+  // 用 ref 记录上次看到的信号值，只在信号真正递增时切换，
+  // 避免 undo 导致信号从 undefined 变为已有值时误触发。
+  const prevSignalRef = useRef(thoughtsToggleSignal);
+  useEffect(() => {
+    const prev = prevSignalRef.current;
+    prevSignalRef.current = thoughtsToggleSignal;
+    if (prev != null && thoughtsToggleSignal != null && thoughtsToggleSignal !== prev) {
+      setThoughtsExpanded(p => !p);
+    }
+  }, [thoughtsToggleSignal]);
+
   const isUser = msg.role === 'user';
   const isSummary = msg.isSummary === true;
 
@@ -272,23 +292,40 @@ export const MessageItem = React.memo(function MessageItem(
           }
 
           if (group.kind === 'thought') {
-            const previewText = getThoughtTailPreview(group.part.text, Math.max(24, termWidth - 20));
+            const maxChars = Math.max(24, termWidth - 20);
+            const allLines = group.part.text.replace(/\r\n/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+            const totalLines = allLines.length;
             const isLastGroup = gi === groups.length - 1;
             const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
             const isAfterTools = prevGroup?.kind === 'tools';
             const prefix = group.part.durationMs != null ? `thinking   ${formatElapsedMs(group.part.durationMs)}` : 'thinking';
+            const hiddenLines = Math.max(0, totalLines - 2);
+            const showFull = thoughtsExpanded && hiddenLines > 0;
+
+            // 展开时显示全部行（不截断，由终端自然折行），收起时显示尾部 2 行预览
+            const displayLines = showFull
+              ? allLines
+              : getThoughtTailPreview(group.part.text, maxChars);
+
             return (
               <box key={group.index} marginTop={(isAfterTools) ? 0 : (gi > 0 ? 1 : 0)} flexDirection="column"
                    backgroundColor={C.thinkingBg} paddingLeft={1}>
                 <text fg={C.primaryLight}><em>{'\u00b7 ' + prefix}</em></text>
                 <box flexDirection="column">
-                  <text fg={C.dim}>
-                    <em>
-                      {'    '}{previewText ? previewText : '...'}
-                      {isLastGroup && isStreaming ? <span bg={C.accent}> </span> : null}
-                    </em>
-                  </text>
+                  {displayLines.length > 0 ? displayLines.map((line, li) => (
+                    <text key={li} fg={C.dim}>
+                      <em>
+                        {'    '}{line}
+                        {li === displayLines.length - 1 && isLastGroup && isStreaming ? <span bg={C.accent}> </span> : null}
+                      </em>
+                    </text>
+                  )) : (
+                    <text fg={C.dim}><em>{'    '}...</em></text>
+                  )}
                 </box>
+                {hiddenLines > 0 ? (
+                  <text fg={C.dim}><em>{'    \u2026 +'}{hiddenLines}{' lines (ctrl+o to '}{showFull ? 'collapse' : 'expand'}{')'}</em></text>
+                ) : null}
               </box>
             );
           }

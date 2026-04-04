@@ -258,7 +258,12 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
       },
       setGenerating(generating) {
         if (!generating) {
-          const uncommitted = uncommittedStreamPartsRef.current;
+          // 中断生成时 stream:end 可能未触发，streamPartsRef 中仍有未提交内容。
+          // 优先使用 uncommittedStreamPartsRef（正常结束路径），
+          // 否则回退到 streamPartsRef（abort 路径），确保已接收的内容不丢失。
+          const uncommitted = uncommittedStreamPartsRef.current.length > 0
+            ? uncommittedStreamPartsRef.current
+            : streamPartsRef.current;
           if (uncommitted.length > 0) {
             setMessages((prev) => appendAssistantParts(prev, uncommitted));
             uncommittedStreamPartsRef.current = [];

@@ -66,6 +66,7 @@ interface UseAppKeyboardOptions {
   setQueueEditingId: SetState<string | null>;
   queueEditState: TextInputState;
   queueEditActions: TextInputActions;
+  onToggleThoughts: () => void;
 }
 
 function closeConfirm(
@@ -114,6 +115,7 @@ export function useAppKeyboard({
   setQueueEditingId,
   queueEditState,
   queueEditActions,
+  onToggleThoughts,
 }: UseAppKeyboardOptions) {
   useKeyboard((key) => {
     if (key.ctrl && key.name === 'c') {
@@ -128,6 +130,11 @@ export function useAppKeyboard({
 
     if (key.name === 'f6') {
       setCopyMode((prev) => !prev);
+      return;
+    }
+
+    if (key.ctrl && key.name === 'o') {
+      onToggleThoughts();
       return;
     }
 

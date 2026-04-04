@@ -23,7 +23,7 @@ var _logLevel = LogLevel.INFO;
 import { estimateTokenCount } from "tokenx";
 
 // src/App.tsx
-import { useCallback as useCallback10, useEffect as useEffect10, useRef as useRef8, useState as useState12 } from "react";
+import { useCallback as useCallback10, useEffect as useEffect11, useRef as useRef9, useState as useState13 } from "react";
 import { useRenderer } from "@opentui/react";
 
 // src/theme.ts
@@ -567,7 +567,11 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
       return "";
     return value;
   }, [inputDisabled, value, exactMatchIndex]);
-  const showCommands = commandQuery.length > 0;
+  const [commandsDismissed, setCommandsDismissed] = useState3(false);
+  useEffect3(() => {
+    setCommandsDismissed(false);
+  }, [commandQuery]);
+  const showCommands = commandQuery.length > 0 && !commandsDismissed;
   const filtered = useMemo(() => {
     if (!showCommands)
       return [];
@@ -656,8 +660,13 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
       onCycleThinkingEffort(key.name === "right" ? 1 : -1);
       return;
     }
-    if (key.name === "escape")
+    if (key.name === "escape") {
+      if (showCommands) {
+        setCommandsDismissed(true);
+        setSelectedIndex(0);
+      }
       return;
+    }
     inputActions.handleKey(key);
   });
   usePaste((text) => {
@@ -1112,7 +1121,7 @@ function GeneratingTimer({ isGenerating, retryInfo, label }) {
 }
 
 // src/components/MessageItem.tsx
-import React5 from "react";
+import React5, { useEffect as useEffect6, useRef as useRef5, useState as useState6 } from "react";
 import { useTerminalDimensions as useTerminalDimensions2 } from "@opentui/react";
 
 // src/components/MarkdownText.tsx
@@ -1938,16 +1947,19 @@ function ToolCall({ invocation }) {
 
 // src/components/MessageItem.tsx
 import { jsxDEV as jsxDEV23 } from "@opentui/react/jsx-dev-runtime";
-function getThoughtTailPreview(text, maxChars) {
+function truncateRight(line, maxChars) {
+  if (line.length <= maxChars)
+    return line;
+  return `${line.slice(0, maxChars - 1)}…`;
+}
+function getThoughtTailPreview(text, maxChars, lineCount2 = 2) {
   const lines = text.replace(/\r\n/g, `
 `).split(`
 `).map((s) => s.trim()).filter(Boolean);
   if (lines.length === 0)
-    return "";
-  const latestLine = lines[lines.length - 1];
-  if (latestLine.length <= maxChars)
-    return latestLine;
-  return `…${latestLine.slice(-(maxChars - 1))}`;
+    return [];
+  const tail = lines.slice(-lineCount2);
+  return tail.map((line) => truncateRight(line, maxChars));
 }
 function getSummaryPreview(text, maxChars) {
   const clean = text.replace(/^\[Context Summary\]\s*\n*/i, "").trim();
@@ -2040,8 +2052,17 @@ function NotificationPayloadBlock({ payload }) {
     }, undefined, true, undefined, this)
   }, undefined, false, undefined, this);
 }
-var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts, isStreaming, modelName }) {
+var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts, isStreaming, modelName, thoughtsToggleSignal }) {
   const { width: termWidth } = useTerminalDimensions2();
+  const [thoughtsExpanded, setThoughtsExpanded] = useState6(false);
+  const prevSignalRef = useRef5(thoughtsToggleSignal);
+  useEffect6(() => {
+    const prev = prevSignalRef.current;
+    prevSignalRef.current = thoughtsToggleSignal;
+    if (prev != null && thoughtsToggleSignal != null && thoughtsToggleSignal !== prev) {
+      setThoughtsExpanded((p) => !p);
+    }
+  }, [thoughtsToggleSignal]);
   const isUser = msg.role === "user";
   const isSummary = msg.isSummary === true;
   if (isSummary) {
@@ -2189,11 +2210,18 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
               }, group.index, false, undefined, this);
             }
             if (group.kind === "thought") {
-              const previewText = getThoughtTailPreview(group.part.text, Math.max(24, termWidth - 20));
+              const maxChars = Math.max(24, termWidth - 20);
+              const allLines = group.part.text.replace(/\r\n/g, `
+`).split(`
+`).map((s) => s.trim()).filter(Boolean);
+              const totalLines = allLines.length;
               const isLastGroup = gi === groups.length - 1;
               const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
               const isAfterTools = prevGroup?.kind === "tools";
               const prefix = group.part.durationMs != null ? `thinking   ${formatElapsedMs(group.part.durationMs)}` : "thinking";
+              const hiddenLines = Math.max(0, totalLines - 2);
+              const showFull = thoughtsExpanded && hiddenLines > 0;
+              const displayLines = showFull ? allLines : getThoughtTailPreview(group.part.text, maxChars);
               return /* @__PURE__ */ jsxDEV23("box", {
                 marginTop: isAfterTools ? 0 : gi > 0 ? 1 : 0,
                 flexDirection: "column",
@@ -2208,20 +2236,40 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
                   }, undefined, false, undefined, this),
                   /* @__PURE__ */ jsxDEV23("box", {
                     flexDirection: "column",
-                    children: /* @__PURE__ */ jsxDEV23("text", {
+                    children: displayLines.length > 0 ? displayLines.map((line, li) => /* @__PURE__ */ jsxDEV23("text", {
                       fg: C.dim,
                       children: /* @__PURE__ */ jsxDEV23("em", {
                         children: [
                           "    ",
-                          previewText ? previewText : "...",
-                          isLastGroup && isStreaming ? /* @__PURE__ */ jsxDEV23("span", {
+                          line,
+                          li === displayLines.length - 1 && isLastGroup && isStreaming ? /* @__PURE__ */ jsxDEV23("span", {
                             bg: C.accent,
                             children: " "
                           }, undefined, false, undefined, this) : null
                         ]
                       }, undefined, true, undefined, this)
+                    }, li, false, undefined, this)) : /* @__PURE__ */ jsxDEV23("text", {
+                      fg: C.dim,
+                      children: /* @__PURE__ */ jsxDEV23("em", {
+                        children: [
+                          "    ",
+                          "..."
+                        ]
+                      }, undefined, true, undefined, this)
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this)
+                  }, undefined, false, undefined, this),
+                  hiddenLines > 0 ? /* @__PURE__ */ jsxDEV23("text", {
+                    fg: C.dim,
+                    children: /* @__PURE__ */ jsxDEV23("em", {
+                      children: [
+                        "    … +",
+                        hiddenLines,
+                        " lines (ctrl+o to ",
+                        showFull ? "collapse" : "expand",
+                        ")"
+                      ]
+                    }, undefined, true, undefined, this)
+                  }, undefined, false, undefined, this) : null
                 ]
               }, group.index, true, undefined, this);
             }
@@ -2299,10 +2347,18 @@ function ChatMessageList({
   isGenerating,
   retryInfo,
   modelName,
-  generatingLabel
+  generatingLabel,
+  thoughtsToggleSignal
 }) {
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const lastIsActiveAssistant = lastMessage?.role === "assistant" && (isStreaming || isGenerating && lastMessage.parts.length === 0);
+  let lastAssistantIndex = -1;
+  for (let i = messages.length - 1;i >= 0; i--) {
+    if (messages[i].role === "assistant") {
+      lastAssistantIndex = i;
+      break;
+    }
+  }
   return /* @__PURE__ */ jsxDEV24("scrollbox", {
     flexGrow: 1,
     stickyScroll: true,
@@ -2331,7 +2387,8 @@ function ChatMessageList({
               msg: message,
               liveParts,
               isStreaming: isLastActive ? isStreaming : undefined,
-              modelName
+              modelName,
+              thoughtsToggleSignal: index === lastAssistantIndex ? thoughtsToggleSignal : undefined
             }, undefined, false, undefined, this),
             isLastActive && isStreaming && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV24(GeneratingTimer, {
               isGenerating,
@@ -3564,7 +3621,7 @@ function SessionListView({ sessions, selectedIndex }) {
 }
 
 // src/components/SettingsView.tsx
-import { useCallback as useCallback3, useEffect as useEffect6, useMemo as useMemo4, useState as useState6 } from "react";
+import { useCallback as useCallback3, useEffect as useEffect7, useMemo as useMemo4, useState as useState7 } from "react";
 import { useKeyboard as useKeyboard2, useTerminalDimensions as useTerminalDimensions3 } from "@opentui/react";
 
 // src/diff-approval.ts
@@ -4133,18 +4190,18 @@ var BUILTIN_SECTIONS = [
 ];
 function SettingsView({ initialSection = "general", onBack, onLoad, onSave, pluginTabs }) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions3();
-  const [loading, setLoading] = useState6(true);
-  const [saving, setSaving] = useState6(false);
-  const [draft, setDraft] = useState6(null);
-  const [baseline, setBaseline] = useState6(null);
-  const [selectedRowId, setSelectedRowId] = useState6("");
-  const [editor, setEditor] = useState6(null);
-  const [editorValue, setEditorValue] = useState6("");
-  const [statusText, setStatusText] = useState6("");
-  const [statusKind, setStatusKind] = useState6("info");
-  const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState6(false);
-  const [pluginDraft, setPluginDraft] = useState6({});
-  const [pluginBaseline, setPluginBaseline] = useState6({});
+  const [loading, setLoading] = useState7(true);
+  const [saving, setSaving] = useState7(false);
+  const [draft, setDraft] = useState7(null);
+  const [baseline, setBaseline] = useState7(null);
+  const [selectedRowId, setSelectedRowId] = useState7("");
+  const [editor, setEditor] = useState7(null);
+  const [editorValue, setEditorValue] = useState7("");
+  const [statusText, setStatusText] = useState7("");
+  const [statusKind, setStatusKind] = useState7("info");
+  const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState7(false);
+  const [pluginDraft, setPluginDraft] = useState7({});
+  const [pluginBaseline, setPluginBaseline] = useState7({});
   const sections = useMemo4(() => {
     const pluginSections = (pluginTabs ?? []).map((tab, i) => ({
       id: tab.id,
@@ -4222,7 +4279,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   const selectedSelectableIndex = useMemo4(() => {
     return selectableRows.findIndex((row) => row.id === selectedRowId);
   }, [selectableRows, selectedRowId]);
-  useEffect6(() => {
+  useEffect7(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -4263,7 +4320,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       cancelled = true;
     };
   }, [onLoad, setStatus, pluginTabs]);
-  useEffect6(() => {
+  useEffect7(() => {
     if (rows.length === 0)
       return;
     if (selectedRowId && rows.some((row) => row.id === selectedRowId && row.target))
@@ -4968,7 +5025,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
 }
 
 // src/hooks/use-app-handle.ts
-import { useCallback as useCallback4, useEffect as useEffect7, useRef as useRef5, useState as useState7 } from "react";
+import { useCallback as useCallback4, useEffect as useEffect8, useRef as useRef6, useState as useState8 } from "react";
 
 // src/message-utils.ts
 var msgIdCounter = 0;
@@ -5070,39 +5127,39 @@ function clearRedo(stack) {
 
 // src/hooks/use-app-handle.ts
 function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
-  const [messages, setMessages] = useState7([]);
-  const [streamingParts, setStreamingParts] = useState7([]);
-  const [isStreaming, setIsStreaming] = useState7(false);
-  const [isGenerating, setIsGenerating] = useState7(false);
-  const [generatingLabel, setGeneratingLabelState] = useState7();
-  const [contextTokens, setContextTokens] = useState7(0);
-  const [retryInfo, setRetryInfo] = useState7(null);
-  const [pendingApprovals, setPendingApprovals] = useState7([]);
-  const [pendingApplies, setPendingApplies] = useState7([]);
-  const [backgroundTaskCount, setBackgroundTaskCount] = useState7(0);
-  const [delegateTaskCount, setDelegateTaskCount] = useState7(0);
-  const backgroundTaskTokenMapRef = useRef5(new Map);
-  const [backgroundTaskTokens, setBackgroundTaskTokens] = useState7(0);
-  const spinnerFrameRef = useRef5(0);
-  const [backgroundTaskSpinnerFrame, setBackgroundTaskSpinnerFrame] = useState7(0);
-  const streamPartsRef = useRef5([]);
-  const toolInvocationsRef = useRef5([]);
-  const throttleTimerRef = useRef5(null);
-  const uncommittedStreamPartsRef = useRef5([]);
-  const lastUsageRef = useRef5(null);
-  const notificationContextRef = useRef5({ active: false });
+  const [messages, setMessages] = useState8([]);
+  const [streamingParts, setStreamingParts] = useState8([]);
+  const [isStreaming, setIsStreaming] = useState8(false);
+  const [isGenerating, setIsGenerating] = useState8(false);
+  const [generatingLabel, setGeneratingLabelState] = useState8();
+  const [contextTokens, setContextTokens] = useState8(0);
+  const [retryInfo, setRetryInfo] = useState8(null);
+  const [pendingApprovals, setPendingApprovals] = useState8([]);
+  const [pendingApplies, setPendingApplies] = useState8([]);
+  const [backgroundTaskCount, setBackgroundTaskCount] = useState8(0);
+  const [delegateTaskCount, setDelegateTaskCount] = useState8(0);
+  const backgroundTaskTokenMapRef = useRef6(new Map);
+  const [backgroundTaskTokens, setBackgroundTaskTokens] = useState8(0);
+  const spinnerFrameRef = useRef6(0);
+  const [backgroundTaskSpinnerFrame, setBackgroundTaskSpinnerFrame] = useState8(0);
+  const streamPartsRef = useRef6([]);
+  const toolInvocationsRef = useRef6([]);
+  const throttleTimerRef = useRef6(null);
+  const uncommittedStreamPartsRef = useRef6([]);
+  const lastUsageRef = useRef6(null);
+  const notificationContextRef = useRef6({ active: false });
   const commitTools = useCallback4(() => {
     toolInvocationsRef.current = [];
     setPendingApprovals([]);
     setPendingApplies([]);
   }, []);
-  useEffect7(() => {
+  useEffect8(() => {
     return () => {
       if (throttleTimerRef.current)
         clearTimeout(throttleTimerRef.current);
     };
   }, []);
-  useEffect7(() => {
+  useEffect8(() => {
     const handle = {
       addMessage(role, content, meta) {
         clearRedo(undoRedoRef.current);
@@ -5230,7 +5287,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
       },
       setGenerating(generating) {
         if (!generating) {
-          const uncommitted = uncommittedStreamPartsRef.current;
+          const uncommitted = uncommittedStreamPartsRef.current.length > 0 ? uncommittedStreamPartsRef.current : streamPartsRef.current;
           if (uncommitted.length > 0) {
             setMessages((prev) => appendAssistantParts(prev, uncommitted));
             uncommittedStreamPartsRef.current = [];
@@ -5426,7 +5483,8 @@ function useAppKeyboard({
   queueEditingId,
   setQueueEditingId,
   queueEditState,
-  queueEditActions
+  queueEditActions,
+  onToggleThoughts
 }) {
   useKeyboard3((key) => {
     if (key.ctrl && key.name === "c") {
@@ -5440,6 +5498,10 @@ function useAppKeyboard({
     }
     if (key.name === "f6") {
       setCopyMode((prev) => !prev);
+      return;
+    }
+    if (key.ctrl && key.name === "o") {
+      onToggleThoughts();
       return;
     }
     if (viewMode === "settings")
@@ -5660,17 +5722,17 @@ function useAppKeyboard({
 }
 
 // src/hooks/use-approval.ts
-import { useCallback as useCallback5, useEffect as useEffect8, useState as useState8 } from "react";
+import { useCallback as useCallback5, useEffect as useEffect9, useState as useState9 } from "react";
 function useApproval(pendingApprovals, pendingApplies) {
-  const [approvalChoice, setApprovalChoice] = useState8("approve");
-  const [diffView, setDiffView] = useState8("unified");
-  const [showLineNumbers, setShowLineNumbers] = useState8(true);
-  const [wrapMode, setWrapMode] = useState8("word");
-  const [previewIndex, setPreviewIndex] = useState8(0);
-  useEffect8(() => {
+  const [approvalChoice, setApprovalChoice] = useState9("approve");
+  const [diffView, setDiffView] = useState9("unified");
+  const [showLineNumbers, setShowLineNumbers] = useState9(true);
+  const [wrapMode, setWrapMode] = useState9("word");
+  const [previewIndex, setPreviewIndex] = useState9(0);
+  useEffect9(() => {
     setApprovalChoice("approve");
   }, [pendingApprovals[0]?.id]);
-  useEffect8(() => {
+  useEffect9(() => {
     setApprovalChoice("approve");
     setDiffView("unified");
     setShowLineNumbers(true);
@@ -5901,10 +5963,10 @@ function useCommandDispatch({
 }
 
 // src/hooks/use-exit-confirm.ts
-import { useCallback as useCallback7, useEffect as useEffect9, useRef as useRef6, useState as useState9 } from "react";
+import { useCallback as useCallback7, useEffect as useEffect10, useRef as useRef7, useState as useState10 } from "react";
 function useExitConfirm({ timeoutMs = 1500 } = {}) {
-  const [exitConfirmArmed, setExitConfirmArmed] = useState9(false);
-  const exitConfirmTimerRef = useRef6(null);
+  const [exitConfirmArmed, setExitConfirmArmed] = useState10(false);
+  const exitConfirmTimerRef = useRef7(null);
   const clearExitConfirm = useCallback7(() => {
     if (exitConfirmTimerRef.current) {
       clearTimeout(exitConfirmTimerRef.current);
@@ -5921,7 +5983,7 @@ function useExitConfirm({ timeoutMs = 1500 } = {}) {
       setExitConfirmArmed(false);
     }, timeoutMs);
   }, [timeoutMs]);
-  useEffect9(() => {
+  useEffect10(() => {
     return () => {
       if (exitConfirmTimerRef.current)
         clearTimeout(exitConfirmTimerRef.current);
@@ -5935,11 +5997,11 @@ function useExitConfirm({ timeoutMs = 1500 } = {}) {
 }
 
 // src/hooks/use-message-queue.ts
-import { useCallback as useCallback8, useRef as useRef7, useState as useState10 } from "react";
+import { useCallback as useCallback8, useRef as useRef8, useState as useState11 } from "react";
 var queueIdCounter = 0;
 function useMessageQueue() {
-  const [queue, setQueue] = useState10([]);
-  const queueRef = useRef7([]);
+  const [queue, setQueue] = useState11([]);
+  const queueRef = useRef8([]);
   const sync = useCallback8((next) => {
     queueRef.current = next;
     setQueue(next);
@@ -6033,11 +6095,11 @@ function useMessageQueue() {
 }
 
 // src/hooks/use-model-state.ts
-import { useCallback as useCallback9, useState as useState11 } from "react";
+import { useCallback as useCallback9, useState as useState12 } from "react";
 function useModelState({ modelId, modelName, contextWindow }) {
-  const [currentModelId, setCurrentModelId] = useState11(modelId);
-  const [currentModelName, setCurrentModelName] = useState11(modelName);
-  const [currentContextWindow, setCurrentContextWindow] = useState11(contextWindow);
+  const [currentModelId, setCurrentModelId] = useState12(modelId);
+  const [currentModelName, setCurrentModelName] = useState12(modelName);
+  const [currentContextWindow, setCurrentContextWindow] = useState12(contextWindow);
   const updateModel = useCallback9((result) => {
     if (result.modelId)
       setCurrentModelId(result.modelId);
@@ -6086,21 +6148,22 @@ function App({
   contextWindow,
   pluginSettingsTabs
 }) {
-  const [viewMode, setViewMode] = useState12("chat");
-  const [sessionList, setSessionList] = useState12([]);
-  const [selectedIndex, setSelectedIndex] = useState12(0);
-  const [settingsInitialSection, setSettingsInitialSection] = useState12("general");
-  const [modelList, setModelList] = useState12([]);
-  const [copyMode, setCopyMode] = useState12(false);
-  const [pendingConfirm, setPendingConfirm] = useState12(null);
-  const [confirmChoice, setConfirmChoice] = useState12("confirm");
-  const [thinkingEffort, setThinkingEffort] = useState12("none");
-  const [queueEditingId, setQueueEditingId] = useState12(null);
+  const [viewMode, setViewMode] = useState13("chat");
+  const [sessionList, setSessionList] = useState13([]);
+  const [selectedIndex, setSelectedIndex] = useState13(0);
+  const [settingsInitialSection, setSettingsInitialSection] = useState13("general");
+  const [modelList, setModelList] = useState13([]);
+  const [copyMode, setCopyMode] = useState13(false);
+  const [pendingConfirm, setPendingConfirm] = useState13(null);
+  const [confirmChoice, setConfirmChoice] = useState13("confirm");
+  const [thinkingEffort, setThinkingEffort] = useState13("none");
+  const [thoughtsToggleSignal, setThoughtsToggleSignal] = useState13(0);
+  const [queueEditingId, setQueueEditingId] = useState13(null);
   const [queueEditState, queueEditActions] = useTextInput("");
   const renderer = useRenderer();
-  const undoRedoRef = useRef8(createUndoRedoStack());
+  const undoRedoRef = useRef9(createUndoRedoStack());
   const messageQueue = useMessageQueue();
-  const drainCallbackRef = useRef8(null);
+  const drainCallbackRef = useRef9(null);
   drainCallbackRef.current = () => {
     if (viewMode === "queue-list")
       return;
@@ -6162,13 +6225,13 @@ function App({
     queueClear: messageQueue.clear,
     queueSize: messageQueue.size
   });
-  useEffect10(() => {
+  useEffect11(() => {
     if (!renderer)
       return;
     renderer.useMouse = !copyMode;
   }, [renderer, copyMode]);
-  const prevViewModeRef = useRef8(viewMode);
-  useEffect10(() => {
+  const prevViewModeRef = useRef9(viewMode);
+  useEffect11(() => {
     const prev = prevViewModeRef.current;
     prevViewModeRef.current = viewMode;
     if (prev === "queue-list" && viewMode === "chat" && !appState.isGenerating && messageQueue.size > 0) {
@@ -6215,7 +6278,8 @@ function App({
     queueEditingId,
     setQueueEditingId,
     queueEditState,
-    queueEditActions
+    queueEditActions,
+    onToggleThoughts: () => setThoughtsToggleSignal((prev) => prev + 1)
   });
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
   const hasMessages = appState.messages.length > 0 || appState.isGenerating;
@@ -6276,7 +6340,8 @@ function App({
         isGenerating: appState.isGenerating,
         retryInfo: appState.retryInfo,
         modelName: modelState.currentModelName,
-        generatingLabel: appState.generatingLabel
+        generatingLabel: appState.generatingLabel,
+        thoughtsToggleSignal
       }, undefined, false, undefined, this) : null,
       /* @__PURE__ */ jsxDEV32(BottomPanel, {
         hasMessages,

@@ -12,6 +12,8 @@ interface ChatMessageListProps {
   retryInfo: RetryInfo | null;
   modelName: string;
   generatingLabel?: string;
+  /** Ctrl+O 按下时递增，仅最后一条 assistant 消息响应 */
+  thoughtsToggleSignal?: number;
 }
 
 export function ChatMessageList({
@@ -22,6 +24,7 @@ export function ChatMessageList({
   retryInfo,
   modelName,
   generatingLabel,
+  thoughtsToggleSignal,
 }: ChatMessageListProps) {
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   // 仅当最后一条 assistant 消息正处于「活跃生成」状态时才视为 active：
@@ -32,6 +35,12 @@ export function ChatMessageList({
   const lastIsActiveAssistant = lastMessage?.role === 'assistant' && (
     isStreaming || (isGenerating && lastMessage.parts.length === 0)
   );
+
+  // 找到最后一条 assistant 消息的 index（用于 Ctrl+O 定向切换）
+  let lastAssistantIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') { lastAssistantIndex = i; break; }
+  }
 
   return (
     <scrollbox flexGrow={1} stickyScroll stickyStart="bottom">
@@ -55,6 +64,7 @@ export function ChatMessageList({
               liveParts={liveParts}
               isStreaming={isLastActive ? isStreaming : undefined}
               modelName={modelName}
+              thoughtsToggleSignal={index === lastAssistantIndex ? thoughtsToggleSignal : undefined}
             />
             {isLastActive && isStreaming && streamingParts.length === 0 ? (
               <GeneratingTimer isGenerating={isGenerating} retryInfo={retryInfo} label={generatingLabel} />
