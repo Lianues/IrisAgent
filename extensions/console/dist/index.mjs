@@ -1163,6 +1163,11 @@ function createSyntaxStyle() {
     punctuation: { fg: parseColor(C.textSec) }
   });
 }
+var TABLE_OPTIONS = {
+  widthMode: "content",
+  columnFitter: "balanced",
+  wrapMode: "word"
+};
 function MarkdownText({ text, showCursor }) {
   const syntaxStyle = useMemo2(() => createSyntaxStyle(), []);
   if (!text) {
@@ -1176,7 +1181,8 @@ function MarkdownText({ text, showCursor }) {
   return /* @__PURE__ */ jsxDEV11("markdown", {
     content: text,
     syntaxStyle,
-    streaming: showCursor
+    streaming: showCursor,
+    tableOptions: TABLE_OPTIONS
   }, undefined, false, undefined, this);
 }
 
@@ -1840,8 +1846,7 @@ function ToolCall({ invocation }) {
   const Renderer = isFinal && result != null ? getToolRenderer(toolName) : null;
   const durationSec = (updatedAt - createdAt) / 1000;
   const duration = isFinal && durationSec > 0 ? durationSec.toFixed(1) + "s" : "";
-  const nameColor = isAwaitingApproval ? C.warn : C.dim;
-  const isShellTool = toolName === "shell" || toolName === "bash";
+  const nameBg = status === "error" ? C.error : isAwaitingApproval ? C.warn : C.accent;
   return /* @__PURE__ */ jsxDEV22("box", {
     flexDirection: "column",
     children: [
@@ -1851,18 +1856,15 @@ function ToolCall({ invocation }) {
         children: [
           /* @__PURE__ */ jsxDEV22("text", {
             children: [
-              isShellTool ? /* @__PURE__ */ jsxDEV22("span", {
-                bg: C.command,
+              /* @__PURE__ */ jsxDEV22("span", {
+                bg: nameBg,
                 fg: C.cursorFg,
                 children: [
                   " ",
                   toolName,
                   " "
                 ]
-              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV22("span", {
-                fg: nameColor,
-                children: toolName
-              }, undefined, false, undefined, this),
+              }, undefined, true, undefined, this),
               argsSummary.length > 0 && /* @__PURE__ */ jsxDEV22("span", {
                 fg: C.dim,
                 children: [
@@ -2053,7 +2055,8 @@ function NotificationPayloadBlock({ payload }) {
   }, undefined, false, undefined, this);
 }
 var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts, isStreaming, modelName, thoughtsToggleSignal }) {
-  const { width: termWidth } = useTerminalDimensions2();
+  const { width: rawTermWidth } = useTerminalDimensions2();
+  const termWidth = rawTermWidth - 1;
   const [thoughtsExpanded, setThoughtsExpanded] = useState6(false);
   const prevSignalRef = useRef5(thoughtsToggleSignal);
   useEffect6(() => {
@@ -2363,6 +2366,7 @@ function ChatMessageList({
     flexGrow: 1,
     stickyScroll: true,
     stickyStart: "bottom",
+    paddingRight: 1,
     children: [
       messages.map((message, index) => {
         const isLastActive = lastIsActiveAssistant && index === messages.length - 1;

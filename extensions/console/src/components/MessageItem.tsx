@@ -175,7 +175,9 @@ function NotificationPayloadBlock({ payload }: { payload: NotificationPayload })
 export const MessageItem = React.memo(function MessageItem(
   { msg, liveTools, liveParts, isStreaming, modelName, thoughtsToggleSignal }: MessageItemProps
 ) {
-  const { width: termWidth } = useTerminalDimensions();
+  const { width: rawTermWidth } = useTerminalDimensions();
+  // scrollbox 有 paddingRight={1} 为滚动条预留空间，内容实际可用宽度需减 1
+  const termWidth = rawTermWidth - 1;
   const [thoughtsExpanded, setThoughtsExpanded] = useState(false);
 
   // Ctrl+O 信号变化时切换本条消息的展开状态。

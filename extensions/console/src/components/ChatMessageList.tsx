@@ -43,7 +43,7 @@ export function ChatMessageList({
   }
 
   return (
-    <scrollbox flexGrow={1} stickyScroll stickyStart="bottom">
+    <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" paddingRight={1}>
       {messages.map((message, index) => {
         const isLastActive = lastIsActiveAssistant && index === messages.length - 1;
         const liveParts = isLastActive && streamingParts.length > 0 ? streamingParts : undefined;

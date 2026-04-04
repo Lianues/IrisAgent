@@ -54,6 +54,12 @@ function createSyntaxStyle(): SyntaxStyle {
   });
 }
 
+const TABLE_OPTIONS = {
+  widthMode: 'content' as const,
+  columnFitter: 'balanced' as const,
+  wrapMode: 'word' as const,
+};
+
 interface MarkdownTextProps {
   text: string;
   showCursor?: boolean;
@@ -66,5 +72,5 @@ export function MarkdownText({ text, showCursor }: MarkdownTextProps) {
     return showCursor ? <text><span bg={C.accent}>{' '}</span></text> : null;
   }
 
-  return <markdown content={text} syntaxStyle={syntaxStyle} streaming={showCursor} />;
+  return <markdown content={text} syntaxStyle={syntaxStyle} streaming={showCursor} tableOptions={TABLE_OPTIONS} />;
 }
