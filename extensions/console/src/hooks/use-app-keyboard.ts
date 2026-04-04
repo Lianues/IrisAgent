@@ -1,6 +1,9 @@
 import { useKeyboard } from '@opentui/react';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta, ToolInvocation } from '@irises/extension-sdk';
 import type { TextInputState, TextInputActions } from './use-text-input';
+import { appendFileSync } from 'fs';
+import { resolve } from 'path';
+const DEBUG_LOG = resolve(process.cwd(), 'debug-ctrl-t.log');
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ApprovalChoice, ConfirmChoice, PendingConfirm, SwitchModelResult, ViewMode } from '../app-types';
 import type { ChatMessage } from '../components/MessageItem';
@@ -121,6 +124,7 @@ export function useAppKeyboard({
   onToggleThoughts,
 }: UseAppKeyboardOptions) {
   useKeyboard((key) => {
+    appendFileSync(DEBUG_LOG, `[KB] key=${key.name} ctrl=${!!key.ctrl} shift=${!!key.shift} meta=${!!key.meta} seq=${JSON.stringify(key.sequence)} code=${key.code}\n`);
     if (key.ctrl && key.name === 'c') {
       if (exitConfirm.exitConfirmArmed) {
         exitConfirm.clearExitConfirm();
@@ -143,6 +147,7 @@ export function useAppKeyboard({
 
     // Ctrl+T：打开工具执行详情（由 index.ts 从 _activeHandles 中选择目标）
     if (key.name === 't' && key.ctrl) {
+      appendFileSync(DEBUG_LOG, `[KB] Ctrl+T triggered, calling onOpenToolDetail\n`);
       onOpenToolDetail('');
       return;
     }

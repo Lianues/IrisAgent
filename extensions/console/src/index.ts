@@ -9,6 +9,9 @@
 
 import React from 'react';
 import { createCliRenderer, type CliRenderer } from '@opentui/core';
+import { appendFileSync } from 'fs';
+import { resolve } from 'path';
+const DEBUG_LOG = resolve(process.cwd(), 'debug-ctrl-t.log');
 import { createRoot } from '@opentui/react';
 import {
   PlatformAdapter,
@@ -276,6 +279,7 @@ export class ConsolePlatform extends PlatformAdapter {
     });
 
     this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
+      appendFileSync(DEBUG_LOG, `[DETAIL] tool:execute received, sid=${sid}, handleId=${handle.id}, toolName=${handle.toolName}\n`);
       if (sid !== this.sessionId) return;
       this._activeHandles.set(handle.id, handle);
       const refreshUI = () => {
@@ -547,16 +551,28 @@ export class ConsolePlatform extends PlatformAdapter {
 
   /** 打开工具详情 */
   private openToolDetail(toolId: string): void {
+    appendFileSync(DEBUG_LOG, `[DETAIL] openToolDetail called, toolId="${toolId}", activeHandles.size=${this._activeHandles.size}\n`);
+    // 列出所有 handle
+    for (const [id, h] of this._activeHandles) {
+      appendFileSync(DEBUG_LOG, `[DETAIL]   handle: id=${id} name=${(h as any).toolName} status=${(h as any).status}\n`);
+    }
     let handle: any;
     if (toolId) {
       handle = this._activeHandles.get(toolId);
     } else {
       // 自动选择：优先正在执行的，否则最后一个
       const all = Array.from(this._activeHandles.values());
-      if (all.length === 0) return;
+      if (all.length === 0) {
+        // 没有可查看的工具执行记录
+        this.appHandle?.addErrorMessage('当前会话没有工具执行记录。请先让 AI 执行工具后再按 Ctrl+T 查看详情。');
+        return;
+      }
       handle = all.find((h: any) => h.status === 'executing') ?? all[all.length - 1];
     }
-    if (!handle) return;
+    if (!handle) {
+      this.appHandle?.addErrorMessage('未找到指定的工具执行记录。');
+      return;
+    }
     const id = handle.id ?? toolId;
     this._toolDetailStack = [id];
     this.pushToolDetailData(id);
@@ -584,6 +600,7 @@ export class ConsolePlatform extends PlatformAdapter {
 
   /** 推送工具详情数据到 UI */
   private pushToolDetailData(toolId: string): void {
+    appendFileSync(DEBUG_LOG, `[DETAIL] pushToolDetailData, toolId=${toolId}\n`);
     const handle = this._activeHandles.get(toolId);
     if (!handle) return;
     const invocation = handle.getSnapshot();
@@ -596,6 +613,7 @@ export class ConsolePlatform extends PlatformAdapter {
     });
     // 移除最后一个（当前查看的），只保留上层作为 breadcrumb
     const breadcrumbForView = breadcrumb.slice(0, -1);
+    appendFileSync(DEBUG_LOG, `[DETAIL] calling appHandle.openToolDetail\n`);
     this.appHandle?.openToolDetail(
       { invocation, output, children },
       breadcrumbForView,
