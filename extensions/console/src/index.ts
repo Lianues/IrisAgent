@@ -9,9 +9,6 @@
 
 import React from 'react';
 import { createCliRenderer, type CliRenderer } from '@opentui/core';
-import { appendFileSync } from 'fs';
-import { resolve } from 'path';
-const DEBUG_LOG = resolve(process.cwd(), 'debug-ctrl-t.log');
 import { createRoot } from '@opentui/react';
 import {
   PlatformAdapter,
@@ -195,6 +192,8 @@ export class ConsolePlatform extends PlatformAdapter {
   private api?: IrisAPI;
   private _activeHandles: Map<string, any> = new Map();
   private isCompiledBinary: boolean;
+  /** 从历史消息重建的 ToolInvocation（用于 Ctrl+T 查看历史工具） */
+  private _historicalInvocations: Map<string, ToolInvocation> = new Map();
 
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
@@ -279,7 +278,6 @@ export class ConsolePlatform extends PlatformAdapter {
     });
 
     this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
-      appendFileSync(DEBUG_LOG, `[DETAIL] tool:execute received, sid=${sid}, handleId=${handle.id}, toolName=${handle.toolName}\n`);
       if (sid !== this.sessionId) return;
       this._activeHandles.set(handle.id, handle);
       const refreshUI = () => {
@@ -547,35 +545,52 @@ export class ConsolePlatform extends PlatformAdapter {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
     this._activeHandles.clear();
+    this._historicalInvocations.clear();
   }
 
   /** 打开工具详情 */
   private openToolDetail(toolId: string): void {
-    appendFileSync(DEBUG_LOG, `[DETAIL] openToolDetail called, toolId="${toolId}", activeHandles.size=${this._activeHandles.size}\n`);
-    // 列出所有 handle
-    for (const [id, h] of this._activeHandles) {
-      appendFileSync(DEBUG_LOG, `[DETAIL]   handle: id=${id} name=${(h as any).toolName} status=${(h as any).status}\n`);
-    }
     let handle: any;
+    let historicalInv: ToolInvocation | undefined;
+
     if (toolId) {
       handle = this._activeHandles.get(toolId);
-    } else {
-      // 自动选择：优先正在执行的，否则最后一个
-      const all = Array.from(this._activeHandles.values());
-      if (all.length === 0) {
-        // 没有可查看的工具执行记录
-        this.appHandle?.addErrorMessage('当前会话没有工具执行记录。请先让 AI 执行工具后再按 Ctrl+T 查看详情。');
-        return;
+      if (!handle) {
+        historicalInv = this._historicalInvocations.get(toolId);
       }
-      handle = all.find((h: any) => h.status === 'executing') ?? all[all.length - 1];
+    } else {
+      // 自动选择：优先 _activeHandles 中正在执行的
+      const allHandles = Array.from(this._activeHandles.values());
+      if (allHandles.length > 0) {
+        handle = allHandles.find((h: any) => h.status === 'executing') ?? allHandles[allHandles.length - 1];
+      } else {
+        // 回退到历史工具：选最后一个
+        const allHistorical = Array.from(this._historicalInvocations.values());
+        if (allHistorical.length > 0) {
+          historicalInv = allHistorical[allHistorical.length - 1];
+        }
+      }
     }
-    if (!handle) {
-      this.appHandle?.addErrorMessage('未找到指定的工具执行记录。');
+
+    // 从 Handle 打开（有实时数据）
+    if (handle) {
+      this._toolDetailStack = [handle.id];
+      this.pushToolDetailData(handle.id);
       return;
     }
-    const id = handle.id ?? toolId;
-    this._toolDetailStack = [id];
-    this.pushToolDetailData(id);
+
+    // 从历史数据打开（只有快照，无实时输出）
+    if (historicalInv) {
+      this._toolDetailStack = [historicalInv.id];
+      this.appHandle?.openToolDetail(
+        { invocation: historicalInv, output: [], children: [] },
+        [],
+      );
+      return;
+    }
+
+    // 都没有
+    this.appHandle?.addErrorMessage('当前会话没有工具执行记录。请先让 AI 执行工具后再按 Ctrl+T 查看详情。');
   }
 
   /** 导航到子工具详情 */
@@ -600,7 +615,6 @@ export class ConsolePlatform extends PlatformAdapter {
 
   /** 推送工具详情数据到 UI */
   private pushToolDetailData(toolId: string): void {
-    appendFileSync(DEBUG_LOG, `[DETAIL] pushToolDetailData, toolId=${toolId}\n`);
     const handle = this._activeHandles.get(toolId);
     if (!handle) return;
     const invocation = handle.getSnapshot();
@@ -613,7 +627,6 @@ export class ConsolePlatform extends PlatformAdapter {
     });
     // 移除最后一个（当前查看的），只保留上层作为 breadcrumb
     const breadcrumbForView = breadcrumb.slice(0, -1);
-    appendFileSync(DEBUG_LOG, `[DETAIL] calling appHandle.openToolDetail\n`);
     this.appHandle?.openToolDetail(
       { invocation, output, children },
       breadcrumbForView,
@@ -624,7 +637,12 @@ export class ConsolePlatform extends PlatformAdapter {
   private refreshToolDetailIfNeeded(): void {
     if (this._toolDetailStack.length === 0) return;
     const currentId = this._toolDetailStack[this._toolDetailStack.length - 1];
-    this.pushToolDetailData(currentId);
+    // 优先从活跃 handle 刷新
+    if (this._activeHandles.has(currentId)) {
+      this.pushToolDetailData(currentId);
+      return;
+    }
+    // 历史数据不需要刷新（静态的）
   }
 
   private handleRunCommand(cmd: string): { output: string; cwd: string } {
@@ -678,6 +696,7 @@ export class ConsolePlatform extends PlatformAdapter {
     this.sessionId = id;
     this.currentToolIds.clear();
     this._activeHandles.clear();
+    this._historicalInvocations.clear();
 
     const history = await this.backend.getHistory?.(id) ?? [];
 
@@ -699,6 +718,14 @@ export class ConsolePlatform extends PlatformAdapter {
       const msg = history[i];
       const role = msg.role === 'user' ? 'user' : 'assistant';
       const parts = convertPartsToMessageParts(msg.parts, 'success', responseMap.get(i));
+      // 收集历史工具调用，供 Ctrl+T 查看详情
+      for (const part of parts) {
+        if (part.type === 'tool_use') {
+          for (const inv of part.tools) {
+            this._historicalInvocations.set(inv.id, inv);
+          }
+        }
+      }
       const meta = getMessageMeta(msg);
       if (parts.length > 0) {
         this.appHandle?.addStructuredMessage(role as 'user' | 'assistant', parts, meta);

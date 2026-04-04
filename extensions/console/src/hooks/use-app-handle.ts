@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { ToolInvocation, UsageMetadata } from '@irises/extension-sdk';
-import { appendFileSync } from 'fs';
-import { resolve } from 'path';
-const DEBUG_LOG = resolve(process.cwd(), 'debug-ctrl-t.log');
 import type { ChatMessage, MessagePart, NotificationPayload } from '../components/MessageItem';
 import type { RetryInfo } from '../components/GeneratingTimer';
 import type { MessageMeta, ToolDetailData, ToolDetailBreadcrumb } from '../app-types';
@@ -409,7 +406,6 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
         }
       },
       openToolDetail(data: ToolDetailData, breadcrumb: ToolDetailBreadcrumb[]) {
-        appendFileSync(DEBUG_LOG, `[HANDLE] openToolDetail called, tool=${data.invocation.toolName}, status=${data.invocation.status}\n`);
         setToolDetailData(data);
         setToolDetailStack(breadcrumb);
       },

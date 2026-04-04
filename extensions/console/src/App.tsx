@@ -9,9 +9,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRenderer } from '@opentui/react';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
-import { appendFileSync } from 'fs';
-import { resolve } from 'path';
-const DEBUG_LOG = resolve(process.cwd(), 'debug-ctrl-t.log');
 import { BottomPanel } from './components/BottomPanel';
 import { ChatMessageList } from './components/ChatMessageList';
 import { DiffApprovalView } from './components/DiffApprovalView';
@@ -183,7 +180,6 @@ export function App({
 
   // 工具详情数据变化时自动切换视图
   useEffect(() => {
-    appendFileSync(DEBUG_LOG, `[APP] useEffect: toolDetailData=${!!appState.toolDetailData} viewMode=${viewMode}\n`);
     if (appState.toolDetailData && viewMode !== 'tool-detail') {
       setViewMode('tool-detail');
     } else if (!appState.toolDetailData && viewMode === 'tool-detail') {
@@ -284,7 +280,6 @@ export function App({
 
   // 工具详情视图
   if (viewMode === 'tool-detail' && appState.toolDetailData) {
-    appendFileSync(DEBUG_LOG, `[APP] Rendering ToolDetailView\n`);
     return (
       <box flexDirection="column" width="100%" height="100%">
         <ToolDetailView
