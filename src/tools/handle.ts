@@ -42,7 +42,7 @@ export class ToolExecutionHandle extends EventEmitter {
 
   constructor(
     private invocation: ToolInvocation,
-    private toolState: ToolStateManager,
+    private toolState: ToolStateManager | null,
     depth: number = 0,
     parentId?: string,
   ) {
@@ -68,6 +68,7 @@ export class ToolExecutionHandle extends EventEmitter {
    */
   abort(): void {
     this.abortController.abort();
+    if (!this.toolState) return;  // 历史工具无法操作
     if (!TERMINAL_TOOL_STATUSES.has(this.invocation.status)) {
       try {
         this.toolState.transition(this.id, 'error', { error: 'Aborted by user' });
@@ -81,6 +82,7 @@ export class ToolExecutionHandle extends EventEmitter {
    * 审批此工具执行（一类审批：Y/N 确认）。
    */
   approve(approved: boolean): void {
+    if (!this.toolState) return;
     if (approved) {
       this.toolState.transition(this.id, 'executing');
     } else {
@@ -92,6 +94,7 @@ export class ToolExecutionHandle extends EventEmitter {
    * Diff 预览确认（二类审批）。
    */
   apply(applied: boolean): void {
+    if (!this.toolState) return;
     if (applied) {
       this.toolState.transition(this.id, 'executing');
     } else {
@@ -170,5 +173,15 @@ export class ToolExecutionHandle extends EventEmitter {
   /** 获取子 Handle 列表副本 */
   getChildren(): ToolExecutionHandle[] {
     return [...this._childHandles];
+  }
+
+  // ── 工厂方法 ──
+
+  /**
+   * 从历史 ToolInvocation 创建只读 Handle。
+   * 用于历史会话中的工具记录，不支持上行操作（abort/approve/apply 为空操作）。
+   */
+  static fromInvocation(invocation: ToolInvocation): ToolExecutionHandle {
+    return new ToolExecutionHandle(invocation, null);
   }
 }

@@ -192,8 +192,6 @@ export class ConsolePlatform extends PlatformAdapter {
   private api?: IrisAPI;
   private _activeHandles: Map<string, any> = new Map();
   private isCompiledBinary: boolean;
-  /** 从历史消息重建的 ToolInvocation（用于 Ctrl+T 查看历史工具） */
-  private _historicalInvocations: Map<string, ToolInvocation> = new Map();
 
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
@@ -541,56 +539,54 @@ export class ConsolePlatform extends PlatformAdapter {
 
   // ============ 内部逻辑 ============
 
+  /** 从历史 ToolInvocation 创建轻量 Handle 对象（与实时 Handle 接口兼容） */
+  private createHistoricalHandle(inv: ToolInvocation): any {
+    return {
+      id: inv.id,
+      toolName: inv.toolName,
+      status: inv.status,
+      depth: inv.depth ?? 0,
+      parentId: inv.parentToolId,
+      signal: new AbortController().signal,
+      getSnapshot: () => ({ ...inv }),
+      getOutputHistory: () => [],
+      getChildren: () => [],
+      abort: () => {},
+      approve: () => {},
+      apply: () => {},
+      send: () => {},
+      on: () => {},
+      off: () => {},
+      emit: () => false,
+    };
+  }
+
+
   private handleNewSession(): void {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
     this._activeHandles.clear();
-    this._historicalInvocations.clear();
   }
 
   /** 打开工具详情 */
   private openToolDetail(toolId: string): void {
     let handle: any;
-    let historicalInv: ToolInvocation | undefined;
-
     if (toolId) {
       handle = this._activeHandles.get(toolId);
-      if (!handle) {
-        historicalInv = this._historicalInvocations.get(toolId);
-      }
     } else {
-      // 自动选择：优先 _activeHandles 中正在执行的
-      const allHandles = Array.from(this._activeHandles.values());
-      if (allHandles.length > 0) {
-        handle = allHandles.find((h: any) => h.status === 'executing') ?? allHandles[allHandles.length - 1];
-      } else {
-        // 回退到历史工具：选最后一个
-        const allHistorical = Array.from(this._historicalInvocations.values());
-        if (allHistorical.length > 0) {
-          historicalInv = allHistorical[allHistorical.length - 1];
-        }
+      const all = Array.from(this._activeHandles.values());
+      if (all.length === 0) {
+        this.appHandle?.addErrorMessage('当前会话没有工具执行记录。请先让 AI 执行工具后再按 Ctrl+T 查看详情。');
+        return;
       }
+      handle = all.find((h: any) => h.status === 'executing') ?? all[all.length - 1];
     }
-
-    // 从 Handle 打开（有实时数据）
-    if (handle) {
-      this._toolDetailStack = [handle.id];
-      this.pushToolDetailData(handle.id);
+    if (!handle) {
+      this.appHandle?.addErrorMessage('未找到指定的工具执行记录。');
       return;
     }
-
-    // 从历史数据打开（只有快照，无实时输出）
-    if (historicalInv) {
-      this._toolDetailStack = [historicalInv.id];
-      this.appHandle?.openToolDetail(
-        { invocation: historicalInv, output: [], children: [] },
-        [],
-      );
-      return;
-    }
-
-    // 都没有
-    this.appHandle?.addErrorMessage('当前会话没有工具执行记录。请先让 AI 执行工具后再按 Ctrl+T 查看详情。');
+    this._toolDetailStack = [handle.id];
+    this.pushToolDetailData(handle.id);
   }
 
   /** 导航到子工具详情 */
@@ -637,12 +633,9 @@ export class ConsolePlatform extends PlatformAdapter {
   private refreshToolDetailIfNeeded(): void {
     if (this._toolDetailStack.length === 0) return;
     const currentId = this._toolDetailStack[this._toolDetailStack.length - 1];
-    // 优先从活跃 handle 刷新
     if (this._activeHandles.has(currentId)) {
       this.pushToolDetailData(currentId);
-      return;
     }
-    // 历史数据不需要刷新（静态的）
   }
 
   private handleRunCommand(cmd: string): { output: string; cwd: string } {
@@ -696,7 +689,6 @@ export class ConsolePlatform extends PlatformAdapter {
     this.sessionId = id;
     this.currentToolIds.clear();
     this._activeHandles.clear();
-    this._historicalInvocations.clear();
 
     const history = await this.backend.getHistory?.(id) ?? [];
 
@@ -718,11 +710,11 @@ export class ConsolePlatform extends PlatformAdapter {
       const msg = history[i];
       const role = msg.role === 'user' ? 'user' : 'assistant';
       const parts = convertPartsToMessageParts(msg.parts, 'success', responseMap.get(i));
-      // 收集历史工具调用，供 Ctrl+T 查看详情
+      // 收集历史工具调用，包装为 Handle 存入 _activeHandles
       for (const part of parts) {
         if (part.type === 'tool_use') {
           for (const inv of part.tools) {
-            this._historicalInvocations.set(inv.id, inv);
+            this._activeHandles.set(inv.id, this.createHistoricalHandle(inv));
           }
         }
       }
