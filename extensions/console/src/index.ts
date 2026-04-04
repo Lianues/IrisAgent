@@ -190,7 +190,7 @@ export class ConsolePlatform extends PlatformAdapter {
   private appHandle?: AppHandle;
   private disposeResizeWatcher?: () => void;
   private api?: IrisAPI;
-  private _activeHandles: any[] = [];
+  private _activeHandles: Map<string, any> = new Map();
   private isCompiledBinary: boolean;
 
   /** 当前响应周期内的工具调用 ID 集合 */
@@ -198,6 +198,9 @@ export class ConsolePlatform extends PlatformAdapter {
 
   /** 当前思考强度层级（用于模型切换后重新应用） */
   private currentThinkingEffort: import('./app-types').ThinkingEffortLevel = 'none';
+
+  /** 当前正在查看详情的工具 ID 栈 */
+  private _toolDetailStack: string[] = [];
 
   /** 串行化 undo/redo 持久化操作，防止并发写入。 */
   private historyMutationQueue: Promise<unknown> = Promise.resolve();
@@ -274,18 +277,19 @@ export class ConsolePlatform extends PlatformAdapter {
 
     this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
       if (sid !== this.sessionId) return;
-      // 管理活跃 handles
-      if (!this._activeHandles) this._activeHandles = [];
-      this._activeHandles.push(handle);
+      this._activeHandles.set(handle.id, handle);
       const refreshUI = () => {
-        const invocations = (this._activeHandles || []).map((h: any) => h.getSnapshot());
+        const invocations = Array.from(this._activeHandles.values()).map((h: any) => h.getSnapshot());
         this.appHandle?.setToolInvocations(invocations);
+        // 如果工具详情视图打开，同步更新详情数据
+        this.refreshToolDetailIfNeeded();
       };
       handle.on('state', refreshUI);
+      handle.on('output', refreshUI);
       handle.on('child', (childHandle: any) => {
-        if (!this._activeHandles) this._activeHandles = [];
-        this._activeHandles.push(childHandle);
+        this._activeHandles.set(childHandle.id, childHandle);
         childHandle.on('state', refreshUI);
+        childHandle.on('output', refreshUI);
         refreshUI();
       });
       refreshUI();
@@ -489,6 +493,15 @@ export class ConsolePlatform extends PlatformAdapter {
         onAbort: () => {
           this.backend.abortChat?.(this.sessionId);
         },
+        onOpenToolDetail: (toolId: string) => {
+          this.openToolDetail(toolId);
+        },
+        onNavigateToolDetail: (toolId: string) => {
+          this.navigateToolDetail(toolId);
+        },
+        onCloseToolDetail: () => {
+          this.closeToolDetail();
+        },
         onNewSession: () => this.handleNewSession(),
         onLoadSession: (id: string) => this.handleLoadSession(id),
         onListSessions: () => this.handleListSessions(),
@@ -529,7 +542,62 @@ export class ConsolePlatform extends PlatformAdapter {
   private handleNewSession(): void {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
-    this._activeHandles = [];
+    this._activeHandles.clear();
+  }
+
+  /** 打开工具详情 */
+  private openToolDetail(toolId: string): void {
+    const handle = this._activeHandles.get(toolId);
+    if (!handle) return;
+    this._toolDetailStack = [toolId];
+    this.pushToolDetailData(toolId);
+  }
+
+  /** 导航到子工具详情 */
+  private navigateToolDetail(toolId: string): void {
+    const handle = this._activeHandles.get(toolId);
+    if (!handle) return;
+    this._toolDetailStack.push(toolId);
+    this.pushToolDetailData(toolId);
+  }
+
+  /** 关闭/返回工具详情 */
+  private closeToolDetail(): void {
+    if (this._toolDetailStack.length > 1) {
+      this._toolDetailStack.pop();
+      const parentId = this._toolDetailStack[this._toolDetailStack.length - 1];
+      this.pushToolDetailData(parentId);
+    } else {
+      this._toolDetailStack = [];
+      this.appHandle?.closeToolDetail();
+    }
+  }
+
+  /** 推送工具详情数据到 UI */
+  private pushToolDetailData(toolId: string): void {
+    const handle = this._activeHandles.get(toolId);
+    if (!handle) return;
+    const invocation = handle.getSnapshot();
+    const output = handle.getOutputHistory?.() ?? [];
+    const childHandles = handle.getChildren?.() ?? [];
+    const children = childHandles.map((ch: any) => ch.getSnapshot());
+    const breadcrumb = this._toolDetailStack.map((id: string) => {
+      const h = this._activeHandles.get(id);
+      return { toolId: id, toolName: h?.toolName ?? id };
+    });
+    // 移除最后一个（当前查看的），只保留上层作为 breadcrumb
+    const breadcrumbForView = breadcrumb.slice(0, -1);
+    this.appHandle?.openToolDetail(
+      { invocation, output, children },
+      breadcrumbForView,
+    );
+  }
+
+  /** 如果详情视图打开，刷新数据 */
+  private refreshToolDetailIfNeeded(): void {
+    if (this._toolDetailStack.length === 0) return;
+    const currentId = this._toolDetailStack[this._toolDetailStack.length - 1];
+    this.pushToolDetailData(currentId);
   }
 
   private handleRunCommand(cmd: string): { output: string; cwd: string } {
@@ -582,7 +650,7 @@ export class ConsolePlatform extends PlatformAdapter {
   private async handleLoadSession(id: string): Promise<void> {
     this.sessionId = id;
     this.currentToolIds.clear();
-    this._activeHandles = [];
+    this._activeHandles.clear();
 
     const history = await this.backend.getHistory?.(id) ?? [];
 

@@ -35,6 +35,10 @@ export interface ToolInvocation {
    * 例如 sub_agent: { tokens: number, frame: number }
    */
   progress?: Record<string, unknown>;
+  /** 父工具执行 ID（子代理内部工具指向 sub_agent 的 invocationId） */
+  parentToolId?: string;
+  /** 嵌套深度（顶层=0，子代理内部=1...） */
+  depth?: number;
 }
 
 /**

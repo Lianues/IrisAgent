@@ -14,6 +14,7 @@ import { ChatMessageList } from './components/ChatMessageList';
 import { DiffApprovalView } from './components/DiffApprovalView';
 import { InitWarnings } from './components/InitWarnings';
 import { LogoScreen } from './components/LogoScreen';
+import { ToolDetailView } from './components/ToolDetailView';
 import { ModelListView } from './components/ModelListView';
 import { QueueListView } from './components/QueueListView';
 import { SessionListView } from './components/SessionListView';
@@ -37,6 +38,9 @@ export type { AppProps } from './app-props';
 export function App({
   onReady,
   onSubmit,
+  onOpenToolDetail,
+  onNavigateToolDetail,
+  onCloseToolDetail,
   onUndo,
   onRedo,
   onClearRedoStack,
@@ -174,6 +178,15 @@ export function App({
     }
   }, [viewMode, appState.isGenerating, messageQueue, onSubmit]);
 
+  // 工具详情数据变化时自动切换视图
+  useEffect(() => {
+    if (appState.toolDetailData && viewMode !== 'tool-detail') {
+      setViewMode('tool-detail');
+    } else if (!appState.toolDetailData && viewMode === 'tool-detail') {
+      setViewMode('chat');
+    }
+  }, [appState.toolDetailData, viewMode]);
+
   useAppKeyboard({
     viewMode,
     setViewMode,
@@ -261,6 +274,23 @@ export function App({
         wrapMode={approval.wrapMode}
         previewIndex={approval.previewIndex}
       />
+    );
+  }
+
+  // 工具详情视图
+  if (viewMode === 'tool-detail' && appState.toolDetailData) {
+    return (
+      <box flexDirection="column" width="100%" height="100%">
+        <ToolDetailView
+          data={appState.toolDetailData}
+          breadcrumb={appState.toolDetailStack}
+          onNavigateChild={onNavigateToolDetail}
+          onClose={onCloseToolDetail}
+          onAbort={(toolId) => {
+            onOpenToolDetail(toolId);
+          }}
+        />
+      </box>
     );
   }
 

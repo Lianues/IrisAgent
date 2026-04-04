@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRe
 import type { ToolInvocation, UsageMetadata } from '@irises/extension-sdk';
 import type { ChatMessage, MessagePart, NotificationPayload } from '../components/MessageItem';
 import type { RetryInfo } from '../components/GeneratingTimer';
-import type { MessageMeta } from '../app-types';
+import type { MessageMeta, ToolDetailData, ToolDetailBreadcrumb } from '../app-types';
 import {
   appendAssistantParts,
   appendMergedMessagePart,
@@ -55,6 +55,12 @@ export interface AppHandle {
    * 返回下一条消息的文本，队列为空时返回 undefined。
    */
   drainQueue(): string | undefined;
+  /** 打开工具详情视图 */
+  openToolDetail(data: ToolDetailData, breadcrumb: ToolDetailBreadcrumb[]): void;
+  /** 更新当前工具详情数据（Handle 事件驱动） */
+  updateToolDetailData(data: ToolDetailData): void;
+  /** 关闭工具详情（弹出导航栈或完全退出） */
+  closeToolDetail(): void;
 }
 
 interface UseAppHandleOptions {
@@ -84,6 +90,8 @@ export interface UseAppHandleReturn {
   backgroundTaskSpinnerFrame: number;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   commitTools: () => void;
+  toolDetailData: ToolDetailData | null;
+  toolDetailStack: ToolDetailBreadcrumb[];
 }
 
 export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppHandleOptions): UseAppHandleReturn {
@@ -105,6 +113,8 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
   // chunk 心跳驱动的 spinner 帧计数器（不是定时器，只在数据真正流动时递增）
   const spinnerFrameRef = useRef(0);
   const [backgroundTaskSpinnerFrame, setBackgroundTaskSpinnerFrame] = useState(0);
+  const [toolDetailData, setToolDetailData] = useState<ToolDetailData | null>(null);
+  const [toolDetailStack, setToolDetailStack] = useState<ToolDetailBreadcrumb[]>([]);
 
   const streamPartsRef = useRef<MessagePart[]>([]);
   const toolInvocationsRef = useRef<ToolInvocation[]>([]);
@@ -391,6 +401,20 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
           setBackgroundTaskSpinnerFrame(spinnerFrameRef.current);
         }
       },
+      openToolDetail(data: ToolDetailData, breadcrumb: ToolDetailBreadcrumb[]) {
+        setToolDetailData(data);
+        setToolDetailStack(breadcrumb);
+      },
+      updateToolDetailData(data: ToolDetailData) {
+        setToolDetailData(data);
+      },
+      closeToolDetail() {
+        setToolDetailStack(prev => {
+          if (prev.length > 1) return prev; // 上层导航由 App.tsx 的回调处理
+          return [];
+        });
+        setToolDetailData(null);
+      },
       drainQueue() {
         return drainCallbackRef.current?.() ?? undefined;
       },
@@ -415,5 +439,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
     backgroundTaskSpinnerFrame,
     setMessages,
     commitTools,
+    toolDetailData,
+    toolDetailStack,
   };
 }
