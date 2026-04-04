@@ -19,7 +19,7 @@ import { ToolStateManager } from './state';
 import { coerceToolArgs, getToolArgsArrayValidationError } from './coerce-args';
 import type { ToolParameterSchema } from './coerce-args';
 import { validateToolArgs } from './validate-args';
-import { FunctionCallPart, FunctionResponsePart, InlineDataPart } from '../types';
+import { FunctionCallPart, FunctionResponsePart, InlineDataPart, TERMINAL_TOOL_STATUSES } from '../types';
 import { createLogger } from '../logger';
 import type { ToolAttachment, ToolExecutionContext } from '../types';
 import { ToolPolicyConfig, ToolsConfig } from '../config';
@@ -91,10 +91,10 @@ function extractShellCommand(call: FunctionCallPart): string {
 /**
  * 判断工具调用是否应该自动批准。
  *
- * 对 shell 工具：调度器不弹 Y/N，安全判定全部交给 handler 内层处理。
+ * 对 shell 工具：调度器一律自动批准，安全判定交给 handler 内层处理。
  *   - 内层黑名单 → handler 硬拦截
  *   - 内层白名单 → handler 直接放行
- *   - unknown → handler 走 AI 分类器 / fallback / force 对话确认
+ *   - unknown → handler 走 AI 分类器，分类器拒绝后通过 requestApproval 弹 Y/N
  *
  * 对非 shell 工具：行为不变，按 autoApprove 配置决定。
  */
@@ -363,12 +363,15 @@ async function executeSingle(
   let userExplicitlyApproved = false;
 
   // 对非 shell 工具：autoApprove/allowPatterns 跳过审批时，标记为用户已批准。
-  // 对 shell 工具：不在这里设置。shell 的安全判定完全交给 handler 内层，
-  // approvedByUser 只在用户真正通过 Y/N 弹窗确认时设置（denyPatterns 匹配后按 Y）。
+  // 对 shell 工具：仅当全局跳过确认（autoApproveAll / autoApproveConfirmation）时设置，
+  // 让 handler 收到 approvedByUser=true 后跳过 AI 分类器。
+  // 普通情况下 shell 的安全判定交给 handler 内层（分类器 → requestApproval Y/N）。
   if (toolName !== 'shell' && toolName !== 'bash') {
     if (autoApproved) {
       userExplicitlyApproved = true;
     }
+  } else if (globalSkipConfirmation) {
+    userExplicitlyApproved = true;
   }
 
   if (!autoApproved) {
@@ -509,6 +512,15 @@ async function executeSingle(
       reportProgress: progressCtx?.reportProgress,
       signal,
       approvedByUser: userExplicitlyApproved || undefined,
+      // requestApproval: handler 执行过程中可调用此方法请求 Y/N 弹窗确认。
+      // 仅在可交互上下文（Console 前台会话）中提供。
+      // 用途：shell/bash handler 在 AI 分类器拒绝后弹出 Y/N，而不是返回错误让 LLM 对话确认。
+      requestApproval: (interactiveApproval && toolState && invocationId)
+        ? async () => {
+            toolState.transition(invocationId, 'awaiting_approval');
+            return toolState.waitForApproval(invocationId, signal);
+          }
+        : undefined,
     };
 
   const execStart = Date.now();
@@ -617,19 +629,24 @@ async function executeSingle(
     // 触发 executing → success/error 的非法状态转换。
     progressCtx?.dispose();
     if (toolState && invocationId) {
-      // [状态修复] 根据结构化结果选择 success / warning / error，
-      // 避免批量工具全失败时仍落成 success。
-      if (analyzedOutcome?.status === 'error') {
-        toolState.transition(invocationId, 'error', { error: analyzedOutcome.error ?? '工具执行失败' });
-      } else if (analyzedOutcome?.status === 'warning') {
-        toolState.transition(invocationId, 'warning', {
-          result: stateResult,
-          error: analyzedOutcome.error,
-        });
-      } else {
-        // 存储尽量轻量的结果。MCP 图片附件已经通过 onAttachments 旁路发送，
-        // 这里不保留 Buffer，避免状态对象被大块二进制拖重。
-        toolState.transition(invocationId, 'success', { result: stateResult });
+      // [防护] handler 可能已通过 requestApproval 将状态设为终态（如用户拒绝审批），
+      // 此时不应再尝试状态转换，否则会因终态无出边而抛出异常。
+      const currentInv = toolState.get(invocationId);
+      if (currentInv && !TERMINAL_TOOL_STATUSES.has(currentInv.status)) {
+        // [状态修复] 根据结构化结果选择 success / warning / error，
+        // 避免批量工具全失败时仍落成 success。
+        if (analyzedOutcome?.status === 'error') {
+          toolState.transition(invocationId, 'error', { error: analyzedOutcome.error ?? '工具执行失败' });
+        } else if (analyzedOutcome?.status === 'warning') {
+          toolState.transition(invocationId, 'warning', {
+            result: stateResult,
+            error: analyzedOutcome.error,
+          });
+        } else {
+          // 存储尽量轻量的结果。MCP 图片附件已经通过 onAttachments 旁路发送，
+          // 这里不保留 Buffer，避免状态对象被大块二进制拖重。
+          toolState.transition(invocationId, 'success', { result: stateResult });
+        }
       }
     }
     return {
@@ -647,7 +664,11 @@ async function executeSingle(
     // 销毁进度上报（防止 trailing timer 在终态后触发非法状态转换）
     progressCtx?.dispose();
     if (toolState && invocationId) {
-      toolState.transition(invocationId, 'error', { error: errorMsg });
+      try {
+        toolState.transition(invocationId, 'error', { error: errorMsg });
+      } catch {
+        // 可能已在终态（如 handler 内 requestApproval 被用户拒绝），忽略二次转换错误
+      }
     }
     logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
     return {

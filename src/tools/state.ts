@@ -27,7 +27,7 @@ const VALID_TRANSITIONS: Record<ToolStatus, ToolStatus[]> = {
   streaming:         ['queued', 'error'],
   queued:            ['awaiting_approval', 'awaiting_apply', 'executing', 'error'],
   awaiting_approval: ['awaiting_apply', 'executing', 'error'],
-  executing:         ['executing', 'awaiting_apply', 'success', 'warning', 'error'],
+  executing:         ['executing', 'awaiting_approval', 'awaiting_apply', 'success', 'warning', 'error'],
   awaiting_apply:    ['executing', 'success', 'warning', 'error'],
   success:           [],
   warning:           [],

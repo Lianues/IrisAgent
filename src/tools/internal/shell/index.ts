@@ -252,9 +252,9 @@ force 参数规则：
         return annotateResult(result);
       }
 
-      // 2.75. force=true → 用户在对话中明确确认后 LLM 带 force 重试，跳过分类器
-      // 黑名单已在上面拦截，到这里的 force 只跳过分类器/兜底策略。
-      if (force) {
+      // 2.75. force=true → 仅在非交互上下文（无 Y/N 弹窗）中生效，
+      // 用于 LLM 对话确认后重试。交互上下文中 Y/N 已替代 force，忽略以防绕过用户拒绝。
+      if (force && !context?.requestApproval) {
         logger.info(`Shell 命令 force 执行（用户已在对话中确认）: ${command.slice(0, 100)}`);
         const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
         maybeLearnAfterExec(command, result, deps);
@@ -268,6 +268,22 @@ force 参数规则：
       if (!deps || !classifierConfig?.enabled) {
         const fallback = classifierConfig?.fallbackPolicy ?? 'deny';
         if (fallback === 'deny') {
+          // 尝试通过 Y/N 弹窗请求用户确认
+          if (context?.requestApproval) {
+            logger.info(`Shell 命令不在白名单且分类器未启用，请求用户确认: ${command.slice(0, 100)}`);
+            const approved = await context.requestApproval();
+            if (approved) {
+              logger.info(`Shell 命令用户已批准: ${command.slice(0, 100)}`);
+              const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+              maybeLearnAfterExec(command, result, deps);
+              return annotateResult(result);
+            }
+            return {
+              command, exitCode: 1, killed: false, stdout: '',
+              stderr: '用户已拒绝执行该命令。',
+            };
+          }
+          // 非交互上下文：返回错误，保留 force 对话确认作为后备
           logger.warn(`Shell 命令不在白名单且分类器未启用，拒绝执行: ${command.slice(0, 100)}`);
           return {
             command,
@@ -296,6 +312,23 @@ force 参数规则：
         return annotateResult(result);
       }
 
+      // 分类器拒绝 → 尝试通过 Y/N 弹窗请求用户确认
+      if (context?.requestApproval) {
+        logger.info(`Shell 命令分类器拒绝，请求用户确认: ${command.slice(0, 100)} | 理由: ${decision.reason}`);
+        const approved = await context.requestApproval();
+        if (approved) {
+          logger.info(`Shell 命令用户已批准（分类器拒绝后）: ${command.slice(0, 100)}`);
+          const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+          maybeLearnAfterExec(command, result, deps);
+          return annotateResult(result);
+        }
+        return {
+          command, exitCode: 1, killed: false, stdout: '',
+          stderr: '用户已拒绝执行该命令。',
+        };
+      }
+
+      // 非交互上下文：返回错误，保留 force 对话确认作为后备
       logger.warn(`Shell 命令分类器拒绝: ${command.slice(0, 100)} | 理由: ${decision.reason}`);
       return {
         command,

@@ -86,6 +86,17 @@ export interface ToolExecutionContext {
    */
   approvedByUser?: boolean;
   /**
+   * 请求用户通过 TUI Y/N 弹窗进行交互式确认。
+   *
+   * 由 scheduler 在可交互上下文中提供。handler 在执行过程中发现需要用户确认时调用：
+   *   - 返回 true：用户批准，handler 可继续执行
+   *   - 返回 false：用户拒绝
+   *   - 为 undefined 时表示当前上下文不支持交互审批（如 cross-agent 后台会话）
+   *
+   * 典型用途：shell/bash 工具在 AI 分类器拒绝后调用此方法弹出 Y/N 确认。
+   */
+  requestApproval?: () => Promise<boolean>;
+  /**
    * 上报实时进度。调用后进度数据会写入 ToolInvocation.progress，
    * 通过 tool:update 事件推送到前端渲染。
    * scheduler 内部做节流处理，handler 可高频调用而不会造成渲染压力。
