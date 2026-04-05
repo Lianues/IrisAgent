@@ -29,7 +29,14 @@ export function appendMergedMessagePart(parts: MessagePart[], nextPart: MessageP
 
 export function mergeMessageParts(parts: MessagePart[]): MessagePart[] {
   const merged: MessagePart[] = [];
-  for (const part of parts) appendMergedMessagePart(merged, { ...part } as MessagePart);
+  for (const part of parts) {
+    // 对 tool_use part 需要深拷贝 tools 数组，避免 appendMergedMessagePart
+    // 中的 push 操作变异原始 part 的 tools 引用（React state 不可变性）
+    const copy = part.type === 'tool_use'
+      ? { type: 'tool_use' as const, tools: [...part.tools] }
+      : { ...part };
+    appendMergedMessagePart(merged, copy as MessagePart);
+  }
   return merged;
 }
 
