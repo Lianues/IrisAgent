@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import type { AgentDefinitionLike } from '@irises/extension-sdk';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
 import type { ChatMessage } from '../components/MessageItem';
 import type {
@@ -17,6 +18,7 @@ type SetMessages = Dispatch<SetStateAction<ChatMessage[]>>;
 type SetViewMode = Dispatch<SetStateAction<ViewMode>>;
 type SetSessionList = Dispatch<SetStateAction<SessionMeta[]>>;
 type SetModelList = Dispatch<SetStateAction<LLMModelInfo[]>>;
+type SetAgentList = Dispatch<SetStateAction<AgentDefinitionLike[]>>;
 type SetSelectedIndex = Dispatch<SetStateAction<number>>;
 type SetPendingConfirm = Dispatch<SetStateAction<PendingConfirm | null>>;
 type SetConfirmChoice = Dispatch<SetStateAction<ConfirmChoice>>;
@@ -35,7 +37,9 @@ interface UseCommandDispatchOptions {
   onResetConfig: () => Promise<{ success: boolean; message: string }>;
   onExit: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
-  onSwitchAgent?: () => void;
+  /** 获取可切换的 Agent 列表，返回后由 /agent 命令切换到 agent-list 视图 */
+  onListAgents?: () => AgentDefinitionLike[];
+  setAgentList: SetAgentList;
   undoRedoRef: MutableRefObject<UndoRedoStack>;
   setMessages: SetMessages;
   commitTools: () => void;
@@ -70,7 +74,8 @@ export function useCommandDispatch({
   onSwitchModel,
   onResetConfig,
   onExit,
-  onSwitchAgent,
+  onListAgents,
+  setAgentList,
   onSummarize,
   undoRedoRef,
   setMessages,
@@ -93,12 +98,17 @@ export function useCommandDispatch({
     }
 
     if (text === '/agent') {
-      if (onSwitchAgent) {
-        onSwitchAgent();
-        return;
+      // 修改方式：/agent 不再直接触发 suspend/destroy，改为在 TUI 内部切换 viewMode。
+      // 与 /model、/load 同样的模式：拿列表 → 设置状态 → 切换视图。
+      if (onListAgents) {
+        const agents = onListAgents();
+        if (agents.length > 0) {
+          setAgentList(agents);
+          setSelectedIndex(0);
+          setViewMode('agent-list');
+          return;
+        }
       }
-      // 多 Agent 配置分层重构：移除"未启用多 Agent 模式"提示。
-      // 系统永远以 agent 为单位运行，/agent 在单 agent 时提示无其他可切换的 agent。
       appendCommandMessage(
         setMessages,
         '当前只有一个 Agent，无需切换。',
@@ -242,7 +252,8 @@ export function useCommandDispatch({
     onResetConfig,
     onRunCommand,
     onSubmit,
-    onSwitchAgent,
+    onListAgents,
+    setAgentList,
     onSwitchModel,
     onSummarize,
     onUndo,

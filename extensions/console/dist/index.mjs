@@ -1,15 +1,135 @@
 // src/index.ts
-import React9 from "react";
+import React10 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
 // ../../packages/extension-sdk/dist/platform.js
+class BackendHandle {
+  _backend;
+  _listeners = new Map;
+  constructor(backend) {
+    this._backend = backend;
+  }
+  swap(newBackend) {
+    for (const [event, listeners] of this._listeners) {
+      for (const fn of listeners) {
+        this._backend.off(event, fn);
+      }
+    }
+    this._backend = newBackend;
+    for (const [event, listeners] of this._listeners) {
+      for (const fn of listeners) {
+        this._backend.on(event, fn);
+      }
+    }
+  }
+  on(event, listener) {
+    if (!this._listeners.has(event))
+      this._listeners.set(event, new Set);
+    this._listeners.get(event).add(listener);
+    this._backend.on(event, listener);
+    return this;
+  }
+  off(event, listener) {
+    this._listeners.get(event)?.delete(listener);
+    this._backend.off(event, listener);
+    return this;
+  }
+  once(event, listener) {
+    const wrapper = (...args) => {
+      this._listeners.get(event)?.delete(wrapper);
+      listener(...args);
+    };
+    return this.on(event, wrapper);
+  }
+  chat(sessionId, text, images, documents, platform) {
+    return this._backend.chat(sessionId, text, images, documents, platform);
+  }
+  isStreamEnabled() {
+    return this._backend.isStreamEnabled();
+  }
+  clearSession(sessionId) {
+    return this._backend.clearSession(sessionId);
+  }
+  switchModel(modelName, platform) {
+    return this._backend.switchModel(modelName, platform);
+  }
+  listModels() {
+    return this._backend.listModels();
+  }
+  listSessionMetas() {
+    return this._backend.listSessionMetas();
+  }
+  abortChat(sessionId) {
+    return this._backend.abortChat(sessionId);
+  }
+  getToolHandle(toolId) {
+    return this._backend.getToolHandle(toolId);
+  }
+  getToolHandles(sessionId) {
+    return this._backend.getToolHandles(sessionId);
+  }
+  undo(sessionId, scope) {
+    return this._backend.undo?.(sessionId, scope) ?? Promise.resolve(null);
+  }
+  redo(sessionId) {
+    return this._backend.redo?.(sessionId) ?? Promise.resolve(null);
+  }
+  listSkills() {
+    return this._backend.listSkills?.() ?? [];
+  }
+  listModes() {
+    return this._backend.listModes?.() ?? [];
+  }
+  switchMode(modeName) {
+    return this._backend.switchMode?.(modeName) ?? false;
+  }
+  clearRedo(sessionId) {
+    return this._backend.clearRedo?.(sessionId);
+  }
+  getHistory(sessionId) {
+    return this._backend.getHistory?.(sessionId) ?? Promise.resolve([]);
+  }
+  runCommand(cmd) {
+    return this._backend.runCommand?.(cmd);
+  }
+  summarize(sessionId) {
+    return this._backend.summarize?.(sessionId) ?? Promise.resolve(undefined);
+  }
+  resetConfigToDefaults() {
+    return this._backend.resetConfigToDefaults?.();
+  }
+  getToolNames() {
+    return this._backend.getToolNames?.() ?? [];
+  }
+  getAgentTasks(sessionId) {
+    return this._backend.getAgentTasks?.(sessionId) ?? [];
+  }
+  getRunningAgentTasks(sessionId) {
+    return this._backend.getRunningAgentTasks?.(sessionId) ?? [];
+  }
+  getAgentTask(taskId) {
+    return this._backend.getAgentTask?.(taskId);
+  }
+  getToolPolicies() {
+    return this._backend.getToolPolicies?.();
+  }
+  getCurrentModelInfo() {
+    return this._backend.getCurrentModelInfo?.();
+  }
+  getDisabledTools() {
+    return this._backend.getDisabledTools?.();
+  }
+  getActiveSessionId() {
+    return this._backend.getActiveSessionId?.();
+  }
+}
 class PlatformAdapter {
   get name() {
     return this.constructor.name;
   }
 }
-// ../../packages/extension-sdk/dist/plugin.js
+// ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
   LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
@@ -18,11 +138,12 @@ var LogLevel;
   LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
   LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
 })(LogLevel || (LogLevel = {}));
+var _logLevel = LogLevel.INFO;
 // src/index.ts
 import { estimateTokenCount } from "tokenx";
 
 // src/App.tsx
-import { useCallback as useCallback10, useEffect as useEffect11, useRef as useRef9, useState as useState13 } from "react";
+import { useCallback as useCallback11, useEffect as useEffect11, useRef as useRef9, useState as useState14 } from "react";
 import { useRenderer } from "@opentui/react";
 
 // src/theme.ts
@@ -57,12 +178,14 @@ var C = {
 };
 
 // src/components/ApprovalBar.tsx
-import { jsxDEV } from "@opentui/react/jsx-dev-runtime";
-function ApprovalBar({ toolName, choice, remainingCount }) {
+import { jsxDEV, Fragment } from "@opentui/react/jsx-dev-runtime";
+function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, approvalPage = "basic" }) {
+  const showPolicyPage = isCommandTool && approvalPage === "policy";
+  const borderColor = showPolicyPage ? C.command : choice === "approve" ? C.accent : C.error;
   return /* @__PURE__ */ jsxDEV("box", {
     flexDirection: "column",
     borderStyle: "single",
-    borderColor: choice === "approve" ? C.accent : C.error,
+    borderColor,
     paddingLeft: 1,
     paddingRight: 1,
     paddingY: 0,
@@ -76,7 +199,7 @@ function ApprovalBar({ toolName, choice, remainingCount }) {
         }, undefined, false, undefined, this),
         /* @__PURE__ */ jsxDEV("span", {
           fg: C.text,
-          children: "确认执行 "
+          children: showPolicyPage ? "记住选择 " : "确认执行 "
         }, undefined, false, undefined, this),
         /* @__PURE__ */ jsxDEV("span", {
           fg: C.warn,
@@ -88,21 +211,44 @@ function ApprovalBar({ toolName, choice, remainingCount }) {
           fg: C.dim,
           children: "  "
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV("span", {
-          fg: choice === "approve" ? C.accent : C.textSec,
-          children: choice === "approve" ? "[(Y)批准]" : " (Y)批准 "
-        }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV("span", {
-          fg: C.dim,
-          children: " "
-        }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV("span", {
-          fg: choice === "reject" ? C.error : C.textSec,
-          children: choice === "reject" ? "[(N)拒绝]" : " (N)拒绝 "
-        }, undefined, false, undefined, this),
+        showPolicyPage ? /* @__PURE__ */ jsxDEV(Fragment, {
+          children: [
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: choice === "approve" ? C.command : C.textSec,
+              children: choice === "approve" ? "[(A)始终允许]" : " (A)始终允许 "
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: C.dim,
+              children: " "
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: choice === "reject" ? "#e17055" : C.textSec,
+              children: choice === "reject" ? "[(S)始终询问]" : " (S)始终询问 "
+            }, undefined, false, undefined, this)
+          ]
+        }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV(Fragment, {
+          children: [
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: choice === "approve" ? C.accent : C.textSec,
+              children: choice === "approve" ? "[(Y)批准]" : " (Y)批准 "
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: C.dim,
+              children: " "
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV("span", {
+              fg: choice === "reject" ? C.error : C.textSec,
+              children: choice === "reject" ? "[(N)拒绝]" : " (N)拒绝 "
+            }, undefined, false, undefined, this)
+          ]
+        }, undefined, true, undefined, this),
         remainingCount > 1 ? /* @__PURE__ */ jsxDEV("span", {
           fg: C.dim,
           children: `  (剩余 ${remainingCount - 1} 个)`
+        }, undefined, false, undefined, this) : null,
+        isCommandTool ? /* @__PURE__ */ jsxDEV("span", {
+          fg: C.dim,
+          children: showPolicyPage ? "  Tab→返回" : "  Tab→更多"
         }, undefined, false, undefined, this) : null
       ]
     }, undefined, true, undefined, this)
@@ -188,7 +334,7 @@ function getTextWidth(text) {
 }
 
 // src/components/HintBar.tsx
-import { jsxDEV as jsxDEV3, Fragment } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV3, Fragment as Fragment2 } from "@opentui/react/jsx-dev-runtime";
 function truncatePath(fullPath, maxWidth) {
   if (maxWidth <= 0)
     return "";
@@ -234,6 +380,7 @@ function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }) {
   } else {
     const parts = [];
     parts.push(isGenerating ? "esc 中断生成" : "ctrl+j 换行");
+    parts.push("ctrl+t 工具详情");
     if (!isGenerating)
       parts.push("shift+←/→ 思考");
     if (isGenerating && hasQueue) {
@@ -267,7 +414,8 @@ function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }) {
         fg: C.dim,
         children: [
           isGenerating ? "esc 中断生成" : "ctrl+j 换行",
-          isGenerating && hasQueue ? /* @__PURE__ */ jsxDEV3(Fragment, {
+          "  ·  ctrl+t 工具详情",
+          isGenerating && hasQueue ? /* @__PURE__ */ jsxDEV3(Fragment2, {
             children: [
               "  ·  ",
               /* @__PURE__ */ jsxDEV3("span", {
@@ -445,7 +593,7 @@ function usePaste(handler) {
 }
 
 // src/components/InputDisplay.tsx
-import { jsxDEV as jsxDEV4, Fragment as Fragment2 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV4, Fragment as Fragment3 } from "@opentui/react/jsx-dev-runtime";
 function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, placeholder, transform }) {
   const display = transform ? transform(value) : value;
   if (!display && !isActive) {
@@ -505,7 +653,7 @@ function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, 
         fg: C.text,
         children: displayBefore
       }, undefined, false, undefined, this),
-      cursorChar ? atNewline ? /* @__PURE__ */ jsxDEV4(Fragment2, {
+      cursorChar ? atNewline ? /* @__PURE__ */ jsxDEV4(Fragment3, {
         children: [
           cursorVisible && /* @__PURE__ */ jsxDEV4("span", {
             bg: C.accent,
@@ -778,7 +926,7 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
 }
 
 // src/components/StatusBar.tsx
-import { jsxDEV as jsxDEV6, Fragment as Fragment3 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV6, Fragment as Fragment4 } from "@opentui/react/jsx-dev-runtime";
 var SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }) {
   const resolvedModeName = modeName ?? "normal";
@@ -825,7 +973,7 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
               fg: C.textSec,
               children: modelName
             }, undefined, false, undefined, this),
-            queueSize != null && queueSize > 0 ? /* @__PURE__ */ jsxDEV6(Fragment3, {
+            queueSize != null && queueSize > 0 ? /* @__PURE__ */ jsxDEV6(Fragment4, {
               children: [
                 /* @__PURE__ */ jsxDEV6("span", {
                   fg: C.dim,
@@ -840,7 +988,7 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
                 }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this) : null,
-            hasBackgroundTasks ? /* @__PURE__ */ jsxDEV6(Fragment3, {
+            hasBackgroundTasks ? /* @__PURE__ */ jsxDEV6(Fragment4, {
               children: [
                 /* @__PURE__ */ jsxDEV6("span", {
                   fg: C.dim,
@@ -858,7 +1006,7 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
                 }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this) : null,
-            hasDelegateTasks ? /* @__PURE__ */ jsxDEV6(Fragment3, {
+            hasDelegateTasks ? /* @__PURE__ */ jsxDEV6(Fragment4, {
               children: [
                 /* @__PURE__ */ jsxDEV6("span", {
                   fg: C.dim,
@@ -951,6 +1099,7 @@ function BottomPanel({
   confirmChoice,
   pendingApprovals,
   approvalChoice,
+  approvalPage,
   isGenerating,
   queueSize,
   onSubmit,
@@ -983,7 +1132,9 @@ function BottomPanel({
       }, undefined, false, undefined, this) : pendingApprovals.length > 0 ? /* @__PURE__ */ jsxDEV8(ApprovalBar, {
         toolName: pendingApprovals[0].toolName,
         choice: approvalChoice,
-        remainingCount: pendingApprovals.length
+        remainingCount: pendingApprovals.length,
+        isCommandTool: pendingApprovals[0].toolName === "shell" || pendingApprovals[0].toolName === "bash",
+        approvalPage
       }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV8("box", {
         flexDirection: "column",
         borderStyle: "single",
@@ -1028,12 +1179,86 @@ function BottomPanel({
   }, undefined, true, undefined, this);
 }
 
+// src/components/AgentListView.tsx
+import { jsxDEV as jsxDEV9 } from "@opentui/react/jsx-dev-runtime";
+function AgentListView({ agents, selectedIndex, currentAgentName }) {
+  return /* @__PURE__ */ jsxDEV9("box", {
+    flexDirection: "column",
+    width: "100%",
+    height: "100%",
+    children: [
+      /* @__PURE__ */ jsxDEV9("box", {
+        padding: 1,
+        children: [
+          /* @__PURE__ */ jsxDEV9("text", {
+            fg: C.primary,
+            children: "切换 Agent"
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV9("text", {
+            fg: C.dim,
+            children: "  ↑↓ 选择  Enter 切换  Esc 返回"
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV9("scrollbox", {
+        flexGrow: 1,
+        children: [
+          agents.length === 0 && /* @__PURE__ */ jsxDEV9("text", {
+            fg: C.dim,
+            paddingLeft: 2,
+            children: "暂无可用 Agent"
+          }, undefined, false, undefined, this),
+          agents.map((agent, index) => {
+            const isSelected = index === selectedIndex;
+            const isCurrent = agent.name === currentAgentName;
+            const currentMarker = isCurrent ? "•" : " ";
+            return /* @__PURE__ */ jsxDEV9("box", {
+              paddingLeft: 1,
+              children: /* @__PURE__ */ jsxDEV9("text", {
+                children: [
+                  /* @__PURE__ */ jsxDEV9("span", {
+                    fg: isSelected ? C.accent : C.dim,
+                    children: isSelected ? "❯ " : "  "
+                  }, undefined, false, undefined, this),
+                  /* @__PURE__ */ jsxDEV9("span", {
+                    fg: isCurrent ? C.accent : C.dim,
+                    children: [
+                      currentMarker,
+                      " "
+                    ]
+                  }, undefined, true, undefined, this),
+                  isSelected ? /* @__PURE__ */ jsxDEV9("strong", {
+                    children: /* @__PURE__ */ jsxDEV9("span", {
+                      fg: C.text,
+                      children: agent.name
+                    }, undefined, false, undefined, this)
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV9("span", {
+                    fg: C.textSec,
+                    children: agent.name
+                  }, undefined, false, undefined, this),
+                  agent.description ? /* @__PURE__ */ jsxDEV9("span", {
+                    fg: C.dim,
+                    children: [
+                      "  ",
+                      agent.description
+                    ]
+                  }, undefined, true, undefined, this) : null
+                ]
+              }, undefined, true, undefined, this)
+            }, agent.name, false, undefined, this);
+          })
+        ]
+      }, undefined, true, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
+
 // src/components/GeneratingTimer.tsx
 import { useState as useState5, useEffect as useEffect5, useRef as useRef4 } from "react";
 
 // src/components/Spinner.tsx
 import { useState as useState4, useEffect as useEffect4, useRef as useRef3 } from "react";
-import { jsxDEV as jsxDEV9 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV10 } from "@opentui/react/jsx-dev-runtime";
 var FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 var INTERVAL = 80;
 function Spinner() {
@@ -1050,14 +1275,14 @@ function Spinner() {
       clearInterval(timer);
     };
   }, []);
-  return /* @__PURE__ */ jsxDEV9("span", {
+  return /* @__PURE__ */ jsxDEV10("span", {
     fg: C.accent,
     children: FRAMES[frame]
   }, undefined, false, undefined, this);
 }
 
 // src/components/GeneratingTimer.tsx
-import { jsxDEV as jsxDEV10 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV11 } from "@opentui/react/jsx-dev-runtime";
 function GeneratingTimer({ isGenerating, retryInfo, label }) {
   const [time, setTime] = useState5(0);
   const timerRef = useRef4(null);
@@ -1085,33 +1310,33 @@ function GeneratingTimer({ isGenerating, retryInfo, label }) {
   if (retryInfo) {
     const briefError = (retryInfo.error || "").split(`
 `)[0].slice(0, 60);
-    return /* @__PURE__ */ jsxDEV10("box", {
+    return /* @__PURE__ */ jsxDEV11("box", {
       flexDirection: "column",
       children: [
-        /* @__PURE__ */ jsxDEV10("text", {
+        /* @__PURE__ */ jsxDEV11("text", {
           children: [
-            /* @__PURE__ */ jsxDEV10(Spinner, {}, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV10("span", {
+            /* @__PURE__ */ jsxDEV11(Spinner, {}, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV11("span", {
               fg: C.warn,
-              children: /* @__PURE__ */ jsxDEV10("em", {
+              children: /* @__PURE__ */ jsxDEV11("em", {
                 children: ` retrying (${retryInfo.attempt}/${retryInfo.maxRetries})... (${time}s)`
               }, undefined, false, undefined, this)
             }, undefined, false, undefined, this)
           ]
         }, undefined, true, undefined, this),
-        /* @__PURE__ */ jsxDEV10("text", {
+        /* @__PURE__ */ jsxDEV11("text", {
           fg: C.dim,
           children: `  └ ${briefError}`
         }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV10("text", {
+  return /* @__PURE__ */ jsxDEV11("text", {
     children: [
-      /* @__PURE__ */ jsxDEV10(Spinner, {}, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV10("span", {
+      /* @__PURE__ */ jsxDEV11(Spinner, {}, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV11("span", {
         fg: C.dim,
-        children: /* @__PURE__ */ jsxDEV10("em", {
+        children: /* @__PURE__ */ jsxDEV11("em", {
           children: ` ${label ?? "generating..."} (${time}s)`
         }, undefined, false, undefined, this)
       }, undefined, false, undefined, this)
@@ -1126,7 +1351,7 @@ import { useTerminalDimensions as useTerminalDimensions2 } from "@opentui/react"
 // src/components/MarkdownText.tsx
 import { useMemo as useMemo2 } from "react";
 import { SyntaxStyle, parseColor } from "@opentui/core";
-import { jsxDEV as jsxDEV11 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV12 } from "@opentui/react/jsx-dev-runtime";
 function createSyntaxStyle() {
   return SyntaxStyle.fromStyles({
     default: { fg: parseColor(C.text) },
@@ -1170,14 +1395,14 @@ var TABLE_OPTIONS = {
 function MarkdownText({ text, showCursor }) {
   const syntaxStyle = useMemo2(() => createSyntaxStyle(), []);
   if (!text) {
-    return showCursor ? /* @__PURE__ */ jsxDEV11("text", {
-      children: /* @__PURE__ */ jsxDEV11("span", {
+    return showCursor ? /* @__PURE__ */ jsxDEV12("text", {
+      children: /* @__PURE__ */ jsxDEV12("span", {
         bg: C.accent,
         children: " "
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this) : null;
   }
-  return /* @__PURE__ */ jsxDEV11("markdown", {
+  return /* @__PURE__ */ jsxDEV12("markdown", {
     content: text,
     syntaxStyle,
     streaming: showCursor,
@@ -1186,13 +1411,13 @@ function MarkdownText({ text, showCursor }) {
 }
 
 // src/tool-renderers/default.tsx
-import { jsxDEV as jsxDEV12 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV13 } from "@opentui/react/jsx-dev-runtime";
 function DefaultRenderer({ result }) {
   const text = typeof result === "string" ? result.replace(/\n/g, " ") : JSON.stringify(result).replace(/\n/g, " ");
   const truncated = text.length > 80 ? text.slice(0, 80) + "..." : text;
-  return /* @__PURE__ */ jsxDEV12("text", {
+  return /* @__PURE__ */ jsxDEV13("text", {
     fg: "#888",
-    children: /* @__PURE__ */ jsxDEV12("em", {
+    children: /* @__PURE__ */ jsxDEV13("em", {
       children: [
         " ↳ ",
         truncated
@@ -1202,7 +1427,7 @@ function DefaultRenderer({ result }) {
 }
 
 // src/tool-renderers/shell.tsx
-import { jsxDEV as jsxDEV13 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV14 } from "@opentui/react/jsx-dev-runtime";
 function lineCount(text) {
   if (!text)
     return 0;
@@ -1221,9 +1446,9 @@ function ShellRenderer({ result }) {
   const exitCode = r.exitCode ?? 0;
   const isError = exitCode !== 0;
   if (r.killed) {
-    return /* @__PURE__ */ jsxDEV13("text", {
+    return /* @__PURE__ */ jsxDEV14("text", {
       fg: "#ff0000",
-      children: /* @__PURE__ */ jsxDEV13("em", {
+      children: /* @__PURE__ */ jsxDEV14("em", {
         children: [
           " ↳ ",
           "killed (timeout)"
@@ -1233,9 +1458,9 @@ function ShellRenderer({ result }) {
   }
   if (isError) {
     const reason = firstLine(r.stderr, 100) || `exit ${exitCode}`;
-    return /* @__PURE__ */ jsxDEV13("text", {
+    return /* @__PURE__ */ jsxDEV14("text", {
       fg: "#ff0000",
-      children: /* @__PURE__ */ jsxDEV13("em", {
+      children: /* @__PURE__ */ jsxDEV14("em", {
         children: [
           " ↳ ",
           reason
@@ -1245,9 +1470,9 @@ function ShellRenderer({ result }) {
   }
   const lines = lineCount(r.stdout);
   const summary = lines > 0 ? `${lines} lines output` : "done (no output)";
-  return /* @__PURE__ */ jsxDEV13("text", {
+  return /* @__PURE__ */ jsxDEV14("text", {
     fg: "#888",
-    children: /* @__PURE__ */ jsxDEV13("em", {
+    children: /* @__PURE__ */ jsxDEV14("em", {
       children: [
         " ↳ ",
         summary
@@ -1257,7 +1482,7 @@ function ShellRenderer({ result }) {
 }
 
 // src/tool-renderers/read-file.tsx
-import { jsxDEV as jsxDEV14 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV15 } from "@opentui/react/jsx-dev-runtime";
 function basename(p) {
   return p.split("/").pop() || p;
 }
@@ -1265,9 +1490,9 @@ function ReadFileRenderer({ result }) {
   const r = result || {};
   const items = r.results || [];
   if (items.length === 0) {
-    return /* @__PURE__ */ jsxDEV14("text", {
+    return /* @__PURE__ */ jsxDEV15("text", {
       fg: "#888",
-      children: /* @__PURE__ */ jsxDEV14("em", {
+      children: /* @__PURE__ */ jsxDEV15("em", {
         children: [
           " ↳",
           " read 0 lines (-)"
@@ -1280,9 +1505,9 @@ function ReadFileRenderer({ result }) {
     const lines = item.lineCount ?? 0;
     const name = item.path ?? "?";
     const range = item.startLine !== undefined && item.endLine !== undefined ? `:${item.startLine}-${item.endLine}` : "";
-    return /* @__PURE__ */ jsxDEV14("text", {
+    return /* @__PURE__ */ jsxDEV15("text", {
       fg: "#888",
-      children: /* @__PURE__ */ jsxDEV14("em", {
+      children: /* @__PURE__ */ jsxDEV15("em", {
         children: [
           " ↳",
           " read ",
@@ -1297,9 +1522,9 @@ function ReadFileRenderer({ result }) {
   }
   const totalLines = items.reduce((sum, item) => sum + (item.lineCount ?? 0), 0);
   const names = items.map((item) => basename(item.path ?? "?")).join(", ");
-  return /* @__PURE__ */ jsxDEV14("text", {
+  return /* @__PURE__ */ jsxDEV15("text", {
     fg: "#888",
-    children: /* @__PURE__ */ jsxDEV14("em", {
+    children: /* @__PURE__ */ jsxDEV15("em", {
       children: [
         " ↳",
         " read ",
@@ -1313,7 +1538,7 @@ function ReadFileRenderer({ result }) {
 }
 
 // src/tool-renderers/apply-diff.tsx
-import { jsxDEV as jsxDEV15 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV16 } from "@opentui/react/jsx-dev-runtime";
 function countPatchLines(patch) {
   if (typeof patch !== "string")
     return { added: 0, deleted: 0 };
@@ -1336,12 +1561,12 @@ function ApplyDiffRenderer({ args, result }) {
   const isError = (r.failed ?? 0) > 0;
   const { added, deleted } = countPatchLines(args?.patch);
   const hasStats = added > 0 || deleted > 0;
-  return /* @__PURE__ */ jsxDEV15("text", {
+  return /* @__PURE__ */ jsxDEV16("text", {
     fg: isError ? "#ffff00" : "#888",
-    children: /* @__PURE__ */ jsxDEV15("em", {
+    children: /* @__PURE__ */ jsxDEV16("em", {
       children: [
         " ↳ ",
-        added > 0 && /* @__PURE__ */ jsxDEV15("span", {
+        added > 0 && /* @__PURE__ */ jsxDEV16("span", {
           fg: "#57ab5a",
           children: [
             "+",
@@ -1349,7 +1574,7 @@ function ApplyDiffRenderer({ args, result }) {
           ]
         }, undefined, true, undefined, this),
         added > 0 && deleted > 0 && " ",
-        deleted > 0 && /* @__PURE__ */ jsxDEV15("span", {
+        deleted > 0 && /* @__PURE__ */ jsxDEV16("span", {
           fg: "#f47067",
           children: [
             "-",
@@ -1369,7 +1594,7 @@ function ApplyDiffRenderer({ args, result }) {
 }
 
 // src/tool-renderers/search-in-files.tsx
-import { jsxDEV as jsxDEV16 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV17 } from "@opentui/react/jsx-dev-runtime";
 function truncStr(s, max) {
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
@@ -1383,18 +1608,18 @@ function SearchInFilesRenderer({ args, result }) {
     const replace = typeof args?.replace === "string" ? truncStr(args.replace, 16) : "";
     const transform = query ? ` "${query}" → "${replace}"` : "";
     const changedFiles = r.results ? r.results.filter((f) => f.changed).length : files;
-    return /* @__PURE__ */ jsxDEV16("text", {
+    return /* @__PURE__ */ jsxDEV17("text", {
       fg: "#888",
-      children: /* @__PURE__ */ jsxDEV16("em", {
+      children: /* @__PURE__ */ jsxDEV17("em", {
         children: [
           " ↳ ",
-          /* @__PURE__ */ jsxDEV16("span", {
+          /* @__PURE__ */ jsxDEV17("span", {
             fg: "#d2a8ff",
             children: total
           }, undefined, false, undefined, this),
           " replacements in",
           " ",
-          /* @__PURE__ */ jsxDEV16("span", {
+          /* @__PURE__ */ jsxDEV17("span", {
             fg: "#d2a8ff",
             children: changedFiles
           }, undefined, false, undefined, this),
@@ -1409,12 +1634,12 @@ function SearchInFilesRenderer({ args, result }) {
   }
   const count = r.count ?? 0;
   const suffix = r.truncated ? " (truncated)" : "";
-  return /* @__PURE__ */ jsxDEV16("text", {
+  return /* @__PURE__ */ jsxDEV17("text", {
     fg: "#888",
-    children: /* @__PURE__ */ jsxDEV16("em", {
+    children: /* @__PURE__ */ jsxDEV17("em", {
       children: [
         " ↳ ",
-        /* @__PURE__ */ jsxDEV16("span", {
+        /* @__PURE__ */ jsxDEV17("span", {
           fg: "#d2a8ff",
           children: count
         }, undefined, false, undefined, this),
@@ -1426,14 +1651,14 @@ function SearchInFilesRenderer({ args, result }) {
 }
 
 // src/tool-renderers/find-files.tsx
-import { jsxDEV as jsxDEV17 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV18 } from "@opentui/react/jsx-dev-runtime";
 function FindFilesRenderer({ result }) {
   const r = result || {};
   const count = r.count ?? 0;
   const suffix = r.truncated ? " (truncated)" : "";
-  return /* @__PURE__ */ jsxDEV17("text", {
+  return /* @__PURE__ */ jsxDEV18("text", {
     fg: "#888",
-    children: /* @__PURE__ */ jsxDEV17("em", {
+    children: /* @__PURE__ */ jsxDEV18("em", {
       children: [
         " ↳ ",
         " ",
@@ -1446,7 +1671,7 @@ function FindFilesRenderer({ result }) {
 }
 
 // src/tool-renderers/list-files.tsx
-import { jsxDEV as jsxDEV18 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV19 } from "@opentui/react/jsx-dev-runtime";
 function ListFilesRenderer({ result }) {
   const r = result || {};
   const items = r.results || [];
@@ -1459,9 +1684,9 @@ function ListFilesRenderer({ result }) {
     summary += ` (${paths})`;
   if (failCount > 0)
     summary += ` | ${failCount} failed`;
-  return /* @__PURE__ */ jsxDEV18("text", {
+  return /* @__PURE__ */ jsxDEV19("text", {
     fg: failCount > 0 ? "#ffff00" : "#888",
-    children: /* @__PURE__ */ jsxDEV18("em", {
+    children: /* @__PURE__ */ jsxDEV19("em", {
       children: [
         " ↳ ",
         summary
@@ -1471,7 +1696,7 @@ function ListFilesRenderer({ result }) {
 }
 
 // src/tool-renderers/write-file.tsx
-import { jsxDEV as jsxDEV19 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV20 } from "@opentui/react/jsx-dev-runtime";
 function basename2(p) {
   return p.split("/").pop() || p;
 }
@@ -1509,9 +1734,9 @@ function WriteFileRenderer({ args, result }) {
   const failCount = r.failCount ?? 0;
   const argsFiles = extractArgsFiles(args || {});
   if (items.length === 0) {
-    return /* @__PURE__ */ jsxDEV19("text", {
+    return /* @__PURE__ */ jsxDEV20("text", {
       fg: "#888",
-      children: /* @__PURE__ */ jsxDEV19("em", {
+      children: /* @__PURE__ */ jsxDEV20("em", {
         children: [
           " ↳",
           " wrote 0 files"
@@ -1525,18 +1750,18 @@ function WriteFileRenderer({ args, result }) {
     const fg = item.success === false ? "#ff0000" : "#888";
     const lines = getLineCount(item.path, argsFiles);
     const hasLines = lines > 0 && action !== "unchanged";
-    return /* @__PURE__ */ jsxDEV19("text", {
+    return /* @__PURE__ */ jsxDEV20("text", {
       fg,
-      children: /* @__PURE__ */ jsxDEV19("em", {
+      children: /* @__PURE__ */ jsxDEV20("em", {
         children: [
           " ↳ ",
-          hasLines && (action === "created" ? /* @__PURE__ */ jsxDEV19("span", {
+          hasLines && (action === "created" ? /* @__PURE__ */ jsxDEV20("span", {
             fg: "#57ab5a",
             children: [
               "+",
               lines
             ]
-          }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV19("span", {
+          }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV20("span", {
             fg: "#d2a8ff",
             children: [
               "~",
@@ -1568,12 +1793,12 @@ function WriteFileRenderer({ args, result }) {
     }
   }
   const names = items.map((i) => basename2(i.path ?? "?")).join(", ");
-  return /* @__PURE__ */ jsxDEV19("text", {
+  return /* @__PURE__ */ jsxDEV20("text", {
     fg: failCount > 0 ? "#ffff00" : "#888",
-    children: /* @__PURE__ */ jsxDEV19("em", {
+    children: /* @__PURE__ */ jsxDEV20("em", {
       children: [
         " ↳ ",
-        totalLines > 0 && /* @__PURE__ */ jsxDEV19("span", {
+        totalLines > 0 && /* @__PURE__ */ jsxDEV20("span", {
           fg: "#d2a8ff",
           children: [
             "~",
@@ -1591,88 +1816,8 @@ function WriteFileRenderer({ args, result }) {
 }
 
 // src/tool-renderers/delete-code.tsx
-import { jsxDEV as jsxDEV20 } from "@opentui/react/jsx-dev-runtime";
-function DeleteCodeRenderer({ result }) {
-  const r = result || {};
-  const items = r.results || [];
-  const failCount = r.failCount ?? 0;
-  if (items.length === 0) {
-    return /* @__PURE__ */ jsxDEV20("text", {
-      fg: "#888",
-      children: /* @__PURE__ */ jsxDEV20("em", {
-        children: [
-          " ↳",
-          " deleted 0 lines"
-        ]
-      }, undefined, true, undefined, this)
-    }, undefined, false, undefined, this);
-  }
-  if (items.length === 1) {
-    const item = items[0];
-    if (item.success === false) {
-      return /* @__PURE__ */ jsxDEV20("text", {
-        fg: "#ff0000",
-        children: /* @__PURE__ */ jsxDEV20("em", {
-          children: [
-            " ↳",
-            " failed (",
-            item.error ?? item.path ?? "?",
-            ")"
-          ]
-        }, undefined, true, undefined, this)
-      }, undefined, false, undefined, this);
-    }
-    const deleted = item.deletedLines ?? 0;
-    const range = item.start_line != null && item.end_line != null ? `:${item.start_line}-${item.end_line}` : "";
-    return /* @__PURE__ */ jsxDEV20("text", {
-      fg: "#888",
-      children: /* @__PURE__ */ jsxDEV20("em", {
-        children: [
-          " ↳",
-          " ",
-          /* @__PURE__ */ jsxDEV20("span", {
-            fg: "#f47067",
-            children: [
-              "-",
-              deleted
-            ]
-          }, undefined, true, undefined, this),
-          " lines (",
-          item.path ?? "?",
-          range,
-          ")"
-        ]
-      }, undefined, true, undefined, this)
-    }, undefined, false, undefined, this);
-  }
-  const totalDeleted = items.reduce((sum, i) => sum + (i.deletedLines ?? 0), 0);
-  const names = items.map((i) => i.path ?? "?").join(", ");
-  return /* @__PURE__ */ jsxDEV20("text", {
-    fg: failCount > 0 ? "#ffff00" : "#888",
-    children: /* @__PURE__ */ jsxDEV20("em", {
-      children: [
-        " ↳",
-        " ",
-        /* @__PURE__ */ jsxDEV20("span", {
-          fg: "#f47067",
-          children: [
-            "-",
-            totalDeleted
-          ]
-        }, undefined, true, undefined, this),
-        " lines in ",
-        items.length,
-        " files (",
-        names,
-        ")"
-      ]
-    }, undefined, true, undefined, this)
-  }, undefined, false, undefined, this);
-}
-
-// src/tool-renderers/insert-code.tsx
 import { jsxDEV as jsxDEV21 } from "@opentui/react/jsx-dev-runtime";
-function InsertCodeRenderer({ result }) {
+function DeleteCodeRenderer({ result }) {
   const r = result || {};
   const items = r.results || [];
   const failCount = r.failCount ?? 0;
@@ -1682,7 +1827,7 @@ function InsertCodeRenderer({ result }) {
       children: /* @__PURE__ */ jsxDEV21("em", {
         children: [
           " ↳",
-          " inserted 0 lines"
+          " deleted 0 lines"
         ]
       }, undefined, true, undefined, this)
     }, undefined, false, undefined, this);
@@ -1702,8 +1847,8 @@ function InsertCodeRenderer({ result }) {
         }, undefined, true, undefined, this)
       }, undefined, false, undefined, this);
     }
-    const inserted = item.insertedLines ?? 0;
-    const pos = item.line != null ? ` at L${item.line}` : "";
+    const deleted = item.deletedLines ?? 0;
+    const range = item.start_line != null && item.end_line != null ? `:${item.start_line}-${item.end_line}` : "";
     return /* @__PURE__ */ jsxDEV21("text", {
       fg: "#888",
       children: /* @__PURE__ */ jsxDEV21("em", {
@@ -1711,6 +1856,86 @@ function InsertCodeRenderer({ result }) {
           " ↳",
           " ",
           /* @__PURE__ */ jsxDEV21("span", {
+            fg: "#f47067",
+            children: [
+              "-",
+              deleted
+            ]
+          }, undefined, true, undefined, this),
+          " lines (",
+          item.path ?? "?",
+          range,
+          ")"
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this);
+  }
+  const totalDeleted = items.reduce((sum, i) => sum + (i.deletedLines ?? 0), 0);
+  const names = items.map((i) => i.path ?? "?").join(", ");
+  return /* @__PURE__ */ jsxDEV21("text", {
+    fg: failCount > 0 ? "#ffff00" : "#888",
+    children: /* @__PURE__ */ jsxDEV21("em", {
+      children: [
+        " ↳",
+        " ",
+        /* @__PURE__ */ jsxDEV21("span", {
+          fg: "#f47067",
+          children: [
+            "-",
+            totalDeleted
+          ]
+        }, undefined, true, undefined, this),
+        " lines in ",
+        items.length,
+        " files (",
+        names,
+        ")"
+      ]
+    }, undefined, true, undefined, this)
+  }, undefined, false, undefined, this);
+}
+
+// src/tool-renderers/insert-code.tsx
+import { jsxDEV as jsxDEV22 } from "@opentui/react/jsx-dev-runtime";
+function InsertCodeRenderer({ result }) {
+  const r = result || {};
+  const items = r.results || [];
+  const failCount = r.failCount ?? 0;
+  if (items.length === 0) {
+    return /* @__PURE__ */ jsxDEV22("text", {
+      fg: "#888",
+      children: /* @__PURE__ */ jsxDEV22("em", {
+        children: [
+          " ↳",
+          " inserted 0 lines"
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this);
+  }
+  if (items.length === 1) {
+    const item = items[0];
+    if (item.success === false) {
+      return /* @__PURE__ */ jsxDEV22("text", {
+        fg: "#ff0000",
+        children: /* @__PURE__ */ jsxDEV22("em", {
+          children: [
+            " ↳",
+            " failed (",
+            item.error ?? item.path ?? "?",
+            ")"
+          ]
+        }, undefined, true, undefined, this)
+      }, undefined, false, undefined, this);
+    }
+    const inserted = item.insertedLines ?? 0;
+    const pos = item.line != null ? ` at L${item.line}` : "";
+    return /* @__PURE__ */ jsxDEV22("text", {
+      fg: "#888",
+      children: /* @__PURE__ */ jsxDEV22("em", {
+        children: [
+          " ↳",
+          " ",
+          /* @__PURE__ */ jsxDEV22("span", {
             fg: "#57ab5a",
             children: [
               "+",
@@ -1728,13 +1953,13 @@ function InsertCodeRenderer({ result }) {
   }
   const totalInserted = items.reduce((sum, i) => sum + (i.insertedLines ?? 0), 0);
   const names = items.map((i) => i.path ?? "?").join(", ");
-  return /* @__PURE__ */ jsxDEV21("text", {
+  return /* @__PURE__ */ jsxDEV22("text", {
     fg: failCount > 0 ? "#ffff00" : "#888",
-    children: /* @__PURE__ */ jsxDEV21("em", {
+    children: /* @__PURE__ */ jsxDEV22("em", {
       children: [
         " ↳",
         " ",
-        /* @__PURE__ */ jsxDEV21("span", {
+        /* @__PURE__ */ jsxDEV22("span", {
           fg: "#57ab5a",
           children: [
             "+",
@@ -1767,9 +1992,13 @@ var renderers = {
 function getToolRenderer(toolName) {
   return renderers[toolName] ?? DefaultRenderer;
 }
+var detailRenderers = {};
+function getToolDetailRenderer(toolName) {
+  return detailRenderers[toolName] ?? null;
+}
 
 // src/components/ToolCall.tsx
-import { jsxDEV as jsxDEV22 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV23 } from "@opentui/react/jsx-dev-runtime";
 var TERMINAL_STATUSES = new Set(["success", "warning", "error"]);
 var SPINNER_FRAMES2 = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 function getArgsSummary(toolName, args) {
@@ -1846,16 +2075,16 @@ function ToolCall({ invocation }) {
   const durationSec = (updatedAt - createdAt) / 1000;
   const duration = isFinal && durationSec > 0 ? durationSec.toFixed(1) + "s" : "";
   const nameBg = status === "error" ? C.error : isAwaitingApproval ? C.warn : C.accent;
-  return /* @__PURE__ */ jsxDEV22("box", {
+  return /* @__PURE__ */ jsxDEV23("box", {
     flexDirection: "column",
     children: [
-      /* @__PURE__ */ jsxDEV22("box", {
+      /* @__PURE__ */ jsxDEV23("box", {
         flexDirection: "row",
         gap: 1,
         children: [
-          /* @__PURE__ */ jsxDEV22("text", {
+          /* @__PURE__ */ jsxDEV23("text", {
             children: [
-              /* @__PURE__ */ jsxDEV22("span", {
+              /* @__PURE__ */ jsxDEV23("span", {
                 bg: nameBg,
                 fg: C.cursorFg,
                 children: [
@@ -1864,36 +2093,36 @@ function ToolCall({ invocation }) {
                   " "
                 ]
               }, undefined, true, undefined, this),
-              argsSummary.length > 0 && /* @__PURE__ */ jsxDEV22("span", {
+              argsSummary.length > 0 && /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.dim,
                 children: [
                   " ",
                   argsSummary
                 ]
               }, undefined, true, undefined, this),
-              status === "success" ? /* @__PURE__ */ jsxDEV22("span", {
+              status === "success" ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.accent,
                 children: [
                   " ",
                   "✓"
                 ]
               }, undefined, true, undefined, this) : null,
-              status === "warning" ? /* @__PURE__ */ jsxDEV22("span", {
+              status === "warning" ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.warn,
                 children: " !"
               }, undefined, false, undefined, this) : null,
-              status === "error" ? /* @__PURE__ */ jsxDEV22("span", {
+              status === "error" ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.error,
                 children: [
                   " ",
                   "✗"
                 ]
               }, undefined, true, undefined, this) : null,
-              isAwaitingApproval ? /* @__PURE__ */ jsxDEV22("span", {
+              isAwaitingApproval ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.warn,
                 children: " [待确认]"
               }, undefined, false, undefined, this) : null,
-              !isFinal && !isExecuting && !isAwaitingApproval ? /* @__PURE__ */ jsxDEV22("span", {
+              !isFinal && !isExecuting && !isAwaitingApproval ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.dim,
                 children: [
                   " [",
@@ -1901,14 +2130,14 @@ function ToolCall({ invocation }) {
                   "]"
                 ]
               }, undefined, true, undefined, this) : null,
-              duration ? /* @__PURE__ */ jsxDEV22("span", {
+              duration ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.dim,
                 children: [
                   " ",
                   duration
                 ]
               }, undefined, true, undefined, this) : null,
-              isExecuting && progressTokens != null && progressTokens > 0 ? /* @__PURE__ */ jsxDEV22("span", {
+              isExecuting && progressTokens != null && progressTokens > 0 ? /* @__PURE__ */ jsxDEV23("span", {
                 fg: C.dim,
                 children: [
                   " ",
@@ -1919,26 +2148,26 @@ function ToolCall({ invocation }) {
               }, undefined, true, undefined, this) : null
             ]
           }, undefined, true, undefined, this),
-          isExecuting && hasProgress ? /* @__PURE__ */ jsxDEV22("text", {
-            children: /* @__PURE__ */ jsxDEV22("span", {
+          isExecuting && hasProgress ? /* @__PURE__ */ jsxDEV23("text", {
+            children: /* @__PURE__ */ jsxDEV23("span", {
               fg: C.accent,
               children: SPINNER_FRAMES2[(progressFrame ?? 0) % SPINNER_FRAMES2.length]
             }, undefined, false, undefined, this)
-          }, undefined, false, undefined, this) : isExecuting ? /* @__PURE__ */ jsxDEV22("text", {
-            children: /* @__PURE__ */ jsxDEV22(Spinner, {}, undefined, false, undefined, this)
+          }, undefined, false, undefined, this) : isExecuting ? /* @__PURE__ */ jsxDEV23("text", {
+            children: /* @__PURE__ */ jsxDEV23(Spinner, {}, undefined, false, undefined, this)
           }, undefined, false, undefined, this) : null
         ]
       }, undefined, true, undefined, this),
-      status === "error" && error && /* @__PURE__ */ jsxDEV22("text", {
+      status === "error" && error && /* @__PURE__ */ jsxDEV23("text", {
         fg: C.error,
-        children: /* @__PURE__ */ jsxDEV22("em", {
+        children: /* @__PURE__ */ jsxDEV23("em", {
           children: [
             "  ",
             error
           ]
         }, undefined, true, undefined, this)
       }, undefined, false, undefined, this),
-      Renderer && result != null && /* @__PURE__ */ jsxDEV22("box", {
+      Renderer && result != null && /* @__PURE__ */ jsxDEV23("box", {
         paddingLeft: 2,
         children: Renderer({ toolName, args, result })
       }, undefined, false, undefined, this)
@@ -1947,7 +2176,7 @@ function ToolCall({ invocation }) {
 }
 
 // src/components/MessageItem.tsx
-import { jsxDEV as jsxDEV23 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV24 } from "@opentui/react/jsx-dev-runtime";
 function truncateRight(line, maxChars) {
   if (line.length <= maxChars)
     return line;
@@ -2028,21 +2257,21 @@ function NotificationPayloadBlock({ payload }) {
   const firstLine2 = content.split(`
 `).filter((l) => l.trim())[0] || "";
   const preview = firstLine2.length > 60 ? firstLine2.slice(0, 57) + "..." : firstLine2;
-  return /* @__PURE__ */ jsxDEV23("box", {
-    children: /* @__PURE__ */ jsxDEV23("text", {
+  return /* @__PURE__ */ jsxDEV24("box", {
+    children: /* @__PURE__ */ jsxDEV24("text", {
       children: [
-        /* @__PURE__ */ jsxDEV23("span", {
+        /* @__PURE__ */ jsxDEV24("span", {
           fg: iconColor,
           children: icon
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV23("span", {
+        /* @__PURE__ */ jsxDEV24("span", {
           fg: C.text,
           children: [
             " ",
             payload.description
           ]
         }, undefined, true, undefined, this),
-        preview ? /* @__PURE__ */ jsxDEV23("span", {
+        preview ? /* @__PURE__ */ jsxDEV24("span", {
           fg: C.dim,
           children: [
             " — ",
@@ -2072,34 +2301,34 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
     const separatorLen2 = Math.max(2, termWidth - headerText2.length - 2);
     const preview = getSummaryPreview(msg.parts.filter((p) => p.type === "text").map((p) => p.text).join(`
 `), Math.max(30, termWidth - 20));
-    return /* @__PURE__ */ jsxDEV23("box", {
+    return /* @__PURE__ */ jsxDEV24("box", {
       flexDirection: "column",
       width: "100%",
       children: [
-        /* @__PURE__ */ jsxDEV23("box", {
+        /* @__PURE__ */ jsxDEV24("box", {
           marginBottom: 1,
-          children: /* @__PURE__ */ jsxDEV23("text", {
+          children: /* @__PURE__ */ jsxDEV24("text", {
             children: [
-              /* @__PURE__ */ jsxDEV23("span", {
+              /* @__PURE__ */ jsxDEV24("span", {
                 fg: C.warn,
-                children: /* @__PURE__ */ jsxDEV23("strong", {
+                children: /* @__PURE__ */ jsxDEV24("strong", {
                   children: headerText2
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV23("span", {
+              /* @__PURE__ */ jsxDEV24("span", {
                 fg: C.warn,
                 children: "─".repeat(separatorLen2)
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV23("text", {
+        /* @__PURE__ */ jsxDEV24("text", {
           fg: C.dim,
           children: preview
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV23("box", {
+        /* @__PURE__ */ jsxDEV24("box", {
           marginTop: 1,
-          children: /* @__PURE__ */ jsxDEV23("text", {
+          children: /* @__PURE__ */ jsxDEV24("text", {
             fg: C.dim,
             children: [
               msg.createdAt != null ? formatTime(msg.createdAt) : "",
@@ -2113,40 +2342,40 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
   if (msg.isNotificationSummary && msg.notificationPayloads && msg.notificationPayloads.length > 0) {
     const headerText2 = `· bg-tasks completed `;
     const separatorLen2 = Math.max(2, termWidth - headerText2.length - 2);
-    return /* @__PURE__ */ jsxDEV23("box", {
+    return /* @__PURE__ */ jsxDEV24("box", {
       flexDirection: "column",
       width: "100%",
       children: [
-        /* @__PURE__ */ jsxDEV23("box", {
+        /* @__PURE__ */ jsxDEV24("box", {
           marginBottom: 1,
-          children: /* @__PURE__ */ jsxDEV23("text", {
+          children: /* @__PURE__ */ jsxDEV24("text", {
             children: [
-              /* @__PURE__ */ jsxDEV23("span", {
+              /* @__PURE__ */ jsxDEV24("span", {
                 fg: C.warn,
-                children: /* @__PURE__ */ jsxDEV23("strong", {
+                children: /* @__PURE__ */ jsxDEV24("strong", {
                   children: headerText2
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV23("span", {
+              /* @__PURE__ */ jsxDEV24("span", {
                 fg: C.warn,
                 children: "─".repeat(separatorLen2)
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV23("box", {
+        /* @__PURE__ */ jsxDEV24("box", {
           flexDirection: "column",
           backgroundColor: C.toolPendingBg,
           paddingLeft: 1,
-          children: msg.notificationPayloads.map((p, i) => /* @__PURE__ */ jsxDEV23("box", {
-            children: /* @__PURE__ */ jsxDEV23(NotificationPayloadBlock, {
+          children: msg.notificationPayloads.map((p, i) => /* @__PURE__ */ jsxDEV24("box", {
+            children: /* @__PURE__ */ jsxDEV24(NotificationPayloadBlock, {
               payload: p
             }, undefined, false, undefined, this)
           }, `notif-${p.taskId || i}`, false, undefined, this))
         }, undefined, false, undefined, this),
-        msg.createdAt != null && /* @__PURE__ */ jsxDEV23("box", {
+        msg.createdAt != null && /* @__PURE__ */ jsxDEV24("box", {
           marginTop: 1,
-          children: /* @__PURE__ */ jsxDEV23("text", {
+          children: /* @__PURE__ */ jsxDEV24("text", {
             fg: C.dim,
             children: formatTime(msg.createdAt)
           }, undefined, false, undefined, this)
@@ -2166,46 +2395,46 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
   const hasAnyContent = displayParts.length > 0;
   const separatorLen = Math.max(2, termWidth - headerText.length - 2);
   const groups = groupParts(displayParts);
-  return /* @__PURE__ */ jsxDEV23("box", {
+  return /* @__PURE__ */ jsxDEV24("box", {
     flexDirection: "column",
     width: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV23("box", {
+      /* @__PURE__ */ jsxDEV24("box", {
         marginBottom: 1,
-        children: /* @__PURE__ */ jsxDEV23("text", {
+        children: /* @__PURE__ */ jsxDEV24("text", {
           children: [
-            /* @__PURE__ */ jsxDEV23("span", {
+            /* @__PURE__ */ jsxDEV24("span", {
               fg: labelColor,
-              children: /* @__PURE__ */ jsxDEV23("strong", {
+              children: /* @__PURE__ */ jsxDEV24("strong", {
                 children: headerText
               }, undefined, false, undefined, this)
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV23("span", {
+            /* @__PURE__ */ jsxDEV24("span", {
               fg: labelColor,
               children: "─".repeat(separatorLen)
             }, undefined, false, undefined, this)
           ]
         }, undefined, true, undefined, this)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV23("box", {
+      /* @__PURE__ */ jsxDEV24("box", {
         flexDirection: "column",
         width: "100%",
         children: [
           groups.map((group, gi) => {
             if (group.kind === "text" && group.part.text.length > 0) {
               const isLastGroup = gi === groups.length - 1;
-              return /* @__PURE__ */ jsxDEV23("box", {
+              return /* @__PURE__ */ jsxDEV24("box", {
                 marginTop: gi > 0 ? 1 : 0,
-                children: isUser ? /* @__PURE__ */ jsxDEV23("text", {
+                children: isUser ? /* @__PURE__ */ jsxDEV24("text", {
                   fg: C.text,
                   children: group.part.text
-                }, undefined, false, undefined, this) : msg.isError ? /* @__PURE__ */ jsxDEV23("text", {
+                }, undefined, false, undefined, this) : msg.isError ? /* @__PURE__ */ jsxDEV24("text", {
                   fg: C.error,
                   children: group.part.text
-                }, undefined, false, undefined, this) : msg.isCommand ? /* @__PURE__ */ jsxDEV23("text", {
+                }, undefined, false, undefined, this) : msg.isCommand ? /* @__PURE__ */ jsxDEV24("text", {
                   fg: C.textSec,
                   children: group.part.text
-                }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV23(MarkdownText, {
+                }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV24(MarkdownText, {
                   text: group.part.text,
                   showCursor: isLastGroup && isStreaming
                 }, undefined, false, undefined, this)
@@ -2224,35 +2453,35 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
               const hiddenLines = Math.max(0, totalLines - 2);
               const showFull = thoughtsExpanded && hiddenLines > 0;
               const displayLines = showFull ? allLines : getThoughtTailPreview(group.part.text, maxChars);
-              return /* @__PURE__ */ jsxDEV23("box", {
+              return /* @__PURE__ */ jsxDEV24("box", {
                 marginTop: isAfterTools ? 0 : gi > 0 ? 1 : 0,
                 flexDirection: "column",
                 backgroundColor: C.thinkingBg,
                 paddingLeft: 1,
                 children: [
-                  /* @__PURE__ */ jsxDEV23("text", {
+                  /* @__PURE__ */ jsxDEV24("text", {
                     fg: C.primaryLight,
-                    children: /* @__PURE__ */ jsxDEV23("em", {
+                    children: /* @__PURE__ */ jsxDEV24("em", {
                       children: "· " + prefix
                     }, undefined, false, undefined, this)
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV23("box", {
+                  /* @__PURE__ */ jsxDEV24("box", {
                     flexDirection: "column",
-                    children: displayLines.length > 0 ? displayLines.map((line, li) => /* @__PURE__ */ jsxDEV23("text", {
+                    children: displayLines.length > 0 ? displayLines.map((line, li) => /* @__PURE__ */ jsxDEV24("text", {
                       fg: C.dim,
-                      children: /* @__PURE__ */ jsxDEV23("em", {
+                      children: /* @__PURE__ */ jsxDEV24("em", {
                         children: [
                           "    ",
                           line,
-                          li === displayLines.length - 1 && isLastGroup && isStreaming ? /* @__PURE__ */ jsxDEV23("span", {
+                          li === displayLines.length - 1 && isLastGroup && isStreaming ? /* @__PURE__ */ jsxDEV24("span", {
                             bg: C.accent,
                             children: " "
                           }, undefined, false, undefined, this) : null
                         ]
                       }, undefined, true, undefined, this)
-                    }, li, false, undefined, this)) : /* @__PURE__ */ jsxDEV23("text", {
+                    }, li, false, undefined, this)) : /* @__PURE__ */ jsxDEV24("text", {
                       fg: C.dim,
-                      children: /* @__PURE__ */ jsxDEV23("em", {
+                      children: /* @__PURE__ */ jsxDEV24("em", {
                         children: [
                           "    ",
                           "..."
@@ -2260,9 +2489,9 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
                       }, undefined, true, undefined, this)
                     }, undefined, false, undefined, this)
                   }, undefined, false, undefined, this),
-                  hiddenLines > 0 ? /* @__PURE__ */ jsxDEV23("text", {
+                  hiddenLines > 0 ? /* @__PURE__ */ jsxDEV24("text", {
                     fg: C.dim,
-                    children: /* @__PURE__ */ jsxDEV23("em", {
+                    children: /* @__PURE__ */ jsxDEV24("em", {
                       children: [
                         "    … +",
                         hiddenLines,
@@ -2279,22 +2508,22 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
               const prevGroup = gi > 0 ? groups[gi - 1] : undefined;
               const isConsecutiveTools = prevGroup?.kind === "tools";
               const isAfterThought = prevGroup?.kind === "thought";
-              return /* @__PURE__ */ jsxDEV23("box", {
+              return /* @__PURE__ */ jsxDEV24("box", {
                 flexDirection: "column",
                 width: "100%",
                 marginTop: isConsecutiveTools || isAfterThought ? 0 : gi > 0 ? 1 : 0,
-                children: /* @__PURE__ */ jsxDEV23("box", {
+                children: /* @__PURE__ */ jsxDEV24("box", {
                   flexDirection: "column",
                   backgroundColor: C.toolPendingBg,
                   paddingLeft: 1,
                   children: [
-                    /* @__PURE__ */ jsxDEV23("text", {
+                    /* @__PURE__ */ jsxDEV24("text", {
                       fg: C.accent,
-                      children: /* @__PURE__ */ jsxDEV23("strong", {
+                      children: /* @__PURE__ */ jsxDEV24("strong", {
                         children: "· tools"
                       }, undefined, false, undefined, this)
                     }, undefined, false, undefined, this),
-                    group.tools.map((inv) => /* @__PURE__ */ jsxDEV23(ToolCall, {
+                    group.tools.map((inv) => /* @__PURE__ */ jsxDEV24(ToolCall, {
                       invocation: inv
                     }, inv.id, false, undefined, this))
                   ]
@@ -2303,9 +2532,9 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
             }
             return null;
           }),
-          isUser && (msg.createdAt != null || msg.tokenIn != null) && /* @__PURE__ */ jsxDEV23("box", {
+          isUser && (msg.createdAt != null || msg.tokenIn != null) && /* @__PURE__ */ jsxDEV24("box", {
             marginTop: hasAnyContent ? 1 : 0,
-            children: /* @__PURE__ */ jsxDEV23("text", {
+            children: /* @__PURE__ */ jsxDEV24("text", {
               fg: C.dim,
               children: [
                 msg.createdAt != null ? formatTime(msg.createdAt) : "",
@@ -2313,9 +2542,9 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
               ]
             }, undefined, true, undefined, this)
           }, undefined, false, undefined, this),
-          !isUser && !isStreaming && (msg.createdAt != null || msg.durationMs != null || msg.tokenIn != null) && /* @__PURE__ */ jsxDEV23("box", {
+          !isUser && !isStreaming && (msg.createdAt != null || msg.durationMs != null || msg.tokenIn != null) && /* @__PURE__ */ jsxDEV24("box", {
             marginTop: hasAnyContent ? 1 : 0,
-            children: /* @__PURE__ */ jsxDEV23("text", {
+            children: /* @__PURE__ */ jsxDEV24("text", {
               fg: C.dim,
               children: [
                 msg.createdAt != null ? formatTime(msg.createdAt) : "",
@@ -2326,12 +2555,12 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
               ]
             }, undefined, true, undefined, this)
           }, undefined, false, undefined, this),
-          !hasAnyContent && isStreaming && /* @__PURE__ */ jsxDEV23("box", {
-            children: /* @__PURE__ */ jsxDEV23(GeneratingTimer, {
+          !hasAnyContent && isStreaming && /* @__PURE__ */ jsxDEV24("box", {
+            children: /* @__PURE__ */ jsxDEV24(GeneratingTimer, {
               isGenerating: true
             }, undefined, false, undefined, this)
           }, undefined, false, undefined, this),
-          !hasAnyContent && !isStreaming && /* @__PURE__ */ jsxDEV23("text", {
+          !hasAnyContent && !isStreaming && /* @__PURE__ */ jsxDEV24("text", {
             children: " "
           }, undefined, false, undefined, this)
         ]
@@ -2341,7 +2570,7 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
 });
 
 // src/components/ChatMessageList.tsx
-import { jsxDEV as jsxDEV24 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV25 } from "@opentui/react/jsx-dev-runtime";
 function ChatMessageList({
   messages,
   streamingParts,
@@ -2361,7 +2590,7 @@ function ChatMessageList({
       break;
     }
   }
-  return /* @__PURE__ */ jsxDEV24("scrollbox", {
+  return /* @__PURE__ */ jsxDEV25("scrollbox", {
     flexGrow: 1,
     stickyScroll: true,
     stickyStart: "bottom",
@@ -2372,28 +2601,28 @@ function ChatMessageList({
         const liveParts = isLastActive && streamingParts.length > 0 ? streamingParts : undefined;
         const hasVisibleContent = message.parts.length > 0 || !!liveParts;
         if (isLastActive && !hasVisibleContent) {
-          return /* @__PURE__ */ jsxDEV24("box", {
+          return /* @__PURE__ */ jsxDEV25("box", {
             flexDirection: "column",
             paddingBottom: 1,
-            children: /* @__PURE__ */ jsxDEV24(GeneratingTimer, {
+            children: /* @__PURE__ */ jsxDEV25(GeneratingTimer, {
               isGenerating,
               retryInfo,
               label: generatingLabel
             }, undefined, false, undefined, this)
           }, message.id, false, undefined, this);
         }
-        return /* @__PURE__ */ jsxDEV24("box", {
+        return /* @__PURE__ */ jsxDEV25("box", {
           flexDirection: "column",
           paddingBottom: 1,
           children: [
-            /* @__PURE__ */ jsxDEV24(MessageItem, {
+            /* @__PURE__ */ jsxDEV25(MessageItem, {
               msg: message,
               liveParts,
               isStreaming: isLastActive ? isStreaming : undefined,
               modelName,
               thoughtsToggleSignal: index === lastAssistantIndex ? thoughtsToggleSignal : undefined
             }, undefined, false, undefined, this),
-            isLastActive && isStreaming && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV24(GeneratingTimer, {
+            isLastActive && isStreaming && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV25(GeneratingTimer, {
               isGenerating,
               retryInfo,
               label: generatingLabel
@@ -2401,10 +2630,10 @@ function ChatMessageList({
           ]
         }, message.id, true, undefined, this);
       }),
-      isGenerating && !lastIsActiveAssistant && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV24("box", {
+      isGenerating && !lastIsActiveAssistant && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV25("box", {
         flexDirection: "column",
         paddingBottom: 1,
-        children: /* @__PURE__ */ jsxDEV24(GeneratingTimer, {
+        children: /* @__PURE__ */ jsxDEV25(GeneratingTimer, {
           isGenerating,
           retryInfo,
           label: generatingLabel
@@ -2689,9 +2918,9 @@ function normalizeObjectArrayArg(args, options) {
   }
   return;
 }
-function resolveProjectPath(inputPath) {
-  const resolved = path.resolve(inputPath);
-  const cwd = process.cwd();
+function resolveProjectPath(inputPath, baseCwd) {
+  const cwd = baseCwd ?? process.cwd();
+  const resolved = path.resolve(cwd, inputPath);
   if (resolved !== cwd && !resolved.startsWith(cwd + path.sep)) {
     throw new Error(`路径超出项目目录: ${inputPath}`);
   }
@@ -2741,7 +2970,7 @@ function normalizeDeleteCodeArgs(args) {
 }
 
 // src/components/DiffApprovalView.tsx
-import { jsxDEV as jsxDEV25 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV26 } from "@opentui/react/jsx-dev-runtime";
 var DEFAULT_SEARCH_PATTERN = "**/*";
 var DEFAULT_SEARCH_MAX_FILES = 50;
 var DEFAULT_SEARCH_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
@@ -3128,14 +3357,14 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
   const preview = useMemo3(() => buildPreview(invocation), [invocation]);
   const normalizedPreviewIndex = preview.items.length > 0 ? (previewIndex % preview.items.length + preview.items.length) % preview.items.length : 0;
   const currentItem = preview.items[normalizedPreviewIndex];
-  return /* @__PURE__ */ jsxDEV25("box", {
+  return /* @__PURE__ */ jsxDEV26("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     padding: 1,
     backgroundColor: "#0d1117",
     children: [
-      /* @__PURE__ */ jsxDEV25("box", {
+      /* @__PURE__ */ jsxDEV26("box", {
         flexDirection: "column",
         borderStyle: "double",
         borderColor: C.warn,
@@ -3143,55 +3372,55 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
         paddingY: 0,
         flexShrink: 0,
         children: [
-          /* @__PURE__ */ jsxDEV25("text", {
+          /* @__PURE__ */ jsxDEV26("text", {
             children: [
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.warn,
-                children: /* @__PURE__ */ jsxDEV25("strong", {
+                children: /* @__PURE__ */ jsxDEV26("strong", {
                   children: preview.title
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: `  ${preview.toolLabel}`
               }, undefined, false, undefined, this),
-              pendingCount > 1 ? /* @__PURE__ */ jsxDEV25("span", {
+              pendingCount > 1 ? /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: `  (剩余 ${pendingCount - 1} 个)`
               }, undefined, false, undefined, this) : null,
-              preview.items.length > 1 ? /* @__PURE__ */ jsxDEV25("span", {
+              preview.items.length > 1 ? /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: `  (预览 ${normalizedPreviewIndex + 1}/${preview.items.length})`
               }, undefined, false, undefined, this) : null
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV25("text", {
+          /* @__PURE__ */ jsxDEV26("text", {
             children: [
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.text,
                 children: "文件 "
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.primaryLight,
                 children: currentItem?.filePath || "(未提供路径)"
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: `  视图:${view === "split" ? "分栏" : "统一"}  行号:${showLineNumbers ? "开" : "关"}  换行:${wrapMode === "word" ? "开" : "关"}`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          currentItem?.label ? /* @__PURE__ */ jsxDEV25("text", {
+          currentItem?.label ? /* @__PURE__ */ jsxDEV26("text", {
             fg: C.dim,
             children: currentItem.label
           }, undefined, false, undefined, this) : null,
-          preview.summary.map((line, index) => /* @__PURE__ */ jsxDEV25("text", {
+          preview.summary.map((line, index) => /* @__PURE__ */ jsxDEV26("text", {
             fg: C.dim,
             children: line
           }, `${preview.toolLabel}.summary.${index}`, false, undefined, this))
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV25("scrollbox", {
+      /* @__PURE__ */ jsxDEV26("scrollbox", {
         flexGrow: 1,
         flexShrink: 1,
         marginTop: 1,
@@ -3199,7 +3428,7 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
         borderColor: C.border,
         verticalScrollbarOptions: { visible: true },
         horizontalScrollbarOptions: { visible: false },
-        children: currentItem?.diff ? /* @__PURE__ */ jsxDEV25("diff", {
+        children: currentItem?.diff ? /* @__PURE__ */ jsxDEV26("diff", {
           diff: currentItem.diff,
           view,
           filetype: currentItem.filetype,
@@ -3217,14 +3446,14 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
           selectionBg: "#264f78",
           selectionFg: "#ffffff",
           style: { width: "100%" }
-        }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV25("text", {
+        }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV26("text", {
           fg: currentItem?.message ? C.textSec : C.dim,
           paddingX: 1,
           paddingY: 1,
           children: currentItem?.message ?? "当前补丁为空，无法显示 diff。"
         }, undefined, false, undefined, this)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV25("box", {
+      /* @__PURE__ */ jsxDEV26("box", {
         flexDirection: "column",
         marginTop: 1,
         borderStyle: "single",
@@ -3233,27 +3462,27 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
         paddingY: 0,
         flexShrink: 0,
         children: [
-          /* @__PURE__ */ jsxDEV25("text", {
+          /* @__PURE__ */ jsxDEV26("text", {
             children: [
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.text,
                 children: "审批结果 "
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: choice === "approve" ? C.accent : C.textSec,
                 children: choice === "approve" ? "[批准]" : " 批准 "
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: " "
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV25("span", {
+              /* @__PURE__ */ jsxDEV26("span", {
                 fg: choice === "reject" ? C.error : C.textSec,
                 children: choice === "reject" ? "[拒绝]" : " 拒绝 "
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV25("text", {
+          /* @__PURE__ */ jsxDEV26("text", {
             fg: C.dim,
             children: [
               preview.items.length > 1 ? "↑ / ↓ 切换文件　" : "",
@@ -3267,25 +3496,25 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
 }
 
 // src/components/InitWarnings.tsx
-import { jsxDEV as jsxDEV26 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV27 } from "@opentui/react/jsx-dev-runtime";
 var MAX_VISIBLE_LINES = 3;
 function InitWarnings({ warnings }) {
   if (warnings.length === 0)
     return null;
-  return /* @__PURE__ */ jsxDEV26("box", {
+  return /* @__PURE__ */ jsxDEV27("box", {
     flexDirection: "column",
     paddingLeft: 2,
     paddingRight: 2,
     paddingBottom: 1,
     maxHeight: MAX_VISIBLE_LINES + 1,
-    children: warnings.map((msg, i) => /* @__PURE__ */ jsxDEV26("box", {
-      children: /* @__PURE__ */ jsxDEV26("text", {
+    children: warnings.map((msg, i) => /* @__PURE__ */ jsxDEV27("box", {
+      children: /* @__PURE__ */ jsxDEV27("text", {
         children: [
-          /* @__PURE__ */ jsxDEV26("span", {
+          /* @__PURE__ */ jsxDEV27("span", {
             fg: C.warn,
             children: "⚠ "
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV26("span", {
+          /* @__PURE__ */ jsxDEV27("span", {
             fg: C.warn,
             children: msg
           }, undefined, false, undefined, this)
@@ -3296,42 +3525,42 @@ function InitWarnings({ warnings }) {
 }
 
 // src/components/LogoScreen.tsx
-import { jsxDEV as jsxDEV27 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV28 } from "@opentui/react/jsx-dev-runtime";
 function LogoScreen() {
-  return /* @__PURE__ */ jsxDEV27("box", {
+  return /* @__PURE__ */ jsxDEV28("box", {
     flexDirection: "column",
     flexGrow: 1,
     padding: 1,
     alignItems: "center",
     justifyContent: "center",
-    children: /* @__PURE__ */ jsxDEV27("box", {
+    children: /* @__PURE__ */ jsxDEV28("box", {
       flexDirection: "column",
       border: false,
       padding: 2,
       alignItems: "center",
       children: [
-        /* @__PURE__ */ jsxDEV27("text", {
+        /* @__PURE__ */ jsxDEV28("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV27("strong", {
+          children: /* @__PURE__ */ jsxDEV28("strong", {
             children: "▀█▀ █▀█ ▀█▀ █▀▀"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV27("text", {
+        /* @__PURE__ */ jsxDEV28("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV27("strong", {
+          children: /* @__PURE__ */ jsxDEV28("strong", {
             children: " █  █▀▄  █  ▀▀█"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV27("text", {
+        /* @__PURE__ */ jsxDEV28("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV27("strong", {
+          children: /* @__PURE__ */ jsxDEV28("strong", {
             children: "▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV27("text", {
+        /* @__PURE__ */ jsxDEV28("text", {
           children: " "
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV27("text", {
+        /* @__PURE__ */ jsxDEV28("text", {
           fg: C.dim,
           children: "模块化 AI 智能代理框架"
         }, undefined, false, undefined, this)
@@ -3340,57 +3569,579 @@ function LogoScreen() {
   }, undefined, false, undefined, this);
 }
 
+// src/components/ToolDetailView.tsx
+import { useState as useState7, useCallback as useCallback3 } from "react";
+import { useKeyboard as useKeyboard2 } from "@opentui/react";
+import { jsxDEV as jsxDEV29 } from "@opentui/react/jsx-dev-runtime";
+var TERMINAL_STATUSES2 = new Set(["success", "warning", "error"]);
+var STATUS_ICON = {
+  streaming: "\uD83D\uDCE1",
+  queued: "⏳",
+  awaiting_approval: "\uD83D\uDD10",
+  executing: "\uD83D\uDD27",
+  awaiting_apply: "\uD83D\uDCCB",
+  success: "✅",
+  warning: "⚠️",
+  error: "❌"
+};
+var STATUS_LABEL = {
+  streaming: "输出中",
+  queued: "等待中",
+  awaiting_approval: "等待审批",
+  executing: "执行中",
+  awaiting_apply: "等待应用",
+  success: "成功",
+  warning: "警告",
+  error: "失败"
+};
+var OUTPUT_LABEL = {
+  stdout: "OUT",
+  stderr: "ERR",
+  log: "LOG",
+  chat: "CHAT",
+  data: "DATA"
+};
+var OUTPUT_COLOR = {
+  stdout: "#aaa",
+  stderr: "#ff6b6b",
+  log: "#888",
+  chat: "#7ec8e3",
+  data: "#b8bb26"
+};
+function ts(t) {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+function dur(startMs, endMs) {
+  const s = (endMs - startMs) / 1000;
+  if (s < 0.05)
+    return "";
+  if (s < 60)
+    return `${s.toFixed(1)}s`;
+  return `${Math.floor(s / 60)}m${Math.floor(s % 60)}s`;
+}
+function truncate(text, max) {
+  const oneLine = text.replace(/\n/g, "↵ ");
+  return oneLine.length > max ? oneLine.slice(0, max) + "…" : oneLine;
+}
+function childArgsSummary(toolName, args) {
+  switch (toolName) {
+    case "shell":
+    case "bash":
+      return truncate(String(args.command || ""), 40);
+    case "read_file":
+    case "write_file":
+    case "apply_diff":
+    case "delete_code":
+    case "insert_code": {
+      if (Array.isArray(args.files) && args.files.length > 0) {
+        const first = args.files[0];
+        const path3 = typeof first === "object" && first ? String(first.path || "") : "";
+        return args.files.length > 1 ? `${path3} +${args.files.length - 1}` : path3;
+      }
+      return String(args.path || "");
+    }
+    case "search_in_files":
+      return `"${truncate(String(args.query || ""), 20)}" in ${args.path || "."}`;
+    case "find_files":
+      return Array.isArray(args.patterns) ? String(args.patterns[0] || "") : "";
+    case "sub_agent":
+      return truncate(String(args.prompt || ""), 50);
+    default:
+      return "";
+  }
+}
+function Divider({ label }) {
+  if (label) {
+    return /* @__PURE__ */ jsxDEV29("text", {
+      children: [
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: "─── "
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.accent,
+          children: /* @__PURE__ */ jsxDEV29("strong", {
+            children: label
+          }, undefined, false, undefined, this)
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: " " + "─".repeat(50)
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV29("text", {
+    children: /* @__PURE__ */ jsxDEV29("span", {
+      fg: C.dim,
+      children: "─".repeat(60)
+    }, undefined, false, undefined, this)
+  }, undefined, false, undefined, this);
+}
+function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort }) {
+  const { invocation, output, children } = data;
+  const { toolName, status, args, result, error, createdAt, updatedAt } = invocation;
+  const [selectedIdx, setSelectedIdx] = useState7(0);
+  const isFinal = TERMINAL_STATUSES2.has(status);
+  const isExecuting = status === "executing";
+  const DetailRenderer = getToolDetailRenderer(toolName);
+  const ResultRenderer = isFinal && result != null ? getToolRenderer(toolName) : null;
+  useKeyboard2(useCallback3((key) => {
+    if (key.name === "escape" || key.name === "q") {
+      onClose();
+      return;
+    }
+    if (key.name === "a" && !isFinal && onAbort) {
+      onAbort(invocation.id);
+      return;
+    }
+    if (children.length > 0) {
+      if (key.name === "up" || key.name === "k") {
+        setSelectedIdx((p) => Math.max(0, p - 1));
+      } else if (key.name === "down" || key.name === "j") {
+        setSelectedIdx((p) => Math.min(children.length - 1, p + 1));
+      } else if (key.name === "return") {
+        const c = children[selectedIdx];
+        if (c)
+          onNavigateChild(c.id);
+      }
+    }
+  }, [onClose, onAbort, isFinal, invocation.id, children, selectedIdx, onNavigateChild]));
+  if (DetailRenderer) {
+    return /* @__PURE__ */ jsxDEV29("box", {
+      flexDirection: "column",
+      width: "100%",
+      children: [
+        /* @__PURE__ */ jsxDEV29(BreadcrumbBar, {
+          breadcrumb,
+          toolName
+        }, undefined, false, undefined, this),
+        DetailRenderer({ invocation, output, children, onNavigateChild }),
+        /* @__PURE__ */ jsxDEV29(FooterBar, {
+          isFinal,
+          hasAbort: !!onAbort,
+          hasChildren: children.length > 0
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV29("box", {
+    flexDirection: "column",
+    width: "100%",
+    children: [
+      /* @__PURE__ */ jsxDEV29(BreadcrumbBar, {
+        breadcrumb,
+        toolName
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV29("box", {
+        children: [
+          /* @__PURE__ */ jsxDEV29("text", {
+            children: [
+              /* @__PURE__ */ jsxDEV29("span", {
+                bg: status === "error" ? C.error : C.accent,
+                fg: C.cursorFg,
+                children: /* @__PURE__ */ jsxDEV29("strong", {
+                  children: [
+                    " ",
+                    toolName,
+                    " "
+                  ]
+                }, undefined, true, undefined, this)
+              }, undefined, false, undefined, this),
+              "  ",
+              /* @__PURE__ */ jsxDEV29("span", {
+                fg: isFinal ? status === "error" ? C.error : C.accent : C.dim,
+                children: [
+                  STATUS_ICON[status] || "⏳",
+                  " ",
+                  STATUS_LABEL[status] || status
+                ]
+              }, undefined, true, undefined, this),
+              dur(createdAt, updatedAt) ? /* @__PURE__ */ jsxDEV29("span", {
+                fg: C.dim,
+                children: [
+                  "  ",
+                  dur(createdAt, updatedAt)
+                ]
+              }, undefined, true, undefined, this) : null,
+              "  "
+            ]
+          }, undefined, true, undefined, this),
+          isExecuting && /* @__PURE__ */ jsxDEV29(Spinner, {}, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV29("box", {
+        marginTop: 0,
+        children: /* @__PURE__ */ jsxDEV29("text", {
+          children: [
+            /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: [
+                "  ⏱ ",
+                ts(createdAt)
+              ]
+            }, undefined, true, undefined, this),
+            isFinal ? /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: [
+                " → ",
+                ts(updatedAt)
+              ]
+            }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: " → …"
+            }, undefined, false, undefined, this)
+          ]
+        }, undefined, true, undefined, this)
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV29(Divider, {
+        label: "参数"
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV29(ArgsSection, {
+        args
+      }, undefined, false, undefined, this),
+      output.length > 0 && /* @__PURE__ */ jsxDEV29("box", {
+        flexDirection: "column",
+        children: [
+          /* @__PURE__ */ jsxDEV29(Divider, {
+            label: `输出 (${output.length})`
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV29(OutputSection, {
+            output
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      children.length > 0 && /* @__PURE__ */ jsxDEV29("box", {
+        flexDirection: "column",
+        children: [
+          /* @__PURE__ */ jsxDEV29(Divider, {
+            label: `子工具 (${children.length})`
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV29(ChildrenSection, {
+            children,
+            selectedIdx
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      isFinal && /* @__PURE__ */ jsxDEV29("box", {
+        flexDirection: "column",
+        children: [
+          /* @__PURE__ */ jsxDEV29(Divider, {
+            label: "结果"
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV29(ResultSection, {
+            status,
+            error,
+            result,
+            toolName,
+            args,
+            Renderer: ResultRenderer
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV29(Divider, {}, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV29(FooterBar, {
+        isFinal,
+        hasAbort: !!onAbort,
+        hasChildren: children.length > 0
+      }, undefined, false, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
+function BreadcrumbBar({ breadcrumb, toolName }) {
+  return /* @__PURE__ */ jsxDEV29("box", {
+    marginBottom: 0,
+    children: /* @__PURE__ */ jsxDEV29("text", {
+      children: [
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: "← [Esc] "
+        }, undefined, false, undefined, this),
+        breadcrumb.map((b) => /* @__PURE__ */ jsxDEV29("span", {
+          children: [
+            /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: b.toolName
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: " › "
+            }, undefined, false, undefined, this)
+          ]
+        }, b.toolId, true, undefined, this)),
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.accent,
+          children: /* @__PURE__ */ jsxDEV29("strong", {
+            children: toolName
+          }, undefined, false, undefined, this)
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this)
+  }, undefined, false, undefined, this);
+}
+function ArgsSection({ args }) {
+  const entries = Object.entries(args);
+  if (entries.length === 0) {
+    return /* @__PURE__ */ jsxDEV29("text", {
+      fg: C.dim,
+      children: "  (无参数)"
+    }, undefined, false, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV29("box", {
+    flexDirection: "column",
+    children: [
+      entries.slice(0, 8).map(([key, val]) => {
+        let display;
+        if (typeof val === "string") {
+          display = truncate(val, 80);
+        } else if (Array.isArray(val)) {
+          display = `[${val.length} items]`;
+        } else if (val && typeof val === "object") {
+          display = truncate(JSON.stringify(val), 80);
+        } else {
+          display = String(val);
+        }
+        return /* @__PURE__ */ jsxDEV29("text", {
+          children: [
+            /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.accent,
+              children: [
+                "  ",
+                key
+              ]
+            }, undefined, true, undefined, this),
+            /* @__PURE__ */ jsxDEV29("span", {
+              fg: C.dim,
+              children: " = "
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV29("span", {
+              children: display
+            }, undefined, false, undefined, this)
+          ]
+        }, key, true, undefined, this);
+      }),
+      entries.length > 8 && /* @__PURE__ */ jsxDEV29("text", {
+        fg: C.dim,
+        children: [
+          "  … +",
+          entries.length - 8,
+          " 更多参数"
+        ]
+      }, undefined, true, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
+function OutputSection({ output }) {
+  const visible = output.length > 20 ? output.slice(-20) : output;
+  const skipped = output.length - visible.length;
+  return /* @__PURE__ */ jsxDEV29("box", {
+    flexDirection: "column",
+    children: [
+      skipped > 0 && /* @__PURE__ */ jsxDEV29("text", {
+        fg: C.dim,
+        children: [
+          "  … 省略 ",
+          skipped,
+          " 条"
+        ]
+      }, undefined, true, undefined, this),
+      visible.map((entry, i) => /* @__PURE__ */ jsxDEV29("text", {
+        children: [
+          /* @__PURE__ */ jsxDEV29("span", {
+            fg: C.dim,
+            children: [
+              "  ",
+              ts(entry.timestamp),
+              " "
+            ]
+          }, undefined, true, undefined, this),
+          /* @__PURE__ */ jsxDEV29("span", {
+            fg: OUTPUT_COLOR[entry.type] || C.dim,
+            children: [
+              "[",
+              OUTPUT_LABEL[entry.type] || entry.type,
+              "]"
+            ]
+          }, undefined, true, undefined, this),
+          /* @__PURE__ */ jsxDEV29("span", {
+            children: [
+              " ",
+              truncate(entry.content, 100)
+            ]
+          }, undefined, true, undefined, this)
+        ]
+      }, i, true, undefined, this))
+    ]
+  }, undefined, true, undefined, this);
+}
+function ChildrenSection({ children, selectedIdx }) {
+  return /* @__PURE__ */ jsxDEV29("box", {
+    flexDirection: "column",
+    children: children.map((child, i) => {
+      const sel = i === selectedIdx;
+      const icon = STATUS_ICON[child.status] || "⏳";
+      const d = dur(child.createdAt, child.updatedAt);
+      const summary = childArgsSummary(child.toolName, child.args);
+      return /* @__PURE__ */ jsxDEV29("text", {
+        children: [
+          /* @__PURE__ */ jsxDEV29("span", {
+            fg: sel ? C.accent : C.dim,
+            children: sel ? " ▸ " : "   "
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV29("span", {
+            bg: child.status === "error" ? C.error : C.accent,
+            fg: C.cursorFg,
+            children: [
+              " ",
+              child.toolName,
+              " "
+            ]
+          }, undefined, true, undefined, this),
+          summary ? /* @__PURE__ */ jsxDEV29("span", {
+            fg: C.dim,
+            children: [
+              " ",
+              summary
+            ]
+          }, undefined, true, undefined, this) : null,
+          /* @__PURE__ */ jsxDEV29("span", {
+            children: [
+              " ",
+              icon
+            ]
+          }, undefined, true, undefined, this),
+          d ? /* @__PURE__ */ jsxDEV29("span", {
+            fg: C.dim,
+            children: [
+              " ",
+              d
+            ]
+          }, undefined, true, undefined, this) : null
+        ]
+      }, child.id, true, undefined, this);
+    })
+  }, undefined, false, undefined, this);
+}
+function ResultSection({ status, error, result, toolName, args, Renderer }) {
+  if (status === "error" && error) {
+    return /* @__PURE__ */ jsxDEV29("text", {
+      fg: C.error,
+      children: [
+        "  ",
+        error
+      ]
+    }, undefined, true, undefined, this);
+  }
+  if (Renderer && result != null) {
+    return /* @__PURE__ */ jsxDEV29("box", {
+      paddingLeft: 2,
+      children: Renderer({ toolName, args, result })
+    }, undefined, false, undefined, this);
+  }
+  if (result != null) {
+    const text_content = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    const lines = text_content.split(`
+`);
+    const visible = lines.length > 10 ? lines.slice(0, 10) : lines;
+    return /* @__PURE__ */ jsxDEV29("box", {
+      flexDirection: "column",
+      children: [
+        visible.map((line, i) => /* @__PURE__ */ jsxDEV29("text", {
+          fg: C.dim,
+          children: [
+            "  ",
+            line
+          ]
+        }, i, true, undefined, this)),
+        lines.length > 10 && /* @__PURE__ */ jsxDEV29("text", {
+          fg: C.dim,
+          children: [
+            "  … +",
+            lines.length - 10,
+            " 行"
+          ]
+        }, undefined, true, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV29("text", {
+    fg: C.dim,
+    children: "  (无结果)"
+  }, undefined, false, undefined, this);
+}
+function FooterBar({ isFinal, hasAbort, hasChildren }) {
+  return /* @__PURE__ */ jsxDEV29("box", {
+    children: /* @__PURE__ */ jsxDEV29("text", {
+      children: [
+        /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: " [Esc/q] 返回"
+        }, undefined, false, undefined, this),
+        !isFinal && hasAbort ? /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: "  [a] 终止"
+        }, undefined, false, undefined, this) : null,
+        hasChildren ? /* @__PURE__ */ jsxDEV29("span", {
+          fg: C.dim,
+          children: "  [↑↓] 选择子工具  [Enter] 查看详情"
+        }, undefined, false, undefined, this) : null
+      ]
+    }, undefined, true, undefined, this)
+  }, undefined, false, undefined, this);
+}
+
 // src/components/ModelListView.tsx
-import { jsxDEV as jsxDEV28 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV30 } from "@opentui/react/jsx-dev-runtime";
 function ModelListView({ models, selectedIndex }) {
-  return /* @__PURE__ */ jsxDEV28("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV28("box", {
+      /* @__PURE__ */ jsxDEV30("box", {
         padding: 1,
         children: [
-          /* @__PURE__ */ jsxDEV28("text", {
+          /* @__PURE__ */ jsxDEV30("text", {
             fg: C.primary,
             children: "切换模型"
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV28("text", {
+          /* @__PURE__ */ jsxDEV30("text", {
             fg: C.dim,
             children: "  ↑↓ 选择  Enter 切换  Esc 返回"
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV28("scrollbox", {
+      /* @__PURE__ */ jsxDEV30("scrollbox", {
         flexGrow: 1,
         children: models.map((info, index) => {
           const isSelected = index === selectedIndex;
           const currentMarker = info.current ? "•" : " ";
-          return /* @__PURE__ */ jsxDEV28("box", {
+          return /* @__PURE__ */ jsxDEV30("box", {
             paddingLeft: 1,
-            children: /* @__PURE__ */ jsxDEV28("text", {
+            children: /* @__PURE__ */ jsxDEV30("text", {
               children: [
-                /* @__PURE__ */ jsxDEV28("span", {
+                /* @__PURE__ */ jsxDEV30("span", {
                   fg: isSelected ? C.accent : C.dim,
                   children: isSelected ? "❯ " : "  "
                 }, undefined, false, undefined, this),
-                /* @__PURE__ */ jsxDEV28("span", {
+                /* @__PURE__ */ jsxDEV30("span", {
                   fg: info.current ? C.accent : C.dim,
                   children: [
                     currentMarker,
                     " "
                   ]
                 }, undefined, true, undefined, this),
-                isSelected ? /* @__PURE__ */ jsxDEV28("strong", {
-                  children: /* @__PURE__ */ jsxDEV28("span", {
+                isSelected ? /* @__PURE__ */ jsxDEV30("strong", {
+                  children: /* @__PURE__ */ jsxDEV30("span", {
                     fg: C.text,
                     children: info.modelName
                   }, undefined, false, undefined, this)
-                }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV28("span", {
+                }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
                   fg: C.textSec,
                   children: info.modelName
                 }, undefined, false, undefined, this),
-                /* @__PURE__ */ jsxDEV28("span", {
+                /* @__PURE__ */ jsxDEV30("span", {
                   fg: C.dim,
                   children: [
                     "  ",
@@ -3409,7 +4160,7 @@ function ModelListView({ models, selectedIndex }) {
 }
 
 // src/components/QueueListView.tsx
-import { jsxDEV as jsxDEV29 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV31 } from "@opentui/react/jsx-dev-runtime";
 function formatQueueTime(timestamp) {
   const d = new Date(timestamp);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
@@ -3432,43 +4183,43 @@ function countNewlines(text) {
 function QueueListView({ queue, selectedIndex, editingId, editingValue, editingCursor }) {
   const isEditing = editingId != null;
   const cursorVisible = useCursorBlink();
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV31("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV29("box", {
+      /* @__PURE__ */ jsxDEV31("box", {
         padding: 1,
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV29("box", {
+          /* @__PURE__ */ jsxDEV31("box", {
             children: [
-              /* @__PURE__ */ jsxDEV29("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.primary,
                 children: "消息队列"
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV29("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.dim,
                 children: `  (${queue.length} 条待发送)`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV29("box", {
+          /* @__PURE__ */ jsxDEV31("box", {
             paddingTop: 0,
-            children: isEditing ? /* @__PURE__ */ jsxDEV29("text", {
+            children: isEditing ? /* @__PURE__ */ jsxDEV31("text", {
               fg: C.dim,
               children: "  Ctrl+J 换行  Enter 确认  Ctrl+U 清空  Esc 取消"
-            }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV29("text", {
+            }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("text", {
               fg: C.dim,
               children: "  ↑↓ 选择  Ctrl/Shift+↑↓ 移动  e 编辑  d 删除  c 清空队列  Esc 返回"
             }, undefined, false, undefined, this)
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV29("scrollbox", {
+      /* @__PURE__ */ jsxDEV31("scrollbox", {
         flexGrow: 1,
         children: [
-          queue.length === 0 && /* @__PURE__ */ jsxDEV29("text", {
+          queue.length === 0 && /* @__PURE__ */ jsxDEV31("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "队列为空"
@@ -3479,37 +4230,37 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
             const time = formatQueueTime(msg.createdAt);
             if (isMsgEditing) {
               const nlCount = countNewlines(editingValue);
-              return /* @__PURE__ */ jsxDEV29("box", {
+              return /* @__PURE__ */ jsxDEV31("box", {
                 paddingLeft: 1,
                 flexDirection: "column",
                 children: [
-                  /* @__PURE__ */ jsxDEV29("text", {
+                  /* @__PURE__ */ jsxDEV31("text", {
                     children: [
-                      /* @__PURE__ */ jsxDEV29("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.accent,
                         children: "❯ "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV29("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.dim,
                         children: `${index + 1}. `
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV29("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.warn,
                         children: "[编辑中]"
                       }, undefined, false, undefined, this),
-                      nlCount > 0 ? /* @__PURE__ */ jsxDEV29("span", {
+                      nlCount > 0 ? /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.dim,
                         children: ` (${nlCount + 1} 行)`
                       }, undefined, false, undefined, this) : null,
-                      /* @__PURE__ */ jsxDEV29("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.dim,
                         children: `  ${time}`
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this),
-                  /* @__PURE__ */ jsxDEV29("box", {
+                  /* @__PURE__ */ jsxDEV31("box", {
                     paddingLeft: 4,
-                    children: /* @__PURE__ */ jsxDEV29(InputDisplay, {
+                    children: /* @__PURE__ */ jsxDEV31(InputDisplay, {
                       value: editingValue,
                       cursor: editingCursor,
                       isActive: true,
@@ -3520,28 +4271,28 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
               }, msg.id, true, undefined, this);
             }
             const preview = truncatePreview(msg.text, 60);
-            return /* @__PURE__ */ jsxDEV29("box", {
+            return /* @__PURE__ */ jsxDEV31("box", {
               paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV29("text", {
+              children: /* @__PURE__ */ jsxDEV31("text", {
                 children: [
-                  /* @__PURE__ */ jsxDEV29("span", {
+                  /* @__PURE__ */ jsxDEV31("span", {
                     fg: isSelected ? C.accent : C.dim,
                     children: isSelected ? "❯ " : "  "
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV29("span", {
+                  /* @__PURE__ */ jsxDEV31("span", {
                     fg: C.dim,
                     children: `${index + 1}. `
                   }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV29("strong", {
-                    children: /* @__PURE__ */ jsxDEV29("span", {
+                  isSelected ? /* @__PURE__ */ jsxDEV31("strong", {
+                    children: /* @__PURE__ */ jsxDEV31("span", {
                       fg: C.text,
                       children: preview
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV29("span", {
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("span", {
                     fg: C.textSec,
                     children: preview
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV29("span", {
+                  /* @__PURE__ */ jsxDEV31("span", {
                     fg: C.dim,
                     children: `  ${time}`
                   }, undefined, false, undefined, this)
@@ -3555,31 +4306,199 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
   }, undefined, true, undefined, this);
 }
 
+// src/components/ToolListView.tsx
+import { jsxDEV as jsxDEV32 } from "@opentui/react/jsx-dev-runtime";
+var STATUS_ICON2 = {
+  streaming: "\uD83D\uDCE1",
+  queued: "⏳",
+  awaiting_approval: "\uD83D\uDD10",
+  executing: "\uD83D\uDD27",
+  awaiting_apply: "\uD83D\uDCCB",
+  success: "✅",
+  warning: "⚠️",
+  error: "❌"
+};
+function formatDuration(startMs, endMs) {
+  const s = (endMs - startMs) / 1000;
+  if (s < 0.05)
+    return "";
+  if (s < 60)
+    return `${s.toFixed(1)}s`;
+  return `${Math.floor(s / 60)}m${Math.floor(s % 60)}s`;
+}
+function argsSummary(toolName, args) {
+  switch (toolName) {
+    case "shell":
+    case "bash": {
+      const cmd = String(args.command || "");
+      return cmd.length > 40 ? `"${cmd.slice(0, 40)}…"` : `"${cmd}"`;
+    }
+    case "read_file":
+    case "write_file":
+    case "apply_diff":
+    case "delete_code":
+    case "insert_code": {
+      if (Array.isArray(args.files) && args.files.length > 0) {
+        const first = args.files[0];
+        const path3 = typeof first === "object" && first ? String(first.path || "") : "";
+        return args.files.length > 1 ? `${path3} +${args.files.length - 1}` : path3;
+      }
+      return String(args.path || "");
+    }
+    case "search_in_files": {
+      const q = String(args.query || "");
+      const head = q.length > 20 ? `"${q.slice(0, 20)}…"` : `"${q}"`;
+      return args.path ? `${head} in ${args.path}` : head;
+    }
+    case "find_files":
+      return Array.isArray(args.patterns) ? String(args.patterns[0] || "") : "";
+    case "sub_agent": {
+      const prompt = String(args.prompt || "");
+      return prompt.length > 50 ? `"${prompt.slice(0, 50)}…"` : `"${prompt}"`;
+    }
+    default:
+      return "";
+  }
+}
+function ToolListView({ tools, selectedIndex }) {
+  if (tools.length === 0) {
+    return /* @__PURE__ */ jsxDEV32("box", {
+      flexDirection: "column",
+      paddingX: 1,
+      children: [
+        /* @__PURE__ */ jsxDEV32("text", {
+          fg: C.dim,
+          children: "当前会话没有工具执行记录。"
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ jsxDEV32("text", {
+          fg: C.dim,
+          children: " "
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ jsxDEV32("text", {
+          fg: C.dim,
+          children: "Esc 返回"
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV32("box", {
+    flexDirection: "column",
+    paddingX: 1,
+    children: [
+      /* @__PURE__ */ jsxDEV32("text", {
+        children: [
+          /* @__PURE__ */ jsxDEV32("span", {
+            fg: C.accent,
+            children: /* @__PURE__ */ jsxDEV32("strong", {
+              children: " 工具执行记录 "
+            }, undefined, false, undefined, this)
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV32("span", {
+            fg: C.dim,
+            children: [
+              "(",
+              tools.length,
+              ")"
+            ]
+          }, undefined, true, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV32("text", {
+        fg: C.dim,
+        children: "─".repeat(60)
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV32("scrollbox", {
+        flexGrow: 1,
+        children: tools.map((inv, i) => {
+          const sel = i === selectedIndex;
+          const icon = STATUS_ICON2[inv.status] || "⏳";
+          const d = formatDuration(inv.createdAt, inv.updatedAt);
+          const summary = argsSummary(inv.toolName, inv.args);
+          const time = new Date(inv.createdAt);
+          const timeStr = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}:${String(time.getSeconds()).padStart(2, "0")}`;
+          return /* @__PURE__ */ jsxDEV32("text", {
+            children: [
+              /* @__PURE__ */ jsxDEV32("span", {
+                fg: sel ? C.accent : C.dim,
+                children: sel ? " ❯ " : "   "
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsxDEV32("span", {
+                fg: C.dim,
+                children: [
+                  timeStr,
+                  " "
+                ]
+              }, undefined, true, undefined, this),
+              /* @__PURE__ */ jsxDEV32("span", {
+                bg: inv.status === "error" ? C.error : C.accent,
+                fg: C.cursorFg,
+                children: [
+                  " ",
+                  inv.toolName,
+                  " "
+                ]
+              }, undefined, true, undefined, this),
+              summary ? /* @__PURE__ */ jsxDEV32("span", {
+                fg: sel ? undefined : C.dim,
+                children: [
+                  " ",
+                  summary
+                ]
+              }, undefined, true, undefined, this) : null,
+              /* @__PURE__ */ jsxDEV32("span", {
+                children: [
+                  " ",
+                  icon
+                ]
+              }, undefined, true, undefined, this),
+              d ? /* @__PURE__ */ jsxDEV32("span", {
+                fg: C.dim,
+                children: [
+                  " ",
+                  d
+                ]
+              }, undefined, true, undefined, this) : null
+            ]
+          }, inv.id, true, undefined, this);
+        })
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV32("text", {
+        fg: C.dim,
+        children: "─".repeat(60)
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV32("text", {
+        fg: C.dim,
+        children: " ↑↓ 选择  Enter 查看详情  Esc 返回"
+      }, undefined, false, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
+
 // src/components/SessionListView.tsx
-import { jsxDEV as jsxDEV30 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV33 } from "@opentui/react/jsx-dev-runtime";
 function SessionListView({ sessions, selectedIndex }) {
-  return /* @__PURE__ */ jsxDEV30("box", {
+  return /* @__PURE__ */ jsxDEV33("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV30("box", {
+      /* @__PURE__ */ jsxDEV33("box", {
         padding: 1,
         children: [
-          /* @__PURE__ */ jsxDEV30("text", {
+          /* @__PURE__ */ jsxDEV33("text", {
             fg: C.primary,
             children: "历史对话"
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV30("text", {
+          /* @__PURE__ */ jsxDEV33("text", {
             fg: C.dim,
             children: "  ↑↓ 选择  Enter 加载  Esc 返回"
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV30("scrollbox", {
+      /* @__PURE__ */ jsxDEV33("scrollbox", {
         flexGrow: 1,
         children: [
-          sessions.length === 0 && /* @__PURE__ */ jsxDEV30("text", {
+          sessions.length === 0 && /* @__PURE__ */ jsxDEV33("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "暂无历史对话"
@@ -3587,24 +4506,24 @@ function SessionListView({ sessions, selectedIndex }) {
           sessions.map((meta, index) => {
             const isSelected = index === selectedIndex;
             const time = new Date(meta.updatedAt ?? 0).toLocaleString("zh-CN");
-            return /* @__PURE__ */ jsxDEV30("box", {
+            return /* @__PURE__ */ jsxDEV33("box", {
               paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV30("text", {
+              children: /* @__PURE__ */ jsxDEV33("text", {
                 children: [
-                  /* @__PURE__ */ jsxDEV30("span", {
+                  /* @__PURE__ */ jsxDEV33("span", {
                     fg: isSelected ? C.accent : C.dim,
                     children: isSelected ? "❯ " : "  "
                   }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV30("strong", {
-                    children: /* @__PURE__ */ jsxDEV30("span", {
+                  isSelected ? /* @__PURE__ */ jsxDEV33("strong", {
+                    children: /* @__PURE__ */ jsxDEV33("span", {
                       fg: C.text,
                       children: meta.title
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV33("span", {
                     fg: C.textSec,
                     children: meta.title
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV30("span", {
+                  /* @__PURE__ */ jsxDEV33("span", {
                     fg: C.dim,
                     children: [
                       "  ",
@@ -3624,8 +4543,8 @@ function SessionListView({ sessions, selectedIndex }) {
 }
 
 // src/components/SettingsView.tsx
-import { useCallback as useCallback3, useEffect as useEffect7, useMemo as useMemo4, useState as useState7 } from "react";
-import { useKeyboard as useKeyboard2, useTerminalDimensions as useTerminalDimensions3 } from "@opentui/react";
+import { useCallback as useCallback4, useEffect as useEffect7, useMemo as useMemo4, useState as useState8 } from "react";
+import { useKeyboard as useKeyboard3, useTerminalDimensions as useTerminalDimensions3 } from "@opentui/react";
 
 // src/diff-approval.ts
 var CONSOLE_DIFF_APPROVAL_VIEW_TOOLS = new Set([
@@ -4002,7 +4921,7 @@ class ConsoleSettingsController {
 }
 
 // src/components/SettingsView.tsx
-import { jsxDEV as jsxDEV31 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV34 } from "@opentui/react/jsx-dev-runtime";
 function getToolPolicyMode(configured, autoApprove) {
   if (!configured)
     return "disabled";
@@ -4193,18 +5112,18 @@ var BUILTIN_SECTIONS = [
 ];
 function SettingsView({ initialSection = "general", onBack, onLoad, onSave, pluginTabs }) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions3();
-  const [loading, setLoading] = useState7(true);
-  const [saving, setSaving] = useState7(false);
-  const [draft, setDraft] = useState7(null);
-  const [baseline, setBaseline] = useState7(null);
-  const [selectedRowId, setSelectedRowId] = useState7("");
-  const [editor, setEditor] = useState7(null);
-  const [editorValue, setEditorValue] = useState7("");
-  const [statusText, setStatusText] = useState7("");
-  const [statusKind, setStatusKind] = useState7("info");
-  const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState7(false);
-  const [pluginDraft, setPluginDraft] = useState7({});
-  const [pluginBaseline, setPluginBaseline] = useState7({});
+  const [loading, setLoading] = useState8(true);
+  const [saving, setSaving] = useState8(false);
+  const [draft, setDraft] = useState8(null);
+  const [baseline, setBaseline] = useState8(null);
+  const [selectedRowId, setSelectedRowId] = useState8("");
+  const [editor, setEditor] = useState8(null);
+  const [editorValue, setEditorValue] = useState8("");
+  const [statusText, setStatusText] = useState8("");
+  const [statusKind, setStatusKind] = useState8("info");
+  const [pendingLeaveConfirm, setPendingLeaveConfirm] = useState8(false);
+  const [pluginDraft, setPluginDraft] = useState8({});
+  const [pluginBaseline, setPluginBaseline] = useState8({});
   const sections = useMemo4(() => {
     const pluginSections = (pluginTabs ?? []).map((tab, i) => ({
       id: tab.id,
@@ -4213,7 +5132,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     }));
     return [...BUILTIN_SECTIONS, ...pluginSections];
   }, [pluginTabs]);
-  const setStatus = useCallback3((text, kind = "info") => {
+  const setStatus = useCallback4((text, kind = "info") => {
     setStatusText(text);
     setStatusKind(kind);
   }, []);
@@ -4332,7 +5251,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     if (preferred)
       setSelectedRowId(preferred.id);
   }, [rows, selectedRowId, initialSection]);
-  const updateDraft = useCallback3((updater) => {
+  const updateDraft = useCallback4((updater) => {
     setDraft((prev) => {
       if (!prev)
         return prev;
@@ -4342,7 +5261,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     });
     setPendingLeaveConfirm(false);
   }, []);
-  const reloadSnapshot = useCallback3(async () => {
+  const reloadSnapshot = useCallback4(async () => {
     setLoading(true);
     setEditor(null);
     try {
@@ -4357,7 +5276,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       setLoading(false);
     }
   }, [onLoad, setStatus]);
-  const handleAddModel = useCallback3(() => {
+  const handleAddModel = useCallback4(() => {
     let nextIndex = 0;
     updateDraft((snapshot) => {
       nextIndex = snapshot.models.length;
@@ -4366,7 +5285,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     setSelectedRowId(`model.${nextIndex}.modelName`);
     setStatus("已新增模型草稿，请先填写名称后保存", "info");
   }, [setStatus, updateDraft]);
-  const handleAddMcpServer = useCallback3(() => {
+  const handleAddMcpServer = useCallback4(() => {
     let nextIndex = 0;
     updateDraft((snapshot) => {
       nextIndex = snapshot.mcpServers.length;
@@ -4375,7 +5294,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     setSelectedRowId(`mcp.${nextIndex}.name`);
     setStatus("已新增 MCP 服务器草稿，请先填写名称后保存", "info");
   }, [setStatus, updateDraft]);
-  const startEdit = useCallback3((target) => {
+  const startEdit = useCallback4((target) => {
     if (!draft)
       return;
     if (target.kind === "modelField") {
@@ -4402,7 +5321,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     setEditor({ target, label: `mcp.${server.name || `server_${target.serverIndex + 1}`}.${target.field}`, value, hint: target.field === "args" ? "\\n 表示多行参数" : undefined });
     setEditorValue(value);
   }, [draft]);
-  const applyCycle = useCallback3((target, direction) => {
+  const applyCycle = useCallback4((target, direction) => {
     updateDraft((snapshot) => {
       if (target.kind === "modelProvider") {
         const model = snapshot.models[target.modelIndex];
@@ -4430,7 +5349,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       }
     });
   }, [updateDraft]);
-  const applyToggle = useCallback3((target) => {
+  const applyToggle = useCallback4((target) => {
     updateDraft((snapshot) => {
       if (target.kind === "modelDefault") {
         const model = snapshot.models[target.modelIndex];
@@ -4472,7 +5391,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       }
     });
   }, [updateDraft]);
-  const submitEditor = useCallback3(() => {
+  const submitEditor = useCallback4(() => {
     if (!editor)
       return;
     if (editor.target.kind === "pluginField") {
@@ -4557,22 +5476,26 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
           snapshot.system.defaultMode = value.trim();
         return;
       }
-      const server = snapshot.mcpServers[editor.target.serverIndex];
+      if (editor.target.kind !== "mcpField")
+        return;
+      const mcpTarget = editor.target;
+      const server = snapshot.mcpServers[mcpTarget.serverIndex];
       if (!server)
         return;
-      if (editor.target.field === "name")
+      const field = mcpTarget.field;
+      if (field === "name")
         server.name = value.replace(/[^a-zA-Z0-9_]/g, "_");
-      else if (editor.target.field === "timeout")
+      else if (field === "timeout")
         server.timeout = Number(value.trim());
-      else if (editor.target.field === "command")
+      else if (field === "command")
         server.command = value;
-      else if (editor.target.field === "args")
+      else if (field === "args")
         server.args = value;
-      else if (editor.target.field === "cwd")
+      else if (field === "cwd")
         server.cwd = value;
-      else if (editor.target.field === "url")
+      else if (field === "url")
         server.url = value;
-      else if (editor.target.field === "authHeader")
+      else if (field === "authHeader")
         server.authHeader = value;
       else
         server.transport = value;
@@ -4581,7 +5504,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     setEditor(null);
     setEditorValue("");
   }, [editor, editorValue, setStatus, updateDraft]);
-  const handleSave = useCallback3(async () => {
+  const handleSave = useCallback4(async () => {
     if (!draft || saving)
       return;
     setSaving(true);
@@ -4624,7 +5547,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       setSaving(false);
     }
   }, [draft, onSave, saving, setStatus, pluginTabs, pluginDraft]);
-  const handleDeleteCurrentModel = useCallback3(() => {
+  const handleDeleteCurrentModel = useCallback4(() => {
     if (!selectedRow?.target || !draft) {
       setStatus("请先选中某个模型字段后再删除", "warning");
       return;
@@ -4648,7 +5571,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     });
     setStatus(`已删除模型草稿：${model.modelName || `model_${index + 1}`}（未保存）`, "warning");
   }, [draft, selectedRow, setStatus, updateDraft]);
-  const handleDeleteCurrentServer = useCallback3(() => {
+  const handleDeleteCurrentServer = useCallback4(() => {
     if (!selectedRow?.target || selectedRow.target.kind !== "mcpField" || !draft) {
       setStatus("请先选中某个 MCP 服务器字段后再删除", "warning");
       return;
@@ -4662,7 +5585,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     });
     setStatus(`已删除 MCP 草稿：${server.name || `server_${index + 1}`}（未保存）`, "warning");
   }, [draft, selectedRow, setStatus, updateDraft]);
-  useKeyboard2((key) => {
+  useKeyboard3((key) => {
     if (editor) {
       if (key.name === "escape") {
         setEditor(null);
@@ -4829,43 +5752,43 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   }
   const visibleRows = sectionRows.slice(windowStart, windowEnd);
   if (loading && !draft) {
-    return /* @__PURE__ */ jsxDEV31("box", {
+    return /* @__PURE__ */ jsxDEV34("box", {
       width: "100%",
       height: "100%",
       justifyContent: "center",
       alignItems: "center",
-      children: /* @__PURE__ */ jsxDEV31("text", {
+      children: /* @__PURE__ */ jsxDEV34("text", {
         fg: "#888",
         children: "正在加载配置..."
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV31("box", {
+  return /* @__PURE__ */ jsxDEV34("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV31("box", {
+      /* @__PURE__ */ jsxDEV34("box", {
         flexDirection: "row",
         flexGrow: 1,
         children: [
-          /* @__PURE__ */ jsxDEV31("box", {
+          /* @__PURE__ */ jsxDEV34("box", {
             width: 24,
             flexDirection: "column",
             paddingTop: 1,
             paddingLeft: 2,
             paddingRight: 1,
             children: [
-              /* @__PURE__ */ jsxDEV31("text", {
+              /* @__PURE__ */ jsxDEV34("text", {
                 fg: C.primary,
-                children: /* @__PURE__ */ jsxDEV31("strong", {
+                children: /* @__PURE__ */ jsxDEV34("strong", {
                   children: "IRIS"
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV31("box", {
+              /* @__PURE__ */ jsxDEV34("box", {
                 marginTop: 1,
                 flexDirection: "column",
-                children: sections.map((sec) => /* @__PURE__ */ jsxDEV31("text", {
+                children: sections.map((sec) => /* @__PURE__ */ jsxDEV34("text", {
                   fg: currentSection === sec.id ? C.accent : "#555",
                   children: [
                     currentSection === sec.id ? "●" : "○",
@@ -4878,32 +5801,32 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV31("box", {
+          /* @__PURE__ */ jsxDEV34("box", {
             flexGrow: 1,
             flexDirection: "column",
             paddingTop: 1,
             paddingLeft: 2,
             children: [
-              /* @__PURE__ */ jsxDEV31("box", {
+              /* @__PURE__ */ jsxDEV34("box", {
                 alignItems: "center",
                 paddingBottom: 1,
                 flexShrink: 0,
-                children: /* @__PURE__ */ jsxDEV31("ascii-font", {
+                children: /* @__PURE__ */ jsxDEV34("ascii-font", {
                   text: "IRIS",
                   font: "block",
                   color: C.primary
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV31("box", {
+              /* @__PURE__ */ jsxDEV34("box", {
                 flexDirection: "column",
                 marginBottom: 1,
                 flexShrink: 0,
                 children: [
-                  /* @__PURE__ */ jsxDEV31("text", {
+                  /* @__PURE__ */ jsxDEV34("text", {
                     fg: "#888",
                     children: "在终端内管理模型池、系统参数、工具策略与 MCP 服务器。"
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("text", {
+                  /* @__PURE__ */ jsxDEV34("text", {
                     fg: isDirty ? C.warn : C.accent,
                     children: [
                       isDirty ? "● 有未保存修改" : "✓ 当前草稿已同步",
@@ -4912,37 +5835,37 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
                   }, undefined, true, undefined, this)
                 ]
               }, undefined, true, undefined, this),
-              /* @__PURE__ */ jsxDEV31("scrollbox", {
+              /* @__PURE__ */ jsxDEV34("scrollbox", {
                 flexGrow: 1,
                 children: [
-                  windowStart > 0 && /* @__PURE__ */ jsxDEV31("text", {
+                  windowStart > 0 && /* @__PURE__ */ jsxDEV34("text", {
                     fg: "#888",
                     children: "…"
                   }, undefined, false, undefined, this),
                   visibleRows.map((row) => {
                     const isSelected = row.id === selectedRowId && !!row.target;
                     const prefix = row.kind === "action" ? isSelected ? "❯" : "•" : row.kind === "field" ? isSelected ? "❯" : " " : " ";
-                    return /* @__PURE__ */ jsxDEV31("box", {
+                    return /* @__PURE__ */ jsxDEV34("box", {
                       paddingLeft: row.indent ?? 0,
-                      children: /* @__PURE__ */ jsxDEV31("text", {
+                      children: /* @__PURE__ */ jsxDEV34("text", {
                         children: [
-                          /* @__PURE__ */ jsxDEV31("span", {
+                          /* @__PURE__ */ jsxDEV34("span", {
                             fg: isSelected ? "#00ffff" : C.dim,
                             children: prefix
                           }, undefined, false, undefined, this),
-                          /* @__PURE__ */ jsxDEV31("span", {
+                          /* @__PURE__ */ jsxDEV34("span", {
                             children: " "
                           }, undefined, false, undefined, this),
-                          isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV31("span", {
+                          isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV34("span", {
                             fg: C.accent,
-                            children: /* @__PURE__ */ jsxDEV31("strong", {
+                            children: /* @__PURE__ */ jsxDEV34("strong", {
                               children: row.label
                             }, undefined, false, undefined, this)
-                          }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("span", {
+                          }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV34("span", {
                             fg: isSelected ? "#00ffff" : undefined,
                             children: row.label
                           }, undefined, false, undefined, this),
-                          row.value != null && /* @__PURE__ */ jsxDEV31("span", {
+                          row.value != null && /* @__PURE__ */ jsxDEV34("span", {
                             fg: isSelected ? "#00ffff" : C.dim,
                             children: `  ${row.value}`
                           }, undefined, false, undefined, this)
@@ -4950,7 +5873,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
                       }, undefined, true, undefined, this)
                     }, row.id, false, undefined, this);
                   }),
-                  windowEnd < sectionRows.length && /* @__PURE__ */ jsxDEV31("text", {
+                  windowEnd < sectionRows.length && /* @__PURE__ */ jsxDEV34("text", {
                     fg: "#888",
                     children: "…"
                   }, undefined, false, undefined, this)
@@ -4960,62 +5883,62 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
           }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV31("box", {
+      /* @__PURE__ */ jsxDEV34("box", {
         flexDirection: "column",
         marginTop: 1,
         paddingX: 2,
         children: [
-          /* @__PURE__ */ jsxDEV31("text", {
+          /* @__PURE__ */ jsxDEV34("text", {
             fg: C.dim,
             children: "─".repeat(Math.max(3, termWidth - 4))
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV31("box", {
+          /* @__PURE__ */ jsxDEV34("box", {
             flexDirection: "column",
             minHeight: 4,
             children: [
-              selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV31("text", {
+              selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV34("text", {
                 fg: "#888",
                 children: selectedRow.description
               }, undefined, false, undefined, this),
-              statusText && /* @__PURE__ */ jsxDEV31("text", {
+              statusText && /* @__PURE__ */ jsxDEV34("text", {
                 fg: getStatusColor(statusKind),
                 children: statusText
               }, undefined, false, undefined, this),
-              editor ? /* @__PURE__ */ jsxDEV31("box", {
+              editor ? /* @__PURE__ */ jsxDEV34("box", {
                 flexDirection: "column",
                 children: [
-                  /* @__PURE__ */ jsxDEV31("text", {
+                  /* @__PURE__ */ jsxDEV34("text", {
                     fg: C.accent,
-                    children: /* @__PURE__ */ jsxDEV31("strong", {
+                    children: /* @__PURE__ */ jsxDEV34("strong", {
                       children: [
                         "编辑：",
                         editor.label
                       ]
                     }, undefined, true, undefined, this)
                   }, undefined, false, undefined, this),
-                  editor.hint && /* @__PURE__ */ jsxDEV31("text", {
+                  editor.hint && /* @__PURE__ */ jsxDEV34("text", {
                     fg: "#888",
                     children: editor.hint
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("box", {
+                  /* @__PURE__ */ jsxDEV34("box", {
                     children: [
-                      /* @__PURE__ */ jsxDEV31("text", {
+                      /* @__PURE__ */ jsxDEV34("text", {
                         fg: C.accent,
                         children: "❯ "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV31("input", {
+                      /* @__PURE__ */ jsxDEV34("input", {
                         value: editorValue,
                         onInput: setEditorValue,
                         focused: true
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("text", {
+                  /* @__PURE__ */ jsxDEV34("text", {
                     fg: "#888",
                     children: "Enter 保存 · Esc 取消"
                   }, undefined, false, undefined, this)
                 ]
-              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV31("text", {
+              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV34("text", {
                 fg: "#888",
                 children: `↑↓ 选择  ←→ 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`
               }, undefined, false, undefined, this)
@@ -5028,7 +5951,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
 }
 
 // src/hooks/use-app-handle.ts
-import { useCallback as useCallback4, useEffect as useEffect8, useRef as useRef6, useState as useState8 } from "react";
+import { useCallback as useCallback5, useEffect as useEffect8, useRef as useRef6, useState as useState9 } from "react";
 
 // src/message-utils.ts
 var msgIdCounter = 0;
@@ -5055,8 +5978,10 @@ function appendMergedMessagePart(parts, nextPart) {
 }
 function mergeMessageParts(parts) {
   const merged = [];
-  for (const part of parts)
-    appendMergedMessagePart(merged, { ...part });
+  for (const part of parts) {
+    const copy = part.type === "tool_use" ? { type: "tool_use", tools: [...part.tools] } : { ...part };
+    appendMergedMessagePart(merged, copy);
+  }
   return merged;
 }
 function applyToolInvocationsToParts(parts, invocations, appendLeftover = true) {
@@ -5130,29 +6055,34 @@ function clearRedo(stack) {
 
 // src/hooks/use-app-handle.ts
 function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
-  const [messages, setMessages] = useState8([]);
-  const [streamingParts, setStreamingParts] = useState8([]);
-  const [isStreaming, setIsStreaming] = useState8(false);
-  const [isGenerating, setIsGenerating] = useState8(false);
-  const [generatingLabel, setGeneratingLabelState] = useState8();
-  const [contextTokens, setContextTokens] = useState8(0);
-  const [retryInfo, setRetryInfo] = useState8(null);
-  const [pendingApprovals, setPendingApprovals] = useState8([]);
-  const [pendingApplies, setPendingApplies] = useState8([]);
-  const [backgroundTaskCount, setBackgroundTaskCount] = useState8(0);
-  const [delegateTaskCount, setDelegateTaskCount] = useState8(0);
+  const [messages, setMessages] = useState9([]);
+  const [streamingParts, setStreamingParts] = useState9([]);
+  const [isStreaming, setIsStreaming] = useState9(false);
+  const [isGenerating, setIsGenerating] = useState9(false);
+  const [generatingLabel, setGeneratingLabelState] = useState9();
+  const [contextTokens, setContextTokens] = useState9(0);
+  const [retryInfo, setRetryInfo] = useState9(null);
+  const [pendingApprovals, setPendingApprovals] = useState9([]);
+  const [pendingApplies, setPendingApplies] = useState9([]);
+  const [toolInvocations, setToolInvocationsState] = useState9([]);
+  const [backgroundTaskCount, setBackgroundTaskCount] = useState9(0);
+  const [delegateTaskCount, setDelegateTaskCount] = useState9(0);
   const backgroundTaskTokenMapRef = useRef6(new Map);
-  const [backgroundTaskTokens, setBackgroundTaskTokens] = useState8(0);
+  const [backgroundTaskTokens, setBackgroundTaskTokens] = useState9(0);
   const spinnerFrameRef = useRef6(0);
-  const [backgroundTaskSpinnerFrame, setBackgroundTaskSpinnerFrame] = useState8(0);
+  const [backgroundTaskSpinnerFrame, setBackgroundTaskSpinnerFrame] = useState9(0);
+  const [toolDetailData, setToolDetailData] = useState9(null);
+  const [toolDetailStack, setToolDetailStack] = useState9([]);
+  const [toolListItems, setToolListItems] = useState9([]);
   const streamPartsRef = useRef6([]);
   const toolInvocationsRef = useRef6([]);
   const throttleTimerRef = useRef6(null);
   const uncommittedStreamPartsRef = useRef6([]);
   const lastUsageRef = useRef6(null);
   const notificationContextRef = useRef6({ active: false });
-  const commitTools = useCallback4(() => {
+  const commitTools = useCallback5(() => {
     toolInvocationsRef.current = [];
+    setToolInvocationsState([]);
     setPendingApprovals([]);
     setPendingApplies([]);
   }, []);
@@ -5272,6 +6202,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
       setToolInvocations(invocations) {
         const copy = [...invocations];
         toolInvocationsRef.current = copy;
+        setToolInvocationsState(copy);
         setPendingApprovals(copy.filter((invocation) => invocation.status === "awaiting_approval"));
         setPendingApplies(copy.filter((invocation) => invocation.status === "awaiting_apply"));
         setMessages((prev) => {
@@ -5418,8 +6349,26 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
           setBackgroundTaskSpinnerFrame(spinnerFrameRef.current);
         }
       },
+      openToolDetail(data, breadcrumb) {
+        setToolDetailData(data);
+        setToolDetailStack(breadcrumb);
+      },
+      updateToolDetailData(data) {
+        setToolDetailData(data);
+      },
+      closeToolDetail() {
+        setToolDetailStack((prev) => {
+          if (prev.length > 1)
+            return prev;
+          return [];
+        });
+        setToolDetailData(null);
+      },
       drainQueue() {
         return drainCallbackRef.current?.() ?? undefined;
+      },
+      openToolList(tools) {
+        setToolListItems(tools);
       }
     };
     onReady(handle);
@@ -5434,17 +6383,21 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
     retryInfo,
     pendingApprovals,
     pendingApplies,
+    toolInvocations,
     backgroundTaskCount,
     delegateTaskCount,
     backgroundTaskTokens,
     backgroundTaskSpinnerFrame,
     setMessages,
-    commitTools
+    commitTools,
+    toolDetailData,
+    toolDetailStack,
+    toolListItems
   };
 }
 
 // src/hooks/use-app-keyboard.ts
-import { useKeyboard as useKeyboard3 } from "@opentui/react";
+import { useKeyboard as useKeyboard4 } from "@opentui/react";
 function closeConfirm(setPendingConfirm, setConfirmChoice) {
   setPendingConfirm(null);
   setConfirmChoice("confirm");
@@ -5461,11 +6414,13 @@ function useAppKeyboard({
   isGenerating,
   pendingApplies,
   pendingApprovals,
+  onOpenToolDetail,
   approval,
   onExit,
   onAbort,
   onToolApply,
   onToolApproval,
+  onAddCommandPattern,
   sessionList,
   modelList,
   selectedIndex,
@@ -5487,9 +6442,12 @@ function useAppKeyboard({
   setQueueEditingId,
   queueEditState,
   queueEditActions,
-  onToggleThoughts
+  onToggleThoughts,
+  toolListItems,
+  agentList,
+  onSelectAgent
 }) {
-  useKeyboard3((key) => {
+  useKeyboard4((key) => {
     if (key.ctrl && key.name === "c") {
       if (exitConfirm.exitConfirmArmed) {
         exitConfirm.clearExitConfirm();
@@ -5507,8 +6465,45 @@ function useAppKeyboard({
       onToggleThoughts();
       return;
     }
+    if (key.name === "t" && key.ctrl) {
+      onOpenToolDetail("");
+      return;
+    }
     if (viewMode === "settings")
       return;
+    if (viewMode === "tool-detail")
+      return;
+    if (viewMode === "tool-list") {
+      if (key.name === "escape") {
+        setViewMode("chat");
+      } else if (key.name === "up")
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      else if (key.name === "down")
+        setSelectedIndex((prev) => Math.min(toolListItems.length - 1, prev + 1));
+      else if (key.name === "return") {
+        const selected = toolListItems[selectedIndex];
+        if (selected) {
+          onOpenToolDetail(selected.id);
+        }
+      }
+      return;
+    }
+    if (viewMode === "agent-list") {
+      if (key.name === "escape") {
+        setViewMode("chat");
+      } else if (key.name === "up")
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      else if (key.name === "down")
+        setSelectedIndex((prev) => Math.min(agentList.length - 1, prev + 1));
+      else if (key.name === "return") {
+        const selected = agentList[selectedIndex];
+        if (selected) {
+          onSelectAgent?.(selected.name);
+          setViewMode("chat");
+        }
+      }
+      return;
+    }
     if (pendingConfirm && key.name === "escape") {
       closeConfirm(setPendingConfirm, setConfirmChoice);
       return;
@@ -5645,24 +6640,52 @@ function useAppKeyboard({
       return;
     }
     if (isGenerating && pendingApprovals.length > 0) {
+      const inv = pendingApprovals[0];
+      const isCommandTool = inv.toolName === "shell" || inv.toolName === "bash";
+      if (key.name === "tab" && isCommandTool) {
+        approval.toggleApprovalPage();
+        return;
+      }
       if (key.name === "left" || key.name === "up" || key.name === "right" || key.name === "down") {
         approval.toggleChoice();
         return;
       }
-      if (key.name === "enter" || key.name === "return") {
-        onToolApproval(pendingApprovals[0].id, approval.approvalChoice === "approve");
-        approval.resetChoice();
-        return;
-      }
       if (key.name === "y") {
-        onToolApproval(pendingApprovals[0].id, true);
+        onToolApproval(inv.id, true);
         approval.resetChoice();
         return;
       }
       if (key.name === "n") {
-        onToolApproval(pendingApprovals[0].id, false);
+        onToolApproval(inv.id, false);
         approval.resetChoice();
         return;
+      }
+      if (approval.approvalPage === "policy" && isCommandTool) {
+        const command = typeof inv.args?.command === "string" ? inv.args.command : "";
+        if (key.name === "enter" || key.name === "return") {
+          onToolApproval(inv.id, true);
+          onAddCommandPattern?.(inv.toolName, command, approval.approvalChoice === "approve" ? "allow" : "deny");
+          approval.resetChoice();
+          return;
+        }
+        if (key.name === "a") {
+          onToolApproval(inv.id, true);
+          onAddCommandPattern?.(inv.toolName, command, "allow");
+          approval.resetChoice();
+          return;
+        }
+        if (key.name === "s") {
+          onToolApproval(inv.id, true);
+          onAddCommandPattern?.(inv.toolName, command, "deny");
+          approval.resetChoice();
+          return;
+        }
+      } else {
+        if (key.name === "enter" || key.name === "return") {
+          onToolApproval(inv.id, approval.approvalChoice === "approve");
+          approval.resetChoice();
+          return;
+        }
       }
       return;
     }
@@ -5725,15 +6748,17 @@ function useAppKeyboard({
 }
 
 // src/hooks/use-approval.ts
-import { useCallback as useCallback5, useEffect as useEffect9, useState as useState9 } from "react";
+import { useCallback as useCallback6, useEffect as useEffect9, useState as useState10 } from "react";
 function useApproval(pendingApprovals, pendingApplies) {
-  const [approvalChoice, setApprovalChoice] = useState9("approve");
-  const [diffView, setDiffView] = useState9("unified");
-  const [showLineNumbers, setShowLineNumbers] = useState9(true);
-  const [wrapMode, setWrapMode] = useState9("word");
-  const [previewIndex, setPreviewIndex] = useState9(0);
+  const [approvalChoice, setApprovalChoice] = useState10("approve");
+  const [approvalPage, setApprovalPage] = useState10("basic");
+  const [diffView, setDiffView] = useState10("unified");
+  const [showLineNumbers, setShowLineNumbers] = useState10(true);
+  const [wrapMode, setWrapMode] = useState10("word");
+  const [previewIndex, setPreviewIndex] = useState10(0);
   useEffect9(() => {
     setApprovalChoice("approve");
+    setApprovalPage("basic");
   }, [pendingApprovals[0]?.id]);
   useEffect9(() => {
     setApprovalChoice("approve");
@@ -5742,23 +6767,28 @@ function useApproval(pendingApprovals, pendingApplies) {
     setWrapMode("word");
     setPreviewIndex(0);
   }, [pendingApplies[0]?.id]);
-  const resetChoice = useCallback5(() => {
+  const resetChoice = useCallback6(() => {
     setApprovalChoice("approve");
+    setApprovalPage("basic");
   }, []);
-  const toggleChoice = useCallback5(() => {
+  const toggleApprovalPage = useCallback6(() => {
+    setApprovalPage((prev) => prev === "basic" ? "policy" : "basic");
+  }, []);
+  const toggleChoice = useCallback6(() => {
     setApprovalChoice((prev) => prev === "approve" ? "reject" : "approve");
   }, []);
-  const toggleDiffView = useCallback5(() => {
+  const toggleDiffView = useCallback6(() => {
     setDiffView((prev) => prev === "unified" ? "split" : "unified");
   }, []);
-  const toggleLineNumbers = useCallback5(() => {
+  const toggleLineNumbers = useCallback6(() => {
     setShowLineNumbers((prev) => !prev);
   }, []);
-  const toggleWrapMode = useCallback5(() => {
+  const toggleWrapMode = useCallback6(() => {
     setWrapMode((prev) => prev === "none" ? "word" : "none");
   }, []);
   return {
     approvalChoice,
+    approvalPage,
     diffView,
     showLineNumbers,
     wrapMode,
@@ -5766,6 +6796,7 @@ function useApproval(pendingApprovals, pendingApplies) {
     setPreviewIndex,
     resetChoice,
     toggleChoice,
+    toggleApprovalPage,
     toggleDiffView,
     toggleLineNumbers,
     toggleWrapMode
@@ -5773,7 +6804,7 @@ function useApproval(pendingApprovals, pendingApplies) {
 }
 
 // src/hooks/use-command-dispatch.ts
-import { useCallback as useCallback6 } from "react";
+import { useCallback as useCallback7 } from "react";
 function resetRedo(undoRedoRef, onClearRedoStack) {
   clearRedo(undoRedoRef.current);
   onClearRedoStack();
@@ -5790,7 +6821,8 @@ function useCommandDispatch({
   onSwitchModel,
   onResetConfig,
   onExit,
-  onSwitchAgent,
+  onListAgents,
+  setAgentList,
   onSummarize,
   undoRedoRef,
   setMessages,
@@ -5806,17 +6838,22 @@ function useCommandDispatch({
   queueClear,
   queueSize
 }) {
-  return useCallback6((text) => {
+  return useCallback7((text) => {
     if (text === "/exit") {
       onExit();
       return;
     }
     if (text === "/agent") {
-      if (onSwitchAgent) {
-        onSwitchAgent();
-        return;
+      if (onListAgents) {
+        const agents = onListAgents();
+        if (agents.length > 0) {
+          setAgentList(agents);
+          setSelectedIndex(0);
+          setViewMode("agent-list");
+          return;
+        }
       }
-      appendCommandMessage(setMessages, "当前未启用多 Agent 模式。请在 ~/.iris/agents.yaml 中设置 enabled: true。");
+      appendCommandMessage(setMessages, "当前只有一个 Agent，无需切换。");
       return;
     }
     if (text === "/new") {
@@ -5947,7 +6984,8 @@ function useCommandDispatch({
     onResetConfig,
     onRunCommand,
     onSubmit,
-    onSwitchAgent,
+    onListAgents,
+    setAgentList,
     onSwitchModel,
     onSummarize,
     onUndo,
@@ -5966,18 +7004,18 @@ function useCommandDispatch({
 }
 
 // src/hooks/use-exit-confirm.ts
-import { useCallback as useCallback7, useEffect as useEffect10, useRef as useRef7, useState as useState10 } from "react";
+import { useCallback as useCallback8, useEffect as useEffect10, useRef as useRef7, useState as useState11 } from "react";
 function useExitConfirm({ timeoutMs = 1500 } = {}) {
-  const [exitConfirmArmed, setExitConfirmArmed] = useState10(false);
+  const [exitConfirmArmed, setExitConfirmArmed] = useState11(false);
   const exitConfirmTimerRef = useRef7(null);
-  const clearExitConfirm = useCallback7(() => {
+  const clearExitConfirm = useCallback8(() => {
     if (exitConfirmTimerRef.current) {
       clearTimeout(exitConfirmTimerRef.current);
       exitConfirmTimerRef.current = null;
     }
     setExitConfirmArmed(false);
   }, []);
-  const armExitConfirm = useCallback7(() => {
+  const armExitConfirm = useCallback8(() => {
     if (exitConfirmTimerRef.current)
       clearTimeout(exitConfirmTimerRef.current);
     setExitConfirmArmed(true);
@@ -6000,16 +7038,16 @@ function useExitConfirm({ timeoutMs = 1500 } = {}) {
 }
 
 // src/hooks/use-message-queue.ts
-import { useCallback as useCallback8, useRef as useRef8, useState as useState11 } from "react";
+import { useCallback as useCallback9, useRef as useRef8, useState as useState12 } from "react";
 var queueIdCounter = 0;
 function useMessageQueue() {
-  const [queue, setQueue] = useState11([]);
+  const [queue, setQueue] = useState12([]);
   const queueRef = useRef8([]);
-  const sync = useCallback8((next) => {
+  const sync = useCallback9((next) => {
     queueRef.current = next;
     setQueue(next);
   }, []);
-  const prepend = useCallback8((text) => {
+  const prepend = useCallback9((text) => {
     const msg = {
       id: `queued-${++queueIdCounter}`,
       text,
@@ -6019,7 +7057,7 @@ function useMessageQueue() {
     sync(next);
     return msg;
   }, [sync]);
-  const enqueue = useCallback8((text) => {
+  const enqueue = useCallback9((text) => {
     const msg = {
       id: `queued-${++queueIdCounter}`,
       text,
@@ -6029,7 +7067,7 @@ function useMessageQueue() {
     sync(next);
     return msg;
   }, [sync]);
-  const dequeue = useCallback8(() => {
+  const dequeue = useCallback9(() => {
     const current = queueRef.current;
     if (current.length === 0)
       return;
@@ -6037,10 +7075,10 @@ function useMessageQueue() {
     sync(rest);
     return first;
   }, [sync]);
-  const peek = useCallback8(() => {
+  const peek = useCallback9(() => {
     return queueRef.current[0];
   }, []);
-  const edit = useCallback8((id, newText) => {
+  const edit = useCallback9((id, newText) => {
     const current = queueRef.current;
     const index = current.findIndex((m) => m.id === id);
     if (index < 0)
@@ -6050,7 +7088,7 @@ function useMessageQueue() {
     sync(next);
     return true;
   }, [sync]);
-  const remove = useCallback8((id) => {
+  const remove = useCallback9((id) => {
     const current = queueRef.current;
     const index = current.findIndex((m) => m.id === id);
     if (index < 0)
@@ -6059,7 +7097,7 @@ function useMessageQueue() {
     sync(next);
     return true;
   }, [sync]);
-  const moveUp = useCallback8((id) => {
+  const moveUp = useCallback9((id) => {
     const current = queueRef.current;
     const index = current.findIndex((m) => m.id === id);
     if (index <= 0)
@@ -6069,7 +7107,7 @@ function useMessageQueue() {
     sync(next);
     return true;
   }, [sync]);
-  const moveDown = useCallback8((id) => {
+  const moveDown = useCallback9((id) => {
     const current = queueRef.current;
     const index = current.findIndex((m) => m.id === id);
     if (index < 0 || index >= current.length - 1)
@@ -6079,7 +7117,7 @@ function useMessageQueue() {
     sync(next);
     return true;
   }, [sync]);
-  const clear = useCallback8(() => {
+  const clear = useCallback9(() => {
     sync([]);
   }, [sync]);
   return {
@@ -6098,12 +7136,12 @@ function useMessageQueue() {
 }
 
 // src/hooks/use-model-state.ts
-import { useCallback as useCallback9, useState as useState12 } from "react";
+import { useCallback as useCallback10, useState as useState13 } from "react";
 function useModelState({ modelId, modelName, contextWindow }) {
-  const [currentModelId, setCurrentModelId] = useState12(modelId);
-  const [currentModelName, setCurrentModelName] = useState12(modelName);
-  const [currentContextWindow, setCurrentContextWindow] = useState12(contextWindow);
-  const updateModel = useCallback9((result) => {
+  const [currentModelId, setCurrentModelId] = useState13(modelId);
+  const [currentModelName, setCurrentModelName] = useState13(modelName);
+  const [currentContextWindow, setCurrentContextWindow] = useState13(contextWindow);
+  const updateModel = useCallback10((result) => {
     if (result.modelId)
       setCurrentModelId(result.modelId);
     if (result.modelName)
@@ -6120,15 +7158,19 @@ function useModelState({ modelId, modelName, contextWindow }) {
 }
 
 // src/App.tsx
-import { jsxDEV as jsxDEV32 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV35 } from "@opentui/react/jsx-dev-runtime";
 function App({
   onReady,
   onSubmit,
+  onOpenToolDetail,
+  onNavigateToolDetail,
+  onCloseToolDetail,
   onUndo,
   onRedo,
   onClearRedoStack,
   onToolApproval,
   onToolApply,
+  onAddCommandPattern,
   onAbort,
   onNewSession,
   onLoadSession,
@@ -6141,7 +7183,8 @@ function App({
   onResetConfig,
   onExit,
   onSummarize,
-  onSwitchAgent,
+  onListAgents,
+  onSelectAgent,
   onThinkingEffortChange,
   initWarnings,
   agentName,
@@ -6151,17 +7194,18 @@ function App({
   contextWindow,
   pluginSettingsTabs
 }) {
-  const [viewMode, setViewMode] = useState13("chat");
-  const [sessionList, setSessionList] = useState13([]);
-  const [selectedIndex, setSelectedIndex] = useState13(0);
-  const [settingsInitialSection, setSettingsInitialSection] = useState13("general");
-  const [modelList, setModelList] = useState13([]);
-  const [copyMode, setCopyMode] = useState13(false);
-  const [pendingConfirm, setPendingConfirm] = useState13(null);
-  const [confirmChoice, setConfirmChoice] = useState13("confirm");
-  const [thinkingEffort, setThinkingEffort] = useState13("none");
-  const [thoughtsToggleSignal, setThoughtsToggleSignal] = useState13(0);
-  const [queueEditingId, setQueueEditingId] = useState13(null);
+  const [viewMode, setViewMode] = useState14("chat");
+  const [sessionList, setSessionList] = useState14([]);
+  const [selectedIndex, setSelectedIndex] = useState14(0);
+  const [settingsInitialSection, setSettingsInitialSection] = useState14("general");
+  const [modelList, setModelList] = useState14([]);
+  const [agentList, setAgentList] = useState14([]);
+  const [copyMode, setCopyMode] = useState14(false);
+  const [pendingConfirm, setPendingConfirm] = useState14(null);
+  const [confirmChoice, setConfirmChoice] = useState14("confirm");
+  const [thinkingEffort, setThinkingEffort] = useState14("none");
+  const [thoughtsToggleSignal, setThoughtsToggleSignal] = useState14(0);
+  const [queueEditingId, setQueueEditingId] = useState14(null);
   const [queueEditState, queueEditActions] = useTextInput("");
   const renderer = useRenderer();
   const undoRedoRef = useRef9(createUndoRedoStack());
@@ -6177,18 +7221,18 @@ function App({
   const approval = useApproval(appState.pendingApprovals, appState.pendingApplies);
   const exitConfirm = useExitConfirm();
   const modelState = useModelState({ modelId, modelName, contextWindow });
-  const queueAwareSubmit = useCallback10((text) => {
+  const queueAwareSubmit = useCallback11((text) => {
     if (appState.isGenerating) {
       messageQueue.enqueue(text);
     } else {
       onSubmit(text);
     }
   }, [appState.isGenerating, messageQueue, onSubmit]);
-  const handlePrioritySubmit = useCallback10((text) => {
+  const handlePrioritySubmit = useCallback11((text) => {
     messageQueue.prepend(text);
     onAbort();
   }, [messageQueue, onAbort]);
-  const cycleThinkingEffort = useCallback10((direction) => {
+  const cycleThinkingEffort = useCallback11((direction) => {
     const levels = ["none", "low", "medium", "high", "max"];
     setThinkingEffort((prev) => {
       const idx = levels.indexOf(prev);
@@ -6212,7 +7256,8 @@ function App({
     onSwitchModel,
     onResetConfig,
     onExit,
-    onSwitchAgent,
+    onListAgents,
+    setAgentList,
     onSummarize,
     undoRedoRef,
     setMessages: appState.setMessages,
@@ -6244,6 +7289,19 @@ function App({
       }
     }
   }, [viewMode, appState.isGenerating, messageQueue, onSubmit]);
+  useEffect11(() => {
+    if (appState.toolDetailData && viewMode !== "tool-detail") {
+      setViewMode("tool-detail");
+    } else if (!appState.toolDetailData && viewMode === "tool-detail") {
+      setViewMode("chat");
+    }
+  }, [appState.toolDetailData, viewMode]);
+  useEffect11(() => {
+    if (appState.toolListItems.length > 0 && viewMode !== "tool-list" && viewMode !== "tool-detail") {
+      setSelectedIndex(0);
+      setViewMode("tool-list");
+    }
+  }, [appState.toolListItems]);
   useAppKeyboard({
     viewMode,
     setViewMode,
@@ -6256,11 +7314,13 @@ function App({
     isGenerating: appState.isGenerating,
     pendingApplies: appState.pendingApplies,
     pendingApprovals: appState.pendingApprovals,
+    onOpenToolDetail,
     approval,
     onExit,
     onAbort,
     onToolApply,
     onToolApproval,
+    onAddCommandPattern,
     sessionList,
     modelList,
     selectedIndex,
@@ -6282,12 +7342,15 @@ function App({
     setQueueEditingId,
     queueEditState,
     queueEditActions,
-    onToggleThoughts: () => setThoughtsToggleSignal((prev) => prev + 1)
+    onToggleThoughts: () => setThoughtsToggleSignal((prev) => prev + 1),
+    toolListItems: appState.toolListItems,
+    agentList,
+    onSelectAgent
   });
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
   const hasMessages = appState.messages.length > 0 || appState.isGenerating;
   if (viewMode === "settings") {
-    return /* @__PURE__ */ jsxDEV32(SettingsView, {
+    return /* @__PURE__ */ jsxDEV35(SettingsView, {
       initialSection: settingsInitialSection,
       onBack: () => setViewMode("chat"),
       onLoad: onLoadSettings,
@@ -6296,19 +7359,26 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (viewMode === "session-list") {
-    return /* @__PURE__ */ jsxDEV32(SessionListView, {
+    return /* @__PURE__ */ jsxDEV35(SessionListView, {
       sessions: sessionList,
       selectedIndex
     }, undefined, false, undefined, this);
   }
   if (viewMode === "model-list") {
-    return /* @__PURE__ */ jsxDEV32(ModelListView, {
+    return /* @__PURE__ */ jsxDEV35(ModelListView, {
       models: modelList,
       selectedIndex
     }, undefined, false, undefined, this);
   }
+  if (viewMode === "agent-list") {
+    return /* @__PURE__ */ jsxDEV35(AgentListView, {
+      agents: agentList,
+      selectedIndex,
+      currentAgentName: agentName
+    }, undefined, false, undefined, this);
+  }
   if (viewMode === "queue-list") {
-    return /* @__PURE__ */ jsxDEV32(QueueListView, {
+    return /* @__PURE__ */ jsxDEV35(QueueListView, {
       queue: messageQueue.queue,
       selectedIndex,
       editingId: queueEditingId,
@@ -6317,7 +7387,7 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (currentApply) {
-    return /* @__PURE__ */ jsxDEV32(DiffApprovalView, {
+    return /* @__PURE__ */ jsxDEV35(DiffApprovalView, {
       invocation: currentApply,
       pendingCount: appState.pendingApplies.length,
       choice: approval.approvalChoice,
@@ -6327,16 +7397,38 @@ function App({
       previewIndex: approval.previewIndex
     }, undefined, false, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV32("box", {
+  if (viewMode === "tool-list") {
+    return /* @__PURE__ */ jsxDEV35(ToolListView, {
+      tools: appState.toolListItems,
+      selectedIndex
+    }, undefined, false, undefined, this);
+  }
+  if (viewMode === "tool-detail" && appState.toolDetailData) {
+    return /* @__PURE__ */ jsxDEV35("box", {
+      flexDirection: "column",
+      width: "100%",
+      height: "100%",
+      children: /* @__PURE__ */ jsxDEV35(ToolDetailView, {
+        data: appState.toolDetailData,
+        breadcrumb: appState.toolDetailStack,
+        onNavigateChild: onNavigateToolDetail,
+        onClose: onCloseToolDetail,
+        onAbort: (toolId) => {
+          onOpenToolDetail(toolId);
+        }
+      }, undefined, false, undefined, this)
+    }, undefined, false, undefined, this);
+  }
+  return /* @__PURE__ */ jsxDEV35("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      !hasMessages ? /* @__PURE__ */ jsxDEV32(LogoScreen, {}, undefined, false, undefined, this) : null,
-      !hasMessages && initWarnings && initWarnings.length > 0 ? /* @__PURE__ */ jsxDEV32(InitWarnings, {
+      !hasMessages ? /* @__PURE__ */ jsxDEV35(LogoScreen, {}, undefined, false, undefined, this) : null,
+      !hasMessages && initWarnings && initWarnings.length > 0 ? /* @__PURE__ */ jsxDEV35(InitWarnings, {
         warnings: initWarnings
       }, undefined, false, undefined, this) : null,
-      hasMessages ? /* @__PURE__ */ jsxDEV32(ChatMessageList, {
+      hasMessages ? /* @__PURE__ */ jsxDEV35(ChatMessageList, {
         messages: appState.messages,
         streamingParts: appState.streamingParts,
         isStreaming: appState.isStreaming,
@@ -6346,12 +7438,13 @@ function App({
         generatingLabel: appState.generatingLabel,
         thoughtsToggleSignal
       }, undefined, false, undefined, this) : null,
-      /* @__PURE__ */ jsxDEV32(BottomPanel, {
+      /* @__PURE__ */ jsxDEV35(BottomPanel, {
         hasMessages,
         pendingConfirm,
         confirmChoice,
         pendingApprovals: appState.pendingApprovals,
         approvalChoice: approval.approvalChoice,
+        approvalPage: approval.approvalPage,
         isGenerating: appState.isGenerating,
         queueSize: messageQueue.size,
         onSubmit: handleSubmit,
@@ -6562,6 +7655,16 @@ function attachCompiledResizeWatcher(renderer, isCompiledBinary) {
 }
 
 // src/index.ts
+function generateCommandPattern(command) {
+  const tokens = command.trim().split(/\s+/);
+  if (tokens.length === 0 || !tokens[0])
+    return "*";
+  if (tokens.length <= 1)
+    return tokens[0] + " *";
+  if (tokens[1].startsWith("-"))
+    return tokens[0] + " *";
+  return tokens[0] + " " + tokens[1] + " *";
+}
 function createToolInvocationFromFunctionCall(part, index, defaultStatus, response, durationMs) {
   let status = defaultStatus;
   let result;
@@ -6654,9 +7757,9 @@ function getMessageMeta(content) {
 }
 function generateSessionId() {
   const now = new Date;
-  const ts = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0") + String(now.getDate()).padStart(2, "0") + "_" + String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0") + String(now.getSeconds()).padStart(2, "0");
+  const ts2 = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0") + String(now.getDate()).padStart(2, "0") + "_" + String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0") + String(now.getSeconds()).padStart(2, "0");
   const rand = Math.random().toString(36).slice(2, 6);
-  return `${ts}_${rand}`;
+  return `${ts2}_${rand}`;
 }
 
 class ConsolePlatform extends PlatformAdapter {
@@ -6667,17 +7770,18 @@ class ConsolePlatform extends PlatformAdapter {
   contextWindow;
   backend;
   agentName;
-  onSwitchAgent;
   settingsController;
   initWarnings;
+  exitResolve;
   renderer;
   appHandle;
   disposeResizeWatcher;
   api;
-  _activeHandles = [];
+  _activeHandles = new Map;
   isCompiledBinary;
   currentToolIds = new Set;
   currentThinkingEffort = "none";
+  _toolDetailStack = [];
   historyMutationQueue = Promise.resolve();
   constructor(backend, options) {
     super();
@@ -6688,7 +7792,6 @@ class ConsolePlatform extends PlatformAdapter {
     this.modelName = options.modelName;
     this.contextWindow = options.contextWindow;
     this.agentName = options.agentName;
-    this.onSwitchAgent = options.onSwitchAgent;
     this.initWarnings = options.initWarnings ?? [];
     this.api = options.api;
     this.isCompiledBinary = options.isCompiledBinary ?? false;
@@ -6739,19 +7842,20 @@ class ConsolePlatform extends PlatformAdapter {
     this.backend.on("tool:execute", (sid, handle) => {
       if (sid !== this.sessionId)
         return;
-      if (!this._activeHandles)
-        this._activeHandles = [];
-      this._activeHandles.push(handle);
+      this._activeHandles.set(handle.id, handle);
+      this.currentToolIds.add(handle.id);
       const refreshUI = () => {
-        const invocations = (this._activeHandles || []).map((h) => h.getSnapshot());
+        const invocations = Array.from(this._activeHandles.values()).filter((h) => this.currentToolIds.has(h.id)).map((h) => h.getSnapshot());
         this.appHandle?.setToolInvocations(invocations);
+        this.refreshToolDetailIfNeeded();
       };
       handle.on("state", refreshUI);
+      handle.on("output", refreshUI);
       handle.on("child", (childHandle) => {
-        if (!this._activeHandles)
-          this._activeHandles = [];
-        this._activeHandles.push(childHandle);
+        this._activeHandles.set(childHandle.id, childHandle);
+        this.currentToolIds.add(childHandle.id);
         childHandle.on("state", refreshUI);
+        childHandle.on("output", refreshUI);
         refreshUI();
       });
       refreshUI();
@@ -6880,7 +7984,7 @@ ${summaryText}`;
         return;
       }
       this.disposeResizeWatcher = attachCompiledResizeWatcher(this.renderer, this.isCompiledBinary);
-      const element = React9.createElement(App, {
+      const element = React10.createElement(App, {
         onReady: (handle) => {
           this.appHandle = handle;
           resolve3();
@@ -6917,8 +8021,20 @@ ${summaryText}`;
         onToolApply: (toolId, applied) => {
           this.backend.getToolHandle?.(toolId)?.apply(applied);
         },
+        onAddCommandPattern: (toolName, command, type) => {
+          this.addCommandPattern(toolName, command, type);
+        },
         onAbort: () => {
           this.backend.abortChat?.(this.sessionId);
+        },
+        onOpenToolDetail: (toolId) => {
+          this.openToolDetail(toolId);
+        },
+        onNavigateToolDetail: (toolId) => {
+          this.navigateToolDetail(toolId);
+        },
+        onCloseToolDetail: () => {
+          this.closeToolDetail();
         },
         onNewSession: () => this.handleNewSession(),
         onLoadSession: (id) => this.handleLoadSession(id),
@@ -6929,9 +8045,13 @@ ${summaryText}`;
         onLoadSettings: () => this.handleLoadSettings(),
         onSaveSettings: (snapshot) => this.handleSaveSettings(snapshot),
         onResetConfig: () => this.handleResetConfig(),
-        onExit: () => this.stop(),
+        onExit: () => {
+          this.stop();
+          this.exitResolve?.("exit");
+        },
         onSummarize: () => this.handleSummarize(),
-        onSwitchAgent: this.onSwitchAgent,
+        onListAgents: () => this.handleListAgents(),
+        onSelectAgent: (name) => this.handleSelectAgent(name),
         onThinkingEffortChange: (level) => this.applyThinkingEffort(level),
         agentName: this.agentName,
         modeName: this.modeName,
@@ -6948,10 +8068,178 @@ ${summaryText}`;
     this.disposeResizeWatcher?.();
     this.renderer?.destroy();
   }
+  waitForExit() {
+    return new Promise((resolve3) => {
+      this.exitResolve = resolve3;
+    });
+  }
+  handleListAgents() {
+    return this.api?.listAgents?.() ?? [];
+  }
+  async handleSelectAgent(targetName) {
+    const network = this.api?.agentNetwork;
+    if (!network)
+      return;
+    if (targetName === network.selfName)
+      return;
+    await this.stop();
+    const targetHandle = network.getPeerBackendHandle?.(targetName);
+    if (targetHandle) {
+      this.backend = targetHandle;
+      this.agentName = targetName;
+      const modelInfo = targetHandle.getCurrentModelInfo?.();
+      if (modelInfo) {
+        this.modelName = modelInfo.modelName;
+        this.modelId = modelInfo.modelId;
+        this.contextWindow = modelInfo.contextWindow;
+      }
+      this.sessionId = generateSessionId();
+      this.currentToolIds.clear();
+      this._activeHandles.clear();
+      const peerAPI = network.getPeerAPI?.(targetName);
+      if (peerAPI) {
+        this.api = peerAPI;
+        this.settingsController = new ConsoleSettingsController({
+          backend: targetHandle,
+          configManager: peerAPI.configManager,
+          mcpManager: peerAPI.mcpManager,
+          extensions: peerAPI.extensions
+        });
+      }
+    }
+    await this.start();
+  }
+  createHistoricalHandle(inv) {
+    return {
+      id: inv.id,
+      toolName: inv.toolName,
+      status: inv.status,
+      depth: inv.depth ?? 0,
+      parentId: inv.parentToolId,
+      signal: new AbortController().signal,
+      getSnapshot: () => ({ ...inv }),
+      getOutputHistory: () => [],
+      getChildren: () => [],
+      abort: () => {},
+      approve: () => {},
+      apply: () => {},
+      send: () => {},
+      on: () => {},
+      off: () => {},
+      emit: () => false
+    };
+  }
   handleNewSession() {
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
-    this._activeHandles = [];
+    this._activeHandles.clear();
+  }
+  openToolDetail(toolId) {
+    if (!toolId) {
+      const all = Array.from(this._activeHandles.values());
+      if (all.length === 0) {
+        this.appHandle?.addErrorMessage("当前会话没有工具执行记录。");
+        return;
+      }
+      const tools = all.map((h) => h.getSnapshot()).sort((a, b) => a.createdAt - b.createdAt);
+      this.appHandle?.openToolList(tools);
+      return;
+    }
+    const handle = this._activeHandles.get(toolId);
+    if (!handle) {
+      this.appHandle?.addErrorMessage("未找到指定的工具执行记录。");
+      return;
+    }
+    this._toolDetailStack = [handle.id];
+    this.pushToolDetailData(handle.id);
+  }
+  navigateToolDetail(toolId) {
+    const handle = this._activeHandles.get(toolId);
+    if (!handle)
+      return;
+    this._toolDetailStack.push(toolId);
+    this.pushToolDetailData(toolId);
+  }
+  closeToolDetail() {
+    if (this._toolDetailStack.length > 1) {
+      this._toolDetailStack.pop();
+      const parentId = this._toolDetailStack[this._toolDetailStack.length - 1];
+      this.pushToolDetailData(parentId);
+    } else {
+      this._toolDetailStack = [];
+      this.appHandle?.closeToolDetail();
+    }
+  }
+  addCommandPattern(toolName, command, type) {
+    const pattern = generateCommandPattern(command);
+    const key = type === "allow" ? "allowPatterns" : "denyPatterns";
+    const policies = this.backend.getToolPolicies?.();
+    if (!policies) {
+      return;
+    }
+    let policy = policies[toolName];
+    if (!policy) {
+      policy = { autoApprove: false };
+      policies[toolName] = policy;
+    }
+    const arr = policy[key];
+    if (arr) {
+      if (!arr.includes(pattern))
+        arr.push(pattern);
+    } else {
+      policy[key] = [pattern];
+    }
+    const oppositeKey = type === "allow" ? "denyPatterns" : "allowPatterns";
+    const oppositeArr = policy[oppositeKey];
+    if (oppositeArr) {
+      const idx = oppositeArr.indexOf(pattern);
+      if (idx !== -1)
+        oppositeArr.splice(idx, 1);
+    }
+    const configManager = this.api?.configManager;
+    if (configManager) {
+      try {
+        const raw = configManager.readEditableConfig();
+        const tools = raw.tools ?? {};
+        const toolSection = tools[toolName] ?? {};
+        const existing = Array.isArray(toolSection[key]) ? toolSection[key] : [];
+        if (!existing.includes(pattern)) {
+          existing.push(pattern);
+        }
+        const oppositeKey2 = type === "allow" ? "denyPatterns" : "allowPatterns";
+        const opposite = Array.isArray(toolSection[oppositeKey2]) ? toolSection[oppositeKey2] : [];
+        const oidx = opposite.indexOf(pattern);
+        if (oidx !== -1)
+          opposite.splice(oidx, 1);
+        const updates = { [key]: existing };
+        if (oidx !== -1)
+          updates[oppositeKey2] = opposite;
+        configManager.updateEditableConfig({ tools: { [toolName]: updates } });
+      } catch {}
+    }
+  }
+  pushToolDetailData(toolId) {
+    const handle = this._activeHandles.get(toolId);
+    if (!handle)
+      return;
+    const invocation = handle.getSnapshot();
+    const output = handle.getOutputHistory?.() ?? [];
+    const childHandles = handle.getChildren?.() ?? [];
+    const children = childHandles.map((ch) => ch.getSnapshot());
+    const breadcrumb = this._toolDetailStack.map((id) => {
+      const h = this._activeHandles.get(id);
+      return { toolId: id, toolName: h?.toolName ?? id };
+    });
+    const breadcrumbForView = breadcrumb.slice(0, -1);
+    this.appHandle?.openToolDetail({ invocation, output, children }, breadcrumbForView);
+  }
+  refreshToolDetailIfNeeded() {
+    if (this._toolDetailStack.length === 0)
+      return;
+    const currentId = this._toolDetailStack[this._toolDetailStack.length - 1];
+    if (this._activeHandles.has(currentId)) {
+      this.pushToolDetailData(currentId);
+    }
   }
   handleRunCommand(cmd) {
     return this.backend.runCommand?.(cmd) ?? { output: "", cwd: "" };
@@ -6999,7 +8287,7 @@ ${summaryText}`;
   async handleLoadSession(id) {
     this.sessionId = id;
     this.currentToolIds.clear();
-    this._activeHandles = [];
+    this._activeHandles.clear();
     const history = await this.backend.getHistory?.(id) ?? [];
     const responseMap = new Map;
     for (let i = 0;i < history.length; i++) {
@@ -7017,6 +8305,13 @@ ${summaryText}`;
       const msg = history[i];
       const role = msg.role === "user" ? "user" : "assistant";
       const parts = convertPartsToMessageParts(msg.parts, "success", responseMap.get(i));
+      for (const part of parts) {
+        if (part.type === "tool_use") {
+          for (const inv of part.tools) {
+            this._activeHandles.set(inv.id, this.createHistoricalHandle(inv));
+          }
+        }
+      }
       const meta = getMessageMeta(msg);
       if (parts.length > 0) {
         this.appHandle?.addStructuredMessage(role, parts, meta);
@@ -7099,7 +8394,6 @@ async function consoleFactory(rawContext) {
     }),
     setMCPManager: context.setMCPManager ?? (() => {}),
     agentName: context.agentName,
-    onSwitchAgent: context.onSwitchAgent,
     initWarnings: context.initWarnings,
     extensions: context.extensions,
     api: context.api,

@@ -9,7 +9,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRenderer } from '@opentui/react';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
+import type { AgentDefinitionLike } from '@irises/extension-sdk';
 import { BottomPanel } from './components/BottomPanel';
+import { AgentListView } from './components/AgentListView';
 import { ChatMessageList } from './components/ChatMessageList';
 import { DiffApprovalView } from './components/DiffApprovalView';
 import { InitWarnings } from './components/InitWarnings';
@@ -60,7 +62,8 @@ export function App({
   onResetConfig,
   onExit,
   onSummarize,
-  onSwitchAgent,
+  onListAgents,
+  onSelectAgent,
   onThinkingEffortChange,
   initWarnings,
   agentName,
@@ -75,6 +78,7 @@ export function App({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsInitialSection>('general');
   const [modelList, setModelList] = useState<LLMModelInfo[]>([]);
+  const [agentList, setAgentList] = useState<AgentDefinitionLike[]>([]);
   const [copyMode, setCopyMode] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmChoice, setConfirmChoice] = useState<ConfirmChoice>('confirm');
@@ -145,7 +149,8 @@ export function App({
     onSwitchModel,
     onResetConfig,
     onExit,
-    onSwitchAgent,
+    onListAgents,
+    setAgentList,
     onSummarize,
     undoRedoRef,
     setMessages: appState.setMessages,
@@ -239,6 +244,8 @@ export function App({
     queueEditActions,
     onToggleThoughts: () => setThoughtsToggleSignal((prev) => prev + 1),
     toolListItems: appState.toolListItems,
+    agentList,
+    onSelectAgent,
   });
 
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
@@ -262,6 +269,10 @@ export function App({
 
   if (viewMode === 'model-list') {
     return <ModelListView models={modelList} selectedIndex={selectedIndex} />;
+  }
+
+  if (viewMode === 'agent-list') {
+    return <AgentListView agents={agentList} selectedIndex={selectedIndex} currentAgentName={agentName} />;
   }
 
   if (viewMode === 'queue-list') {
