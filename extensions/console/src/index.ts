@@ -278,16 +278,19 @@ export class ConsolePlatform extends PlatformAdapter {
     this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
       if (sid !== this.sessionId) return;
       this._activeHandles.set(handle.id, handle);
+      this.currentToolIds.add(handle.id);
       const refreshUI = () => {
-        const invocations = Array.from(this._activeHandles.values()).map((h: any) => h.getSnapshot());
+        const invocations = Array.from(this._activeHandles.values())
+          .filter((h: any) => this.currentToolIds.has(h.id))
+          .map((h: any) => h.getSnapshot());
         this.appHandle?.setToolInvocations(invocations);
-        // 如果工具详情视图打开，同步更新详情数据
         this.refreshToolDetailIfNeeded();
       };
       handle.on('state', refreshUI);
       handle.on('output', refreshUI);
       handle.on('child', (childHandle: any) => {
         this._activeHandles.set(childHandle.id, childHandle);
+        this.currentToolIds.add(childHandle.id);
         childHandle.on('state', refreshUI);
         childHandle.on('output', refreshUI);
         refreshUI();
