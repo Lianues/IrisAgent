@@ -613,6 +613,8 @@ async function executeSingle(
       const rich = result as Record<string, unknown>;
       response = (rich.__response as Record<string, unknown>) ?? {};
       responseParts = Array.isArray(rich.__parts) ? rich.__parts as InlineDataPart[] : undefined;
+      // Skill 上下文修改器：传递到 FunctionResponsePart，由 ToolLoop 提取并剥离
+      if (rich.__contextModifier) response.__contextModifier = rich.__contextModifier;
     } else {
       response = { result } as Record<string, unknown>;
     }

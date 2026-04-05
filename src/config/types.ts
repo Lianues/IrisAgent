@@ -185,6 +185,16 @@ export interface ToolsConfig {
   disabledTools?: string[];
 }
 
+/** Skill 调用后对运行时上下文的修改 */
+export interface SkillContextModifier {
+  /** 临时自动放行的工具名称列表 */
+  autoApproveTools?: string[];
+  /** 后续 LLM 调用的模型覆盖 */
+  modelOverride?: string;
+  /** 注入系统提示词的额外文本 */
+  systemPromptInjection?: string;
+}
+
 /** Skill 定义（按需加载的提示词模块） */
 export interface SkillDefinition {
   /**
@@ -195,7 +205,7 @@ export interface SkillDefinition {
   name: string;
   /** Skill 描述 */
   description?: string;
-  /** Skill 提示词内容（通过 read_skill 工具按需返回） */
+  /** Skill 提示词内容（通过 invoke_skill / read_skill 工具按需返回） */
   content: string;
   /**
    * Skill 的路径标识。
@@ -205,6 +215,29 @@ export interface SkillDefinition {
   path: string;
   /** @deprecated 不再使用，保留仅为兼容旧配置 */
   enabled?: boolean;
+
+  // ---- 扩展字段（均可选，向后兼容） ----
+
+  /** 激活时自动放行的工具名称列表 */
+  allowedTools?: string[];
+  /** 模型覆盖（使用此 skill 时切换到指定模型） */
+  model?: string;
+  /** 执行模式：'inline'（注入对话，默认）或 'fork'（独立子代理） */
+  mode?: 'inline' | 'fork';
+  /** 命名参数列表（如 ['file', 'branch']） */
+  arguments?: string[];
+  /** 参数输入提示（如 '<file> [branch]'） */
+  argumentHint?: string;
+  /** 模型触发条件描述（写入工具声明帮助模型判断何时使用） */
+  whenToUse?: string;
+  /** 条件激活 glob 模式（仅在模型接触匹配文件后才出现） */
+  paths?: string[];
+  /** 用户是否可通过 /skill-name 直接调用（默认 true） */
+  userInvocable?: boolean;
+  /** 是否禁止模型自主调用（默认 false） */
+  disableModelInvocation?: boolean;
+  /** 预构建的上下文修改器（从 frontmatter 推导） */
+  contextModifier?: SkillContextModifier;
 }
 
 export interface SystemConfig {

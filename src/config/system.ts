@@ -9,7 +9,7 @@
  */
 
 import { SystemConfig, SkillDefinition } from './types';
-import { loadSkillsFromFilesystem } from './skill-loader';
+import { loadSkillsFromFilesystem, buildSkillDefinition } from './skill-loader';
 
 /** Skill 名称校验：仅允许 ASCII 字母、数字、下划线、连字符，1-64 字符 */
 const SKILL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -24,14 +24,11 @@ export function parseSystemConfig(raw: any = {}, dataDir?: string): SystemConfig
         if (!SKILL_NAME_RE.test(name)) { console.warn(`[Iris] Skill "${name}" 名称不合法（需匹配 ${SKILL_NAME_RE}），已跳过`); return false; }
         return true;
       })
-      .map(([name, v]) => ({
-        name,
-        description: typeof (v as any).description === 'string' ? (v as any).description : undefined,
-        content: (v as any).content as string,
-        // 说明：内联 Skill 没有真实的 SKILL.md 文件，因此生成稳定的路径标识供 read_skill 工具使用。
-        path: `inline:${name}`,
-        enabled: (v as any).enabled === true,
-      }));
+      .map(([name, v]) => {
+        const fields = v as Record<string, unknown>;
+        // 复用 buildSkillDefinition 提取所有扩展字段
+        return buildSkillDefinition(name, fields, fields.content as string, `inline:${name}`);
+      });
   }
 
   // 从文件系统扫描 SKILL.md（仅在提供了 dataDir 时扫描）

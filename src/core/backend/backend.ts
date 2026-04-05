@@ -650,16 +650,24 @@ export class Backend extends EventEmitter {
     this._onSkillsChanged = callback;
   }
 
-  listSkills(): { name: string; path: string; description?: string }[] {
+  listSkills(): { name: string; path: string; description?: string; mode?: string; whenToUse?: string; argumentHint?: string; disableModelInvocation?: boolean }[] {
     return this.skills.map(s => ({
       name: s.name,
       path: s.path,
       description: s.description,
+      mode: s.mode,
+      whenToUse: s.whenToUse,
+      argumentHint: s.argumentHint,
+      disableModelInvocation: s.disableModelInvocation,
     }));
   }
 
   getSkillByPath(skillPath: string): SkillDefinition | undefined {
     return this.skills.find(s => s.path === skillPath);
+  }
+
+  getSkillByName(name: string): SkillDefinition | undefined {
+    return this.skills.find(s => s.name === name);
   }
 
   reloadSkillsFromFilesystem(dataDir: string, inlineSkills?: SkillDefinition[]): void {

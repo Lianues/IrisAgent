@@ -7,6 +7,7 @@
  * 3. 文件系统 Skill 扫描
  * 4. 多来源 Skill 合并优先级
  * 5. Skill 热重载清空逻辑
+ * 6. 扩展 frontmatter 字段解析
  */
 
 import * as fs from 'node:fs';
@@ -29,15 +30,43 @@ describe('parseSystemConfig: inline skills', () => {
       },
     });
 
-    expect(config.skills).toEqual([
-      {
-        name: 'reviewer',
-        description: '审查代码',
-        content: '请审查当前改动。',
-        path: 'inline:reviewer',
-        enabled: true,
+    expect(config.skills).toHaveLength(1);
+    const skill = config.skills![0];
+    expect(skill.name).toBe('reviewer');
+    expect(skill.description).toBe('审查代码');
+    expect(skill.content).toBe('请审查当前改动。');
+    expect(skill.path).toBe('inline:reviewer');
+    expect(skill.enabled).toBe(true);
+  });
+
+  it('内联 Skill 支持扩展字段', () => {
+    const config = parseSystemConfig({
+      skills: {
+        deploy: {
+          description: '部署技能',
+          content: '执行部署到 $0 环境。',
+          'allowed-tools': 'shell, read_file',
+          model: 'opus',
+          context: 'fork',
+          arguments: 'env, region',
+          'argument-hint': '<env> [region]',
+          'when-to-use': '当用户要求部署时',
+        },
       },
-    ]);
+    });
+
+    expect(config.skills).toHaveLength(1);
+    const skill = config.skills![0];
+    expect(skill.allowedTools).toEqual(['shell', 'read_file']);
+    expect(skill.model).toBe('opus');
+    expect(skill.mode).toBe('fork');
+    expect(skill.arguments).toEqual(['env', 'region']);
+    expect(skill.argumentHint).toBe('<env> [region]');
+    expect(skill.whenToUse).toBe('当用户要求部署时');
+    expect(skill.contextModifier).toEqual({
+      autoApproveTools: ['shell', 'read_file'],
+      modelOverride: 'opus',
+    });
   });
 });
 
@@ -70,6 +99,79 @@ describe('loadSkillsFromFilesystem', () => {
     expect(skills).toHaveLength(1);
     expect(skills[0].name).toBe('my-tool');
     expect(skills[0].content).toBe('直接写内容，没有 frontmatter。');
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('解析扩展 frontmatter 字段', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'iris-test-'));
+    const skillDir = path.join(tmpDir, 'skills', 'deploy');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: deploy',
+        'description: 部署应用',
+        'allowed-tools:',
+        '  - shell',
+        '  - read_file',
+        'model: opus',
+        'context: fork',
+        'arguments:',
+        '  - env',
+        '  - region',
+        'argument-hint: "<env> [region]"',
+        'when-to-use: 当用户要求部署时',
+        'paths:',
+        '  - "deploy/**"',
+        '  - "Dockerfile"',
+        'user-invocable: true',
+        'disable-model-invocation: false',
+        '---',
+        '执行部署到 $0 环境。',
+      ].join('\n'),
+    );
+
+    const skills = loadSkillsFromFilesystem(tmpDir);
+    expect(skills).toHaveLength(1);
+    const skill = skills[0];
+    expect(skill.name).toBe('deploy');
+    expect(skill.allowedTools).toEqual(['shell', 'read_file']);
+    expect(skill.model).toBe('opus');
+    expect(skill.mode).toBe('fork');
+    expect(skill.arguments).toEqual(['env', 'region']);
+    expect(skill.argumentHint).toBe('<env> [region]');
+    expect(skill.whenToUse).toBe('当用户要求部署时');
+    expect(skill.paths).toEqual(['deploy/**', 'Dockerfile']);
+    expect(skill.userInvocable).toBe(true);
+    expect(skill.disableModelInvocation).toBe(false);
+    expect(skill.contextModifier).toEqual({
+      autoApproveTools: ['shell', 'read_file'],
+      modelOverride: 'opus',
+    });
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('无扩展字段时保持默认值', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'iris-test-'));
+    const skillDir = path.join(tmpDir, 'skills', 'simple');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: simple\ndescription: 简单技能\n---\n内容。',
+    );
+
+    const skills = loadSkillsFromFilesystem(tmpDir);
+    expect(skills).toHaveLength(1);
+    const skill = skills[0];
+    expect(skill.allowedTools).toBeUndefined();
+    expect(skill.model).toBeUndefined();
+    expect(skill.mode).toBe('inline');
+    expect(skill.contextModifier).toBeUndefined();
+    expect(skill.userInvocable).toBe(true);
+    expect(skill.disableModelInvocation).toBe(false);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

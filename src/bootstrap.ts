@@ -39,6 +39,7 @@ import { CrossAgentTaskBoard } from './core/cross-agent-task-board';
 import { ToolLoop } from './core/tool-loop';
 import { createHistorySearchTool } from './tools/internal/history_search';
 import { createReadSkillTool } from './tools/internal/read_skill';
+import { createInvokeSkillTool } from './tools/internal/invoke_skill';
 import { DEFAULT_SYSTEM_PROMPT } from './prompt/templates/default';
 import { Backend } from './core/backend';
 import type { StorageProvider } from './storage/base';
@@ -302,8 +303,8 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     getSessionId: () => backend.getActiveSessionId(),
   }));
 
-  // 注册 Skill 读取工具。
-  // 说明：即使启动时没有 Skill，也保留回调，便于运行时热重载新增 Skill 后自动出现 read_skill 工具。
+  // 注册 Skill 工具（read_skill + invoke_skill）。
+  // 说明：即使启动时没有 Skill，也保留回调，便于运行时热重载新增 Skill 后自动出现工具。
   const rebuildSkillsTool = () => {
     const skillsList = backend.listSkills();
     tools.unregister('read_skill');
@@ -314,11 +315,33 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     }
   };
 
+  const rebuildInvokeSkillTool = () => {
+    tools.unregister('invoke_skill');
+    const skillsList = backend.listSkills();
+    // 仅在有模型可调用的 skill 时注册（全部 disableModelInvocation 时不注册）
+    const hasInvocableSkills = skillsList.some(s => !s.disableModelInvocation);
+    if (skillsList.length > 0 && hasInvocableSkills) {
+      tools.register(createInvokeSkillTool({
+        getBackend: () => backend,
+        getRouter: () => backend.getRouter(),
+        tools,
+        getToolsConfig: () => backend.getToolsConfig(),
+        retryOnError: config.system.retryOnError,
+        maxRetries: config.system.maxRetries,
+      }));
+    }
+  };
+
   // 初始注册
   rebuildSkillsTool();
+  rebuildInvokeSkillTool();
 
-  // 注册回调：Skill 列表变化时自动重建 read_skill 工具声明
-  backend.setOnSkillsChanged(rebuildSkillsTool);
+  // 注册回调：Skill 列表变化时自动重建所有 Skill 工具声明
+  const rebuildAllSkillTools = () => {
+    rebuildSkillsTool();
+    rebuildInvokeSkillTool();
+  };
+  backend.setOnSkillsChanged(rebuildAllSkillTools);
 
   // 启动 Skill 目录文件系统监听：
   // 检测到 SKILL.md 变化时自动重新扫描并更新 Skill 列表，

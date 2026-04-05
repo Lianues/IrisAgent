@@ -19,10 +19,99 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SkillDefinition } from './types';
+import { parse as parseYAML } from 'yaml';
+import type { SkillDefinition, SkillContextModifier } from './types';
 
 /** Skill 名称校验：仅允许 ASCII 字母、数字、下划线、连字符，1-64 字符 */
 const SKILL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/**
+ * 将 frontmatter 中的字段值解析为字符串数组。
+ *
+ * 支持格式：
+ *   - YAML 数组：[a, b, c]
+ *   - 逗号分隔字符串："a, b, c"
+ *   - 单个字符串："a"
+ */
+/**
+ * 将 frontmatter 中的字段值解析为字符串数组。
+ *
+ * 支持格式：
+ *   - YAML 数组：[a, b, c]
+ *   - 逗号分隔字符串："a, b, c"
+ *   - 空格分隔字符串："a b c"（当不含逗号时）
+ *   - 单个字符串："a"
+ */
+function parseStringArray(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    const arr = value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+    return arr.length > 0 ? arr : undefined;
+  }
+  if (typeof value === 'string') {
+    // 含逗号时按逗号分割（"shell, read_file"），否则按空格分割（"file branch"）
+    const sep = value.includes(',') ? ',' : /\s+/;
+    const arr = value.split(sep).map(s => s.trim()).filter(s => s.length > 0);
+    return arr.length > 0 ? arr : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * 取 kebab-case 或 camelCase 键值。
+ *
+ * SKILL.md frontmatter 使用 kebab-case（如 allowed-tools），
+ * system.yaml 内联 skill 可能使用 camelCase（如 allowedTools）。
+ * 优先取 kebab-case（SKILL.md 标准格式），回退到 camelCase。
+ */
+function getField(fields: Record<string, unknown>, kebab: string, camel: string): unknown {
+  return fields[kebab] ?? fields[camel];
+}
+
+/**
+ * 从解析后的 frontmatter 字段构建完整的 SkillDefinition。
+ * 被 parseSkillMd（文件系统 Skill）和 parseSystemConfig（内联 Skill）共用。
+ */
+export function buildSkillDefinition(
+  name: string,
+  fields: Record<string, unknown>,
+  content: string,
+  filePath: string,
+): SkillDefinition {
+  const allowedTools = parseStringArray(getField(fields, 'allowed-tools', 'allowedTools'));
+  const model = typeof fields.model === 'string' ? fields.model : undefined;
+  const mode = fields.context === 'fork' ? 'fork' as const : 'inline' as const;
+
+  // 预构建 contextModifier
+  const contextModifier: SkillContextModifier | undefined =
+    (allowedTools || model) ? {
+      autoApproveTools: allowedTools,
+      modelOverride: model,
+    } : undefined;
+
+  const argumentHintRaw = getField(fields, 'argument-hint', 'argumentHint');
+  const whenToUseRaw = getField(fields, 'when-to-use', 'whenToUse');
+  const userInvocableRaw = getField(fields, 'user-invocable', 'userInvocable');
+  const disableModelInvocationRaw = getField(fields, 'disable-model-invocation', 'disableModelInvocation');
+
+  return {
+    name,
+    description: typeof fields.description === 'string' ? fields.description : undefined,
+    content,
+    path: filePath,
+    enabled: fields.enabled === true,
+    allowedTools,
+    model,
+    mode,
+    arguments: parseStringArray(fields.arguments),
+    argumentHint: typeof argumentHintRaw === 'string' ? argumentHintRaw : undefined,
+    whenToUse: typeof whenToUseRaw === 'string' ? whenToUseRaw : undefined,
+    paths: parseStringArray(fields.paths),
+    userInvocable: userInvocableRaw !== false,
+    disableModelInvocation: disableModelInvocationRaw === true,
+    contextModifier,
+  };
+}
 
 /**
  * 解析单个 SKILL.md 文件。
@@ -31,6 +120,9 @@ const SKILL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
  *   ---
  *   name: my-skill
  *   description: 做什么用的
+ *   allowed-tools: shell, read_file
+ *   model: opus
+ *   context: inline
  *   ---
  *   Markdown 正文（即 content）
  *
@@ -59,28 +151,25 @@ function parseSkillMd(filePath: string, dirName: string): SkillDefinition | unde
     const content = fmMatch[2].trim();
     if (!content) return undefined;
 
-    // 简易 YAML 解析（不引入 yaml 依赖，仅处理简单键值对）
-    const fields: Record<string, string> = {};
-    for (const line of frontmatterText.split('\n')) {
-      const kv = line.match(/^(\w[\w-]*)\s*:\s*(.+)$/);
-      if (kv) {
-        fields[kv[1]] = kv[2].replace(/^["']|["']$/g, '').trim();
+    // 使用 yaml 库解析 frontmatter（替换原有简易正则解析器）
+    let fields: Record<string, unknown> = {};
+    try {
+      const parsed = parseYAML(frontmatterText);
+      // YAML 可能解析为非对象（如 frontmatter 只写了 true / 123），回退到空对象
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        fields = parsed as Record<string, unknown>;
       }
+    } catch {
+      // YAML 解析失败，回退到空对象（仅使用目录名和 content）
     }
 
-    const name = fields.name || dirName;
+    const name = typeof fields.name === 'string' ? fields.name : dirName;
     if (!SKILL_NAME_RE.test(name)) {
       console.warn(`[Iris] Skill "${name}" 名称不合法（需匹配 ${SKILL_NAME_RE}），已跳过: ${filePath}`);
       return undefined;
     }
 
-    return {
-      name,
-      description: fields.description || undefined,
-      content,
-      path: filePath,
-      enabled: fields.enabled === 'true',
-    };
+    return buildSkillDefinition(name, fields, content, filePath);
   } catch {
     // 读取或解析失败，静默跳过
     return undefined;
