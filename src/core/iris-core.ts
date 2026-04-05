@@ -67,7 +67,8 @@ import { resizeImage, formatDimensionNote } from '../media/image-resize';
 import { extractDocument, isSupportedDocumentMime } from '../media/document-extract';
 import { convertToPDF, isConversionAvailable } from '../media/office-to-pdf';
 import {
-  getAgentStatus, setAgentEnabled, createManifestIfNotExists,
+  // 多 Agent 配置分层重构：移除 setAgentEnabled / createManifestIfNotExists 导入
+  getAgentStatus,
   createAgent, updateAgent, deleteAgent, resetCache as resetAgentCache, loadAgentDefinitions,
 } from '../agents';
 import { parseUnifiedDiff } from '../tools/internal/apply_diff/unified_diff';
@@ -98,6 +99,11 @@ export interface IrisCoreOptions {
   agentName?: string;
   /** Agent 专属路径集（不提供则使用全局默认路径） */
   agentPaths?: AgentPaths;
+  /**
+   * 已合并的完整配置（由 IrisHost 分层合并后传入）。
+   * 多 Agent 配置分层重构：优先使用此字段，不提供时 fallback 到自行加载。
+   */
+  resolvedConfig?: AppConfig;
   /** 运行时直接注入的内联插件 */
   inlinePlugins?: InlinePluginEntry[];
   /** 外部注入的全局任务板（多 Agent 模式下由 IrisHost 创建并共享） */
@@ -170,8 +176,12 @@ export class IrisCore {
     const agentPaths = options.agentPaths;
     const agentLabel = options.agentName;
 
-    const configDir = findConfigFile(agentPaths?.configDir);
-    const config = loadConfig(agentPaths?.configDir, agentPaths);
+    // 多 Agent 配置分层重构：优先使用 IrisHost 传入的 resolvedConfig，
+    // fallback 到自行加载（兼容 CLI 模式直接 new IrisCore() 的用法）。
+    const configDir = agentPaths?.configDir
+      ? findConfigFile(agentPaths.configDir, true)
+      : findConfigFile();
+    const config = options.resolvedConfig ?? loadConfig(agentPaths?.configDir, agentPaths);
     const extensions = createBootstrapExtensionRegistry();
     registerExtensionPlatforms(extensions.platforms, undefined, config.system.devSourceExtensions);
 
@@ -308,7 +318,8 @@ export class IrisCore {
     }, modeRegistry);
 
     backend.setTaskBoard(taskBoard);
-    taskBoard.registerBackend(options.agentName ?? '__global__', backend);
+    // 多 Agent 配置分层重构：移除 __global__ fallback，所有 agent 都有明确名称（至少 master）
+    taskBoard.registerBackend(options.agentName ?? 'master', backend);
 
     // 注册子代理工具
     if (hasSubAgents) {
@@ -324,7 +335,8 @@ export class IrisCore {
         ...(asyncSubAgentsEnabled ? {
           getSessionId: () => backend.getActiveSessionId(),
           taskBoard,
-          agentName: options.agentName ?? '__global__',
+          // 多 Agent 配置分层重构：移除 __global__ fallback
+          agentName: options.agentName ?? 'master',
         } : {}),
       }));
     }
@@ -463,8 +475,7 @@ export class IrisCore {
       },
       agentManager: {
         getStatus: () => getAgentStatus(),
-        setEnabled: (enabled: boolean) => setAgentEnabled(enabled),
-        createManifest: () => createManifestIfNotExists(),
+        // 多 Agent 配置分层重构：移除 setEnabled / createManifest（不再有 enabled 开关）
         create: (name: string, description?: string) => createAgent(name, description),
         update: (name: string, fields: any) => updateAgent(name, fields),
         delete: (name: string) => deleteAgent(name),
@@ -484,7 +495,8 @@ export class IrisCore {
       services: pluginManager.getServiceRegistry(),
       configContributions: pluginManager.getConfigContributionRegistry(),
       taskBoard,
-      agentName: options.agentName ?? '__global__',
+      // 多 Agent 配置分层重构：移除 __global__ fallback
+      agentName: options.agentName ?? 'master',
       patchMethod,
       patchPrototype,
       createToolLoop: (loopOptions: { tools: any; systemPrompt: string; maxRounds?: number }) => {

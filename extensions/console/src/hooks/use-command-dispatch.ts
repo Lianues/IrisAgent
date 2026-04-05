@@ -97,9 +97,11 @@ export function useCommandDispatch({
         onSwitchAgent();
         return;
       }
+      // 多 Agent 配置分层重构：移除"未启用多 Agent 模式"提示。
+      // 系统永远以 agent 为单位运行，/agent 在单 agent 时提示无其他可切换的 agent。
       appendCommandMessage(
         setMessages,
-        '当前未启用多 Agent 模式。请在 ~/.iris/agents.yaml 中设置 enabled: true。',
+        '当前只有一个 Agent，无需切换。',
       );
       return;
     }

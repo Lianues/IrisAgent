@@ -611,7 +611,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     const targetHandle = network.getPeerBackendHandle?.(targetName);
     if (targetHandle) {
       this.backend = targetHandle;
-      this.agentName = targetName === '__global__' ? undefined : targetName;
+      // 多 Agent 配置分层重构：移除 __global__ 特判，所有 agent 都有明确名称
+      this.agentName = targetName;
 
       // 更新模型信息（新 Agent 可能使用不同模型）
       const modelInfo = targetHandle.getCurrentModelInfo?.();

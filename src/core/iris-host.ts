@@ -2,9 +2,14 @@
  * IrisHost — 多 Agent 管理器
  *
  * 进程内唯一实例，统一管理所有 IrisCore（Agent）的生命周期。
- * 消除了原 runSingleAgent / runMultiAgent 的分叉：
- *   - 没有配置 agents.yaml → 自动创建一个默认 Core（N=1）
- *   - 配置了 agents.yaml  → 每个 Agent 一个 Core（N≥1）
+ *
+ * 多 Agent 配置分层重构：
+ *   - 不再有单 Agent 特殊路径和 __global__ 匿名实体。
+ *   - 系统永远以 agent 为单位运行，至少有一个 master agent。
+ *   - 全局配置（llm/ocr/storage）由 IrisHost 加载一次，通过
+ *     loadAgentConfig 与各 agent 的覆盖配置合并后传入 IrisCore。
+ *   - ensureDefaultAgent() 确保 agents.yaml 存在且至少包含 master。
+ *   - 移除 isMultiAgentEnabled / enabled 开关。
  *
  * agentNetwork 通过 IrisCoreOptions.agentNetwork 在 spawnAgent 时注入，
  * 不再事后通过 monkey-patch 修改 irisAPI。
@@ -16,7 +21,9 @@ import { IrisCore } from './iris-core';
 import type { IrisCoreOptions, AgentNetworkProvider } from './iris-core';
 import { CrossAgentTaskBoard } from './cross-agent-task-board';
 import { IPCServer } from '../ipc/server';
-import { isMultiAgentEnabled, loadAgentDefinitions, resolveAgentPaths } from '../agents';
+import { loadAgentDefinitions, resolveAgentPaths, ensureDefaultAgent } from '../agents';
+import { loadGlobalConfig, loadAgentConfig } from '../config';
+import type { GlobalConfigResult } from '../config';
 import type { AgentDefinition } from '../agents';
 
 export class IrisHost {
@@ -32,6 +39,9 @@ export class IrisHost {
   /** Agent 定义列表（start 时加载） */
   private agentDefs: AgentDefinition[] = [];
 
+  /** 全局配置结果（多 Agent 配置分层重构：加载一次，所有 agent 共享） */
+  private globalConfigResult!: GlobalConfigResult;
+
   /** 幂等 shutdown */
   private shutdownPromise: Promise<void> | null = null;
 
@@ -39,20 +49,26 @@ export class IrisHost {
 
   /**
    * 加载 Agent 定义，为每个 Agent 创建并启动 IrisCore。
-   * 没有定义时自动创建一个默认 Core。
+   *
+   * 多 Agent 配置分层重构：
+   *   1. 加载全局配置（一次）
+   *   2. 确保 agents.yaml 存在且至少包含 master agent
+   *   3. 为每个 agent 分层合并配置并创建 IrisCore
    */
   async start(): Promise<void> {
-    this.agentDefs = isMultiAgentEnabled() ? loadAgentDefinitions() : [];
+    // 1. 加载全局配置（多 Agent 配置分层重构：全局配置只加载一次）
+    this.globalConfigResult = loadGlobalConfig();
 
-    if (this.agentDefs.length === 0) {
-      // N=0 → 一个默认 Core
-      await this.spawnAgent({ name: '__global__' });
-    } else {
-      // N≥1 → 每个 Agent 一个 Core
-      for (const def of this.agentDefs) {
-        console.log(`[Iris] 正在初始化 Agent: ${def.name}...`);
-        await this.spawnAgent(def);
-      }
+    // 2. 确保 agents.yaml + master agent 存在
+    ensureDefaultAgent();
+
+    // 3. 加载所有 agent 定义
+    this.agentDefs = loadAgentDefinitions();
+
+    // 4. 为每个 agent 创建 Core
+    for (const def of this.agentDefs) {
+      console.log(`[Iris] 正在初始化 Agent: ${def.name}...`);
+      await this.spawnAgent(def);
     }
   }
 
@@ -60,24 +76,30 @@ export class IrisHost {
 
   /**
    * 运行时创建并启动一个新的 IrisCore。
-   * 多 Agent 模式下自动注入 agentNetwork。
+   *
+   * 多 Agent 配置分层重构：
+   *   - 不再有 __global__ 特殊分支，所有 agent 都有明确名称。
+   *   - 通过 loadAgentConfig 分层合并全局配置 + agent 覆盖。
+   *   - resolvedConfig 传入 IrisCore，避免 agent 自行加载。
    */
   async spawnAgent(def: { name: string; description?: string; dataDir?: string }): Promise<IrisCore> {
     if (this.cores.has(def.name)) {
       throw new Error(`Agent "${def.name}" 已存在`);
     }
 
+    // 解析 agent 专属路径
+    const agentDef = this.agentDefs.find(d => d.name === def.name) ?? def as AgentDefinition;
+    const agentPaths = resolveAgentPaths(agentDef);
+
+    // 多 Agent 配置分层重构：分层合并全局配置 + agent 覆盖 → 最终 AppConfig
+    const resolvedConfig = loadAgentConfig(this.globalConfigResult, agentPaths);
+
     const options: IrisCoreOptions = {
-      agentName: def.name === '__global__' ? undefined : def.name,
+      agentName: def.name,
+      agentPaths,
+      resolvedConfig,
       taskBoard: this.taskBoard,
     };
-
-    // 如果是已定义的 Agent，解析其专属路径
-    if (def.name !== '__global__') {
-      const agentDef = this.agentDefs.find(d => d.name === def.name) ?? def as AgentDefinition;
-      options.agentPaths = resolveAgentPaths(agentDef);
-      options.agentName = def.name;
-    }
 
     // 多 Agent 模式下注入 agentNetwork（通过构造参数，不再事后 patch）
     if (this.agentDefs.length > 1 || this.cores.size > 0) {
@@ -181,7 +203,7 @@ export class IrisHost {
   }
 
   /**
-   * 获取默认 Core（第一个）。单 Agent 模式下就是唯一的那个。
+   * 获取默认 Core（第一个）。
    */
   getDefaultCore(): IrisCore {
     const first = this.cores.values().next();
@@ -239,13 +261,15 @@ export class IrisHost {
   /**
    * 为指定 Agent 构建 agentNetwork 提供者。
    * 使用闭包引用 this.cores，listPeers() 每次调用时动态计算。
+   *
+   * 多 Agent 配置分层重构：移除 __global__ 特判。
    */
   private buildAgentNetwork(selfName: string): AgentNetworkProvider {
     return {
       selfName,
       listPeers: () => [...this.cores.keys()].filter(k => k !== selfName),
       getPeerDescription: (name: string) => {
-        if (name === '__global__') return '全局 AI';
+        // 多 Agent 配置分层重构：移除 __global__ 特判，所有 agent 都有明确名称
         return this.agentDefs.find(d => d.name === name)?.description;
       },
       getPeerBackend: (name: string) => this.cores.get(name)?.backend,

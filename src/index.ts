@@ -95,9 +95,8 @@ async function createPlatforms(host: IrisHost) {
           for (const [agentName, agentCore] of host.cores) {
             if (agentName === name) continue; // 创建者已自动注册
             const agentDefs = host.getAgentDefs();
-            const displayName = agentName === '__global__'
-              ? '全局 AI'
-              : agentDefs.find(d => d.name === agentName)?.description;
+            // 多 Agent 配置分层重构：移除 __global__ 特判，所有 agent 都有明确名称
+            const displayName = agentDefs.find(d => d.name === agentName)?.description;
             sharedPlatform.addAgent(
               agentName,
               agentCore.backendHandle,
@@ -143,7 +142,8 @@ async function createPlatforms(host: IrisHost) {
   // 热重载注入（统一，不分叉）
   if (sharedPlatform?.setReloadHandler) {
     sharedPlatform.setReloadHandler(async (agent: any): Promise<any> => {
-      const agentName = (typeof agent === 'object' ? agent.name : undefined) ?? '__global__';
+      // 多 Agent 配置分层重构：移除 __global__ fallback，默认使用 master
+      const agentName = (typeof agent === 'object' ? agent.name : undefined) ?? 'master';
       return await host.reloadAgent(agentName);
     });
   }

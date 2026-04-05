@@ -130,11 +130,14 @@ export interface ExtensionManagerLike {
   listPlatformCatalog?(): unknown[];
 }
 
-/** Agent 管理接口（CRUD 操作 agents.yaml + 运行时状态查询） */
+/**
+ * Agent 管理接口（CRUD 操作 agents.yaml + 运行时状态查询）
+ *
+ * 多 Agent 配置分层重构：移除 setEnabled / createManifest / exists / enabled。
+ * agents.yaml 存在即生效，不再需要 enabled 开关。
+ */
 export interface AgentManagerLike {
-  getStatus(): { exists: boolean; enabled: boolean; agents: AgentDefinitionLike[]; manifestPath: string };
-  setEnabled(enabled: boolean): { success: boolean; message: string };
-  createManifest(): { success: boolean; message: string };
+  getStatus(): { agents: AgentDefinitionLike[]; manifestPath: string };
   create(name: string, description?: string): { success: boolean; message: string };
   update(name: string, fields: { description?: string; dataDir?: string }): { success: boolean; message: string };
   delete(name: string): { success: boolean; message: string };
