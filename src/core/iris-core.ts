@@ -113,6 +113,8 @@ export interface IrisCoreOptions {
   taskBoard?: CrossAgentTaskBoard;
   /** 多 Agent 模式下的 agentNetwork（由 IrisHost 构造时注入） */
   agentNetwork?: AgentNetworkProvider;
+  /** MCP 共享：外部注入的共享 MCPManager（由 IrisHost 在 MCP 配置相同时传入，Core 不拥有其生命周期） */
+  sharedMCPManager?: MCPManager;
 }
 
 // ── IrisCore ──
@@ -142,6 +144,11 @@ export class IrisCore {
   // ---- MCP 管理（支持热重载，需要 getter/setter） ----
   private _mcpManager: MCPManager | undefined;
 
+  /**
+   * MCP 共享：标识该 Core 是否拥有 MCPManager 的生命周期。
+   * false 表示使用的是 IrisHost 注入的共享实例，shutdown 时不 disconnect。
+   */
+  private _mcpOwned = true;
   get mcpManager(): MCPManager | undefined { return this._mcpManager; }
   setMCPManager(manager?: MCPManager): void { this._mcpManager = manager; }
   getMCPManager(): MCPManager | undefined { return this._mcpManager; }
@@ -259,7 +266,16 @@ export class IrisCore {
 
     // ---- 3.1 连接 MCP 服务器 ----
     let mcpManager: MCPManager | undefined;
-    if (config.mcp) {
+    // MCP 共享：如果 IrisHost 注入了 sharedMCPManager（配置相同时），
+    // 直接复用该实例，跳过 createMCPManager + connectAll。
+    // 此时 _mcpOwned = false，shutdown 时不 disconnect。
+    if (options.sharedMCPManager) {
+      mcpManager = options.sharedMCPManager;
+      this._mcpOwned = false;
+      tools.registerAll(mcpManager.getTools());
+    } else if (config.mcp) {
+      // 没有共享注入时走原有逻辑：自建 MCPManager + connectAll。
+      // _mcpOwned 保持默认 true，shutdown 时由 Core 自行 disconnect。
       mcpManager = createMCPManager(config.mcp);
       await mcpManager.connectAll();
       tools.registerAll(mcpManager.getTools());
@@ -591,8 +607,10 @@ export class IrisCore {
     this._state = 'stopping';
 
     try {
-      // 断开 MCP 连接
-      if (this._mcpManager) {
+      // 断开 MCP 连接。
+      // MCP 共享：_mcpOwned === false 表示使用的是 IrisHost 注入的共享实例，
+      // 由 Host 统一管理生命周期，Core shutdown 时跳过 disconnect。
+      if (this._mcpManager && this._mcpOwned) {
         try { await this._mcpManager.disconnectAll(); } catch { /* 忽略 */ }
       }
 
