@@ -16,7 +16,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import type { IPCClient } from './client';
+import type { IPCClientLike } from './client-like';
 import { RemoteToolHandle } from './remote-tool-handle';
 import { createLogger } from '../logger';
 import {
@@ -30,7 +30,7 @@ export class RemoteBackendHandle extends EventEmitter {
   /** 活跃的远程 ToolHandle 缓存 */
   private toolHandles = new Map<string, RemoteToolHandle>();
 
-  constructor(private client: IPCClient) {
+  constructor(private client: IPCClientLike) {
     super();
     this.setupNotificationForwarding();
   }

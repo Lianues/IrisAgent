@@ -21,9 +21,11 @@ interface ThinkingIndicatorProps {
   level: ThinkingEffortLevel;
   /** 是否显示操作提示（首次进入时显示） */
   showHint?: boolean;
+  /** 当前是否处于远程连接状态 */
+  isRemote?: boolean;
 }
 
-export function ThinkingIndicator({ level, showHint }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ level, showHint, isRemote }: ThinkingIndicatorProps) {
   const filled = FILL_MAP[level];
   const isDisabled = level === 'none';
 
@@ -45,6 +47,11 @@ export function ThinkingIndicator({ level, showHint }: ThinkingIndicatorProps) {
           <span fg={isDisabled ? C.dim : C.accent}> {isDisabled ? 'thinking off' : level}</span>
         </text>
       </box>
+      {isRemote ? (
+        <box>
+          <text fg={C.dim}>输入 /disconnect 断开远程连接</text>
+        </box>
+      ) : null}
       {showHint ? (
         <box>
           <text fg={C.dim}>{`shift+\u2190/\u2192 调整思考强度`}</text>

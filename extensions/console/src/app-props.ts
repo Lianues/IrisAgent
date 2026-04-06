@@ -33,10 +33,18 @@ export interface AppProps {
   onExit: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   onSwitchAgent?: () => void;
+  onRemoteConnect?: (name?: string) => void;
+  onRemoteDisconnect?: () => void;
+  /** 远程连接的主机地址（非空时 StatusBar 显示远程标识） */
+  remoteHost?: string;
   onThinkingEffortChange?: (level: ThinkingEffortLevel) => void;
   agentName?: string;
-  /** 初始化过程中的警告信息（首屏展示） */
+  /** 初始化过程中的提示信息（首屏展示） */
   initWarnings?: string[];
+  /** initWarnings 的颜色（默认黄色警告） */
+  initWarningsColor?: string;
+  /** initWarnings 的图标（默认 ⚠） */
+  initWarningsIcon?: string;
   modeName?: string;
   modelId: string;
   modelName: string;

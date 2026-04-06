@@ -195,6 +195,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private agentName?: string;
   private settingsController: ConsoleSettingsController;
   private initWarnings: string[];
+  private initWarningsColor?: string;
+  private initWarningsIcon?: string;
 
   /** waitForExit() 的 resolve 函数 */
   private exitResolve?: (action: 'exit' | 'switch-agent') => void;
@@ -217,6 +219,22 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
   /** 串行化 undo/redo 持久化操作，防止并发写入。 */
   private historyMutationQueue: Promise<unknown> = Promise.resolve();
+
+  // ── 远程连接状态 ──
+  /** 远程连接前保存的原始 backend，断开时恢复 */
+  private originalBackend: IrisBackendLike | null = null;
+  /** 远程 WS IPC 客户端 */
+  private remoteClient: any = null;
+  /** 当前是否处于远程连接状态 */
+  private _isRemote = false;
+  /** 远程连接的主机地址（用于 StatusBar 显示） */
+  private _remoteHost = '';
+  /** 远程连接前保存的原始 API（断开时恢复） */
+  private originalApi: any = null;
+  /** 远程连接前保存的原始 settingsController */
+  private originalSettingsController: ConsoleSettingsController | null = null;
+  /** 远程连接前保存的原始 agentName */
+  private originalAgentName?: string;
 
   constructor(backend: IrisBackendLike, options: ConsolePlatformOptions) {
     super();
@@ -535,6 +553,9 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         },
         onSummarize: () => this.handleSummarize(),
         onSwitchAgent: () => this.handleSwitchAgent(),
+        onRemoteConnect: (name?: string) => this.handleRemoteConnect(name),
+        onRemoteDisconnect: () => this.handleRemoteDisconnect(),
+        remoteHost: this._remoteHost || undefined,
         onThinkingEffortChange: (level: import('./app-types').ThinkingEffortLevel) => this.applyThinkingEffort(level),
         agentName: this.agentName,
         modeName: this.modeName,
@@ -542,6 +563,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         modelName: this.modelName,
         contextWindow: this.contextWindow,
         initWarnings: this.initWarnings,
+        initWarningsColor: this.initWarningsColor,
+        initWarningsIcon: this.initWarningsIcon,
         // 插件注册的 Settings Tab：从 IrisAPI 获取所有已注册的 tab 定义
         pluginSettingsTabs: this.api?.getConsoleSettingsTabs?.() ?? [],
       });
@@ -625,6 +648,291 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       this.currentToolIds.clear();
       this._activeHandles.clear();
     }
+
+    // 重启 TUI
+    await this.start();
+  }
+
+  // ============ 远程连接 ============
+
+  /**
+   * 核心远程连接逻辑：WsIPCClient 创建 → 握手 → backend/api swap。
+   * 被向导流程和快捷连接共用。调用前 TUI 必须已停止。
+   */
+  private async doRemoteConnect(url: string, token: string): Promise<void> {
+    const { showConnectingStatus, showConnectSuccess, showConnectError } =
+      await import('./remote-wizard');
+
+    showConnectingStatus(url);
+
+    try {
+      // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
+      const { WsIPCClient } = await import('../../src/net/client');
+      // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
+      const { RemoteBackendHandle } = await import('../../src/ipc/remote-backend-handle');
+
+      const wsClient = new WsIPCClient();
+      const handshake = await wsClient.connect(url, token);
+
+      let remoteBackend: any;
+      let remoteApi: any;
+      try {
+        remoteBackend = new RemoteBackendHandle(wsClient);
+        remoteBackend._streamEnabled = handshake.streamEnabled;
+        await remoteBackend.initCaches();
+        await wsClient.subscribe('*');
+
+        // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
+        const { createRemoteApiProxy } = await import('../../src/ipc/remote-api-proxy');
+        remoteApi = createRemoteApiProxy(wsClient, handshake.agentName);
+        if (typeof remoteApi.initCaches === 'function') {
+          await remoteApi.initCaches();
+        }
+      } catch (initErr) {
+        wsClient.disconnect();
+        throw initErr;
+      }
+
+      this.originalBackend = this.backend;
+      this.originalApi = this.api;
+      this.originalSettingsController = this.settingsController;
+      this.originalAgentName = this.agentName;
+      this.remoteClient = wsClient;
+      this.backend = remoteBackend;
+      this.api = remoteApi;
+      this.settingsController = new ConsoleSettingsController({
+        backend: remoteBackend,
+        configManager: remoteApi.configManager,
+        mcpManager: undefined,
+        extensions: undefined,
+      });
+      this._isRemote = true;
+      this.agentName = handshake.agentName === '__global__' ? undefined : handshake.agentName;
+      try { this._remoteHost = new URL(url).host; } catch { this._remoteHost = url; }
+
+      const modelInfo = remoteBackend.getCurrentModelInfo?.();
+      if (modelInfo) {
+        this.modelName = modelInfo.modelName ?? this.modelName;
+        this.modelId = modelInfo.modelId ?? this.modelId;
+        this.contextWindow = modelInfo.contextWindow ?? this.contextWindow;
+      }
+
+      this.sessionId = generateSessionId();
+      this.currentToolIds.clear();
+      this._activeHandles.clear();
+
+      showConnectSuccess(handshake.agentName, this.modelName);
+      this.initWarnings = [`已连接到远程 Iris — ${this._remoteHost} (agent=${handshake.agentName}, model=${this.modelName})\n输入 /disconnect 断开连接`];
+      this.initWarningsColor = '#00cec9';
+      this.initWarningsIcon = '●';
+
+      await new Promise(r => setTimeout(r, 800));
+    } catch (err) {
+      showConnectError((err as Error).message);
+      await new Promise(r => setTimeout(r, 2000));
+      throw err;
+    }
+  }
+
+  /** 读取本地配置中的已保存连接列表 */
+  private readSavedRemotes(): Record<string, { url: string; token?: string }> {
+    try {
+      const config = this.api?.configManager?.readEditableConfig?.() as Record<string, any>;
+      const remotes = config?.net?.remotes;
+      if (remotes && typeof remotes === 'object') return remotes;
+    } catch {}
+    return {};
+  }
+
+  /** lastRemote → remotes 迁移 */
+  private migrateLastRemote(): void {
+    try {
+      const config = this.api?.configManager?.readEditableConfig?.() as Record<string, any>;
+      const lastRemote = config?.net?.lastRemote;
+      if (!lastRemote?.url) return;
+
+      const remotes = config?.net?.remotes ?? {};
+      // 检查是否已有同 URL 的条目
+      const alreadyExists = Object.values(remotes).some(
+        (r: any) => r?.url === lastRemote.url,
+      );
+      if (!alreadyExists) {
+        this.api?.configManager?.updateEditableConfig?.({
+          net: { remotes: { _last: { url: lastRemote.url, token: lastRemote.token } } },
+        });
+      }
+      // 删除 lastRemote
+      this.api?.configManager?.updateEditableConfig?.({
+        net: { lastRemote: null },
+      });
+    } catch {}
+  }
+
+  /** 保存连接到 remotes（用 originalApi 写本地配置） */
+  private saveRemote(name: string, url: string, token: string): void {
+    try {
+      const api = this.originalApi ?? this.api;
+      api?.configManager?.updateEditableConfig?.({
+        net: { remotes: { [name]: { url, token } } },
+      });
+    } catch {}
+  }
+
+  /** 删除已保存的连接 */
+  private deleteSavedRemote(name: string): void {
+    try {
+      this.api?.configManager?.updateEditableConfig?.({
+        net: { remotes: { [name]: null } },
+      });
+    } catch {}
+  }
+
+  /**
+   * 处理 /remote 命令 — 交互式连接远程 Iris。
+   * @param quickName 快捷连接名称（/remote <name>），不传则显示向导。
+   */
+  private async handleRemoteConnect(quickName?: string): Promise<void> {
+    await this.stop();
+
+    // 迁移旧的 lastRemote
+    this.migrateLastRemote();
+
+    const remotes = this.readSavedRemotes();
+
+    // 快捷连接：/remote <name>
+    if (quickName) {
+      const entry = remotes[quickName];
+      if (!entry) {
+        const { showConnectError } = await import('./remote-wizard');
+        showConnectError(`未找到已保存的连接: ${quickName}`);
+        await new Promise(r => setTimeout(r, 1500));
+        await this.start();
+        return;
+      }
+
+      if (entry.token) {
+        try {
+          await this.doRemoteConnect(entry.url, entry.token);
+        } catch {}
+        await this.start();
+        return;
+      }
+
+      // 有 URL 但无 token，需要输入（URL 预填且锁定）
+      const { showInputPhase } = await import('./remote-wizard');
+      const result = await showInputPhase({ prefillUrl: entry.url, urlLocked: true });
+      if (!result) {
+        await this.start();
+        return;
+      }
+      try {
+        await this.doRemoteConnect(entry.url, result.token);
+        // 更新保存的 token
+        this.saveRemote(quickName, entry.url, result.token);
+      } catch {}
+      await this.start();
+      return;
+    }
+
+    // 构建已保存连接列表
+    const saved = Object.entries(remotes).map(([name, entry]) => ({
+      name,
+      url: entry.url,
+      hasToken: !!entry.token,
+    }));
+
+    // 启动局域网发现
+    let discoveryPromise: Promise<import('./remote-wizard').DiscoveredConnection[]> | undefined;
+    try {
+      // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
+      const { discoverLanInstances } = await import('../../src/net/discovery');
+      discoveryPromise = discoverLanInstances();
+    } catch {}
+
+    const { showRemoteConnectWizard, showSavePrompt } = await import('./remote-wizard');
+
+    const result = await showRemoteConnectWizard({
+      saved,
+      discoveryPromise,
+      onDelete: (name) => this.deleteSavedRemote(name),
+    });
+
+    if (!result) {
+      await this.start();
+      return;
+    }
+
+    // 已保存 + 有 token → token 为空字符串，需从 config 读取真实 token
+    let connectUrl = result.url;
+    let connectToken = result.token;
+    if (result.source === 'saved' && result.savedName && !connectToken) {
+      const entry = remotes[result.savedName];
+      if (entry?.token) connectToken = entry.token;
+    }
+
+    try {
+      await this.doRemoteConnect(connectUrl, connectToken);
+
+      // 连接成功 → 如果不是已保存的连接，提示保存
+      if (result.source !== 'saved') {
+        const saveName = await showSavePrompt();
+        if (saveName) {
+          this.saveRemote(saveName, connectUrl, connectToken);
+        }
+      }
+    } catch {}
+
+    await this.start();
+  }
+
+  /**
+   * 处理 /remote disconnect — 断开远程连接，恢复本地 backend。
+   * 与 handleSwitchAgent 相同模式：stop → swap → start，无返回值。
+   */
+  private async handleRemoteDisconnect(): Promise<void> {
+    if (!this._isRemote || !this.originalBackend) return;
+
+    // 停止 TUI
+    await this.stop();
+
+    // 断开远程连接
+    if (this.remoteClient) {
+      this.remoteClient.disconnect();
+      this.remoteClient = null;
+    }
+
+    // 恢复本地 backend + API + settingsController
+    const disconnectedHost = this._remoteHost;
+    this.backend = this.originalBackend;
+    this.originalBackend = null;
+    if (this.originalApi) {
+      this.api = this.originalApi;
+      this.originalApi = null;
+    }
+    if (this.originalSettingsController) {
+      this.settingsController = this.originalSettingsController;
+      this.originalSettingsController = null;
+    }
+    this.agentName = this.originalAgentName;
+    this.originalAgentName = undefined;
+    this._isRemote = false;
+    this._remoteHost = '';
+    this.initWarnings = [`已断开远程连接 (${disconnectedHost})，已回到本地`];
+    this.initWarningsColor = '#74b9ff';
+    this.initWarningsIcon = '○';
+
+    // 从本地 backend 恢复模型信息
+    const modelInfo = (this.backend as any).getCurrentModelInfo?.();
+    if (modelInfo) {
+      this.modelName = modelInfo.modelName ?? this.modelName;
+      this.modelId = modelInfo.modelId ?? this.modelId;
+      this.contextWindow = modelInfo.contextWindow ?? this.contextWindow;
+    }
+
+    // 新 session
+    this.sessionId = generateSessionId();
+    this.currentToolIds.clear();
+    this._activeHandles.clear();
 
     // 重启 TUI
     await this.start();

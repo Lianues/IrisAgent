@@ -29,15 +29,20 @@ interface InputBarProps {
   onPrioritySubmit: (text: string) => void;
   /** Shift+Left/Right 切换思考强度 */
   onCycleThinkingEffort: (direction: 1 | -1) => void;
+  /** 当前是否处于远程连接状态 */
+  isRemote?: boolean;
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, isRemote }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
   const { width: termWidth } = useTerminalDimensions();
 
-  const visibleCommands = COMMANDS;
+  const visibleCommands = useMemo(
+    () => COMMANDS.filter((cmd) => !cmd.remoteOnly || isRemote),
+    [isRemote],
+  );
 
   // ── 粘贴保护 ──────────────────────────────────────────────
   // 当 bracketed paste 事件触发时，框架可能同时发出对应的逐字符
@@ -250,7 +255,9 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
               <box key={cmd.name} paddingLeft={1} backgroundColor={isSelected ? C.border : undefined}>
                 <text>
                   <span fg={isSelected ? C.accent : C.dim}>{isSelected ? '▸ ' : '  '}</span>
-                  {isSelected ? <strong><span fg={C.text}>{padded}</span></strong> : <span fg={C.textSec}>{padded}</span>}
+                  {isSelected
+                    ? <strong><span fg={cmd.color ?? C.text}>{padded}</span></strong>
+                    : <span fg={cmd.color ?? C.textSec}>{padded}</span>}
                   <span fg={isSelected ? C.textSec : C.dim}>  {cmd.description}</span>
                 </text>
               </box>

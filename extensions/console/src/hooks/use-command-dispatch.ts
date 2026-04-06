@@ -36,6 +36,10 @@ interface UseCommandDispatchOptions {
   onExit: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   onSwitchAgent?: () => void;
+  onRemoteConnect?: (name?: string) => void;
+  onRemoteDisconnect?: () => void;
+  isRemote?: boolean;
+  remoteHost?: string;
   undoRedoRef: MutableRefObject<UndoRedoStack>;
   setMessages: SetMessages;
   commitTools: () => void;
@@ -71,6 +75,10 @@ export function useCommandDispatch({
   onResetConfig,
   onExit,
   onSwitchAgent,
+  onRemoteConnect,
+  onRemoteDisconnect,
+  isRemote,
+  remoteHost,
   onSummarize,
   undoRedoRef,
   setMessages,
@@ -101,6 +109,47 @@ export function useCommandDispatch({
         setMessages,
         '当前未启用多 Agent 模式。请在 ~/.iris/agents.yaml 中设置 enabled: true。',
       );
+      return;
+    }
+
+    if (text === '/disconnect' || text === '/remote disconnect') {
+      if (!isRemote) {
+        appendCommandMessage(setMessages, '当前未连接远程实例。');
+        return;
+      }
+      if (onRemoteDisconnect) {
+        onRemoteDisconnect();
+        return;
+      }
+      return;
+    }
+    if (text === '/remote' || text === '/remote ') {
+      if (isRemote) {
+        appendCommandMessage(setMessages,
+          `当前已连接远程实例: ${remoteHost}\n输入 /disconnect 断开连接。`);
+        return;
+      }
+      if (onRemoteConnect) {
+        onRemoteConnect();
+        return;
+      }
+      appendCommandMessage(setMessages, '远程连接功能不可用。');
+      return;
+    }
+    if (text.startsWith('/remote ') && text !== '/remote disconnect') {
+      const name = text.slice(8).trim();
+      if (name) {
+        if (onRemoteConnect) { onRemoteConnect(name); }
+        return;
+      }
+      // /remote + 多余空格 → 同 /remote
+      if (onRemoteConnect && !isRemote) { onRemoteConnect(); }
+      return;
+    }
+
+    if (text === '/net') {
+      setSettingsInitialSection('net');
+      setViewMode('settings');
       return;
     }
 
@@ -237,6 +286,10 @@ export function useCommandDispatch({
     onListSessions,
     onNewSession,
     onRedo,
+    onRemoteConnect,
+    onRemoteDisconnect,
+    isRemote,
+    remoteHost,
     onResetConfig,
     onRunCommand,
     onSubmit,

@@ -419,6 +419,70 @@ export class IrisCore {
       if (!consoleSettingsTabs.some(t => t.id === tab.id)) consoleSettingsTabs.push(tab);
     };
 
+    // 内置 Net 设置标签页
+    registerConsoleSettingsTab({
+      id: 'net',
+      label: '多端互联',
+      fields: [
+        { key: 'enabled', label: '启用 Net 服务', type: 'toggle', defaultValue: false,
+          description: '启用后其他设备可通过 WebSocket 连接控制此 Iris 实例' },
+        { key: 'port', label: '端口', type: 'number', defaultValue: 9100 },
+        { key: 'host', label: '监听地址', type: 'text', defaultValue: '0.0.0.0' },
+        { key: 'token', label: '认证 Token', type: 'text',
+          description: '远程连接密码（首次自动生成，可自行修改）' },
+        { key: 'relay.url', label: '中继地址', type: 'text',
+          description: '不在同一局域网时，通过公网中继服务器连接（如 wss://relay.example.com:9001）' },
+        { key: 'relay.nodeId', label: '中继节点 ID', type: 'text',
+          description: '本机在中继上的唯一标识，远程连接时需要用到（如 my-vps）' },
+        { key: 'relay.token', label: '中继 Token', type: 'text',
+          description: '中继服务器的认证密码（与上面的认证 Token 不同）' },
+      ],
+      onLoad: async () => {
+        const raw = readEditableConfig(configDir) as Record<string, any>;
+        const net = raw.net ?? {};
+        // 没有 token 时预生成一个随机值，用户可直接保存或修改
+        let token = net.token ?? '';
+        if (!token) {
+          const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+          token = Array.from({ length: 24 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        }
+        return {
+          enabled: net.enabled ?? false,
+          port: net.port ?? 9100,
+          host: net.host ?? '0.0.0.0',
+          token,
+          'relay.url': net.relay?.url ?? '',
+          'relay.nodeId': net.relay?.nodeId ?? '',
+          'relay.token': net.relay?.token ?? '',
+        };
+      },
+      onSave: async (values) => {
+        try {
+          const netUpdate: Record<string, unknown> = {
+            enabled: values.enabled,
+            port: values.port,
+            host: values.host,
+            token: values.token,
+          };
+          if (values['relay.url'] || values['relay.nodeId'] || values['relay.token']) {
+            netUpdate.relay = {
+              url: values['relay.url'] || undefined,
+              nodeId: values['relay.nodeId'] || undefined,
+              token: values['relay.token'] || undefined,
+            };
+          }
+          const merged = updateEditableConfig(configDir, { net: netUpdate });
+          const ctx: RuntimeConfigReloadContext = {
+            backend, getMCPManager: getMCPManagerFn, setMCPManager: setMCPManagerFn, extensions,
+          };
+          await applyRuntimeConfigReload(ctx, merged.mergedRaw);
+          return { success: true };
+        } catch (e) {
+          return { success: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
     // 构建完整内部 API
     const getMCPManagerFn = () => this._mcpManager;
     const setMCPManagerFn = (m?: MCPManager) => { this._mcpManager = m; };

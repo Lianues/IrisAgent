@@ -17,7 +17,7 @@
  *   fire-and-forget 操作均带日志记录，不静默吞错。
  */
 
-import type { IPCClient } from './client';
+import type { IPCClientLike } from './client-like';
 import { Methods } from './protocol';
 import { createLogger } from '../logger';
 
@@ -29,7 +29,7 @@ const logger = createLogger('RemoteApiProxy');
  * 返回一个符合 Console 平台消费模式的对象，并提供 initCaches()
  * 方法用于预加载同步方法需要的数据。
  */
-export function createRemoteApiProxy(client: IPCClient, agentName: string = '__remote__'): Record<string, any> {
+export function createRemoteApiProxy(client: IPCClientLike, agentName: string = '__remote__'): Record<string, any> {
   // 缓存存储
   let _cachedSettingsTabs: unknown[] = [];
   let _cachedAgents: unknown[] = [];

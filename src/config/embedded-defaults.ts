@@ -198,4 +198,32 @@ types:
   'summary.yaml': `# 上下文压缩配置（/compact 指令）
 # 使用默认提示词，通常无需修改
 `,
+
+  'net.yaml': `# 多端互联配置
+# 启用后可从远程设备控制本 Iris 实例
+
+# 直连模式：启动 WebSocket 服务器
+# enabled: true
+# port: 9100
+# host: 0.0.0.0
+# token: your-secret-token-here
+
+# 局域网发现：启用后可被同网络的 Iris 实例自动发现
+# 发现使用 UDP 端口 (port + 1)，默认 9101
+# 发现响应不包含 token，安全可靠
+
+# 已保存的远程连接（/remote 命令中显示为快捷列表）
+# remotes:
+#   my-linux:
+#     url: ws://192.168.1.100:9100
+#     token: my-secret-token
+#   my-server:
+#     url: ws://10.0.0.5:9100
+
+# 中继模式：注册到中继服务器（用于 NAT 穿透）
+# relay:
+#   url: wss://your-relay-server:9001
+#   nodeId: my-iris
+#   token: relay-secret-token
+`,
 };

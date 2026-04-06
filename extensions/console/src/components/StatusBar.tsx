@@ -16,6 +16,8 @@ interface StatusBarProps {
   contextTokens: number;
   contextWindow?: number;
   queueSize?: number;
+  /** 远程连接的主机地址（非空时显示远程标识） */
+  remoteHost?: string;
   /** 当前后台运行中的异步子代理数量 */
   backgroundTaskCount?: number;
   /** 当前后台运行中的委派任务数量（delegate_to_agent），与子代理分开计数 */
@@ -26,7 +28,7 @@ interface StatusBarProps {
   backgroundTaskSpinnerFrame?: number;
 }
 
-export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }: StatusBarProps) {
+export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, remoteHost, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }: StatusBarProps) {
   const resolvedModeName = modeName ?? 'normal';
   const modeNameCapitalized = resolvedModeName.charAt(0).toUpperCase() + resolvedModeName.slice(1);
   const contextStr = contextTokens > 0 ? contextTokens.toLocaleString() : '-';
@@ -45,6 +47,8 @@ export function StatusBar({ agentName, modeName, modelName, contextTokens, conte
     <box flexDirection="row" marginTop={1}>
       <box flexGrow={1}>
         <text>
+          {remoteHost ? <span fg={C.warn}><strong>[远程: {remoteHost}]</strong></span> : null}
+          {remoteHost ? <span fg={C.dim}> · </span> : null}
           {agentName ? <span fg={C.accent}><strong>[{agentName}]</strong></span> : null}
           {agentName ? <span fg={C.dim}> · </span> : null}
           <span fg={C.primaryLight}><strong>{modeNameCapitalized}</strong></span>

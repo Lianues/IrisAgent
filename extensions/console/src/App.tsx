@@ -69,6 +69,11 @@ export function App({
   modelName,
   contextWindow,
   pluginSettingsTabs,
+  onRemoteConnect,
+  onRemoteDisconnect,
+  remoteHost,
+  initWarningsColor,
+  initWarningsIcon,
 }: AppProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [sessionList, setSessionList] = useState<SessionMeta[]>([]);
@@ -146,6 +151,10 @@ export function App({
     onResetConfig,
     onExit,
     onSwitchAgent,
+    onRemoteConnect,
+    onRemoteDisconnect,
+    isRemote: !!remoteHost,
+    remoteHost,
     onSummarize,
     undoRedoRef,
     setMessages: appState.setMessages,
@@ -315,7 +324,7 @@ export function App({
   return (
     <box flexDirection="column" width="100%" height="100%">
       {!hasMessages ? <LogoScreen /> : null}
-      {!hasMessages && initWarnings && initWarnings.length > 0 ? <InitWarnings warnings={initWarnings} /> : null}
+      {!hasMessages && initWarnings && initWarnings.length > 0 ? <InitWarnings warnings={initWarnings} color={initWarningsColor} icon={initWarningsIcon} /> : null}
 
       {hasMessages ? (
         <ChatMessageList
@@ -354,6 +363,8 @@ export function App({
         backgroundTaskSpinnerFrame={appState.backgroundTaskSpinnerFrame}
         thinkingEffort={thinkingEffort}
         onCycleThinkingEffort={cycleThinkingEffort}
+        remoteHost={remoteHost}
+        isRemote={!!remoteHost}
       />
     </box>
   );

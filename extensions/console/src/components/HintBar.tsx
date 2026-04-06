@@ -9,6 +9,8 @@ interface HintBarProps {
   queueSize?: number;
   copyMode: boolean;
   exitConfirmArmed: boolean;
+  /** 远程连接的主机地址（非空时替换 cwd 显示远程提示） */
+  remoteHost?: string;
 }
 
 /* ---------- 路径截断工具 ---------- */
@@ -58,7 +60,7 @@ function hardTruncate(text: string, maxWidth: number): string {
 
 /* ---------- 组件 ---------- */
 
-export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }: HintBarProps) {
+export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, remoteHost }: HintBarProps) {
   const cwd = process.cwd();
   const hasQueue = (queueSize ?? 0) > 0;
 
@@ -90,7 +92,11 @@ export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed }:
   return (
     <box flexDirection="row" paddingTop={0} paddingRight={1}>
       <box flexGrow={1}>
-        <text fg={C.dim}>{displayCwd}</text>
+        {remoteHost ? (
+          <text fg={C.warn}>⚡ 远程模式 — 所有操作和配置均作用于 {remoteHost}</text>
+        ) : (
+          <text fg={C.dim}>{displayCwd}</text>
+        )}
       </box>
       {exitConfirmArmed ? (
         <text fg={C.warn}>再次按 ctrl+c 退出</text>

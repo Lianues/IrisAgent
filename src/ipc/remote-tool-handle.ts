@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import type { IPCClient } from './client';
+import type { IPCClientLike } from './client-like';
 import type { SerializedToolHandle } from './protocol';
 import { Methods } from './protocol';
 import { createLogger } from '../logger';
@@ -33,7 +33,7 @@ export class RemoteToolHandle extends EventEmitter {
   private _outputHistory: string[] = [];
 
   constructor(
-    private client: IPCClient,
+    private client: IPCClientLike,
     serialized: SerializedToolHandle,
   ) {
     super();

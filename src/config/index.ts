@@ -35,6 +35,7 @@ import { parseSubAgentsConfig } from './sub_agents';
 import { loadRawConfigDir } from './raw';
 import { parsePluginsConfig } from './plugins';
 import { parseSummaryConfig } from './summary';
+import { parseNetConfig } from './net';
 
 export type {
   AppConfig,
@@ -127,6 +128,7 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
     subAgents: parseSubAgentsConfig(data.sub_agents),
     plugins: parsePluginsConfig(data.plugins),
     summary: parseSummaryConfig(data.summary),
+    net: parseNetConfig(data.net),
   };
 }
 

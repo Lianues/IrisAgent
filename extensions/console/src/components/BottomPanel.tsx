@@ -36,8 +36,12 @@ interface BottomPanelProps {
   delegateTaskCount?: number;
   /** 所有后台任务的累计 token 数 */
   backgroundTaskTokens?: number;
-  /** chunk 心跳驱动的 spinner 帧索引 */
+  /** chunk 心跳驱動的 spinner 帧索引 */
   backgroundTaskSpinnerFrame?: number;
+  /** 远程连接的主机地址 */
+  remoteHost?: string;
+  /** 当前是否处于远程连接状态 */
+  isRemote?: boolean;
   /** 当前思考强度层级 */
   thinkingEffort: ThinkingEffortLevel;
   /** Shift+Left/Right 切换思考强度 */
@@ -68,6 +72,8 @@ export function BottomPanel({
   backgroundTaskSpinnerFrame,
   thinkingEffort,
   onCycleThinkingEffort,
+  remoteHost,
+  isRemote,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -93,7 +99,7 @@ export function BottomPanel({
           paddingTop={0}
           paddingBottom={0}
         >
-          <ThinkingIndicator level={thinkingEffort} showHint={!hasMessages} />
+          <ThinkingIndicator level={thinkingEffort} showHint={!hasMessages} isRemote={isRemote} />
           <InputBar
             disabled={inputDisabled}
             isGenerating={isGenerating}
@@ -101,6 +107,7 @@ export function BottomPanel({
             onSubmit={onSubmit}
             onPrioritySubmit={onPrioritySubmit}
             onCycleThinkingEffort={onCycleThinkingEffort}
+            isRemote={isRemote}
           />
           <StatusBar
             agentName={agentName}
@@ -109,6 +116,7 @@ export function BottomPanel({
             contextTokens={contextTokens}
             contextWindow={contextWindow}
             queueSize={queueSize}
+            remoteHost={remoteHost}
             backgroundTaskCount={backgroundTaskCount}
             delegateTaskCount={delegateTaskCount}
             backgroundTaskTokens={backgroundTaskTokens}
@@ -122,6 +130,7 @@ export function BottomPanel({
         queueSize={queueSize}
         copyMode={copyMode}
         exitConfirmArmed={exitConfirmArmed}
+        remoteHost={remoteHost}
       />
     </box>
   );
