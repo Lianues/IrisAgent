@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface WriteResultItem {
@@ -68,7 +69,7 @@ export function WriteFileRenderer({ args, result }: ToolRendererProps) {
   const argsFiles = extractArgsFiles(args || {});
 
   if (items.length === 0) {
-    return <text fg="#888"><em>{' \u21B3'} wrote 0 files</em></text>;
+    return <text fg="#888"><em>{` ${ICONS.resultArrow}`} wrote 0 files</em></text>;
   }
 
   // 单文件：显示 行数 + action + 完整路径
@@ -81,7 +82,7 @@ export function WriteFileRenderer({ args, result }: ToolRendererProps) {
     return (
       <text fg={fg}>
         <em>
-          {' \u21B3 '}
+          {` ${ICONS.resultArrow} `}
           {hasLines && (action === 'created'
             ? <span fg="#57ab5a">+{lines}</span>
             : <span fg="#d2a8ff">~{lines}</span>)}
@@ -115,7 +116,7 @@ export function WriteFileRenderer({ args, result }: ToolRendererProps) {
   return (
     <text fg={failCount > 0 ? '#ffff00' : '#888'}>
       <em>
-        {' \u21B3 '}
+        {` ${ICONS.resultArrow} `}
         {totalLines > 0 && <span fg="#d2a8ff">~{totalLines}</span>}
         {totalLines > 0 ? ' lines, ' : ''}
         {parts.join(', ')} ({names})

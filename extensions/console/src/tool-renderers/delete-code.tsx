@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface DeleteCodeResultItem {
@@ -31,13 +32,13 @@ export function DeleteCodeRenderer({ result }: ToolRendererProps) {
   const failCount = r.failCount ?? 0;
 
   if (items.length === 0) {
-    return <text fg="#888"><em>{' \u21B3'} deleted 0 lines</em></text>;
+    return <text fg="#888"><em>{` ${ICONS.resultArrow}`} deleted 0 lines</em></text>;
   }
 
   if (items.length === 1) {
     const item = items[0];
     if (item.success === false) {
-      return <text fg="#ff0000"><em>{' \u21B3'} failed ({item.error ?? item.path ?? '?'})</em></text>;
+      return <text fg="#ff0000"><em>{` ${ICONS.resultArrow}`} failed ({item.error ?? item.path ?? '?'})</em></text>;
     }
     const deleted = item.deletedLines ?? 0;
     const range = item.start_line != null && item.end_line != null
@@ -45,7 +46,7 @@ export function DeleteCodeRenderer({ result }: ToolRendererProps) {
       : '';
     return (
       <text fg="#888">
-        <em>{' \u21B3'} <span fg="#f47067">-{deleted}</span> lines ({item.path ?? '?'}{range})</em>
+        <em>{` ${ICONS.resultArrow}`} <span fg="#f47067">-{deleted}</span> lines ({item.path ?? '?'}{range})</em>
       </text>
     );
   }
@@ -55,7 +56,7 @@ export function DeleteCodeRenderer({ result }: ToolRendererProps) {
   const names = items.map(i => i.path ?? '?').join(', ');
   return (
     <text fg={failCount > 0 ? '#ffff00' : '#888'}>
-      <em>{' \u21B3'} <span fg="#f47067">-{totalDeleted}</span> lines in {items.length} files ({names})</em>
+      <em>{` ${ICONS.resultArrow}`} <span fg="#f47067">-{totalDeleted}</span> lines in {items.length} files ({names})</em>
     </text>
   );
 }

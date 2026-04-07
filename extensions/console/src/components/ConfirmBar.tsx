@@ -3,6 +3,7 @@
 import React from 'react';
 import type { ConfirmChoice } from '../app-types';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface ConfirmBarProps {
   message: string;
@@ -20,7 +21,7 @@ export function ConfirmBar({ message, choice }: ConfirmBarProps) {
       paddingY={0}
     >
       <text>
-        <span fg={C.error}><strong>⚠ </strong></span>
+        <span fg={C.error}><strong>{ICONS.warning} </strong></span>
         <span fg={C.text}>{message}</span>
       </text>
       <text>

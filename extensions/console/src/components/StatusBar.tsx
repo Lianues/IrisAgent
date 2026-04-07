@@ -2,12 +2,7 @@
 
 import React from 'react';
 import { C } from '../theme';
-
-// Braille spinner 帧序列：后台任务活跃指示。
-// 由真实的 chunk 心跳事件驱动帧递增，只有数据真正在流动时 spinner 才转。
-// 数据停止流动（如子代理等待工具执行结果）时 spinner 静止——
-// 用户可以由此区分"正在接收数据"和"正在等待"两种状态。
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+import { SPINNER_FRAMES, ICONS } from '../terminal-compat';
 
 interface StatusBarProps {
   agentName?: string;
@@ -48,39 +43,39 @@ export function StatusBar({ agentName, modeName, modelName, contextTokens, conte
       <box flexGrow={1}>
         <text>
           {remoteHost ? <span fg={C.warn}><strong>[远程: {remoteHost}]</strong></span> : null}
-          {remoteHost ? <span fg={C.dim}> · </span> : null}
+          {remoteHost ? <span fg={C.dim}> {ICONS.separator} </span> : null}
           {agentName ? <span fg={C.accent}><strong>[{agentName}]</strong></span> : null}
-          {agentName ? <span fg={C.dim}> · </span> : null}
+          {agentName ? <span fg={C.dim}> {ICONS.separator} </span> : null}
           <span fg={C.primaryLight}><strong>{modeNameCapitalized}</strong></span>
-          <span fg={C.dim}> · </span>
+          <span fg={C.dim}> {ICONS.separator} </span>
           <span fg={C.textSec}>{modelName}</span>
           {queueSize != null && queueSize > 0 ? (
             <>
-              <span fg={C.dim}> · </span>
+              <span fg={C.dim}> {ICONS.separator} </span>
               <span fg={C.warn}>{queueSize} 条排队中</span>
             </>
           ) : null}
           {/* 异步子代理后台任务指示：spinner 由 chunk 心跳驱动，数据流动时转，停止时静止 */}
           {hasBackgroundTasks ? (
             <>
-              <span fg={C.dim}> · </span>
+              <span fg={C.dim}> {ICONS.separator} </span>
               <span fg={C.accent}>
-                {spinner} {backgroundTaskCount} 个后台任务{backgroundTaskTokens != null && backgroundTaskTokens > 0 ? ` ↑${backgroundTaskTokens.toLocaleString()}tk` : ''}
+                {spinner} {backgroundTaskCount} 个后台任务{backgroundTaskTokens != null && backgroundTaskTokens > 0 ? ` ${ICONS.upArrow}${backgroundTaskTokens.toLocaleString()}tk` : ''}
               </span>
             </>
           ) : null}
           {/* [职责分离] 委派任务独立显示，不带 spinner 和 token（委派不传心跳） */}
           {hasDelegateTasks ? (
             <>
-              <span fg={C.dim}> · </span>
+              <span fg={C.dim}> {ICONS.separator} </span>
               <span fg={C.warn}>
-                ⇢ {delegateTaskCount} 个委派任务
+                {ICONS.delegateArrow} {delegateTaskCount} 个委派任务
               </span>
             </>
           ) : null}
         </text>
       </box>
-      <box>
+      <box flexShrink={0}>
         <text fg={C.dim}>ctx {contextStr}{contextLimitStr}{contextPercent}</text>
       </box>
     </box>

@@ -3,6 +3,7 @@
 import React from 'react';
 import type { IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface SessionListViewProps {
   sessions: SessionMeta[];
@@ -14,7 +15,7 @@ export function SessionListView({ sessions, selectedIndex }: SessionListViewProp
     <box flexDirection="column" width="100%" height="100%">
       <box padding={1}>
         <text fg={C.primary}>历史对话</text>
-        <text fg={C.dim}>  ↑↓ 选择  Enter 加载  Esc 返回</text>
+        <text fg={C.dim}>{`  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 加载  Esc 返回`}</text>
       </box>
       <scrollbox flexGrow={1}>
         {sessions.length === 0 && <text fg={C.dim} paddingLeft={2}>暂无历史对话</text>}
@@ -24,7 +25,7 @@ export function SessionListView({ sessions, selectedIndex }: SessionListViewProp
           return (
             <box key={meta.id} paddingLeft={1}>
               <text>
-                <span fg={isSelected ? C.accent : C.dim}>{isSelected ? '❯ ' : '  '}</span>
+                <span fg={isSelected ? C.accent : C.dim}>{isSelected ? `${ICONS.selectorArrow} ` : '  '}</span>
                 {isSelected
                   ? <strong><span fg={C.text}>{meta.title}</span></strong>
                   : <span fg={C.textSec}>{meta.title}</span>}

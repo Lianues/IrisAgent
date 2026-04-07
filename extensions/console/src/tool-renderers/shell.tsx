@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface ShellResult {
@@ -28,7 +29,7 @@ function lineCount(text: string | undefined): number {
 function firstLine(text: string | undefined, max: number): string {
   if (!text) return '';
   const line = text.trimStart().split('\n')[0] ?? '';
-  return line.length > max ? line.slice(0, max) + '…' : line;
+  return line.length > max ? line.slice(0, max) + ICONS.ellipsis : line;
 }
 
 export function ShellRenderer({ result }: ToolRendererProps) {
@@ -40,7 +41,7 @@ export function ShellRenderer({ result }: ToolRendererProps) {
   if (r.killed) {
     return (
       <text fg="#ff0000">
-        <em>{' \u21B3 '}killed (timeout)</em>
+        <em>{` ${ICONS.resultArrow} `}killed (timeout)</em>
       </text>
     );
   }
@@ -50,7 +51,7 @@ export function ShellRenderer({ result }: ToolRendererProps) {
     const reason = firstLine(r.stderr, 100) || `exit ${exitCode}`;
     return (
       <text fg="#ff0000">
-        <em>{' \u21B3 '}{reason}</em>
+        <em>{` ${ICONS.resultArrow} `}{reason}</em>
       </text>
     );
   }
@@ -60,7 +61,7 @@ export function ShellRenderer({ result }: ToolRendererProps) {
   const summary = lines > 0 ? `${lines} lines output` : 'done (no output)';
   return (
     <text fg="#888">
-      <em>{' \u21B3 '}{summary}</em>
+      <em>{` ${ICONS.resultArrow} `}{summary}</em>
     </text>
   );
 }

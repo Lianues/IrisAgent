@@ -9,6 +9,7 @@ import { Spinner } from './Spinner';
 import type { ToolInvocation, ToolStatus } from '@irises/extension-sdk';
 import { getToolRenderer } from '../tool-renderers';
 import { C } from '../theme';
+import { SPINNER_FRAMES, ICONS } from '../terminal-compat';
 
 interface ToolCallProps {
   invocation: ToolInvocation;
@@ -16,14 +17,11 @@ interface ToolCallProps {
 
 const TERMINAL_STATUSES = new Set<ToolStatus>(['success', 'warning', 'error']);
 
-// 数据驱动的 spinner 帧序列（用于工具执行中的 chunk 心跳进度展示）
-const SPINNER_FRAMES = ['\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F'];
-
 function getArgsSummary(toolName: string, args: Record<string, unknown>): string {
   switch (toolName) {
     case 'shell': {
       const cmd = String(args.command || '');
-      return cmd.length > 30 ? `"${cmd.slice(0, 30)}\u2026"` : `"${cmd}"`;
+      return cmd.length > 30 ? `"${cmd.slice(0, 30)}${ICONS.ellipsis}"` : `"${cmd}"`;
     }
     case 'read_file': {
       const files = Array.isArray(args.files) ? args.files as unknown[] : [];
@@ -69,7 +67,7 @@ function getArgsSummary(toolName: string, args: Record<string, unknown>): string
     case 'search_in_files': {
       const q = String(args.query || '');
       const p = String(args.path || '');
-      const head = q.length > 20 ? `"${q.slice(0, 20)}\u2026"` : `"${q}"`;
+      const head = q.length > 20 ? `"${q.slice(0, 20)}${ICONS.ellipsis}"` : `"${q}"`;
       return p ? `${head} in ${p}` : head;
     }
     case 'find_files': {
@@ -109,15 +107,15 @@ export function ToolCall({ invocation }: ToolCallProps) {
         <text>
           <span bg={nameBg} fg={C.cursorFg}> {toolName} </span>
           {argsSummary.length > 0 && <span fg={C.dim}> {argsSummary}</span>}
-          {status === 'success' ? <span fg={C.accent}> {'\u2713'}</span> : null}
+          {status === 'success' ? <span fg={C.accent}> {ICONS.checkmark}</span> : null}
           {status === 'warning' ? <span fg={C.warn}> !</span> : null}
-          {status === 'error' ? <span fg={C.error}> {'\u2717'}</span> : null}
+          {status === 'error' ? <span fg={C.error}> {ICONS.crossmark}</span> : null}
           {isAwaitingApproval ? <span fg={C.warn}> [待确认]</span> : null}
           {!isFinal && !isExecuting && !isAwaitingApproval ? <span fg={C.dim}> [{status}]</span> : null}
           {duration ? <span fg={C.dim}> {duration}</span> : null}
           {/* 工具执行中进度：实时 token 计数 */}
           {isExecuting && progressTokens != null && progressTokens > 0 ? (
-            <span fg={C.dim}> {'\u2191'}{progressTokens.toLocaleString()}tk</span>
+            <span fg={C.dim}> {ICONS.upArrow}{progressTokens.toLocaleString()}tk</span>
           ) : null}
         </text>
         {/* executing 状态的 spinner：有进度数据时用数据驱动帧，否则用定时器驱动 */}

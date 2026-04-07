@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -20,5 +21,5 @@ export function DefaultRenderer({ result }: ToolRendererProps) {
 
   const truncated = text.length > 80 ? text.slice(0, 80) + '...' : text;
 
-  return <text fg="#888"><em> ↳ {truncated}</em></text>;
+  return <text fg="#888"><em> {ICONS.resultArrow} {truncated}</em></text>;
 }

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 /** 最多显示的行数（超出可滚动） */
 const MAX_VISIBLE_LINES = 3;
@@ -24,7 +25,7 @@ interface InitWarningsProps {
 export function InitWarnings({ warnings, color, icon }: InitWarningsProps) {
   if (warnings.length === 0) return null;
   const fg = color ?? C.warn;
-  const prefix = icon ?? '⚠';
+  const prefix = icon ?? ICONS.warning;
   return (
     <box flexDirection="column" paddingLeft={2} paddingRight={2} paddingBottom={1} maxHeight={MAX_VISIBLE_LINES + 1}>
       {warnings.map((msg, i) => (

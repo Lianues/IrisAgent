@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface ListResultItem {
@@ -40,7 +41,7 @@ export function ListFilesRenderer({ result }: ToolRendererProps) {
 
   return (
     <text fg={failCount > 0 ? '#ffff00' : '#888'}>
-      <em>{' \u21B3 '}{summary}</em>
+      <em>{` ${ICONS.resultArrow} `}{summary}</em>
     </text>
   );
 }

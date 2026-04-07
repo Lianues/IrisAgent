@@ -5,6 +5,8 @@
  * 三阶段流程：选择列表 → 输入字段 → 保存提示。
  */
 
+import { ICONS } from './terminal-compat';
+
 const ESC = '\x1b';
 const CSI = `${ESC}[`;
 
@@ -122,10 +124,10 @@ function showSelectionPhase(options: WizardOptions): Promise<
         for (let i = 0; i < options.saved.length; i++) {
           const s = options.saved[i];
           const isCurrent = cursor === i;
-          const arrow = isCurrent ? `${ansi.cyan}▸ ` : '  ';
+          const arrow = isCurrent ? `${ansi.cyan}${ICONS.triangleRight} ` : '  ';
           const nameStr = isCurrent ? `${ansi.cyan}${ansi.bold}${s.name}${ansi.reset}` : s.name;
           const host = s.url.replace(/^wss?:\/\//, '');
-          const tokenHint = s.hasToken ? `${ansi.dim} ✓${ansi.reset}` : '';
+          const tokenHint = s.hasToken ? `${ansi.dim} ${ICONS.checkmark}${ansi.reset}` : '';
           lines.push(`  ${arrow}${nameStr}${ansi.reset} ${ansi.dim}(${host})${ansi.reset}${tokenHint}`);
         }
         lines.push('');
@@ -142,7 +144,7 @@ function showSelectionPhase(options: WizardOptions): Promise<
           const d = discovered[i];
           const idx = savedLen + i;
           const isCurrent = cursor === idx;
-          const arrow = isCurrent ? `${ansi.cyan}▸ ` : '  ';
+          const arrow = isCurrent ? `${ansi.cyan}${ICONS.triangleRight} ` : '  ';
           const nameStr = isCurrent ? `${ansi.cyan}${ansi.bold}${d.name}${ansi.reset}` : d.name;
           const agentHint = d.agent ? ` [${d.agent}]` : '';
           lines.push(`  ${arrow}${nameStr}${ansi.reset} ${ansi.dim}(${d.host}:${d.port}${agentHint})${ansi.reset}`);
@@ -157,7 +159,7 @@ function showSelectionPhase(options: WizardOptions): Promise<
       const manualIdx = items.length - 1;
       const isManualCurrent = cursor === manualIdx;
       const manualStyle = isManualCurrent
-        ? `${ansi.cyan}${ansi.bold}▸ [ 手动输入 ]${ansi.reset}`
+        ? `${ansi.cyan}${ansi.bold}${ICONS.triangleRight} [ 手动输入 ]${ansi.reset}`
         : `  ${ansi.dim}[ 手动输入 ]${ansi.reset}`;
       lines.push(`  ${manualStyle}`);
       lines.push('');
@@ -168,7 +170,7 @@ function showSelectionPhase(options: WizardOptions): Promise<
         hints.push('d 删除');
       }
       hints.push('Esc 取消');
-      lines.push(`  ${ansi.dim}${hints.join('  ·  ')}${ansi.reset}`);
+      lines.push(`  ${ansi.dim}${hints.join(`  ${ICONS.separator}  `)}${ansi.reset}`);
       lines.push('');
 
       stdout.write(ansi.clear + ansi.hideCursor + lines.join('\n'));
@@ -294,15 +296,15 @@ export function showInputPhase(opts: InputPhaseOptions = {}): Promise<{ url: str
         lines.push(`  ${ansi.dim}地址${ansi.reset}  ${url}`);
       } else {
         const urlLabel = focusedField === 0 ? `${ansi.cyan}${ansi.bold}` : `${ansi.white}`;
-        const urlCursor = focusedField === 0 ? `${ansi.cyan}▎${ansi.reset}` : '';
+        const urlCursor = focusedField === 0 ? `${ansi.cyan}|${ansi.reset}` : '';
         lines.push(`  ${urlLabel}地址${ansi.reset}  ${url}${urlCursor}`);
       }
       lines.push('');
 
       // Token field
       const tokenLabel = focusedField === 1 ? `${ansi.cyan}${ansi.bold}` : `${ansi.white}`;
-      const tokenCursor = focusedField === 1 ? `${ansi.cyan}▎${ansi.reset}` : '';
-      const maskedToken = '•'.repeat(token.length);
+      const tokenCursor = focusedField === 1 ? `${ansi.cyan}|${ansi.reset}` : '';
+      const maskedToken = '*'.repeat(token.length);
       lines.push(`  ${tokenLabel}Token${ansi.reset} ${maskedToken}${tokenCursor}`);
       lines.push('');
 
@@ -414,11 +416,11 @@ export function showSavePrompt(): Promise<string | null> {
     function render() {
       const lines: string[] = [];
       lines.push('');
-      lines.push(`  ${ansi.green}${ansi.bold}✓ 已连接到远程 Iris${ansi.reset}`);
+      lines.push(`  ${ansi.green}${ansi.bold}${ICONS.checkmark} 已连接到远程 Iris${ansi.reset}`);
       lines.push('');
       lines.push(`  ${ansi.dim}保存此连接？输入名称后回车保存，Esc 跳过${ansi.reset}`);
       lines.push('');
-      lines.push(`  ${ansi.cyan}${ansi.bold}名称${ansi.reset} ${name}${ansi.cyan}▎${ansi.reset}`);
+      lines.push(`  ${ansi.cyan}${ansi.bold}名称${ansi.reset} ${name}${ansi.cyan}|${ansi.reset}`);
       lines.push('');
       if (status) {
         lines.push(`  ${ansi.red}${status}${ansi.reset}`);

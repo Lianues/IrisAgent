@@ -4,6 +4,7 @@ import React from 'react';
 import type { ApprovalChoice } from '../app-types';
 import type { ApprovalPage } from '../hooks/use-approval';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface ApprovalBarProps {
   toolName: string;
@@ -59,7 +60,7 @@ export function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, a
         )}
         {remainingCount > 1 ? <span fg={C.dim}>{`  (剩余 ${remainingCount - 1} 个)`}</span> : null}
         {isCommandTool ? (
-          <span fg={C.dim}>{showPolicyPage ? '  Tab→返回' : '  Tab→更多'}</span>
+          <span fg={C.dim}>{showPolicyPage ? `  Tab${ICONS.arrowRight}返回` : `  Tab${ICONS.arrowRight}更多`}</span>
         ) : null}
       </text>
     </box>

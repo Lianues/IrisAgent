@@ -31,6 +31,7 @@ import type {
   DeleteCodeEntry as DeleteCodeEntryLike,
 } from '@irises/extension-sdk/tool-utils';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 // ============ 类型 ============
 
@@ -217,12 +218,12 @@ function buildWriteFilePreview(inv: ToolInvocation): DiffApprovalPreview {
       const diff = buildWholeFileDiff(entry.path, before, entry.content, existed);
       const action = existed ? '修改' : '新增';
       items.push(diff
-        ? { id: `${inv.id}:write_file:${i}`, filePath: entry.path, label: `${entry.path} · ${action}`, diff, filetype: inferFiletype(entry.path) }
-        : createMsg(`${inv.id}:write_file:${i}`, entry.path, `${entry.path} · ${action}`, existed ? '内容变化特殊，无法显示 diff。' : '将创建空文件。'));
+        ? { id: `${inv.id}:write_file:${i}`, filePath: entry.path, label: `${entry.path} ${ICONS.separator} ${action}`, diff, filetype: inferFiletype(entry.path) }
+        : createMsg(`${inv.id}:write_file:${i}`, entry.path, `${entry.path} ${ICONS.separator} ${action}`, existed ? '内容变化特殊，无法显示 diff。' : '将创建空文件。'));
       if (existed) modified++; else created++;
     } catch (err: unknown) {
       errored++;
-      items.push(createMsg(`${inv.id}:write_file:${i}`, entry.path, `${entry.path} · 预览失败`, err instanceof Error ? err.message : String(err)));
+      items.push(createMsg(`${inv.id}:write_file:${i}`, entry.path, `${entry.path} ${ICONS.separator} 预览失败`, err instanceof Error ? err.message : String(err)));
     }
   });
   const summary = [`共 ${fileList.length} 个文件`, `新增 ${created}，修改 ${modified}，未变化 ${unchanged}`];
@@ -254,12 +255,12 @@ function buildInsertCodePreview(inv: ToolInvocation): DiffApprovalPreview {
       const after = [...lines.slice(0, idx), ...insertLines, ...lines.slice(idx)].join('\n');
       const diff = buildWholeFileDiff(entry.path, before, after, true);
       items.push(diff
-        ? { id: `${inv.id}:insert_code:${i}`, filePath: entry.path, label: `${entry.path} · 第 ${entry.line} 行前插入 ${insertLines.length} 行`, diff, filetype: inferFiletype(entry.path) }
-        : createMsg(`${inv.id}:insert_code:${i}`, entry.path, `${entry.path} · 插入`, '无法显示 diff。'));
+        ? { id: `${inv.id}:insert_code:${i}`, filePath: entry.path, label: `${entry.path} ${ICONS.separator} 第 ${entry.line} 行前插入 ${insertLines.length} 行`, diff, filetype: inferFiletype(entry.path) }
+        : createMsg(`${inv.id}:insert_code:${i}`, entry.path, `${entry.path} ${ICONS.separator} 插入`, '无法显示 diff。'));
       successCount++;
     } catch (err: unknown) {
       errored++;
-      items.push(createMsg(`${inv.id}:insert_code:${i}`, entry.path, `${entry.path} · 预览失败`, err instanceof Error ? err.message : String(err)));
+      items.push(createMsg(`${inv.id}:insert_code:${i}`, entry.path, `${entry.path} ${ICONS.separator} 预览失败`, err instanceof Error ? err.message : String(err)));
     }
   });
   const summary = [`共 ${fileList.length} 个操作`, `可预览 ${successCount} 个`];
@@ -290,12 +291,12 @@ function buildDeleteCodePreview(inv: ToolInvocation): DiffApprovalPreview {
       const deletedCount = entry.end_line - entry.start_line + 1;
       const diff = buildWholeFileDiff(entry.path, before, after, true);
       items.push(diff
-        ? { id: `${inv.id}:delete_code:${i}`, filePath: entry.path, label: `${entry.path} · 删除第 ${entry.start_line}-${entry.end_line} 行（${deletedCount} 行）`, diff, filetype: inferFiletype(entry.path) }
-        : createMsg(`${inv.id}:delete_code:${i}`, entry.path, `${entry.path} · 删除`, '无法显示 diff。'));
+        ? { id: `${inv.id}:delete_code:${i}`, filePath: entry.path, label: `${entry.path} ${ICONS.separator} 删除第 ${entry.start_line}-${entry.end_line} 行（${deletedCount} 行）`, diff, filetype: inferFiletype(entry.path) }
+        : createMsg(`${inv.id}:delete_code:${i}`, entry.path, `${entry.path} ${ICONS.separator} 删除`, '无法显示 diff。'));
       successCount++;
     } catch (err: unknown) {
       errored++;
-      items.push(createMsg(`${inv.id}:delete_code:${i}`, entry.path, `${entry.path} · 预览失败`, err instanceof Error ? err.message : String(err)));
+      items.push(createMsg(`${inv.id}:delete_code:${i}`, entry.path, `${entry.path} ${ICONS.separator} 预览失败`, err instanceof Error ? err.message : String(err)));
     }
   });
   const summary = [`共 ${fileList.length} 个操作`, `可预览 ${successCount} 个`];
@@ -361,8 +362,8 @@ function buildSearchReplacePreview(inv: ToolInvocation): DiffApprovalPreview {
 
       const diff = buildWholeFileDiff(displayPath, decoded.text, newText, true);
       items.push(diff
-        ? { id: `${inv.id}:search_replace:${displayPath}`, filePath: displayPath, label: `${displayPath} · ${replacements} 处替换`, diff, filetype: inferFiletype(displayPath) }
-        : createMsg(`${inv.id}:search_replace:${displayPath}`, displayPath, `${displayPath} · ${replacements} 处替换`, '文件将变化，但无法显示 diff。'));
+        ? { id: `${inv.id}:search_replace:${displayPath}`, filePath: displayPath, label: `${displayPath} ${ICONS.separator} ${replacements} 处替换`, diff, filetype: inferFiletype(displayPath) }
+        : createMsg(`${inv.id}:search_replace:${displayPath}`, displayPath, `${displayPath} ${ICONS.separator} ${replacements} 处替换`, '文件将变化，但无法显示 diff。'));
       changedFiles++;
       totalReplacements += replacements;
     };
@@ -371,11 +372,11 @@ function buildSearchReplacePreview(inv: ToolInvocation): DiffApprovalPreview {
     else { walkFiles(rootAbs, processFile, shouldStop); if (processedFiles >= maxFiles) truncated = true; }
 
     const summary = [
-      `路径 ${inputPath} · pattern ${pattern}`,
-      `已处理 ${processedFiles} 个文件 · 将变更 ${changedFiles} 个文件 · 共 ${totalReplacements} 处替换`,
+      `路径 ${inputPath} ${ICONS.separator} pattern ${pattern}`,
+      `已处理 ${processedFiles} 个文件 ${ICONS.separator} 将变更 ${changedFiles} 个文件 ${ICONS.separator} 共 ${totalReplacements} 处替换`,
     ];
     if (unchangedFiles > 0) summary.push(`无实际变化 ${unchangedFiles} 个文件`);
-    if (skippedBinary > 0 || skippedTooLarge > 0) summary.push(`跳过二进制 ${skippedBinary} 个 · 跳过过大文件 ${skippedTooLarge} 个`);
+    if (skippedBinary > 0 || skippedTooLarge > 0) summary.push(`跳过二进制 ${skippedBinary} 个 ${ICONS.separator} 跳过过大文件 ${skippedTooLarge} 个`);
     if (truncated) summary.push(`已达到 maxFiles=${maxFiles}，预览已截断`);
     if (items.length === 0) items.push(createMsg(`${inv.id}:search_replace.empty`, inputPath, 'search_in_files.replace', '当前 replace 不会修改任何文件。'));
 
@@ -487,8 +488,8 @@ export function DiffApprovalView({ invocation, pendingCount, choice, view, showL
           <span fg={choice === 'reject' ? C.error : C.textSec}>{choice === 'reject' ? '[拒绝]' : ' 拒绝 '}</span>
         </text>
         <text fg={C.dim}>
-          {preview.items.length > 1 ? '↑ / ↓ 切换文件　' : ''}
-          Tab / ← / → 切换　Enter 确认　Y 批准　N 拒绝　V 切换视图　L 切换行号　W 切换换行　Esc 中断本次生成
+          {preview.items.length > 1 ? `${ICONS.arrowUp} / ${ICONS.arrowDown} 切换文件　` : ''}
+          {`Tab / ${ICONS.arrowLeft} / ${ICONS.arrowRight} 切换　Enter 确认　Y 批准　N 拒绝　V 切换视图　L 切换行号　W 切换换行　Esc 中断本次生成`}
         </text>
       </box>
     </box>

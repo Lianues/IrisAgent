@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface FindFilesResult {
@@ -17,5 +18,5 @@ export function FindFilesRenderer({ result }: ToolRendererProps) {
   const count = r.count ?? 0;
   const suffix = r.truncated ? ' (truncated)' : '';
 
-  return <text fg="#888"><em>{' \u21B3 '} {count} files found{suffix}</em></text>;
+  return <text fg="#888"><em>{` ${ICONS.resultArrow} `} {count} files found{suffix}</em></text>;
 }

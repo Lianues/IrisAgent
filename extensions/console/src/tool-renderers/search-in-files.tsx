@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface SearchInFilesResult {
@@ -26,7 +27,7 @@ interface SearchInFilesResult {
 }
 
 function truncStr(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + '\u2026' : s;
+  return s.length > max ? s.slice(0, max) + ICONS.ellipsis : s;
 }
 
 export function SearchInFilesRenderer({ args, result }: ToolRendererProps) {
@@ -40,7 +41,7 @@ export function SearchInFilesRenderer({ args, result }: ToolRendererProps) {
     // 显示 query → replace 的简短概要
     const query = typeof args?.query === 'string' ? truncStr(args.query, 16) : '';
     const replace = typeof args?.replace === 'string' ? truncStr(args.replace, 16) : '';
-    const transform = query ? ` "${query}" → "${replace}"` : '';
+    const transform = query ? ` "${query}" ${ICONS.arrowRight} "${replace}"` : '';
 
     // 统计实际变更的文件数
     const changedFiles = r.results
@@ -50,7 +51,7 @@ export function SearchInFilesRenderer({ args, result }: ToolRendererProps) {
     return (
       <text fg="#888">
         <em>
-          {' \u21B3 '}
+          {` ${ICONS.resultArrow} `}
           <span fg="#d2a8ff">{total}</span> replacements in{' '}
           <span fg="#d2a8ff">{changedFiles}</span>/{files} files
           {transform}{suffix}
@@ -61,5 +62,5 @@ export function SearchInFilesRenderer({ args, result }: ToolRendererProps) {
 
   const count = r.count ?? 0;
   const suffix = r.truncated ? ' (truncated)' : '';
-  return <text fg="#888"><em>{' \u21B3 '}<span fg="#d2a8ff">{count}</span> matches found{suffix}</em></text>;
+  return <text fg="#888"><em>{` ${ICONS.resultArrow} `}<span fg="#d2a8ff">{count}</span> matches found{suffix}</em></text>;
 }

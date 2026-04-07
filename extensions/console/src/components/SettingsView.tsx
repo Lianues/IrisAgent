@@ -16,6 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 import type { MCPServerInfoLike as MCPServerInfo } from '@irises/extension-sdk';
 import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
 import {
@@ -112,14 +113,14 @@ function previewText(value: string, maxLength: number): string {
   const lines = normalized.split('\n').filter(Boolean);
   const firstLine = lines[0] ?? '';
   const compact = firstLine.length > maxLength
-    ? `${firstLine.slice(0, Math.max(1, maxLength - 1))}…`
+    ? `${firstLine.slice(0, Math.max(1, maxLength - 1))}${ICONS.ellipsis}`
     : firstLine;
 
   if (lines.length <= 1) {
     return compact || '(空)';
   }
 
-  return `${lines.length} 行 \u00b7 ${compact}`;
+  return `${lines.length} 行 ${ICONS.separator} ${compact}`;
 }
 
 function getEditableFingerprint(snapshot: ConsoleSettingsSnapshot | null): string {
@@ -199,7 +200,7 @@ function buildRows(snapshot: ConsoleSettingsSnapshot, termWidth: number): Settin
       id: `model.${index}.summary`,
       kind: 'info',
       section: 'general',
-      label: `${displayName} \u00b7 ${model.provider} \u00b7 ${model.modelId || '(空模型 ID)'}`,
+      label: `${displayName} ${ICONS.separator} ${model.provider} ${ICONS.separator} ${model.modelId || '(空模型 ID)'}`,
       indent: 4,
     });
 
@@ -275,8 +276,8 @@ function buildRows(snapshot: ConsoleSettingsSnapshot, termWidth: number): Settin
     const errorText = status && 'error' in status ? status.error : undefined;
 
     const summary = status
-      ? `${server.name || `server_${index + 1}`} \u00b7 ${server.enabled ? '启用' : '禁用'} \u00b7 ${transportLabel(server.transport)} \u00b7 ${status.status}${errorText ? ` \u00b7 ${errorText}` : ` \u00b7 ${status.toolCount} tools`}`
-      : `${server.name || `server_${index + 1}`} \u00b7 ${server.enabled ? '未应用' : '禁用'} \u00b7 ${transportLabel(server.transport)}`;
+      ? `${server.name || `server_${index + 1}`} ${ICONS.separator} ${server.enabled ? '启用' : '禁用'} ${ICONS.separator} ${transportLabel(server.transport)} ${ICONS.separator} ${status.status}${errorText ? ` ${ICONS.separator} ${errorText}` : ` ${ICONS.separator} ${status.toolCount} tools`}`
+      : `${server.name || `server_${index + 1}`} ${ICONS.separator} ${server.enabled ? '未应用' : '禁用'} ${ICONS.separator} ${transportLabel(server.transport)}`;
 
     rows.push({ id: `mcp.${index}.summary`, kind: 'info', section: 'mcp', label: summary, indent: 4 });
 
@@ -948,12 +949,12 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       <box flexDirection="row" flexGrow={1}>
         {/* 左栏导航：用 paddingRight + 竖线字符模拟分隔线，
          * 因为 OpenTUI 的 BoxProps 不支持 borderRight 属性。 */}
-        <box width={24} flexDirection="column" paddingTop={1} paddingLeft={2} paddingRight={1}>
+        <box width={24} flexShrink={0} flexDirection="column" paddingTop={1} paddingLeft={2} paddingRight={1}>
           <text fg={C.primary}><strong>IRIS</strong></text>
           <box marginTop={1} flexDirection="column">
             {sections.map((sec) => (
               <text key={sec.id} fg={currentSection === sec.id ? C.accent : '#555'}>
-                {currentSection === sec.id ? '\u25CF' : '\u25CB'} {sec.icon} {sec.label}
+                {currentSection === sec.id ? ICONS.dotFilled : ICONS.dotEmpty} {sec.icon} {sec.label}
               </text>
             ))}
           </box>
@@ -1002,13 +1003,13 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
           <box flexDirection="column" marginBottom={1} flexShrink={0}>
             <text fg="#888">在终端内管理模型池、系统参数、工具策略与 MCP 服务器。</text>
             <text fg={isDirty ? C.warn : C.accent}>
-              {isDirty ? '\u25CF 有未保存修改' : '\u2713 当前草稿已同步'}
-              {saving ? '  \u00b7  保存中...' : ''}
+              {isDirty ? `${ICONS.dotFilled} 有未保存修改` : `${ICONS.checkmark} 当前草稿已同步`}
+              {saving ? `  ${ICONS.separator}  保存中...` : ''}
             </text>
           </box>
           {/* 设置项列表：可滚动区域 */}
           <scrollbox flexGrow={1}>
-            {windowStart > 0 && <text fg="#888">{'\u2026'}</text>}
+            {windowStart > 0 && <text fg="#888">{ICONS.ellipsis}</text>}
             {visibleRows.map((row: SettingsRow) => {
               const isSelected = row.id === selectedRowId && !!row.target;
               const prefix = row.kind === 'action'
@@ -1032,7 +1033,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
                 </box>
               );
             })}
-            {windowEnd < sectionRows.length && <text fg="#888">{'\u2026'}</text>}
+            {windowEnd < sectionRows.length && <text fg="#888">{ICONS.ellipsis}</text>}
           </scrollbox>
         </box>
       </box>
@@ -1049,10 +1050,10 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
                 <text fg={C.accent}>{'\u276F '}</text>
                 <input value={editorValue} onInput={setEditorValue} focused />
               </box>
-              <text fg="#888">{'Enter 保存 \u00b7 Esc 取消'}</text>
+              <text fg="#888">{`Enter 保存 ${ICONS.separator} Esc 取消`}</text>
             </box>
           ) : (
-            <text fg="#888">{`\u2191\u2193 选择  \u2190\u2192 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
+            <text fg="#888">{`${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
           )}
         </box>
       </box>

@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { ICONS } from '../terminal-compat';
 import { ToolRendererProps } from './default.js';
 
 interface ApplyDiffResult {
@@ -43,7 +44,7 @@ export function ApplyDiffRenderer({ args, result }: ToolRendererProps) {
   return (
     <text fg={isError ? '#ffff00' : '#888'}>
       <em>
-        {' \u21B3 '}
+        {` ${ICONS.resultArrow} `}
         {added > 0 && <span fg="#57ab5a">+{added}</span>}
         {added > 0 && deleted > 0 && ' '}
         {deleted > 0 && <span fg="#f47067">-{deleted}</span>}

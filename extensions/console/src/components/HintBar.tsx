@@ -3,6 +3,7 @@
 import React from 'react';
 import { C } from '../theme';
 import { getTextWidth } from '../text-layout';
+import { ICONS } from '../terminal-compat';
 
 interface HintBarProps {
   isGenerating: boolean;
@@ -33,12 +34,12 @@ function truncatePath(fullPath: string, maxWidth: number): string {
   const head = parts[0];
   for (let n = Math.min(parts.length - 1, 3); n >= 1; n--) {
     const tail = parts.slice(-n).join(sep);
-    const truncated = `${prefix}${head}${sep}\u2026${sep}${tail}`;
+    const truncated = `${prefix}${head}${sep}${ICONS.ellipsis}${sep}${tail}`;
     if (getTextWidth(truncated) <= maxWidth) return truncated;
   }
 
   // 仅保留 …/last
-  const minimal = `\u2026${sep}${parts[parts.length - 1]}`;
+  const minimal = `${ICONS.ellipsis}${sep}${parts[parts.length - 1]}`;
   if (getTextWidth(minimal) <= maxWidth) return minimal;
 
   return hardTruncate(fullPath, maxWidth);
@@ -46,7 +47,7 @@ function truncatePath(fullPath: string, maxWidth: number): string {
 
 /** 强制截断到指定宽度，末尾加 … */
 function hardTruncate(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return '\u2026';
+  if (maxWidth <= 1) return ICONS.ellipsis;
   let result = '';
   let width = 0;
   for (const ch of text) {
@@ -55,7 +56,7 @@ function hardTruncate(text: string, maxWidth: number): string {
     result += ch;
     width += cw;
   }
-  return result + '\u2026';
+  return result + ICONS.ellipsis;
 }
 
 /* ---------- 组件 ---------- */
@@ -64,7 +65,7 @@ export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, r
   const cwd = process.cwd();
   const hasQueue = (queueSize ?? 0) > 0;
 
-  // 计算右侧提示文本
+  // 计算右侧提示文本（必须与下方渲染 JSX 完全对应，否则布局错位）
   let hintStr: string;
   if (exitConfirmArmed) {
     hintStr = '再次按 ctrl+c 退出';
@@ -72,12 +73,11 @@ export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, r
     const parts: string[] = [];
     parts.push(isGenerating ? 'esc 中断生成' : 'ctrl+j 换行');
     parts.push('ctrl+t 工具详情');
-    if (!isGenerating) parts.push('shift+\u2190/\u2192 思考');
     if (isGenerating && hasQueue) {
       parts.push('/queue 管理队列');
     }
     parts.push(isGenerating ? 'ctrl+s 立即发送' : (copyMode ? 'f6 返回滚动模式' : 'f6 复制模式'));
-    hintStr = parts.join('  \u00b7  ');
+    hintStr = parts.join(`  ${ICONS.separator}  `);
   }
   const hintWidth = getTextWidth(hintStr);
 
@@ -91,28 +91,30 @@ export function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, r
 
   return (
     <box flexDirection="row" paddingTop={0} paddingRight={1}>
-      <box flexGrow={1}>
+      <box flexGrow={1} flexShrink={1}>
         {remoteHost ? (
-          <text fg={C.warn}>⚡ 远程模式 — 所有操作和配置均作用于 {remoteHost}</text>
+          <text fg={C.warn}>{ICONS.lightning} 远程模式 {ICONS.emDash} 所有操作和配置均作用于 {remoteHost}</text>
         ) : (
           <text fg={C.dim}>{displayCwd}</text>
         )}
       </box>
       {exitConfirmArmed ? (
-        <text fg={C.warn}>再次按 ctrl+c 退出</text>
+        <box flexShrink={0}><text fg={C.warn}>再次按 ctrl+c 退出</text></box>
       ) : (
-        <text fg={C.dim}>
-          {isGenerating ? 'esc 中断生成' : 'ctrl+j 换行'}
-          {'  \u00b7  ctrl+t 工具详情'}
-          {isGenerating && hasQueue ? (
-            <>
-              {'  \u00b7  '}
-              <span fg={C.warn}>/queue 管理队列</span>
-            </>
-          ) : null}
-          {'  \u00b7  '}
-          {isGenerating ? 'ctrl+s 立即发送' : (copyMode ? 'f6 返回滚动模式' : 'f6 复制模式')}
-        </text>
+        <box flexShrink={0}>
+          <text fg={C.dim}>
+            {isGenerating ? 'esc 中断生成' : 'ctrl+j 换行'}
+            {`  ${ICONS.separator}  ctrl+t 工具详情`}
+            {isGenerating && hasQueue ? (
+              <>
+                {`  ${ICONS.separator}  `}
+                <span fg={C.warn}>/queue 管理队列</span>
+              </>
+            ) : null}
+            {`  ${ICONS.separator}  `}
+            {isGenerating ? 'ctrl+s 立即发送' : (copyMode ? 'f6 返回滚动模式' : 'f6 复制模式')}
+          </text>
+        </box>
       )}
     </box>
   );

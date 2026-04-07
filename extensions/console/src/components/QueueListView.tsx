@@ -5,6 +5,7 @@ import type { QueuedMessage } from '../hooks/use-message-queue';
 import { useCursorBlink } from '../hooks/use-cursor-blink';
 import { InputDisplay } from './InputDisplay';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface QueueListViewProps {
   queue: QueuedMessage[];
@@ -23,7 +24,7 @@ function formatQueueTime(timestamp: number): string {
 function truncatePreview(text: string, maxLen: number): string {
   const single = text.replace(/\r\n/g, '\n').replace(/\n/g, ' \u21b5 ').trim();
   if (single.length <= maxLen) return single;
-  return single.slice(0, maxLen - 1) + '\u2026';
+  return single.slice(0, maxLen - 1) + ICONS.ellipsis;
 }
 
 /** 统计字符串中的换行数 */
@@ -48,7 +49,7 @@ export function QueueListView({ queue, selectedIndex, editingId, editingValue, e
           {isEditing ? (
             <text fg={C.dim}>  Ctrl+J 换行  Enter 确认  Ctrl+U 清空  Esc 取消</text>
           ) : (
-            <text fg={C.dim}>  ↑↓ 选择  Ctrl/Shift+↑↓ 移动  e 编辑  d 删除  c 清空队列  Esc 返回</text>
+            <text fg={C.dim}>{`  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Ctrl/Shift+${ICONS.arrowUp}${ICONS.arrowDown} 移动  e 编辑  d 删除  c 清空队列  Esc 返回`}</text>
           )}
         </box>
       </box>

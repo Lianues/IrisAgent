@@ -12,6 +12,7 @@
  */
 
 import type { AgentDefinitionLike as AgentDefinition } from '@irises/extension-sdk';
+import { ICONS } from './terminal-compat';
 
 const ESC = '\x1b';
 const CSI = `${ESC}[`;
@@ -64,7 +65,7 @@ export function showAgentSelector(agents: AgentDefinition[]): Promise<AgentDefin
         const agent = agents[i];
         const isSelected = i === selectedIndex;
 
-        const marker = isSelected ? `${ansi.cyan}${ansi.bold} ❯ ` : '   ';
+        const marker = isSelected ? `${ansi.cyan}${ansi.bold} ${ICONS.selectorArrow} ` : '   ';
         const nameStyle = isSelected ? `${ansi.cyan}${ansi.bold}` : `${ansi.white}`;
         lines.push(`${marker}${nameStyle}${agent.name}${ansi.reset}`);
         if (agent.description) {

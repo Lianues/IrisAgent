@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 import type { ThinkingEffortLevel } from '../app-types';
 
 const BLOCK_COUNT = 4;
@@ -14,8 +15,8 @@ const FILL_MAP: Record<ThinkingEffortLevel, number> = {
   max: 4,
 };
 
-const FILLED_CHAR = '\u25A3'; // ▣ (有内框的实心方块，比 ■ 稍大)
-const DIM_CHAR = '\u25A2';    // ▢ (圆角空心方块，比 □ 稍大)
+const FILLED_CHAR = ICONS.thinkingFilled; // ￭ (Halfwidth) / = (ASCII)
+const DIM_CHAR = ICONS.thinkingDim;       // ￮ (Halfwidth) / - (ASCII)
 
 interface ThinkingIndicatorProps {
   level: ThinkingEffortLevel;
@@ -48,13 +49,13 @@ export function ThinkingIndicator({ level, showHint, isRemote }: ThinkingIndicat
         </text>
       </box>
       {isRemote ? (
-        <box>
+        <box flexShrink={0}>
           <text fg={C.dim}>输入 /disconnect 断开远程连接</text>
         </box>
       ) : null}
       {showHint ? (
-        <box>
-          <text fg={C.dim}>{`shift+\u2190/\u2192 调整思考强度`}</text>
+        <box flexShrink={0}>
+          <text fg={C.dim}>{`shift+${ICONS.arrowLeft}/${ICONS.arrowRight} 调整思考强度`}</text>
         </box>
       ) : null}
     </box>

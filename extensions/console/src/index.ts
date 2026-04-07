@@ -36,6 +36,7 @@ import { MessagePart } from './components/MessageItem';
 import { ConsoleSettingsController, ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './settings';
 import { configureBundledOpenTuiTreeSitter } from './opentui-runtime';
 import { attachCompiledResizeWatcher } from './resize-watcher';
+import { ICONS } from './terminal-compat';
 
 /** 从 shell 命令生成前缀通配模式（如 "npm install express" → "npm install *"） */
 function generateCommandPattern(command: string): string {
@@ -450,11 +451,11 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       let text: string;
       if (status === 'completed') {
         const preview = (result ?? '').slice(0, 200);
-        text = `⏰ ${description} 完成：${preview}`;
+        text = `${ICONS.clock} ${description} 完成：${preview}`;
       } else if (status === 'killed') {
-        text = `⏰ ${description} 被中止`;
+        text = `${ICONS.clock} ${description} 被中止`;
       } else {
-        text = `⏰ ${description} 失败：${result ?? '未知错误'}`;
+        text = `${ICONS.clock} ${description} 失败：${result ?? '未知错误'}`;
       }
       this.appHandle?.addMessage('assistant', text);
     });
@@ -723,7 +724,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       showConnectSuccess(handshake.agentName, this.modelName);
       this.initWarnings = [`已连接到远程 Iris — ${this._remoteHost} (agent=${handshake.agentName}, model=${this.modelName})\n输入 /disconnect 断开连接`];
       this.initWarningsColor = '#00cec9';
-      this.initWarningsIcon = '●';
+      this.initWarningsIcon = ICONS.dotFilled;
 
       await new Promise(r => setTimeout(r, 800));
     } catch (err) {
@@ -918,7 +919,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     this._remoteHost = '';
     this.initWarnings = [`已断开远程连接 (${disconnectedHost})，已回到本地`];
     this.initWarningsColor = '#74b9ff';
-    this.initWarningsIcon = '○';
+    this.initWarningsIcon = ICONS.dotEmpty;
 
     // 从本地 backend 恢复模型信息
     const modelInfo = (this.backend as any).getCurrentModelInfo?.();

@@ -19,6 +19,7 @@ import { usePaste } from '../hooks/use-paste';
 import { InputDisplay } from './InputDisplay';
 import { C } from '../theme';
 import { getTextWidth } from '../text-layout';
+import { ICONS } from '../terminal-compat';
 
 interface InputBarProps {
   disabled: boolean;
@@ -225,8 +226,8 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
 
   // 提示符样式和 placeholder 根据状态变化
   const promptColor = inputDisabled ? C.dim : isQueueMode ? C.warn : C.accent;
-  const promptChar = isQueueMode ? '\u23F3 ' : '\u276F ';
-  const placeholder = isQueueMode ? '输入消息（将排队发送）…' : '输入消息…';
+  const promptChar = isQueueMode ? `${ICONS.hourglass} ` : `${ICONS.selectorArrow} `;
+  const placeholder = isQueueMode ? `输入消息（将排队发送）${ICONS.ellipsis}` : `输入消息${ICONS.ellipsis}`;
 
   const inputRow = (
     <box flexDirection="row" border={false}>
@@ -254,7 +255,7 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
             return (
               <box key={cmd.name} paddingLeft={1} backgroundColor={isSelected ? C.border : undefined}>
                 <text>
-                  <span fg={isSelected ? C.accent : C.dim}>{isSelected ? '▸ ' : '  '}</span>
+                  <span fg={isSelected ? C.accent : C.dim}>{isSelected ? `${ICONS.triangleRight} ` : '  '}</span>
                   {isSelected
                     ? <strong><span fg={cmd.color ?? C.text}>{padded}</span></strong>
                     : <span fg={cmd.color ?? C.textSec}>{padded}</span>}

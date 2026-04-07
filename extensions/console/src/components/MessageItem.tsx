@@ -11,10 +11,11 @@ import { MarkdownText } from './MarkdownText';
 import { GeneratingTimer } from './GeneratingTimer';
 import { ToolCall } from './ToolCall';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 function truncateRight(line: string, maxChars: number): string {
   if (line.length <= maxChars) return line;
-  return `${line.slice(0, maxChars - 1)}\u2026`;
+  return `${line.slice(0, maxChars - 1)}${ICONS.ellipsis}`;
 }
 
 function getThoughtTailPreview(text: string, maxChars: number, lineCount = 2): string[] {
@@ -31,7 +32,7 @@ function getSummaryPreview(text: string, maxChars: number): string {
   if (lines.length === 0) return '';
   const first = lines[0];
   if (first.length <= maxChars) return first;
-  return first.slice(0, maxChars - 1) + '\u2026';
+  return first.slice(0, maxChars - 1) + ICONS.ellipsis;
 }
 
 
@@ -151,9 +152,9 @@ function groupParts(parts: MessagePart[]): RenderGroup[] {
  * TODO: 后续可添加键盘交互实现展开/折叠切换，完整展示结果文本。
  */
 function NotificationPayloadBlock({ payload }: { payload: NotificationPayload }) {
-  const icon = payload.status === 'completed' ? '\u2713'
-    : payload.status === 'failed' ? '\u2717'
-    : '\u2298';
+  const icon = payload.status === 'completed' ? ICONS.checkmark
+    : payload.status === 'failed' ? ICONS.crossmark
+    : ICONS.cancelled;
   const iconColor = payload.status === 'completed' ? C.accent : C.error;
 
   // 取结果/错误的首行作为预览文本
@@ -166,7 +167,7 @@ function NotificationPayloadBlock({ payload }: { payload: NotificationPayload })
       <text>
         <span fg={iconColor}>{icon}</span>
         <span fg={C.text}> {payload.description}</span>
-        {preview ? <span fg={C.dim}>{' \u2014 '}{preview}</span> : null}
+        {preview ? <span fg={C.dim}>{` ${ICONS.emDash} `}{preview}</span> : null}
       </text>
     </box>
   );
@@ -197,7 +198,7 @@ export const MessageItem = React.memo(function MessageItem(
 
   // 总结消息：缩略单行显示
   if (isSummary) {
-    const headerText = `\u00b7 context `;
+    const headerText = `${ICONS.separator} context `;
     const separatorLen = Math.max(2, termWidth - headerText.length - 2);
     const preview = getSummaryPreview(
       msg.parts.filter(p => p.type === 'text').map(p => p.text).join('\n'),
@@ -215,7 +216,7 @@ export const MessageItem = React.memo(function MessageItem(
         <box marginTop={1}>
           <text fg={C.dim}>
             {msg.createdAt != null ? formatTime(msg.createdAt) : ''}
-            {msg.tokenIn != null ? `  \u2191${msg.tokenIn.toLocaleString()}` : ''}
+            {msg.tokenIn != null ? `  ${ICONS.upArrow}${msg.tokenIn.toLocaleString()}` : ''}
           </text>
         </box>
       </box>
@@ -225,7 +226,7 @@ export const MessageItem = React.memo(function MessageItem(
   // 通知汇总消息：独立展示各子代理完成状态，不含 LLM 回复内容。
   // 在主 LLM 收到 notification 并开始回复之前就已渲染到聊天区。
   if (msg.isNotificationSummary && msg.notificationPayloads && msg.notificationPayloads.length > 0) {
-    const headerText = `\u00b7 bg-tasks completed `;
+    const headerText = `${ICONS.separator} bg-tasks completed `;
     const separatorLen = Math.max(2, termWidth - headerText.length - 2);
     return (
       <box flexDirection="column" width="100%">
@@ -254,7 +255,7 @@ export const MessageItem = React.memo(function MessageItem(
   const isNotification = msg.isNotification === true;
   const labelName = isSummary ? 'context' : isUser ? 'you' : (msg.isCommand ? 'shell' : (isNotification ? 'bg-task' : (msg.modelName || modelName || 'iris').toLowerCase()));
   const labelColor = isSummary ? C.warn : isUser ? C.roleUser : (msg.isError ? C.error : (msg.isCommand ? C.command : (isNotification ? C.warn : C.roleAssistant)));
-  const headerText = `\u00b7 ${labelName} `;
+  const headerText = `${ICONS.separator} ${labelName} `;
 
   const displayParts: MessagePart[] = [...msg.parts];
   if (liveParts && liveParts.length > 0) displayParts.push(...liveParts);
@@ -312,7 +313,7 @@ export const MessageItem = React.memo(function MessageItem(
             return (
               <box key={group.index} marginTop={(isAfterTools) ? 0 : (gi > 0 ? 1 : 0)} flexDirection="column"
                    backgroundColor={C.thinkingBg} paddingLeft={1}>
-                <text fg={C.primaryLight}><em>{'\u00b7 ' + prefix}</em></text>
+                <text fg={C.primaryLight}><em>{`${ICONS.separator} ` + prefix}</em></text>
                 <box flexDirection="column">
                   {displayLines.length > 0 ? displayLines.map((line, li) => (
                     <text key={li} fg={C.dim}>
@@ -326,7 +327,7 @@ export const MessageItem = React.memo(function MessageItem(
                   )}
                 </box>
                 {hiddenLines > 0 ? (
-                  <text fg={C.dim}><em>{'    \u2026 +'}{hiddenLines}{' lines (ctrl+o to '}{showFull ? 'collapse' : 'expand'}{')'}</em></text>
+                  <text fg={C.dim}><em>{`    ${ICONS.ellipsis} +`}{hiddenLines}{' lines (ctrl+o to '}{showFull ? 'collapse' : 'expand'}{')'}</em></text>
                 ) : null}
               </box>
             );
@@ -339,7 +340,7 @@ export const MessageItem = React.memo(function MessageItem(
             return (
               <box key={`tools-${group.startIndex}`} flexDirection="column" width="100%" marginTop={(isConsecutiveTools || isAfterThought) ? 0 : (gi > 0 ? 1 : 0)}>
                 <box flexDirection="column" backgroundColor={C.toolPendingBg} paddingLeft={1}>
-                  <text fg={C.accent}><strong>{'\u00b7 tools'}</strong></text>
+                  <text fg={C.accent}><strong>{`${ICONS.separator} tools`}</strong></text>
                   {group.tools.map(inv => <ToolCall key={inv.id} invocation={inv} />)}
                 </box>
               </box>
@@ -354,7 +355,7 @@ export const MessageItem = React.memo(function MessageItem(
           <box marginTop={hasAnyContent ? 1 : 0}>
             <text fg={C.dim}>
               {msg.createdAt != null ? formatTime(msg.createdAt) : ''}
-              {msg.tokenIn != null ? `  \u2191${msg.tokenIn.toLocaleString()}${msg.cachedTokenIn ? `(${msg.cachedTokenIn.toLocaleString()})` : ''}` : ''}
+              {msg.tokenIn != null ? `  ${ICONS.upArrow}${msg.tokenIn.toLocaleString()}${msg.cachedTokenIn ? `(${msg.cachedTokenIn.toLocaleString()})` : ''}` : ''}
             </text>
           </box>
         )}
@@ -365,8 +366,8 @@ export const MessageItem = React.memo(function MessageItem(
             <text fg={C.dim}>
               {msg.createdAt != null ? formatTime(msg.createdAt) : ''}
               {msg.durationMs != null ? `  ${(msg.durationMs / 1000).toFixed(1)}s` : ''}
-              {msg.tokenIn != null ? `  \u2191${msg.tokenIn.toLocaleString()}${msg.cachedTokenIn ? `(${msg.cachedTokenIn.toLocaleString()})` : ''}` : ''}
-              {msg.tokenOut != null ? `  \u2193${msg.tokenOut.toLocaleString()}` : ''}
+              {msg.tokenIn != null ? `  ${ICONS.upArrow}${msg.tokenIn.toLocaleString()}${msg.cachedTokenIn ? `(${msg.cachedTokenIn.toLocaleString()})` : ''}` : ''}
+              {msg.tokenOut != null ? `  ${ICONS.downArrow}${msg.tokenOut.toLocaleString()}` : ''}
               {msg.tokenOut != null && msg.streamOutputDurationMs != null
                 ? `   ${formatTokenSpeed(msg.tokenOut, msg.streamOutputDurationMs)}`
                 : ''}

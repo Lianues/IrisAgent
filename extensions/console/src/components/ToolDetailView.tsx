@@ -15,6 +15,7 @@ import type { ToolDetailData, ToolDetailBreadcrumb } from '../app-types';
 import { getToolRenderer, getToolDetailRenderer } from '../tool-renderers';
 import { Spinner } from './Spinner';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface ToolDetailViewProps {
   data: ToolDetailData;
@@ -27,8 +28,8 @@ interface ToolDetailViewProps {
 const TERMINAL_STATUSES = new Set<ToolStatus>(['success', 'warning', 'error']);
 
 const STATUS_ICON: Record<string, string> = {
-  streaming: '📡', queued: '⏳', awaiting_approval: '🔐', executing: '🔧',
-  awaiting_apply: '📋', success: '✅', warning: '⚠️', error: '❌',
+  streaming: ICONS.statusStreaming, queued: ICONS.statusQueued, awaiting_approval: ICONS.statusApproval, executing: ICONS.statusExecuting,
+  awaiting_apply: ICONS.statusApply, success: ICONS.statusSuccess, warning: ICONS.statusWarning, error: ICONS.statusError,
 };
 const STATUS_LABEL: Record<string, string> = {
   streaming: '输出中', queued: '等待中', awaiting_approval: '等待审批', executing: '执行中',
@@ -57,7 +58,7 @@ function dur(startMs: number, endMs: number): string {
 
 function truncate(text: string, max: number): string {
   const oneLine = text.replace(/\n/g, '↵ ');
-  return oneLine.length > max ? oneLine.slice(0, max) + '…' : oneLine;
+  return oneLine.length > max ? oneLine.slice(0, max) + ICONS.ellipsis : oneLine;
 }
 
 function childArgsSummary(toolName: string, args: Record<string, unknown>): string {
@@ -153,7 +154,7 @@ export function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onA
           <span bg={status === 'error' ? C.error : C.accent} fg={C.cursorFg}><strong> {toolName} </strong></span>
           {'  '}
           <span fg={isFinal ? (status === 'error' ? C.error : C.accent) : C.dim}>
-            {STATUS_ICON[status] || '⏳'} {STATUS_LABEL[status] || status}
+            {STATUS_ICON[status] || ICONS.statusQueued} {STATUS_LABEL[status] || status}
           </span>
           {dur(createdAt, updatedAt) ? <span fg={C.dim}>  {dur(createdAt, updatedAt)}</span> : null}
           {'  '}
@@ -164,8 +165,8 @@ export function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onA
       {/* 时间线 */}
       <box marginTop={0}>
         <text>
-          <span fg={C.dim}>  ⏱ {ts(createdAt)}</span>
-          {isFinal ? <span fg={C.dim}> → {ts(updatedAt)}</span> : <span fg={C.dim}> → …</span>}
+          <span fg={C.dim}>  {ICONS.timer} {ts(createdAt)}</span>
+          {isFinal ? <span fg={C.dim}>{` ${ICONS.arrowRight} `}{ts(updatedAt)}</span> : <span fg={C.dim}>{` ${ICONS.arrowRight} ${ICONS.ellipsis}`}</span>}
         </text>
       </box>
 
@@ -209,7 +210,7 @@ function BreadcrumbBar({ breadcrumb, toolName }: { breadcrumb: ToolDetailBreadcr
   return (
     <box marginBottom={0}>
       <text>
-        <span fg={C.dim}>{'← [Esc] '}</span>
+        <span fg={C.dim}>{`${ICONS.arrowLeft} [Esc] `}</span>
         {breadcrumb.map((b) => (
           <span key={b.toolId}>
             <span fg={C.dim}>{b.toolName}</span>
@@ -248,7 +249,7 @@ function ArgsSection({ args }: { args: Record<string, unknown> }) {
           </text>
         );
       })}
-      {entries.length > 8 && <text fg={C.dim}>  … +{entries.length - 8} 更多参数</text>}
+      {entries.length > 8 && <text fg={C.dim}>{`  ${ICONS.ellipsis} +${entries.length - 8} 更多参数`}</text>}
     </box>
   );
 }
@@ -259,7 +260,7 @@ function OutputSection({ output }: { output: ToolOutputEntry[] }) {
   const skipped = output.length - visible.length;
   return (
     <box flexDirection="column">
-      {skipped > 0 && <text fg={C.dim}>  … 省略 {skipped} 条</text>}
+      {skipped > 0 && <text fg={C.dim}>{`  ${ICONS.ellipsis} 省略 ${skipped} 条`}</text>}
       {visible.map((entry, i) => (
         <text key={i}>
           <span fg={C.dim}>  {ts(entry.timestamp)} </span>
@@ -276,12 +277,12 @@ function ChildrenSection({ children, selectedIdx }: { children: ToolInvocation[]
     <box flexDirection="column">
       {children.map((child, i) => {
         const sel = i === selectedIdx;
-        const icon = STATUS_ICON[child.status] || '⏳';
+        const icon = STATUS_ICON[child.status] || ICONS.statusQueued;
         const d = dur(child.createdAt, child.updatedAt);
         const summary = childArgsSummary(child.toolName, child.args);
         return (
           <text key={child.id}>
-            <span fg={sel ? C.accent : C.dim}>{sel ? ' ▸ ' : '   '}</span>
+            <span fg={sel ? C.accent : C.dim}>{sel ? ` ${ICONS.triangleRight} ` : '   '}</span>
             <span bg={child.status === 'error' ? C.error : C.accent} fg={C.cursorFg}> {child.toolName} </span>
             {summary ? <span fg={C.dim}> {summary}</span> : null}
             <span> {icon}</span>
@@ -317,7 +318,7 @@ function ResultSection({ status, error, result, toolName, args, Renderer }: {
         {visible.map((line, i) => (
           <text key={i} fg={C.dim}>  {line}</text>
         ))}
-        {lines.length > 10 && <text fg={C.dim}>  … +{lines.length - 10} 行</text>}
+        {lines.length > 10 && <text fg={C.dim}>{`  ${ICONS.ellipsis} +${lines.length - 10} 行`}</text>}
       </box>
     );
   }
@@ -330,7 +331,7 @@ function FooterBar({ isFinal, hasAbort, hasChildren }: { isFinal: boolean; hasAb
       <text>
         <span fg={C.dim}> [Esc/q] 返回</span>
         {!isFinal && hasAbort ? <span fg={C.dim}>  [a] 终止</span> : null}
-        {hasChildren ? <span fg={C.dim}>  [↑↓] 选择子工具  [Enter] 查看详情</span> : null}
+        {hasChildren ? <span fg={C.dim}>{`  [${ICONS.arrowUp}${ICONS.arrowDown}] 选择子工具  [Enter] 查看详情`}</span> : null}
       </text>
     </box>
   );

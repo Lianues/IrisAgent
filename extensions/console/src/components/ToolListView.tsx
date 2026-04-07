@@ -8,6 +8,7 @@
 import React from 'react';
 import type { ToolInvocation, ToolStatus } from '@irises/extension-sdk';
 import { C } from '../theme';
+import { ICONS } from '../terminal-compat';
 
 interface ToolListViewProps {
   tools: ToolInvocation[];
@@ -15,8 +16,8 @@ interface ToolListViewProps {
 }
 
 const STATUS_ICON: Record<string, string> = {
-  streaming: '📡', queued: '⏳', awaiting_approval: '🔐', executing: '🔧',
-  awaiting_apply: '📋', success: '✅', warning: '⚠️', error: '❌',
+  streaming: ICONS.statusStreaming, queued: ICONS.statusQueued, awaiting_approval: ICONS.statusApproval, executing: ICONS.statusExecuting,
+  awaiting_apply: ICONS.statusApply, success: ICONS.statusSuccess, warning: ICONS.statusWarning, error: ICONS.statusError,
 };
 
 function formatDuration(startMs: number, endMs: number): string {
@@ -30,7 +31,7 @@ function argsSummary(toolName: string, args: Record<string, unknown>): string {
   switch (toolName) {
     case 'shell': case 'bash': {
       const cmd = String(args.command || '');
-      return cmd.length > 40 ? `"${cmd.slice(0, 40)}…"` : `"${cmd}"`;
+      return cmd.length > 40 ? `"${cmd.slice(0, 40)}${ICONS.ellipsis}"` : `"${cmd}"`;
     }
     case 'read_file': case 'write_file': case 'apply_diff':
     case 'delete_code': case 'insert_code': {
@@ -43,14 +44,14 @@ function argsSummary(toolName: string, args: Record<string, unknown>): string {
     }
     case 'search_in_files': {
       const q = String(args.query || '');
-      const head = q.length > 20 ? `"${q.slice(0, 20)}…"` : `"${q}"`;
+      const head = q.length > 20 ? `"${q.slice(0, 20)}${ICONS.ellipsis}"` : `"${q}"`;
       return args.path ? `${head} in ${args.path}` : head;
     }
     case 'find_files':
       return Array.isArray(args.patterns) ? String(args.patterns[0] || '') : '';
     case 'sub_agent': {
       const prompt = String(args.prompt || '');
-      return prompt.length > 50 ? `"${prompt.slice(0, 50)}…"` : `"${prompt}"`;
+      return prompt.length > 50 ? `"${prompt.slice(0, 50)}${ICONS.ellipsis}"` : `"${prompt}"`;
     }
     default:
       return '';
@@ -79,7 +80,7 @@ export function ToolListView({ tools, selectedIndex }: ToolListViewProps) {
       <scrollbox flexGrow={1}>
         {tools.map((inv, i) => {
           const sel = i === selectedIndex;
-          const icon = STATUS_ICON[inv.status] || '⏳';
+          const icon = STATUS_ICON[inv.status] || ICONS.statusQueued;
           const d = formatDuration(inv.createdAt, inv.updatedAt);
           const summary = argsSummary(inv.toolName, inv.args);
           const time = new Date(inv.createdAt);
@@ -87,7 +88,7 @@ export function ToolListView({ tools, selectedIndex }: ToolListViewProps) {
 
           return (
             <text key={inv.id}>
-              <span fg={sel ? C.accent : C.dim}>{sel ? ' ❯ ' : '   '}</span>
+              <span fg={sel ? C.accent : C.dim}>{sel ? ` ${ICONS.selectorArrow} ` : '   '}</span>
               <span fg={C.dim}>{timeStr} </span>
               <span bg={inv.status === 'error' ? C.error : C.accent} fg={C.cursorFg}> {inv.toolName} </span>
               {summary ? <span fg={sel ? undefined : C.dim}> {summary}</span> : null}
@@ -99,7 +100,7 @@ export function ToolListView({ tools, selectedIndex }: ToolListViewProps) {
       </scrollbox>
 
       <text fg={C.dim}>{'─'.repeat(60)}</text>
-      <text fg={C.dim}> ↑↓ 选择  Enter 查看详情  Esc 返回</text>
+      <text fg={C.dim}>{` ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 查看详情  Esc 返回`}</text>
     </box>
   );
 }
