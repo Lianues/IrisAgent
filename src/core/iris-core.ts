@@ -601,8 +601,8 @@ export class IrisCore {
         };
         return new ToolLoop(loopOptions.tools as ToolRegistry, loopPrompt, loopConfig);
       },
-      registerRoute,
-      registerPanel,
+      registerWebRoute: registerRoute,
+      registerWebPanel: registerPanel,
       agentNetwork: options.agentNetwork,
       registerConsoleSettingsTab,
       getConsoleSettingsTabs: () => consoleSettingsTabs,
