@@ -110,9 +110,9 @@ function runBuild(extensionDir: string): { success: boolean; error?: string } {
 // ---------- 主流程 ----------
 
 /**
- * 前置步骤：编译 @irises/extension-sdk。
+ * 前置步骤：编译 irises-extension-sdk。
  * 很多 extension 依赖这个包的编译产物（dist/），如果跳过会导致
- * bun build 时报 "Could not resolve @irises/extension-sdk" 错误。
+ * bun build 时报 "Could not resolve irises-extension-sdk" 错误。
  */
 function buildExtensionSdk(): boolean {
   const sdkDir = path.join(rootDir, 'packages', 'extension-sdk');
@@ -121,17 +121,17 @@ function buildExtensionSdk(): boolean {
     console.log('[build] packages/extension-sdk 不存在，跳过 SDK 编译');
     return true;
   }
-  console.log('[build] 编译 @irises/extension-sdk ...');
+  console.log('[build] 编译 irises-extension-sdk ...');
   const result = childProcess.spawnSync('npm', ['run', 'build'], {
     cwd: sdkDir,
     stdio: 'inherit',
     shell: process.platform === 'win32',
   });
   if (result.error || (typeof result.status === 'number' && result.status !== 0)) {
-    console.error('[build] @irises/extension-sdk 编译失败，后续 extension 可能也会失败');
+    console.error('[build] irises-extension-sdk 编译失败，后续 extension 可能也会失败');
     return false;
   }
-  console.log('[build] @irises/extension-sdk 编译成功\n');
+  console.log('[build] irises-extension-sdk 编译成功\n');
   return true;
 }
 

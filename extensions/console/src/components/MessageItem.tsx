@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTerminalDimensions } from '@opentui/react';
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 import { MarkdownText } from './MarkdownText';
 import { GeneratingTimer } from './GeneratingTimer';
 import { ToolCall } from './ToolCall';

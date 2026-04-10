@@ -5,7 +5,7 @@
  * 让 LLM 自主决定何时读写长期记忆。
  */
 
-import type { ToolDefinition } from '@irises/extension-sdk';
+import type { ToolDefinition } from 'irises-extension-sdk';
 import type { MemoryProvider } from './base.js';
 import type { MemoryType } from './types.js';
 import { MEMORY_TYPES, parseMemoryType } from './types.js';

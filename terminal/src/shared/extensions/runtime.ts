@@ -23,7 +23,7 @@ import {
   analyzeRuntimeEntries,
   describeRuntimeIssues,
   type ExtensionManifestLike,
-} from "@irises/extension-sdk/utils"
+} from "irises-extension-sdk/utils"
 
 // ==================== TUI 专属类型 ====================
 
@@ -69,7 +69,7 @@ export interface ExtensionSummary {
   localVersionHint?: string
 }
 
-export { getRemoteExtensionRequestTimeoutMs } from "@irises/extension-sdk/utils"
+export { getRemoteExtensionRequestTimeoutMs } from "irises-extension-sdk/utils"
 
 // ==================== TUI 专属工具 ====================
 

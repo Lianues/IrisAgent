@@ -4,8 +4,8 @@
  * 使用 definePlatformFactory 注册 web 平台。
  */
 
-import { definePlatformFactory } from '@irises/extension-sdk';
-import type { IrisAPI } from '@irises/extension-sdk';
+import { definePlatformFactory } from 'irises-extension-sdk';
+import type { IrisAPI } from 'irises-extension-sdk';
 import { WebPlatform } from './web-platform';
 
 export { WebPlatform };

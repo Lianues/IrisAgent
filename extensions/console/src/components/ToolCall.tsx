@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Spinner } from './Spinner';
-import type { ToolInvocation, ToolStatus } from '@irises/extension-sdk';
+import type { ToolInvocation, ToolStatus } from 'irises-extension-sdk';
 import { getToolRenderer } from '../tool-renderers';
 import { C } from '../theme';
 import { SPINNER_FRAMES, ICONS } from '../terminal-compat';

@@ -9,9 +9,9 @@
 
 import * as http from 'http';
 import { RouteParams, sendJSON } from '../router';
-import type { StorageLike } from '@irises/extension-sdk';
+import type { StorageLike } from 'irises-extension-sdk';
 import { formatMessages } from '../message-format';
-import type { Content } from '@irises/extension-sdk';
+import type { Content } from 'irises-extension-sdk';
 
 export function createSessionsHandlers(storage: StorageLike) {
   return {

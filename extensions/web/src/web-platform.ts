@@ -14,7 +14,7 @@ import {
   PlatformAdapter,
   createExtensionLogger,
   isThoughtTextPart,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 import type {
   IrisBackendLike,
   RoutableHttpPlatform,
@@ -25,7 +25,7 @@ import type {
   IrisAPI,
   AgentDefinitionLike,
   MultiAgentCapable,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 import { createCloudflareHandlers } from './handlers/cloudflare';
 import { createDeployHandlers } from './handlers/deploy';
 import { Router, sendJSON, readBody } from './router';

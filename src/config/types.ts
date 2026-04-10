@@ -8,7 +8,7 @@ import type { NetConfig } from '../net/types';
 /**
  * 对码（Pairing）配置。
  *
- * 原先从 @irises/extension-sdk/pairing 导入，但该 SDK 包需要先构建才能被 TS 解析。
+ * 原先从 irises-extension-sdk/pairing 导入，但该 SDK 包需要先构建才能被 TS 解析。
  * 为避免宿主对未构建的 SDK 包产生硬依赖，将此类型内联到宿主代码中。
  * 语义与 packages/extension-sdk/src/pairing/types.ts 中的 PairingConfig 保持一致。
  */
@@ -279,7 +279,7 @@ export interface SystemConfig {
   devSourceExtensions?: string[];
 
   /**
-   * 开发模式：是否将 @irises/extension-sdk 也从源码加载。
+   * 开发模式：是否将 irises-extension-sdk 也从源码加载。
    * 启用后会在 SDK 的 dist/ 中生成轻量 shim，将模块解析重定向到 packages/extension-sdk/src/。
    * 需配合 devSourceExtensions 使用，仅在非编译二进制环境下生效。
    */

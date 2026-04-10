@@ -5,7 +5,7 @@
     "": {
       "name": "iris",
       "dependencies": {
-        "@irises/extension-sdk": "file:packages/extension-sdk",
+        "irises-extension-sdk": "file:packages/extension-sdk",
         "@modelcontextprotocol/sdk": "^1.27.1",
         "better-sqlite3": "^12.6.2",
         "cli-highlight": "^2.1.11",
@@ -145,7 +145,7 @@
 
     "@img/sharp-win32-x64": ["@img/sharp-win32-x64@0.34.5", "https://registry.npmmirror.com/@img/sharp-win32-x64/-/sharp-win32-x64-0.34.5.tgz", { "os": "win32", "cpu": "x64" }, "sha512-+29YMsqY2/9eFEiW93eqWnuLcWcufowXewwSNIT6UwZdUUCrM3oFjMWH/Z6/TMmb4hlFenmfAVbpWeup2jryCw=="],
 
-    "@irises/extension-sdk": ["@irises/extension-sdk@file:packages/extension-sdk", { "devDependencies": { "@types/node": "^22.19.15", "typescript": "^5.7.0" } }],
+    "irises-extension-sdk": ["irises-extension-sdk@file:packages/extension-sdk", { "devDependencies": { "@types/node": "^22.19.15", "typescript": "^5.7.0" } }],
 
     "@jimp/core": ["@jimp/core@1.6.0", "https://registry.npmmirror.com/@jimp/core/-/core-1.6.0.tgz", { "dependencies": { "@jimp/file-ops": "1.6.0", "@jimp/types": "1.6.0", "@jimp/utils": "1.6.0", "await-to-js": "^3.0.0", "exif-parser": "^0.1.12", "file-type": "^16.0.0", "mime": "3" } }, "sha512-EQQlKU3s9QfdJqiSrZWNTxBs3rKXgO2W+GxNXDtwchF3a4IqxDheFX1ti+Env9hdJXDiYLp2jTRjlxhPthsk8w=="],
 

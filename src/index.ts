@@ -21,8 +21,8 @@ import {
   isMultiAgentCapable,
   isForegroundPlatform,
   isRoutableHttpPlatform,
-} from '@irises/extension-sdk';
-import type { MultiAgentCapable, ForegroundPlatform } from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
+import type { MultiAgentCapable, ForegroundPlatform } from 'irises-extension-sdk';
 import type { MCPManager } from './mcp';
 import { isCompiledBinary } from './paths';
 

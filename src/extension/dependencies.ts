@@ -2,13 +2,13 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../logger';
-import type { ExtensionManifest } from '@irises/extension-sdk';
+import type { ExtensionManifest } from 'irises-extension-sdk';
 import {
   analyzeRuntimeEntries as analyzeRuntimeEntriesShared,
   describeRuntimeIssues,
   collectRelativeFilesFromDir,
   type RuntimeEntryGroupAnalysis,
-} from '@irises/extension-sdk/utils';
+} from 'irises-extension-sdk/utils';
 
 const logger = createLogger('ExtensionDependencies');
 

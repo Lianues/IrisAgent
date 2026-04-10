@@ -6,7 +6,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { ConfigContributionRegistryLike, ConfigContribution, Disposable } from '@irises/extension-sdk';
+import type { ConfigContributionRegistryLike, ConfigContribution, Disposable } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
 
 const logger = createLogger('ConfigContributions');

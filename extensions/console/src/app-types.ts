@@ -1,4 +1,4 @@
-import type { ToolInvocation, ToolOutputEntry } from '@irises/extension-sdk';
+import type { ToolInvocation, ToolOutputEntry } from 'irises-extension-sdk';
 
 export interface MessageMeta {
   tokenIn?: number;

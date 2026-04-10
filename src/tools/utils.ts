@@ -3,11 +3,11 @@
  */
 
 import { getSessionCwd } from '../core/backend/session-context';
-import { resolveProjectPath as resolveProjectPathRaw } from '@irises/extension-sdk/tool-utils';
+import { resolveProjectPath as resolveProjectPathRaw } from 'irises-extension-sdk/tool-utils';
 
 // Re-export from SDK for shared use
-export { normalizeObjectArrayArg, normalizeStringArrayArg } from '@irises/extension-sdk/tool-utils';
-export type { NormalizeObjectArrayArgOptions, NormalizeStringArrayArgOptions } from '@irises/extension-sdk/tool-utils';
+export { normalizeObjectArrayArg, normalizeStringArrayArg } from 'irises-extension-sdk/tool-utils';
+export type { NormalizeObjectArrayArgOptions, NormalizeStringArrayArgOptions } from 'irises-extension-sdk/tool-utils';
 
 /**
  * 解析路径并校验是否在项目目录内，防止路径穿越。

@@ -17,8 +17,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
-import type { MCPServerInfoLike as MCPServerInfo } from '@irises/extension-sdk';
-import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
+import type { MCPServerInfoLike as MCPServerInfo } from 'irises-extension-sdk';
+import type { ConsoleSettingsTabDefinition } from 'irises-extension-sdk/plugin';
 import {
   applyModelProviderChange,
   cloneConsoleSettingsSnapshot,

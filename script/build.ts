@@ -114,7 +114,7 @@ const opentuiVersion = pkg.optionalDependencies?.["@opentui/core"] ?? "latest"
 await $`bun install --os="*" --cpu="*" @opentui/core@${opentuiVersion}`
 
 // bun install 对 file: 依赖仅拷贝部分子目录，丢失 package.json、dist 根级 .js 等关键文件。
-// 修补：检测到残缺时用 cpSync 完整覆盖 node_modules 中的 @irises/extension-sdk。
+// 修补：检测到残缺时用 cpSync 完整覆盖 node_modules 中的 irises-extension-sdk。
 function patchExtensionSdkInNodeModules(nodeModulesDir: string): void {
   const sdkSource = path.join(rootDir, "packages", "extension-sdk")
   const sdkInstalled = path.join(nodeModulesDir, "@irises", "extension-sdk")
@@ -122,7 +122,7 @@ function patchExtensionSdkInNodeModules(nodeModulesDir: string): void {
   if (fs.existsSync(sdkInstalled)) {
     fs.rmSync(sdkInstalled, { recursive: true, force: true })
     fs.cpSync(sdkSource, sdkInstalled, { recursive: true, dereference: true })
-    console.log(`✓ patched @irises/extension-sdk in ${path.relative(rootDir, nodeModulesDir)}`)
+    console.log(`✓ patched irises-extension-sdk in ${path.relative(rootDir, nodeModulesDir)}`)
   }
 }
 
@@ -364,7 +364,7 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    // 修正：Windows 上 extension 的 node_modules 里可能有 symlink/junction（如 @irises/extension-sdk），
+    // 修正：Windows 上 extension 的 node_modules 里可能有 symlink/junction（如 irises-extension-sdk），
     // cpSync 默认不解引用会 EPERM，加 dereference: true 将链接展开为实际文件再复制
     fs.cpSync(extension.sourceDir, targetDir, { recursive: true, dereference: true })
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
@@ -380,7 +380,7 @@ function copyDirectoryIfExists(sourceDir: string, targetDir: string, label: stri
 const embeddedExtensions = loadEmbeddedExtensionBuildTargets()
 const binaries: Record<string, string> = {}
 
-// 修补内嵌扩展 node_modules 中残缺的 @irises/extension-sdk
+// 修补内嵌扩展 node_modules 中残缺的 irises-extension-sdk
 {
   for (const ext of embeddedExtensions) {
     patchExtensionSdkInNodeModules(path.join(ext.sourceDir, "node_modules"))

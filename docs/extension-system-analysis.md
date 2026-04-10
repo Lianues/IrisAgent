@@ -13,7 +13,7 @@ Iris 是一个模块化、可解耦的 AI 聊天框架，支持多平台（Web /
 | 设计原则 | 具体体现 |
 |---------|--------|
 | **统一抽象** | Plugin（逻辑扩展）和 Platform（平台渠道）都是 Extension 的"贡献点"，共享同一套发现、安装、分发机制 |
-| **SDK 边界隔离** | 所有公共接口通过独立的 `@irises/extension-sdk` 包暴露，扩展禁止直接 import 宿主内部源码 |
+| **SDK 边界隔离** | 所有公共接口通过独立的 `irises-extension-sdk` 包暴露，扩展禁止直接 import 宿主内部源码 |
 | **同进程高权限** | 插件与宿主运行在同一个 Node.js 进程中，拥有对所有内部对象的完整访问权限 |
 | **多阶段生命周期** | 分为 PreBootstrap → Activate → Ready → PlatformsReady → Deactivate 五个阶段，精确控制插件介入时机 |
 | **优雅降级** | 所有阶段的错误都被捕获并记录日志，单个插件的失败不会导致整个系统崩溃 |
@@ -268,7 +268,7 @@ interface IrisPlugin {
 SDK 提供了 `definePlugin()` 辅助函数，提供类型推断：
 
 ```typescript
-import { definePlugin } from '@irises/extension-sdk';
+import { definePlugin } from 'irises-extension-sdk';
 
 export default definePlugin({
   name: 'my-plugin',

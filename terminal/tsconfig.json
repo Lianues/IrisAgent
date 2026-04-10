@@ -13,7 +13,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@irises/extension-sdk/utils": ["../packages/extension-sdk/src/utils"]
+      "irises-extension-sdk/utils": ["../packages/extension-sdk/src/utils"]
     }
   },
   "include": ["src/**/*"]

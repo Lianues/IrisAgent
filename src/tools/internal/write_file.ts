@@ -9,8 +9,8 @@ import * as path from 'path';
 import { ToolDefinition } from '../../types';
 import { resolveProjectPath } from '../utils';
 
-export { normalizeWriteArgs } from '@irises/extension-sdk/tool-utils';
-export type { WriteEntry } from '@irises/extension-sdk/tool-utils';
+export { normalizeWriteArgs } from 'irises-extension-sdk/tool-utils';
+export type { WriteEntry } from 'irises-extension-sdk/tool-utils';
 
 export const writeFile: ToolDefinition = {
   declaration: {

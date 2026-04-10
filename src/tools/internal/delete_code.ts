@@ -8,8 +8,8 @@ import * as fs from 'fs';
 import { ToolDefinition } from '../../types';
 import { resolveProjectPath } from '../utils';
 
-export { normalizeDeleteCodeArgs } from '@irises/extension-sdk/tool-utils';
-export type { DeleteCodeEntry } from '@irises/extension-sdk/tool-utils';
+export { normalizeDeleteCodeArgs } from 'irises-extension-sdk/tool-utils';
+export type { DeleteCodeEntry } from 'irises-extension-sdk/tool-utils';
 
 export const deleteCode: ToolDefinition = {
   declaration: {

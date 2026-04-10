@@ -1,11 +1,11 @@
 /**
  * 宿主内部类型（不导出给扩展）
  *
- * 公共类型全部由扩展直接从 @irises/extension-sdk 导入。
+ * 公共类型全部由扩展直接从 irises-extension-sdk 导入。
  */
 
 import type { Content, LLMRequest } from '../types';
-import type { IrisAPI, PluginHook, PluginEntry, IrisPlugin, ToolExecInterception, PlatformAdapter } from '@irises/extension-sdk';
+import type { IrisAPI, PluginHook, PluginEntry, IrisPlugin, ToolExecInterception, PlatformAdapter } from 'irises-extension-sdk';
 import type { PluginContextImpl } from './context';
 
 /** 已加载的插件实例（PluginManager 内部） */

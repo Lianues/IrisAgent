@@ -12,7 +12,7 @@
  */
 
 import { ToolDefinition } from '@/types';
-import type { AgentNetworkLike, IrisBackendLike } from '@irises/extension-sdk';
+import type { AgentNetworkLike, IrisBackendLike } from 'irises-extension-sdk';
 import type { CrossAgentTaskBoard } from '@/core/cross-agent-task-board';
 import { createTaskId } from '@/core/cross-agent-task-board';
 import { createLogger } from '@/logger';

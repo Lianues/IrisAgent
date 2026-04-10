@@ -35,7 +35,7 @@ import {
   type MCPManagerLike,
   type BootstrapExtensionRegistryLike,
   type ConfigManagerLike,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 import { estimateTokenCount } from 'tokenx';
 import { App, AppHandle, MessageMeta } from './App';
 import { MessagePart } from './components/MessageItem';
@@ -681,7 +681,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
    * 修改方式：不再直接操作 stdin/stdout 显示 ANSI 选择器，
    * 而是返回 agent 列表交给 React viewMode 渲染，避免 stdin 争夺和日志泄漏。
    */
-  private handleListAgents(): import('@irises/extension-sdk').AgentDefinitionLike[] {
+  private handleListAgents(): import('irises-extension-sdk').AgentDefinitionLike[] {
     return this.api?.listAgents?.() ?? [];
   }
 

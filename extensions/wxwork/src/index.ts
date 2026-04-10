@@ -19,7 +19,7 @@
  * 官方插件参考：https://github.com/WecomTeam/wecom-openclaw-plugin
  */
 
-import { createExtensionLogger, definePlatformFactory, autoApproveHandle, formatToolStatusLine, detectImageMime, PlatformAdapter, type ImageInput, type IrisBackendLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, autoApproveHandle, formatToolStatusLine, detectImageMime, PlatformAdapter, type ImageInput, type IrisBackendLike } from 'irises-extension-sdk';
 import { WSClient, generateReqId } from '@wecom/aibot-node-sdk';
 import type { WsFrame } from '@wecom/aibot-node-sdk';
 

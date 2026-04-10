@@ -1,5 +1,5 @@
 {
-  "name": "@irises/extension-sdk",
+  "name": "irises-extension-sdk",
   "version": "0.1.0",
   "description": "Public SDK for Iris extensions and plugins",
   "license": "GPL-3.0-only",

@@ -69,7 +69,7 @@ export type {
   ExtensionInstallFallbackReason,
   ExtensionDistributionMode,
   InstalledExtensionResult,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 
 export type {
   BootstrapExtensionRegistry,

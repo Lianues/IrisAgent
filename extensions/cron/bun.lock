@@ -5,13 +5,13 @@
     "": {
       "name": "@iris-extension/cron",
       "dependencies": {
-        "@irises/extension-sdk": "file:../../packages/extension-sdk",
+        "irises-extension-sdk": "file:../../packages/extension-sdk",
         "croner": "^10.0.1",
       },
     },
   },
   "packages": {
-    "@irises/extension-sdk": ["@irises/extension-sdk@file:../../packages/extension-sdk", {}],
+    "irises-extension-sdk": ["irises-extension-sdk@file:../../packages/extension-sdk", {}],
 
     "croner": ["croner@10.0.1", "", {}, "sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g=="],
   }

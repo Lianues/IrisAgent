@@ -7,7 +7,7 @@
  * 坐标约定：LLM 输出 0-999 归一化坐标，handler 内部完成反归一化。
  */
 
-import type { ToolDefinition, FunctionDeclaration } from '@irises/extension-sdk';
+import type { ToolDefinition, FunctionDeclaration } from 'irises-extension-sdk';
 import type { CUToolPolicy, Computer, EnvState } from './types';
 import { denormalizeX, denormalizeY } from './coordinator';
 

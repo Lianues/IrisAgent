@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 
 import React from 'react';
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 import type { ApprovalChoice, ConfirmChoice, PendingConfirm, ThinkingEffortLevel } from '../app-types';
 import type { ApprovalPage } from '../hooks/use-approval';
 import { ApprovalBar } from './ApprovalBar';

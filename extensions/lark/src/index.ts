@@ -1,4 +1,4 @@
-import { PlatformAdapter, createExtensionLogger, definePlatformFactory, autoApproveHandle } from '@irises/extension-sdk';
+import { PlatformAdapter, createExtensionLogger, definePlatformFactory, autoApproveHandle } from 'irises-extension-sdk';
 import { buildLarkCard, formatLarkToolLine, type LarkToolStatusEntry } from './card-builder';
 import { LarkClient } from './client';
 import { LarkCommandRouter } from './commands';

@@ -8,8 +8,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRenderer } from '@opentui/react';
-import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
-import type { AgentDefinitionLike } from '@irises/extension-sdk';
+import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from 'irises-extension-sdk';
+import type { AgentDefinitionLike } from 'irises-extension-sdk';
 import { BottomPanel } from './components/BottomPanel';
 import { AgentListView } from './components/AgentListView';
 import { ChatMessageList } from './components/ChatMessageList';

@@ -1,4 +1,4 @@
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 
 const CONSOLE_DIFF_APPROVAL_VIEW_TOOLS = new Set([
   'apply_diff',

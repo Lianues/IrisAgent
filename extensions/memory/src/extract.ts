@@ -5,7 +5,7 @@
  * 通过 api.router.chat() 做轻量 LLM 调用，解析 function_call 结果并写入存储。
  */
 
-import type { IrisAPI } from '@irises/extension-sdk';
+import type { IrisAPI } from 'irises-extension-sdk';
 import type { MemoryProvider } from './base.js';
 import { parseMemoryType } from './types.js';
 import { formatManifestCompact } from './utils/manifest.js';

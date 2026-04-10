@@ -5,7 +5,7 @@
     "": {
       "name": "@iris-extension/computer-use",
       "dependencies": {
-        "@irises/extension-sdk": "file:../../packages/extension-sdk",
+        "irises-extension-sdk": "file:../../packages/extension-sdk",
         "yaml": "^2.7.1",
       },
       "optionalDependencies": {
@@ -14,7 +14,7 @@
     },
   },
   "packages": {
-    "@irises/extension-sdk": ["@irises/extension-sdk@file:../../packages/extension-sdk", {}],
+    "irises-extension-sdk": ["irises-extension-sdk@file:../../packages/extension-sdk", {}],
 
     "fsevents": ["fsevents@2.3.2", "", { "os": "darwin" }, "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="],
 

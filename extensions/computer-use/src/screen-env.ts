@@ -10,7 +10,7 @@ import * as readline from 'readline';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createPluginLogger } from '@irises/extension-sdk';
+import { createPluginLogger } from 'irises-extension-sdk';
 import type { Computer, EnvState, WindowInfo, ScreenEnvConfig, WindowSelector } from './types';
 
 const logger = createPluginLogger('computer-use', 'ScreenEnv');

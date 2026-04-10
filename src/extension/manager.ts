@@ -14,16 +14,16 @@ import type { PromptAssembler } from '../prompt/assembler';
 import type { AppConfig } from '../config/types';
 import type { LLMRouter } from '../llm/router';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
-import type { IrisPlugin, PluginEntry, InlinePluginEntry, PluginHook, IrisAPI } from '@irises/extension-sdk';
+import type { IrisPlugin, PluginEntry, InlinePluginEntry, PluginHook, IrisAPI } from 'irises-extension-sdk';
 import type { PluginInfo, LoadedPlugin } from './types';
 import { PluginContextImpl } from './context';
 import { PreBootstrapContextImpl } from './prebootstrap-context';
-import type { PlatformAdapter } from '@irises/extension-sdk';
+import type { PlatformAdapter } from 'irises-extension-sdk';
 import {
   importLocalExtensionModule,
   resolveLocalPluginSource,
 } from './registry';
-import type { ResolvedLocalPlugin } from '@irises/extension-sdk';
+import type { ResolvedLocalPlugin } from 'irises-extension-sdk';
 import { ServiceRegistry } from './service-registry';
 import { ConfigContributionRegistry } from './config-contribution-registry';
 import { GlobalStore } from './global-store';

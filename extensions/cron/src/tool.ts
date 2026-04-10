@@ -5,8 +5,8 @@
  * scheduler 实例和当前 sessionId 通过外部注入。
  */
 
-import { createPluginLogger } from '@irises/extension-sdk';
-import type { ToolDefinition } from '@irises/extension-sdk';
+import { createPluginLogger } from 'irises-extension-sdk';
+import type { ToolDefinition } from 'irises-extension-sdk';
 import type { CronScheduler } from './scheduler.js';
 import type { ScheduleConfig, CreateJobParams, UpdateJobParams } from './types.js';
 

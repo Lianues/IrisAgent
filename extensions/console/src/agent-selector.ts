@@ -11,7 +11,7 @@
  * 不再有"全局 AI"选项，所有 agent 都是普通条目。
  */
 
-import type { AgentDefinitionLike as AgentDefinition } from '@irises/extension-sdk';
+import type { AgentDefinitionLike as AgentDefinition } from 'irises-extension-sdk';
 import { ICONS } from './terminal-compat';
 
 const ESC = '\x1b';

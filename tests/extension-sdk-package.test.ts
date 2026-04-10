@@ -17,7 +17,7 @@ describe('extension sdk package', () => {
       publishConfig?: { access?: string };
     };
 
-    expect(packageJson.name).toBe('@irises/extension-sdk');
+    expect(packageJson.name).toBe('irises-extension-sdk');
     expect(packageJson.type).toBe('module');
     expect(packageJson.main).toBe('./dist/index.js');
     expect(packageJson.types).toBe('./dist/index.d.ts');

@@ -19,8 +19,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import type { GlobalStoreLike } from '@irises/extension-sdk';
-import type { Disposable } from '@irises/extension-sdk';
+import type { GlobalStoreLike } from 'irises-extension-sdk';
+import type { Disposable } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
 
 const logger = createLogger('GlobalStore');

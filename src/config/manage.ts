@@ -185,7 +185,7 @@ export function updateEditableConfig(configDir: string, updates: any): { mergedR
 /**
  * 可编辑配置的原始结构（实现侧类型）。
  *
- * 结构与 @irises/extension-sdk 中 RawEditableConfig 一致，
+ * 结构与 irises-extension-sdk 中 RawEditableConfig 一致，
  * 通过 TypeScript 结构化类型自动兼容，无需跨包 import。
  */
 interface EditableConfigShape {

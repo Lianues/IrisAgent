@@ -12,7 +12,7 @@ import { execSync } from 'child_process';
 import type { Duplex } from 'stream';
 import * as http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createExtensionLogger } from '@irises/extension-sdk';
+import { createExtensionLogger } from 'irises-extension-sdk';
 
 const logger = createExtensionLogger('Terminal');
 

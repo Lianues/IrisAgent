@@ -6,7 +6,7 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
-import type { ImageInput, DocumentInput } from '@irises/extension-sdk';
+import type { ImageInput, DocumentInput } from 'irises-extension-sdk';
 import { CHAT_ATTACHMENT_LIMITS, formatAttachmentBytes } from '../chat-attachments';
 import { readBody, readRawBody, sendJSON } from '../router';
 import type { WebPlatform } from '../web-platform';

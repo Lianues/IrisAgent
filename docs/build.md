@@ -69,7 +69,7 @@ npm run build:extensions -- --filter lark --filter web
 npm run build:extensions -- --embedded-only
 ```
 
-脚本会自动先编译 `@irises/extension-sdk`（因为大部分 extension 依赖它的编译产物），然后逐个在各 extension 目录下执行 `bun run build`。编译产物为 `dist/index.mjs`，提交到仓库中。
+脚本会自动先编译 `irises-extension-sdk`（因为大部分 extension 依赖它的编译产物），然后逐个在各 extension 目录下执行 `bun run build`。编译产物为 `dist/index.mjs`，提交到仓库中。
 
 ## TypeScript 配置
 

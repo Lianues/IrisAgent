@@ -11,7 +11,7 @@ Iris 的终端命令界面集合，使用 [OpenTUI](https://opentui.com/) + Reac
 
 ### 共享包依赖
 
-Terminal 通过 `@irises/extension-sdk/utils`（`packages/extension-sdk/src/utils/`）与 core 共享 extension 系统的基础工具函数（路径处理、manifest 解析、远程仓库操作、运行时入口分析等），避免重复实现。bun build 时会自动内联该包。
+Terminal 通过 `irises-extension-sdk/utils`（`packages/extension-sdk/src/utils/`）与 core 共享 extension 系统的基础工具函数（路径处理、manifest 解析、远程仓库操作、运行时入口分析等），避免重复实现。bun build 时会自动内联该包。
 
 目录约定：
 

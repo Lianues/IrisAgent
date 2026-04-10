@@ -37,7 +37,7 @@ import {
   analyzeRuntimeEntries,
   describeRuntimeIssues,
   type ExtensionManifestLike,
-} from '@irises/extension-sdk/utils';
+} from 'irises-extension-sdk/utils';
 
 // ==================== 类型 ====================
 

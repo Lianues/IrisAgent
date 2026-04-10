@@ -20,10 +20,10 @@ import { getToolLimits } from '../tool-limits';
 import {
   toPosix, globToRegExp, isLikelyBinary, decodeText, buildSearchRegex, walkFiles,
   type TextEncoding,
-} from '@irises/extension-sdk/tool-utils';
+} from 'irises-extension-sdk/tool-utils';
 
-export { toPosix, globToRegExp, isLikelyBinary, decodeText, buildSearchRegex, walkFiles, DEFAULT_IGNORED_DIRS } from '@irises/extension-sdk/tool-utils';
-export type { TextEncoding, DetectedText } from '@irises/extension-sdk/tool-utils';
+export { toPosix, globToRegExp, isLikelyBinary, decodeText, buildSearchRegex, walkFiles, DEFAULT_IGNORED_DIRS } from 'irises-extension-sdk/tool-utils';
+export type { TextEncoding, DetectedText } from 'irises-extension-sdk/tool-utils';
 
 const DEFAULT_PATTERN = '**/*';
 

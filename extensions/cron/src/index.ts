@@ -8,8 +8,8 @@
  * 配置来源：用户配置目录的 cron.yaml（由 config-template.ts 模板首次释放）
  */
 
-import { definePlugin, createPluginLogger } from '@irises/extension-sdk';
-import type { PluginContext, IrisAPI } from '@irises/extension-sdk';
+import { definePlugin, createPluginLogger } from 'irises-extension-sdk';
+import type { PluginContext, IrisAPI } from 'irises-extension-sdk';
 import { CronScheduler } from './scheduler.js';
 import {
   manageScheduledTasksTool,

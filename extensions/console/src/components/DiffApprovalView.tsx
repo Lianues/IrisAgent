@@ -9,7 +9,7 @@
 import React, { useMemo } from 'react';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 import {
   parseUnifiedDiff,
   normalizeWriteArgs,
@@ -22,14 +22,14 @@ import {
   globToRegExp,
   isLikelyBinary,
   toPosix,
-} from '@irises/extension-sdk/tool-utils';
+} from 'irises-extension-sdk/tool-utils';
 import type {
   UnifiedDiffHunk as UnifiedDiffHunkLike,
   UnifiedDiffLine as UnifiedDiffLineLike,
   WriteEntry as WriteEntryLike,
   InsertEntry as InsertEntryLike,
   DeleteCodeEntry as DeleteCodeEntryLike,
-} from '@irises/extension-sdk/tool-utils';
+} from 'irises-extension-sdk/tool-utils';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
 

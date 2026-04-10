@@ -2,11 +2,11 @@
  * Web 平台消息格式化工具
  *
  * 将内部 Content / Part 结构转换为前端可直接消费的消息格式。
- * 已从 src/platforms/web/ 迁移，所有类型从 @irises/extension-sdk 导入。
+ * 已从 src/platforms/web/ 迁移，所有类型从 irises-extension-sdk 导入。
  */
 
-import type { Content, Part, TextPart } from '@irises/extension-sdk';
-import { isTextPart, isThoughtTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart } from '@irises/extension-sdk';
+import type { Content, Part, TextPart } from 'irises-extension-sdk';
+import { isTextPart, isThoughtTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart } from 'irises-extension-sdk';
 
 // ── 内联自 src/ocr（避免耦合内部模块）──
 const OCR_TEXT_MARKER_RE = /^\[\[IRIS_OCR_IMAGE_(\d+)\]\]\n/;

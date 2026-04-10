@@ -14,8 +14,8 @@ import type {
   DeliveryDecision,
   TimeWindow,
 } from './types.js';
-import type { GlobalStoreLike } from '@irises/extension-sdk';
-import { createPluginLogger } from '@irises/extension-sdk';
+import type { GlobalStoreLike } from 'irises-extension-sdk';
+import { createPluginLogger } from 'irises-extension-sdk';
 
 const logger = createPluginLogger('cron', 'condition');
 

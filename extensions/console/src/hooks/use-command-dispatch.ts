@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { AgentDefinitionLike } from '@irises/extension-sdk';
-import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
+import type { AgentDefinitionLike } from 'irises-extension-sdk';
+import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from 'irises-extension-sdk';
 import type { ChatMessage } from '../components/MessageItem';
 import type {
   ConfirmChoice,

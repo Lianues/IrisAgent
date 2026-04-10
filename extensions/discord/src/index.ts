@@ -4,7 +4,7 @@
  * 基于 discord.js 官方 SDK。
  */
 
-import { createExtensionLogger, definePlatformFactory, extractText, PlatformAdapter, splitText, type Content, type IrisBackendLike } from '@irises/extension-sdk';
+import { createExtensionLogger, definePlatformFactory, extractText, PlatformAdapter, splitText, type Content, type IrisBackendLike } from 'irises-extension-sdk';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
 
 const logger = createExtensionLogger('DiscordExtension', 'Discord');

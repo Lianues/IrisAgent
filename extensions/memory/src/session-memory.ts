@@ -5,7 +5,7 @@
  * 通过 onAfterLLMCall 监控 token 消耗，在阈值时用 LLM 提取笔记。
  */
 
-import type { IrisAPI } from '@irises/extension-sdk';
+import type { IrisAPI } from 'irises-extension-sdk';
 import type { SqliteMemory } from './sqlite/index.js';
 import { buildSessionNotesPrompt } from './prompts/session-notes.js';
 

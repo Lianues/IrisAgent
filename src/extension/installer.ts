@@ -8,7 +8,7 @@ import type {
   ExtensionDistributionMode,
   ExtensionInstallFallbackReason,
   InstalledExtensionResult,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 import { readManifestFromDir } from './utils';
 import {
   normalizeRelativeFilePath,
@@ -28,7 +28,7 @@ import {
   buildRemoteExtensionFileUrl,
   getRemoteExtensionIndexUrl as getRemoteExtensionIndexUrlShared,
   type RemoteExtensionOptions,
-} from '@irises/extension-sdk/utils';
+} from 'irises-extension-sdk/utils';
 
 const logger = createLogger('ExtensionInstaller');
 

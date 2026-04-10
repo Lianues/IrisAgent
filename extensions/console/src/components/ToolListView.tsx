@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import type { ToolInvocation, ToolStatus } from '@irises/extension-sdk';
+import type { ToolInvocation, ToolStatus } from 'irises-extension-sdk';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
 

@@ -55,8 +55,8 @@ import { PluginEventBus } from '../extension/event-bus';
 import { patchMethod, patchPrototype } from '../extension/patch';
 import { registerExtensionPlatforms } from '../extension';
 import { ensureDevSourceSdkShims } from '../extension';
-import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from '@irises/extension-sdk';
-import { BackendHandle } from '@irises/extension-sdk';
+import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from 'irises-extension-sdk';
+import { BackendHandle } from 'irises-extension-sdk';
 import { readEditableConfig, updateEditableConfig, LayeredConfigManager } from '../config/manage';
 import { applyRuntimeConfigReload, type RuntimeConfigReloadContext } from '../config/runtime';
 import { DEFAULTS, parseLLMConfig } from '../config/llm';
@@ -79,7 +79,7 @@ import { normalizeInsertArgs } from '../tools/internal/insert_code';
 import { normalizeDeleteCodeArgs } from '../tools/internal/delete_code';
 import { resolveProjectPath } from '../tools/utils';
 import { supportsVision as checkVision, supportsNativePDF as checkNativePDF, supportsNativeOffice as checkNativeOffice, isDocumentMimeType as checkDocMime } from '../llm/vision';
-import { setExtensionLogLevel } from '@irises/extension-sdk';
+import { setExtensionLogLevel } from 'irises-extension-sdk';
 
 // ── 类型 ──
 

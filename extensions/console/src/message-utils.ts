@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 import type { ChatMessage, MessagePart } from './components/MessageItem';
 import type { MessageMeta } from './app-types';
 

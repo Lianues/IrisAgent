@@ -43,7 +43,7 @@ src/
 ```
 extensions/          各平台与功能 extension（lark / telegram / web / console / cron / memory / ...）
 packages/
-└── extension-sdk/   公共 SDK（@irises/extension-sdk），为 extension 和 plugin 提供类型与工具
+└── extension-sdk/   公共 SDK（irises-extension-sdk），为 extension 和 plugin 提供类型与工具
 terminal/            独立 TUI 应用（onboard / models / platforms / extension 管理界面）
 ```
 

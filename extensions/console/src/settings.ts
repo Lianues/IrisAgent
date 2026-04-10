@@ -46,7 +46,7 @@ import type {
   MCPManagerLike,
   MCPServerInfoLike,
   BootstrapExtensionRegistryLike,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 import { supportsConsoleDiffApprovalViewSetting } from './diff-approval';
 
 export const CONSOLE_LLM_PROVIDER_OPTIONS = [

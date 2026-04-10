@@ -1,6 +1,6 @@
 import { useKeyboard } from '@opentui/react';
-import type { AgentDefinitionLike } from '@irises/extension-sdk';
-import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta, ToolInvocation } from '@irises/extension-sdk';
+import type { AgentDefinitionLike } from 'irises-extension-sdk';
+import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta, ToolInvocation } from 'irises-extension-sdk';
 import type { TextInputState, TextInputActions } from './use-text-input';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ApprovalChoice, ConfirmChoice, PendingConfirm, SwitchModelResult, ViewMode } from '../app-types';

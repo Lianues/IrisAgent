@@ -7,7 +7,7 @@ import { PluginManager } from '../src/extension/manager.js';
 import { ToolRegistry } from '../src/tools/registry.js';
 import { ModeRegistry } from '../src/modes/registry.js';
 import { PromptAssembler } from '../src/prompt/assembler.js';
-import type { IrisPlugin } from '@irises/extension-sdk';
+import type { IrisPlugin } from 'irises-extension-sdk';
 
 function createInternals() {
   const prompt = new PromptAssembler();

@@ -22,9 +22,9 @@ import type {
   ExtensionPluginContribution,
   ExtensionSource,
   ResolvedLocalPlugin,
-} from '@irises/extension-sdk';
-import { isDirectory, MANIFEST_FILE, resolveSafeRelativePath } from '@irises/extension-sdk/utils';
-import { DISABLED_MARKER_FILE } from '@irises/extension-sdk/utils';
+} from 'irises-extension-sdk';
+import { isDirectory, MANIFEST_FILE, resolveSafeRelativePath } from 'irises-extension-sdk/utils';
+import { DISABLED_MARKER_FILE } from 'irises-extension-sdk/utils';
 
 const logger = createLogger('ExtensionRegistry');
 const DEFAULT_PLUGIN_ENTRY_CANDIDATES = ['index.ts', 'index.js', 'index.mjs'];
@@ -308,7 +308,7 @@ export function registerExtensionPlatforms(
  *
  * 正常模式下，扩展的 dist/index.mjs 在构建时已将 SDK 打包在内（非 external），
  * 运行时不需要解析 SDK 的 dist/。
- * 但 DevSource 模式直接加载扩展源码，源码中的 `import '@irises/extension-sdk'`
+ * 但 DevSource 模式直接加载扩展源码，源码中的 `import 'irises-extension-sdk'`
  * 会通过 node_modules 解析到 packages/extension-sdk/dist/index.js。
  * 如果 SDK 未编译（dist/ 不存在），就会报错。
  *
@@ -327,7 +327,7 @@ const SDK_DIST_SHIMS: { dist: string; src: string }[] = [
 ];
 
 /**
- * 确保 @irises/extension-sdk 的 dist/ 包含指向源码的 shim。
+ * 确保 irises-extension-sdk 的 dist/ 包含指向源码的 shim。
  *
  * 在 DevSource + devSourceSdk 模式下调用。
  * 生成的 shim 文件以 `// @dev-source-shim` 开头作为标记，
@@ -362,6 +362,6 @@ export function ensureDevSourceSdkShims(): void {
   }
 
   if (shimCount > 0) {
-    logger.info(`[DevSource] 已为 @irises/extension-sdk 生成 ${shimCount} 个源码 shim（dist/ → src/）`);
+    logger.info(`[DevSource] 已为 irises-extension-sdk 生成 ${shimCount} 个源码 shim（dist/ → src/）`);
   }
 }

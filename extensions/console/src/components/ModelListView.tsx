@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 
 import React from 'react';
-import type { IrisModelInfoLike as LLMModelInfo } from '@irises/extension-sdk';
+import type { IrisModelInfoLike as LLMModelInfo } from 'irises-extension-sdk';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
 

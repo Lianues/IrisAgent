@@ -1,4 +1,4 @@
-# @irises/extension-sdk
+# irises-extension-sdk
 
 Iris extension / plugin 公共 SDK。
 
@@ -12,7 +12,7 @@ Iris extension / plugin 公共 SDK。
 ## 安装
 
 ```bash
-npm install @irises/extension-sdk
+npm install irises-extension-sdk
 ```
 
 外部 extension / plugin 仓库中，建议使用正常版本依赖，例如：
@@ -20,7 +20,7 @@ npm install @irises/extension-sdk
 ```json
 {
   "dependencies": {
-    "@irises/extension-sdk": "^0.1.0"
+    "irises-extension-sdk": "^0.1.0"
   }
 }
 ```
@@ -31,11 +31,11 @@ npm install @irises/extension-sdk
 
 | 导入路径 | 用途 |
 |---------|------|
-| `@irises/extension-sdk` | 主入口：平台适配器、消息类型、工具类型、日志、平台通用工具 |
-| `@irises/extension-sdk/plugin` | 插件 API：`definePlugin`, `IrisPlugin`, `PluginContext` |
-| `@irises/extension-sdk/pairing` | 配对模块：`PairingGuard`, `PairingStore` |
-| `@irises/extension-sdk/utils` | 内部工具：路径处理、manifest 解析、远程操作 |
-| `@irises/extension-sdk/tool-utils` | 工具辅助：diff 解析、文件遍历、参数归一化 |
+| `irises-extension-sdk` | 主入口：平台适配器、消息类型、工具类型、日志、平台通用工具 |
+| `irises-extension-sdk/plugin` | 插件 API：`definePlugin`, `IrisPlugin`, `PluginContext` |
+| `irises-extension-sdk/pairing` | 配对模块：`PairingGuard`, `PairingStore` |
+| `irises-extension-sdk/utils` | 内部工具：路径处理、manifest 解析、远程操作 |
+| `irises-extension-sdk/tool-utils` | 工具辅助：diff 解析、文件遍历、参数归一化 |
 
 ## 平台 Extension 开发指南
 
@@ -54,7 +54,7 @@ import {
   type IrisPlatformFactoryContextLike,
   type ImageInput,
   type ToolAttachment,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 ```
 
 ### 定义平台
@@ -167,7 +167,7 @@ import {
   type PluginContext,
   type PreBootstrapContext,
   type IrisAPI,
-} from '@irises/extension-sdk';
+} from 'irises-extension-sdk';
 ```
 
 ### 定义插件
@@ -267,7 +267,7 @@ export default definePlugin({
 用于平台层的用户访问控制（与 Backend 无关）：
 
 ```ts
-import { PairingGuard, PairingStore, type PairingConfig } from '@irises/extension-sdk';
+import { PairingGuard, PairingStore, type PairingConfig } from 'irises-extension-sdk';
 
 const store = new PairingStore();
 const guard = new PairingGuard('telegram', config.pairing, store);

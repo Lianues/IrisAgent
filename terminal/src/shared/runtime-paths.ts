@@ -1,1 +1,1 @@
-export { resolveRuntimeDataDir, resolveRuntimeConfigDir } from "@irises/extension-sdk/utils"
+export { resolveRuntimeDataDir, resolveRuntimeConfigDir } from "irises-extension-sdk/utils"

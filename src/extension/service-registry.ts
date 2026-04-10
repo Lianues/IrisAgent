@@ -6,7 +6,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { ServiceRegistryLike, ServiceDescriptor, Disposable } from '@irises/extension-sdk';
+import type { ServiceRegistryLike, ServiceDescriptor, Disposable } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
 
 const logger = createLogger('ServiceRegistry');

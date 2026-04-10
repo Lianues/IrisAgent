@@ -11,8 +11,8 @@
  */
 
 import * as path from 'path';
-import { definePlugin, createPluginLogger } from '@irises/extension-sdk';
-import type { PluginContext, IrisAPI, Part } from '@irises/extension-sdk';
+import { definePlugin, createPluginLogger } from 'irises-extension-sdk';
+import type { PluginContext, IrisAPI, Part } from 'irises-extension-sdk';
 import { SqliteMemory } from './sqlite/index.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './tools.js';
 import { DEFAULT_CONFIG_TEMPLATE } from './config-template.js';

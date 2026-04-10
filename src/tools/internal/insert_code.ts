@@ -9,8 +9,8 @@ import * as fs from 'fs';
 import { ToolDefinition } from '../../types';
 import { resolveProjectPath } from '../utils';
 
-export { normalizeInsertArgs } from '@irises/extension-sdk/tool-utils';
-export type { InsertEntry } from '@irises/extension-sdk/tool-utils';
+export { normalizeInsertArgs } from 'irises-extension-sdk/tool-utils';
+export type { InsertEntry } from 'irises-extension-sdk/tool-utils';
 
 export const insertCode: ToolDefinition = {
   declaration: {

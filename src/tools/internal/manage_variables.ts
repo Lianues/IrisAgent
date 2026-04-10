@@ -12,7 +12,7 @@
  */
 
 import { ToolDefinition } from '../../types';
-import type { GlobalStoreLike } from '@irises/extension-sdk';
+import type { GlobalStoreLike } from 'irises-extension-sdk';
 
 export interface ManageVariablesDeps {
   getGlobalStore: () => GlobalStoreLike;

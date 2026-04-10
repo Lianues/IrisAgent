@@ -7,7 +7,7 @@
     "build:ui": "cd web-ui && npm run build"
   },
   "dependencies": {
-    "@irises/extension-sdk": "file:../../packages/extension-sdk",
+    "irises-extension-sdk": "file:../../packages/extension-sdk",
     "ws": "^8.18.0",
     "node-pty": "^1.1.0",
     "yaml": "^2.7.0"

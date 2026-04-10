@@ -1,8 +1,8 @@
-import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from '@irises/extension-sdk';
+import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from 'irises-extension-sdk';
 import type { MemoryItem } from './components/MemoryListView';
 import type { ExtensionItem } from './components/ExtensionListView';
-import type { AgentDefinitionLike } from '@irises/extension-sdk';
-import type { ConsoleSettingsTabDefinition } from '@irises/extension-sdk/plugin';
+import type { AgentDefinitionLike } from 'irises-extension-sdk';
+import type { ConsoleSettingsTabDefinition } from 'irises-extension-sdk/plugin';
 import type { SwitchModelResult, ThinkingEffortLevel } from './app-types';
 import type { AppHandle } from './hooks/use-app-handle';
 import type { ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './settings';

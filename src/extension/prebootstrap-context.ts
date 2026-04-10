@@ -5,7 +5,7 @@
 import type { AppConfig } from '../config/types';
 import type { BootstrapExtensionRegistry, LLMProviderFactory, StorageFactory, OCRFactory } from '../bootstrap/extensions';
 import type { PlatformFactory } from '../core/platform-registry';
-import type { PreBootstrapContext, PluginLogger } from '@irises/extension-sdk';
+import type { PreBootstrapContext, PluginLogger } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
 import * as fs from 'fs';
 import * as path from 'path';

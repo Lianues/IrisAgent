@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ToolInvocation } from '@irises/extension-sdk';
+import type { ToolInvocation } from 'irises-extension-sdk';
 import type { ApprovalChoice, ApprovalDiffView, ApprovalDiffWrapMode } from '../app-types';
 
 export type ApprovalPage = 'basic' | 'policy';

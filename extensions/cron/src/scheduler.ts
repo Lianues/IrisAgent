@@ -8,11 +8,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createPluginLogger } from '@irises/extension-sdk';
+import { createPluginLogger } from 'irises-extension-sdk';
 // [croner 迁移] 用 croner 替换自实现 cron 解析器，避免继续维护手写解析/逐分钟扫描逻辑。
 import { Cron } from 'croner';
 // [cron 重构] 删除 PluginEventBusLike import（不再使用 eventBus 广播）
-import type { IrisAPI } from '@irises/extension-sdk';
+import type { IrisAPI } from 'irises-extension-sdk';
 import type {
   ScheduledJob,
   SchedulerConfig,

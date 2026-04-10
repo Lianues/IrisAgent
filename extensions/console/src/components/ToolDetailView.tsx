@@ -10,7 +10,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useKeyboard } from '@opentui/react';
-import type { ToolInvocation, ToolOutputEntry, ToolStatus } from '@irises/extension-sdk';
+import type { ToolInvocation, ToolOutputEntry, ToolStatus } from 'irises-extension-sdk';
 import type { ToolDetailData, ToolDetailBreadcrumb } from '../app-types';
 import { getToolRenderer, getToolDetailRenderer } from '../tool-renderers';
 import { Spinner } from './Spinner';

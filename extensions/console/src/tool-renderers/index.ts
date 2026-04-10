@@ -6,7 +6,7 @@
  */
 
 import type { FC } from 'react';
-import type { ToolInvocation, ToolOutputEntry } from '@irises/extension-sdk';
+import type { ToolInvocation, ToolOutputEntry } from 'irises-extension-sdk';
 import type { ToolRendererProps } from './default';
 import { DefaultRenderer } from './default';
 import { ShellRenderer } from './shell';

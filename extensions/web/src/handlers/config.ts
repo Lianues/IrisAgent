@@ -10,7 +10,7 @@
 
 import * as http from 'http';
 import { readBody, sendJSON } from '../router';
-import type { ConfigManagerLike, IrisAPI } from '@irises/extension-sdk';
+import type { ConfigManagerLike, IrisAPI } from 'irises-extension-sdk';
 
 const SUPPORTED_PROVIDERS = new Set([
   'gemini',

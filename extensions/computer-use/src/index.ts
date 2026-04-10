@@ -6,8 +6,8 @@
  * 在 deactivate 时销毁环境。
  */
 
-import { definePlugin, createPluginLogger, type PluginContext, type IrisAPI } from '@irises/extension-sdk';
-import type { LLMRequest, Content, FunctionResponsePart } from '@irises/extension-sdk';
+import { definePlugin, createPluginLogger, type PluginContext, type IrisAPI } from 'irises-extension-sdk';
+import type { LLMRequest, Content, FunctionResponsePart } from 'irises-extension-sdk';
 import { parseComputerUseConfig } from './config.js';
 import { DEFAULT_CONFIG_TEMPLATE } from './config-template.js';
 import { buildPanelHTML } from './panel-html.js';

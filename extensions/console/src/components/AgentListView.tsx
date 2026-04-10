@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import type { AgentDefinitionLike } from '@irises/extension-sdk';
+import type { AgentDefinitionLike } from 'irises-extension-sdk';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
 

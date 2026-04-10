@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { parse, stringify } from "yaml"
 import { resolveRuntimeConfigDir } from "../runtime-paths.js"
 import { PROVIDER_DEFAULTS } from "./provider-config.js"
-import { normalizeText as normalizeTextShared } from "@irises/extension-sdk/utils"
+import { normalizeText as normalizeTextShared } from "irises-extension-sdk/utils"
 
 export interface EditableModelConfig {
   provider: string

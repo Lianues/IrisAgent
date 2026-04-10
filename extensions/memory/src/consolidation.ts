@@ -5,7 +5,7 @@
  * 使用 SQLite 行记录做分布式锁（替代文件 mtime）。
  */
 
-import type { IrisAPI } from '@irises/extension-sdk';
+import type { IrisAPI } from 'irises-extension-sdk';
 import type { SqliteMemory } from './sqlite/index.js';
 import type { MemoryPluginConfig } from './config.js';
 import { parseMemoryType } from './types.js';

@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { IrisBackendLike, ToolPreviewUtilsLike } from '@irises/extension-sdk';
+import type { IrisBackendLike, ToolPreviewUtilsLike } from 'irises-extension-sdk';
 import { sendJSON } from '../router';
 
 // ---- 类型 ----
