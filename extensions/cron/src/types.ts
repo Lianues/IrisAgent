@@ -55,9 +55,8 @@ export interface ScheduledJob {
    *
    * 可用变量（自动从 GlobalStore 读取）：
    *   agent.xxx   — agent 作用域变量（跨对话持久）
-   *   session.xxx — 当前会话变量
    *   global.xxx  — 全局变量
-   *   vars.xxx    — agent 的简写（等同 agent.xxx）
+   *   session.xxx — 当前会话变量
    *
    * 内置函数：
    *   random()  — 0-1 随机数
@@ -67,7 +66,7 @@ export interface ScheduledJob {
    *
    * 示例：
    *   "agent.好感度 > 80 && random() < 0.5"
-   *   "vars.信任度 >= 60 || vars.好感度 >= 90"
+   *   "agent.信任度 >= 60 || agent.好感度 >= 90"
    *   "hour() >= 9 && hour() <= 22 && random() < 0.3"
    */
   condition?: string;

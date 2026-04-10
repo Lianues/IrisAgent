@@ -188,15 +188,15 @@ export const manageScheduledTasksTool: ToolDefinition = {
           description:
             '条件表达式（可选）。JS 语法，触发时求值，truthy 才执行。\n' +
             '可用变量（从 GlobalStore 自动读取）：\n' +
-            '  agent.xxx / vars.xxx — agent 作用域（跨对话持久）\n' +
-            '  session.xxx — 当前会话变量\n' +
+            '  agent.xxx — agent 作用域（跨对话持久）\n' +
             '  global.xxx — 全局变量\n' +
+            '  session.xxx — 当前会话变量\n' +
             '内置函数：\n' +
             '  random() — 0-1 随机数\n' +
             '  now() — 时间戳(ms)  hour() — 当前小时  day() — 星期\n' +
             '示例：\n' +
             '  "agent.好感度 > 80 && random() < 0.5"\n' +
-            '  "vars.信任度 >= 60 || vars.好感度 >= 90"\n' +
+            '  "agent.信任度 >= 60 || agent.好感度 >= 90"\n' +
             '  "hour() >= 9 && hour() <= 22"',
         },
       },

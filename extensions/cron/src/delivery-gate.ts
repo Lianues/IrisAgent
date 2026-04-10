@@ -69,7 +69,7 @@ function hasRecentActivity(
  * 求值条件表达式。
  *
  * 为表达式注入以下上下文变量：
- *   agent   / vars  — agent 作用域变量（跨对话持久）
+ *   agent           — agent 作用域变量（跨对话持久）
  *   session         — 当前会话变量
  *   global          — 全局变量（非作用域前缀）
  *   random()        — 0-1 随机数
@@ -102,7 +102,7 @@ function evaluateCondition(
   try {
     // 用 new Function 构建沙箱表达式求值器
     const fn = new Function(
-      'agent', 'session', 'global', 'vars',
+      'agent', 'session', 'global',
       'random', 'now', 'hour', 'day',
       'Math', 'Date',
       `"use strict"; return (${expression})`,
@@ -112,7 +112,6 @@ function evaluateCondition(
       agentVars,
       sessionVars,
       globalVars,
-      agentVars, // vars = agent 的简写
       () => Math.random(),
       () => Date.now(),
       () => new Date().getHours(),
