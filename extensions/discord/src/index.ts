@@ -5,14 +5,17 @@
  */
 
 import { createExtensionLogger, definePlatformFactory, extractText, PlatformAdapter, splitText, type Content, type IrisBackendLike } from 'irises-extension-sdk';
+import { PairingGuard, PairingStore, type PairingConfig } from 'irises-extension-sdk/pairing';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
 
 const logger = createExtensionLogger('DiscordExtension', 'Discord');
 
 const MESSAGE_MAX_LENGTH = 2000;
+const STREAM_EDIT_INTERVAL = 1500; // 流式编辑间隔（ms）
 
 export interface DiscordConfig {
   token: string;
+  pairing?: PairingConfig;
 }
 
 export class DiscordPlatform extends PlatformAdapter {
@@ -20,6 +23,11 @@ export class DiscordPlatform extends PlatformAdapter {
   private token: string;
   private backend: IrisBackendLike;
   private pendingTexts = new Map<string, string>();
+  private typingTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private streamMessages = new Map<string, Message>();   // 流式模式：已发送的消息引用（用于编辑）
+  private editTimers = new Map<string, ReturnType<typeof setTimeout>>(); // 流式编辑节流定时器
+  private pairingStore: PairingStore | null = null;
+  private pairingGuard: PairingGuard | null = null;
 
   constructor(backend: IrisBackendLike, config: DiscordConfig) {
     super();
@@ -34,35 +42,50 @@ export class DiscordPlatform extends PlatformAdapter {
       ],
       partials: [Partials.Channel],
     });
+
+    // 对码门禁
+    if (config.pairing && config.pairing.dmPolicy !== 'open') {
+      this.pairingStore = new PairingStore();
+      this.pairingGuard = new PairingGuard('discord', config.pairing, this.pairingStore);
+    }
   }
 
   async start(): Promise<void> {
     // 非流式或回退消息：直接发送
     this.backend.on('response', (sid: string, text: string) => {
+      this.stopTyping(sid);
+      this.clearStreamState(sid);
       this.pendingTexts.delete(sid);
       this.sendToChannel(sid, text);
     });
 
-    // 流式模式下缓存每轮完整 assistant 文本，待 done 时一次性发送
+    // 流式模式：缓存文本 + 定期编辑消息实时展示
     this.backend.on('assistant:content', (sid: string, content: Content) => {
       const text = extractText(content.parts ?? []);
       if (!text) return;
       this.pendingTexts.set(sid, text);
+
+      if (this.backend.isStreamEnabled()) {
+        this.scheduleStreamEdit(sid);
+      }
     });
 
     this.backend.on('error', (sid: string, error: string) => {
+      this.stopTyping(sid);
+      this.clearStreamState(sid);
       this.pendingTexts.delete(sid);
       this.sendToChannel(sid, `错误: ${error}`);
     });
 
     this.backend.on('done', (sid: string) => {
+      this.stopTyping(sid);
       if (!this.backend.isStreamEnabled()) return;
 
       const text = this.pendingTexts.get(sid);
       if (!text) return;
 
       this.pendingTexts.delete(sid);
-      this.sendToChannel(sid, text);
+      this.finalizeStream(sid, text);
     });
 
     this.client.on('ready', () => {
@@ -73,6 +96,16 @@ export class DiscordPlatform extends PlatformAdapter {
 
     await this.client.login(this.token);
     logger.info('平台已启动');
+
+    // 首次使用：输出 Bootstrap 对码
+    if (this.pairingGuard && this.pairingStore?.needsBootstrap()) {
+      const code = this.pairingStore.getOrCreateBootstrapCode();
+      logger.info('╔══════════════════════════════════════════════════════╗');
+      logger.info('║  首次使用，请在 Discord 私聊中发送以下对码：           ║');
+      logger.info(`║  对码: ${code}                                       ║`);
+      logger.info('║  第一个完成对码的用户将成为管理员。                    ║');
+      logger.info('╚══════════════════════════════════════════════════════╝');
+    }
   }
 
   async stop(): Promise<void> {
@@ -93,12 +126,205 @@ export class DiscordPlatform extends PlatformAdapter {
     }
   }
 
+  /** 开始在指定频道显示"正在输入…" */
+  private async startTyping(channelId: string): Promise<void> {
+    const channel = this.client.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) return;
+
+    // 立即发送一次 typing
+    await (channel as any).sendTyping().catch(() => {});
+
+    // 每 8 秒刷新（Discord typing 指示器约 10 秒过期）
+    const timer = setInterval(() => {
+      (channel as any).sendTyping().catch(() => {});
+    }, 8000);
+    this.typingTimers.set(channelId, timer);
+  }
+
+  /** 收到流式内容时刷新 typing（防止超时消失） */
+  private refreshTyping(sid: string): void {
+    const channelId = sid.replace('discord-', '');
+    // 已有定时器在跑，无需额外操作
+    if (this.typingTimers.has(channelId)) return;
+    this.startTyping(channelId);
+  }
+
+  /** 停止 typing 指示器 */
+  private stopTyping(sid: string): void {
+    const channelId = sid.replace('discord-', '');
+    const timer = this.typingTimers.get(channelId);
+    if (!timer) return;
+    clearInterval(timer);
+    this.typingTimers.delete(channelId);
+  }
+
+  /** 节流调度：定期将最新文本编辑到已发送的消息上 */
+  private scheduleStreamEdit(sid: string): void {
+    // 已有定时器排队中，跳过
+    if (this.editTimers.has(sid)) return;
+
+    const timer = setTimeout(async () => {
+      this.editTimers.delete(sid);
+
+      const text = this.pendingTexts.get(sid);
+      if (!text) return;
+
+      const channelId = sid.replace('discord-', '');
+      const sentMsg = this.streamMessages.get(sid);
+
+      if (!sentMsg) {
+        // 首次：发送新消息
+        try {
+          const channel = await this.client.channels.fetch(channelId);
+          if (!channel?.isTextBased()) return;
+
+          const displayText = text.length > MESSAGE_MAX_LENGTH
+            ? text.slice(0, MESSAGE_MAX_LENGTH - 1) + '…'
+            : text;
+          const msg = await (channel as any).send(displayText);
+          this.streamMessages.set(sid, msg);
+          this.stopTyping(sid); // 消息已发出，typing 不再需要
+        } catch {
+          // ignore
+        }
+      } else {
+        // 后续：编辑已有消息
+        const displayText = text.length > MESSAGE_MAX_LENGTH
+          ? text.slice(0, MESSAGE_MAX_LENGTH - 1) + '…'
+          : text;
+        await sentMsg.edit(displayText).catch(() => {});
+      }
+    }, STREAM_EDIT_INTERVAL);
+
+    this.editTimers.set(sid, timer);
+  }
+
+  /** 流式完成：最终编辑消息，超长则拆分发送 */
+  private async finalizeStream(sid: string, text: string): Promise<void> {
+    // 清除未触发的编辑定时器
+    const editTimer = this.editTimers.get(sid);
+    if (editTimer) {
+      clearTimeout(editTimer);
+      this.editTimers.delete(sid);
+    }
+
+    const sentMsg = this.streamMessages.get(sid);
+    this.streamMessages.delete(sid);
+
+    if (!sentMsg) {
+      // 没来得及发流式消息（生成太快），直接发送
+      await this.sendToChannel(sid, text);
+      return;
+    }
+
+    const chunks = splitText(text, MESSAGE_MAX_LENGTH);
+    // 编辑第一条消息为最终完整内容
+    await sentMsg.edit(chunks[0]).catch(() => {});
+
+    // 超长拆分：发送剩余部分
+    if (chunks.length > 1) {
+      const channelId = sid.replace('discord-', '');
+      const channel = await this.client.channels.fetch(channelId);
+      if (channel?.isTextBased()) {
+        for (let i = 1; i < chunks.length; i++) {
+          await (channel as any).send(chunks[i]);
+        }
+      }
+    }
+  }
+
+  /** 清理流式状态 */
+  private clearStreamState(sid: string): void {
+    const editTimer = this.editTimers.get(sid);
+    if (editTimer) {
+      clearTimeout(editTimer);
+      this.editTimers.delete(sid);
+    }
+    this.streamMessages.delete(sid);
+  }
+
+  // ============ 对码管理命令 ============
+
+  /** 处理对码管理命令（!invite / !users / !kick / !transfer） */
+  private async handlePairingCommand(msg: Message, content: string): Promise<boolean> {
+    if (!content.startsWith('!')) return false;
+
+    const userId = msg.author.id;
+    const parts = content.slice(1).split(/\s+/);
+    const cmd = parts[0]?.toLowerCase();
+    const args = parts.slice(1).join(' ').trim();
+
+    switch (cmd) {
+      case 'invite': {
+        if (!this.pairingGuard!.isAdmin(userId)) {
+          await msg.reply('❌ 仅管理员可执行此命令。');
+          return true;
+        }
+        const code = this.pairingGuard!.generateInviteCode();
+        await msg.reply(
+          `🎫 邀请对码已生成：\`${code}\`（1 小时内有效）\n` +
+          '将此对码发送给你信任的用户，对方在私聊中发送即可完成配对。'
+        );
+        return true;
+      }
+
+      case 'users': {
+        if (!this.pairingGuard!.isAdmin(userId)) {
+          await msg.reply('❌ 仅管理员可执行此命令。');
+          return true;
+        }
+        const users = this.pairingGuard!.listUsers();
+        if (users.length === 0) {
+          await msg.reply('📋 白名单为空。');
+        } else {
+          const lines = users.map((u, i) => {
+            const name = u.userName || u.userId;
+            const time = new Date(u.pairedAt).toLocaleString();
+            return `${i + 1}. **${name}** (${u.platform}:${u.userId}) — ${time}`;
+          });
+          await msg.reply(`📋 **白名单用户** (${users.length}):\n${lines.join('\n')}`);
+        }
+        return true;
+      }
+
+      case 'kick': {
+        if (!this.pairingGuard!.isAdmin(userId)) {
+          await msg.reply('❌ 仅管理员可执行此命令。');
+          return true;
+        }
+        if (!args) {
+          await msg.reply('用法: `!kick <用户ID>`');
+          return true;
+        }
+        const ok = this.pairingGuard!.removeUser('discord', args);
+        await msg.reply(ok ? `✅ 已将用户 ${args} 移出白名单。` : `❌ 未找到用户 ${args}。`);
+        return true;
+      }
+
+      case 'transfer': {
+        if (!this.pairingGuard!.isAdmin(userId)) {
+          await msg.reply('❌ 仅管理员可执行此命令。');
+          return true;
+        }
+        if (!args) {
+          await msg.reply('用法: `!transfer <用户ID>`');
+          return true;
+        }
+        this.pairingGuard!.transferAdmin('discord', args);
+        await msg.reply(`✅ 管理员身份已让渡给 ${args}。`);
+        return true;
+      }
+
+      default:
+        return false;
+    }
+  }
+
+  // ============ 消息处理 ============
+
   private async handleMessage(msg: Message): Promise<void> {
     if (msg.author.bot) return;
     if (!msg.content) return;
-
-    // TODO: 对码门禁 — 后续接入 PairingGuard，当前未实现。
-    // 设计文档：.limcode/design/对码系统设计.md
 
     const isDM = !msg.guild;
     const isMentioned = msg.mentions.has(this.client.user!);
@@ -111,10 +337,42 @@ export class DiscordPlatform extends PlatformAdapter {
     }
     if (!content) return;
 
+    // ── 对码门禁（仅私聊生效） ──
+    if (this.pairingGuard && isDM) {
+      const result = this.pairingGuard.check(msg.author.id, content, msg.author.username);
+
+      if (!result.allowed) {
+        if (result.replyText) await msg.reply(result.replyText);
+        return;
+      }
+
+      // 对码成功的消息本身不进 Backend，只回复成功提示
+      if (result.reason === 'bootstrap-success' || result.reason === 'pairing-success') {
+        if (result.replyText) await msg.reply(result.replyText);
+        return;
+      }
+    }
+
+    // ── 管理命令（私聊中以 ! 开头） ──
+    if (isDM && this.pairingGuard && content.startsWith('!')) {
+      const handled = await this.handlePairingCommand(msg, content);
+      if (handled) return;
+    }
+
+    // ── 正常消息 → 进入 AI 对话 ──
+    const displayName = msg.member?.displayName || msg.author.globalName || msg.author.username;
+    const isAdmin = this.pairingGuard?.isAdmin(msg.author.id) ?? false;
+    const identifiedContent = `[${displayName}:${msg.author.id}${isAdmin ? ':admin' : ''}]: ${content}`;
+
     const sessionId = `discord-${msg.channelId}`;
     try {
-      await this.backend.chat(sessionId, content, undefined, undefined, 'discord');
+      // 立即显示"正在输入…"
+      await this.startTyping(msg.channelId);
+
+      await this.backend.chat(sessionId, identifiedContent, undefined, undefined, 'discord');
     } catch (err) {
+      this.stopTyping(sessionId);
+      this.clearStreamState(sessionId);
       logger.error('处理消息时出错:', err);
     }
   }
@@ -124,6 +382,7 @@ export const createDiscordPlatform = definePlatformFactory<DiscordConfig, Discor
   platformName: 'discord',
   resolveConfig: (raw) => ({
     token: raw.token ?? '',
+    pairing: raw.pairing,
   }),
   create: (backend, config) => new DiscordPlatform(backend, config),
 });
