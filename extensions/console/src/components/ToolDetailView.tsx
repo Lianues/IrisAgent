@@ -159,7 +159,7 @@ export function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onA
           {dur(createdAt, updatedAt) ? <span fg={C.dim}>  {dur(createdAt, updatedAt)}</span> : null}
           {'  '}
         </text>
-        {isExecuting && <Spinner />}
+        {isExecuting && <text><Spinner /></text>}
       </box>
 
       {/* 时间线 */}
