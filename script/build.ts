@@ -117,7 +117,7 @@ await $`bun install --os="*" --cpu="*" @opentui/core@${opentuiVersion}`
 // 修补：检测到残缺时用 cpSync 完整覆盖 node_modules 中的 irises-extension-sdk。
 function patchExtensionSdkInNodeModules(nodeModulesDir: string): void {
   const sdkSource = path.join(rootDir, "packages", "extension-sdk")
-  const sdkInstalled = path.join(nodeModulesDir, "@irises", "extension-sdk")
+  const sdkInstalled = path.join(nodeModulesDir, "irises-extension-sdk")
   // 无条件覆盖：bun 的 .l2s 链接缓存可能基于残缺副本，仅检查单个文件不够可靠
   if (fs.existsSync(sdkInstalled)) {
     fs.rmSync(sdkInstalled, { recursive: true, force: true })
