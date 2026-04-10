@@ -292,6 +292,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
     this.backend.on('stream:start', (sid: string) => {
       if (sid === this.sessionId) {
+        this.currentToolIds.clear();
         this.appHandle?.startStream();
       }
     });
@@ -329,7 +330,6 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       handle.on('output', refreshUI);
       handle.on('child', (childHandle: any) => {
         this._activeHandles.set(childHandle.id, childHandle);
-        this.currentToolIds.add(childHandle.id);
         childHandle.on('state', refreshUI);
         childHandle.on('output', refreshUI);
         refreshUI();
@@ -1039,7 +1039,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private openToolDetail(toolId: string): void {
     if (!toolId) {
       // Ctrl+T 无指定目标：打开工具列表
-      const all = Array.from(this._activeHandles.values());
+      const all = Array.from(this._activeHandles.values())
+        .filter((h: any) => !h.parentId);
       if (all.length === 0) {
         // 生成响应期间不添加错误消息，避免破坏流式占位消息导致回复内容与错误混合
         if (!this._isGenerating) {
