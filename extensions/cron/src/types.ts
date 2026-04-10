@@ -57,6 +57,12 @@ export interface ScheduledJob {
    * 调用方可自行设定该变量的值来实现概率触发、好感度阈值等逻辑。
    */
   conditionKey?: string;
+  /**
+   * 触发概率（可选，0-1）。
+   * 每次触发时独立掷骰子，Math.random() < probability 时执行，否则跳过。
+   * 1 = 必定执行（默认），0.5 = 50%概率，0 = 永不执行。
+   */
+  probability?: number;
   /** 是否启用 */
   enabled: boolean;
   /** 创建时间戳 */
@@ -85,6 +91,7 @@ export interface CreateJobParams {
   silent?: boolean;
   urgent?: boolean;
   conditionKey?: string;
+  probability?: number;
   createdInSession: string;
 }
 
@@ -97,6 +104,7 @@ export interface UpdateJobParams {
   silent?: boolean;
   urgent?: boolean;
   conditionKey?: string;
+  probability?: number;
 }
 
 // ============ 插件配置 ============

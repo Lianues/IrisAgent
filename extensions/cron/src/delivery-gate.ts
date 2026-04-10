@@ -153,6 +153,17 @@ export function shouldSkip(
     }
   }
 
+  // 第五层：概率检查
+  if (job.probability !== undefined && job.probability < 1) {
+    const roll = Math.random();
+    if (roll >= job.probability) {
+      return {
+        skip: true,
+        reason: `概率未命中 (${(job.probability * 100).toFixed(0)}%, roll=${(roll * 100).toFixed(1)}%)，跳过任务 "${job.name}"`,
+      };
+    }
+  }
+
   // 全部通过，允许投递
   return { skip: false };
 }

@@ -303,6 +303,7 @@ export class CronScheduler {
       silent: params.silent ?? false,
       urgent: params.urgent ?? false,
       conditionKey: params.conditionKey,
+      probability: params.probability,
       enabled: true,
       createdAt: Date.now(),
       createdInSession: params.createdInSession,
@@ -340,6 +341,7 @@ export class CronScheduler {
     if (params.silent !== undefined) job.silent = params.silent;
     if (params.urgent !== undefined) job.urgent = params.urgent;
     if (params.conditionKey !== undefined) job.conditionKey = params.conditionKey || undefined;
+    if (params.probability !== undefined) job.probability = params.probability;
 
     // [Phase 3] 更新会改变后续调度/执行语义，因此先 kill 当前关联的 TaskBoard 任务，
     // 再按新配置重新注册，避免旧 executor 继续执行过期参数。

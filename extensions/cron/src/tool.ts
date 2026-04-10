@@ -191,6 +191,12 @@ export const manageScheduledTasksTool: ToolDefinition = {
             '调用方可通过 manage_variables 工具自行设定该变量的值，' +
             '实现概率触发、好感度阈值等自定义条件逻辑。',
         },
+        probability: {
+          type: 'number',
+          description:
+            '触发概率（可选，0-1）。每次触发时独立掷骰子，' +
+            '如 0.5 表示 50% 概率执行。不填则默认 100% 执行。',
+        },
       },
       required: ['action'],
     },
@@ -264,6 +270,7 @@ export const manageScheduledTasksTool: ToolDefinition = {
           silent: (args.silent as boolean) ?? false,
           urgent: (args.urgent as boolean) ?? false,
           conditionKey: args.condition_key as string | undefined,
+          probability: args.probability as number | undefined,
           createdInSession: currentSessionId,
         };
 
@@ -280,6 +287,7 @@ export const manageScheduledTasksTool: ToolDefinition = {
             silent: job.silent,
             urgent: job.urgent,
             conditionKey: job.conditionKey,
+            probability: job.probability,
             enabled: job.enabled,
             createdAt: new Date(job.createdAt).toISOString(),
           },
@@ -301,6 +309,7 @@ export const manageScheduledTasksTool: ToolDefinition = {
         if (args.silent !== undefined) updateParams.silent = args.silent as boolean;
         if (args.urgent !== undefined) updateParams.urgent = args.urgent as boolean;
         if (args.condition_key !== undefined) updateParams.conditionKey = args.condition_key as string;
+        if (args.probability !== undefined) updateParams.probability = args.probability as number;
 
         // 如果同时提供了调度类型和值，则更新调度配置
         if (args.schedule_type && args.schedule_value) {
