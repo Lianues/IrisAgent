@@ -22,6 +22,7 @@ import { QueueListView } from './components/QueueListView';
 import { ToolListView } from './components/ToolListView';
 import { SessionListView } from './components/SessionListView';
 import { MemoryListView, type MemoryItem, type MemoryFilter } from './components/MemoryListView';
+import { ExtensionListView, type ExtensionItem } from './components/ExtensionListView';
 import { SettingsView } from './components/SettingsView';
 import { type ConfirmChoice, type PendingConfirm, type SettingsInitialSection, type ThinkingEffortLevel, type ViewMode } from './app-types';
 import type { AppProps } from './app-props';
@@ -76,6 +77,8 @@ export function App({
   onDream,
   onListMemories,
   onDeleteMemory,
+  onListExtensions,
+  onToggleExtension,
   onRemoteConnect,
   onRemoteDisconnect,
   remoteHost,
@@ -99,6 +102,12 @@ export function App({
   const [memoryFilter, setMemoryFilter] = useState<MemoryFilter>('all');
   const [memoryExpandedId, setMemoryExpandedId] = useState<number | null>(null);
   const [memoryPendingDeleteId, setMemoryPendingDeleteId] = useState<number | null>(null);
+
+  // 扩展列表状态
+  const [extensionList, setExtensionList] = useState<ExtensionItem[]>([]);
+  const [extensionTogglingName, setExtensionTogglingName] = useState<string | null>(null);
+  const [extensionStatusMessage, setExtensionStatusMessage] = useState<string | null>(null);
+  const [extensionStatusIsError, setExtensionStatusIsError] = useState(false);
 
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
@@ -172,6 +181,8 @@ export function App({
     setMemoryFilter,
     setMemoryExpandedId,
     setMemoryPendingDeleteId,
+    onListExtensions,
+    setExtensionList,
     onRemoteConnect,
     onRemoteDisconnect,
     isRemote: !!remoteHost,
@@ -280,6 +291,13 @@ export function App({
     setMemoryPendingDeleteId,
     setMemoryList,
     onDeleteMemory,
+    extensionList,
+    setExtensionList,
+    onToggleExtension,
+    onListExtensions,
+    setExtensionTogglingName,
+    setExtensionStatusMessage,
+    setExtensionStatusIsError,
   });
 
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
@@ -317,6 +335,18 @@ export function App({
         expandedId={memoryExpandedId}
         filter={memoryFilter}
         pendingDeleteId={memoryPendingDeleteId}
+      />
+    );
+  }
+
+  if (viewMode === 'extension-list') {
+    return (
+      <ExtensionListView
+        extensions={extensionList}
+        selectedIndex={selectedIndex}
+        togglingName={extensionTogglingName}
+        statusMessage={extensionStatusMessage}
+        statusIsError={extensionStatusIsError}
       />
     );
   }

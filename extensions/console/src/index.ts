@@ -561,6 +561,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onDream: () => this.handleDream(),
         onListMemories: () => this.handleListMemories(),
         onDeleteMemory: (id: number) => this.handleDeleteMemory(id),
+        onListExtensions: () => this.handleListExtensions(),
+        onToggleExtension: (name: string) => this.handleToggleExtension(name),
         onRemoteConnect: (name?: string) => this.handleRemoteConnect(name),
         onRemoteDisconnect: () => this.handleRemoteDisconnect(),
         remoteHost: this._remoteHost || undefined,
@@ -1304,6 +1306,97 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       return await mem.delete(id);
     } catch {
       return false;
+    }
+  }
+
+  private async handleListExtensions(): Promise<any[]> {
+    const ext = (this.api as any)?.extensions;
+    const configManager = this.api?.configManager;
+    if (!ext?.discover || !configManager) return [];
+
+    try {
+      // 1. 磁盘发现
+      const packages: Array<{ manifest: { name: string; version: string; description?: string; plugin?: any }; source: string }> = ext.discover();
+      // 2. plugins.yaml 配置
+      const raw = configManager.readEditableConfig() as Record<string, any>;
+      const pluginEntries: Array<{ name: string; enabled?: boolean }> = raw?.plugins ?? [];
+      const pluginMap = new Map(pluginEntries.map(p => [p.name, p]));
+      // 3. 运行时状态
+      const active = (this.api as any)?.pluginManager?.listPlugins?.() ?? [];
+      const activeNames = new Set(active.map((p: any) => p.name));
+
+      return packages.map(pkg => {
+        const name = pkg.manifest.name;
+        const hasPlugin = !!pkg.manifest.plugin;
+        const inConfig = pluginMap.get(name);
+        let status: string;
+
+        if (!hasPlugin) {
+          status = 'platform';
+        } else if (activeNames.has(name)) {
+          status = 'active';
+        } else if (inConfig && inConfig.enabled === false) {
+          status = 'disabled';
+        } else if (inConfig) {
+          status = 'disabled'; // 配置中有但未运行
+        } else {
+          status = 'available';
+        }
+
+        return {
+          name,
+          version: pkg.manifest.version,
+          description: pkg.manifest.description || '',
+          status,
+          hasPlugin,
+          source: pkg.source,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private async handleToggleExtension(name: string): Promise<{ ok: boolean; message: string }> {
+    const ext = (this.api as any)?.extensions;
+    const configManager = this.api?.configManager;
+    if (!ext || !configManager) {
+      return { ok: false, message: '扩展管理 API 不可用' };
+    }
+
+    try {
+      // 读取当前 plugins.yaml
+      const raw = configManager.readEditableConfig() as Record<string, any>;
+      const pluginEntries: Array<{ name: string; enabled?: boolean; [k: string]: any }> = [...(raw?.plugins ?? [])];
+      const existing = pluginEntries.find(p => p.name === name);
+
+      // 判断运行时状态
+      const active = (this.api as any)?.pluginManager?.listPlugins?.() ?? [];
+      const isActive = active.some((p: any) => p.name === name);
+
+      if (isActive) {
+        // 禁用：停用插件 + 更新 yaml
+        await ext.deactivate(name);
+        if (existing) {
+          existing.enabled = false;
+        } else {
+          pluginEntries.push({ name, enabled: false });
+        }
+        configManager.updateEditableConfig({ plugins: pluginEntries } as any);
+        return { ok: true, message: `已禁用 "${name}"` };
+      } else {
+        // 启用：先激活插件，成功后再更新 yaml（防止 activate 失败导致状态不一致）
+        await ext.activate(name);
+        if (existing) {
+          existing.enabled = true;
+        } else {
+          pluginEntries.push({ name, enabled: true });
+        }
+        configManager.updateEditableConfig({ plugins: pluginEntries } as any);
+        return { ok: true, message: `已启用 "${name}"` };
+      }
+    } catch (err) {
+      return { ok: false, message: `操作失败: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 

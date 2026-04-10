@@ -88,6 +88,14 @@ interface UseAppKeyboardOptions {
   setMemoryPendingDeleteId: SetState<number | null>;
   setMemoryList: SetState<MemoryItem[]>;
   onDeleteMemory?: (id: number) => Promise<boolean>;
+  /** extension-list 视图用 */
+  extensionList: any[];
+  setExtensionList: SetState<any[]>;
+  onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onListExtensions?: () => Promise<any[]>;
+  setExtensionTogglingName: SetState<string | null>;
+  setExtensionStatusMessage: SetState<string | null>;
+  setExtensionStatusIsError: SetState<boolean>;
 }
 
 function closeConfirm(
@@ -151,6 +159,13 @@ export function useAppKeyboard({
   setMemoryPendingDeleteId,
   setMemoryList,
   onDeleteMemory,
+  extensionList,
+  setExtensionList,
+  onToggleExtension,
+  onListExtensions,
+  setExtensionTogglingName,
+  setExtensionStatusMessage,
+  setExtensionStatusIsError,
 }: UseAppKeyboardOptions) {
   useKeyboard((key) => {
     if (key.ctrl && key.name === 'c') {
@@ -243,6 +258,40 @@ export function useAppKeyboard({
         } else {
           setMemoryPendingDeleteId(item.id);
         }
+      }
+      return;
+    }
+
+    // ── extension-list 视图 ──
+    if (viewMode === 'extension-list') {
+      if (key.name === 'escape') {
+        setExtensionStatusMessage(null);
+        setViewMode('chat');
+      } else if (key.name === 'up') {
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      } else if (key.name === 'down') {
+        setSelectedIndex((prev) => Math.min(extensionList.length - 1, prev + 1));
+      } else if (key.name === 'return') {
+        const item = extensionList[selectedIndex];
+        if (!item || item.status === 'platform' || !onToggleExtension) return;
+        setExtensionTogglingName(item.name);
+        setExtensionStatusMessage(null);
+        void onToggleExtension(item.name).then(async ({ ok, message }) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(message);
+          setExtensionStatusIsError(!ok);
+          // 刷新列表
+          if (ok && onListExtensions) {
+            try {
+              const list = await onListExtensions();
+              setExtensionList(list);
+            } catch { /* ignore */ }
+          }
+        }).catch((err) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(`操作失败: ${err}`);
+          setExtensionStatusIsError(true);
+        });
       }
       return;
     }

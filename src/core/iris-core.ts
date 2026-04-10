@@ -47,7 +47,7 @@ import { createInvokeSkillTool } from '../tools/internal/invoke_skill';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { Backend } from './backend';
 import type { StorageProvider } from '../storage/base';
-import { PluginManager } from '../extension';
+import { PluginManager, discoverLocalExtensions } from '../extension';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PlatformRegistry } from './platform-registry';
 import { PluginEventBus } from '../extension/event-bus';
@@ -627,9 +627,23 @@ export class IrisCore {
     // 同步初始日志级别到 SDK logger
     setExtensionLogLevel(getGlobalLogLevel());
 
-    if (pluginManager && pluginManager.size > 0) {
-      backend.setPluginHooks(pluginManager.getHooks());
-      await pluginManager.notifyReady(irisAPI);
+    if (pluginManager) {
+      // 注册钩子变更回调：插件热重载后刷新 backend 的钩子缓存
+      pluginManager.setOnHooksChanged(() => {
+        backend.setPluginHooks(pluginManager.getHooks());
+      });
+
+      if (pluginManager.size > 0) {
+        backend.setPluginHooks(pluginManager.getHooks());
+        await pluginManager.notifyReady(irisAPI);
+      }
+
+      // 挂载扩展管理 API，供 console 等平台通过 (api as any).extensions 访问
+      (irisAPI as any).extensions = {
+        discover: () => discoverLocalExtensions(),
+        activate: (name: string) => pluginManager.activatePlugin(name),
+        deactivate: (name: string) => pluginManager.deactivatePlugin(name),
+      };
     }
 
     // ---- 赋值公开属性 ----

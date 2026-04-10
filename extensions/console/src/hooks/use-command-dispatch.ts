@@ -48,6 +48,8 @@ interface UseCommandDispatchOptions {
   setMemoryFilter: Dispatch<SetStateAction<MemoryFilter>>;
   setMemoryExpandedId: Dispatch<SetStateAction<number | null>>;
   setMemoryPendingDeleteId: Dispatch<SetStateAction<number | null>>;
+  onListExtensions?: () => Promise<any[]>;
+  setExtensionList: Dispatch<SetStateAction<any[]>>;
   onRemoteConnect?: (name?: string) => void;
   onRemoteDisconnect?: () => void;
   isRemote?: boolean;
@@ -95,6 +97,8 @@ export function useCommandDispatch({
   setMemoryFilter,
   setMemoryExpandedId,
   setMemoryPendingDeleteId,
+  onListExtensions,
+  setExtensionList,
   onRemoteConnect,
   onRemoteDisconnect,
   isRemote,
@@ -259,6 +263,22 @@ export function useCommandDispatch({
         setViewMode('memory-list');
       }).catch((err) => {
         appendCommandMessage(setMessages, `Failed to load memories: ${err}`, { isError: true });
+      });
+      return;
+    }
+
+    // ── /extension 命令 — 显示扩展列表 ──
+    if (text === '/extension') {
+      if (!onListExtensions) {
+        appendCommandMessage(setMessages, 'Extension management not available.');
+        return;
+      }
+      void onListExtensions().then((list) => {
+        setExtensionList(list);
+        setSelectedIndex(0);
+        setViewMode('extension-list');
+      }).catch((err) => {
+        appendCommandMessage(setMessages, `Failed to load extensions: ${err}`, { isError: true });
       });
       return;
     }

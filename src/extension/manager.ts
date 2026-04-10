@@ -48,16 +48,24 @@ export class PluginManager {
 
   /** 在 notifyReady 中缓存 IrisAPI 引用，供 notifyPlatformsReady 使用 */
   private _api?: IrisAPI;
+  /** 缓存 internals，供运行时单插件热重载使用 */
+  private _internals?: { tools: ToolRegistry; modes: ModeRegistry; prompt: PromptAssembler; router: LLMRouter };
+  private _appConfig?: AppConfig;
   /** 宿主配置目录（由 bootstrap 设置） */
   private _configDir?: string;
   /** 开发模式：源码加载的扩展白名单 */
   private _devSourceExtensions?: string[];
+  /** 钩子变更回调 — 由宿主注册，在插件增删后调用以刷新 backend 的钩子缓存 */
+  private _onHooksChanged?: () => void;
 
   /** 设置宿主配置目录（供 bootstrap 调用） */
   setConfigDir(dir: string): void { this._configDir = dir; }
 
   /** 设置源码加载白名单（供 bootstrap 调用） */
   setDevSourceExtensions(list?: string[]): void { this._devSourceExtensions = list; }
+
+  /** 注册钩子变更回调（供 bootstrap 调用，在插件增删时刷新 backend 钩子缓存） */
+  setOnHooksChanged(callback: () => void): void { this._onHooksChanged = callback; }
 
   /** 获取服务注册中心（供 bootstrap 构建 IrisAPI 使用） */
   getServiceRegistry(): ServiceRegistry { return this._serviceRegistry; }
@@ -147,6 +155,10 @@ export class PluginManager {
     internals: { tools: ToolRegistry; modes: ModeRegistry; prompt: PromptAssembler; router: LLMRouter },
     appConfig: AppConfig,
   ): Promise<void> {
+    // 缓存 internals/appConfig 供运行时 activatePlugin 使用
+    this._internals = internals;
+    this._appConfig = appConfig;
+
     for (const prepared of this.prepared) {
       try {
         await this.activatePrepared(prepared, internals, appConfig);
@@ -242,6 +254,65 @@ export class PluginManager {
       }
     }
     this.plugins.clear();
+  }
+
+  // ============ 单插件热重载 ============
+
+  /**
+   * 运行时激活单个插件（热加载）。
+   * 要求 activateAll 已执行过（internals 已缓存）。
+   */
+  async activatePlugin(name: string): Promise<void> {
+    if (this.plugins.has(name)) {
+      throw new Error(`插件 "${name}" 已激活`);
+    }
+    if (!this._internals || !this._appConfig) {
+      throw new Error('PluginManager 尚未初始化（internals 未缓存）');
+    }
+
+    const entry: PluginEntry = { name, type: 'local', enabled: true };
+    const resolved = await this.resolvePlugin(entry);
+    const pluginConfig = this.loadPluginConfig(entry, resolved.localSource);
+    const extensionRootDir = resolved.localSource?.rootDir;
+
+    const prepared: PreparedPlugin = { entry, plugin: resolved.plugin, pluginConfig, extensionRootDir };
+    await this.activatePrepared(prepared, this._internals, this._appConfig);
+
+    // 如果已过 notifyReady 阶段，立即触发 onReady 回调
+    const loaded = this.plugins.get(name);
+    if (loaded && this._api) {
+      loaded.context.setInteropRefs(this._api.eventBus, this._api.pluginManager);
+      for (const callback of loaded.readyCallbacks) {
+        try {
+          await callback(this._api);
+        } catch (err) {
+          logger.error(`插件 "${name}" onReady 回调执行失败:`, err);
+        }
+      }
+    }
+
+    this._onHooksChanged?.();
+    logger.info(`插件 "${name}" 已热加载`);
+  }
+
+  /**
+   * 运行时停用单个插件（热卸载）。
+   */
+  async deactivatePlugin(name: string): Promise<void> {
+    const loaded = this.plugins.get(name);
+    if (!loaded) {
+      throw new Error(`插件 "${name}" 未激活`);
+    }
+
+    try {
+      await loaded.plugin.deactivate?.();
+    } catch (err) {
+      logger.error(`插件 "${name}" deactivate 执行失败:`, err);
+    }
+
+    this.plugins.delete(name);
+    this._onHooksChanged?.();
+    logger.info(`插件 "${name}" 已热卸载`);
   }
 
 
