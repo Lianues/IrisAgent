@@ -75602,7 +75602,8 @@ ${lines.join(`
       return;
     const isDM = !msg.guild;
     const isMentioned = msg.mentions.has(this.client.user);
-    if (!isDM && !isMentioned)
+    const isReplyToBot = !!(msg.reference && await this.isReplyToBot(msg));
+    if (!isDM && !isMentioned && !isReplyToBot)
       return;
     let content = msg.content;
     if (isMentioned && this.client.user) {
@@ -75628,9 +75629,21 @@ ${lines.join(`
       if (handled)
         return;
     }
+    let replyContext = "";
+    if (msg.reference?.messageId) {
+      try {
+        const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+        if (refMsg) {
+          const refName = refMsg.author.id === this.client.user?.id ? `${this.client.user.username}:bot` : `${refMsg.member?.displayName || refMsg.author.globalName || refMsg.author.username}:${refMsg.author.id}`;
+          const refText = refMsg.content || "[附件]";
+          replyContext = `[回复 ${refName}: ${refText.length > 200 ? refText.slice(0, 200) + "…" : refText}]
+`;
+        }
+      } catch {}
+    }
     const displayName = msg.member?.displayName || msg.author.globalName || msg.author.username;
     const isAdmin = this.pairingGuard?.isAdmin(msg.author.id) ?? false;
-    const identifiedContent = `[${displayName}:${msg.author.id}${isAdmin ? ":admin" : ""}]: ${content}`;
+    const identifiedContent = `${replyContext}[${displayName}:${msg.author.id}${isAdmin ? ":admin" : ""}]: ${content}`;
     const sessionId = `discord-${msg.channelId}`;
     try {
       await this.startTyping(msg.channelId);
@@ -75639,6 +75652,16 @@ ${lines.join(`
       this.stopTyping(sessionId);
       this.clearStreamState(sessionId);
       logger2.error("处理消息时出错:", err);
+    }
+  }
+  async isReplyToBot(msg) {
+    if (!msg.reference?.messageId)
+      return false;
+    try {
+      const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+      return refMsg?.author.id === this.client.user?.id;
+    } catch {
+      return false;
     }
   }
 }

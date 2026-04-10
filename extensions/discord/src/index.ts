@@ -410,8 +410,9 @@ export class DiscordPlatform extends PlatformAdapter {
 
     const isDM = !msg.guild;
     const isMentioned = msg.mentions.has(this.client.user!);
+    const isReplyToBot = !!(msg.reference && await this.isReplyToBot(msg));
 
-    if (!isDM && !isMentioned) return;
+    if (!isDM && !isMentioned && !isReplyToBot) return;
 
     let content = msg.content;
     if (isMentioned && this.client.user) {
@@ -442,9 +443,24 @@ export class DiscordPlatform extends PlatformAdapter {
     }
 
     // ── 正常消息 → 进入 AI 对话 ──
+    // 回复场景：附带被回复消息的内容作为上下文
+    let replyContext = '';
+    if (msg.reference?.messageId) {
+      try {
+        const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+        if (refMsg) {
+          const refName = refMsg.author.id === this.client.user?.id
+            ? `${this.client.user.username}:bot`
+            : `${refMsg.member?.displayName || refMsg.author.globalName || refMsg.author.username}:${refMsg.author.id}`;
+          const refText = refMsg.content || '[附件]';
+          replyContext = `[回复 ${refName}: ${refText.length > 200 ? refText.slice(0, 200) + '…' : refText}]\n`;
+        }
+      } catch { /* 消息已删除等 */ }
+    }
+
     const displayName = msg.member?.displayName || msg.author.globalName || msg.author.username;
     const isAdmin = this.pairingGuard?.isAdmin(msg.author.id) ?? false;
-    const identifiedContent = `[${displayName}:${msg.author.id}${isAdmin ? ':admin' : ''}]: ${content}`;
+    const identifiedContent = `${replyContext}[${displayName}:${msg.author.id}${isAdmin ? ':admin' : ''}]: ${content}`;
 
     const sessionId = `discord-${msg.channelId}`;
     try {
@@ -456,6 +472,17 @@ export class DiscordPlatform extends PlatformAdapter {
       this.stopTyping(sessionId);
       this.clearStreamState(sessionId);
       logger.error('处理消息时出错:', err);
+    }
+  }
+
+  /** 检查消息是否是对 Bot 消息的回复 */
+  private async isReplyToBot(msg: Message): Promise<boolean> {
+    if (!msg.reference?.messageId) return false;
+    try {
+      const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+      return refMsg?.author.id === this.client.user?.id;
+    } catch {
+      return false;
     }
   }
 }
