@@ -75359,8 +75359,10 @@ class DiscordPlatform extends PlatformAdapter {
     });
     this.client.on("ready", () => {
       logger2.info(`已连接 | Bot: ${this.client.user?.tag}`);
+      this.registerSlashCommands();
     });
     this.client.on("messageCreate", (msg) => this.handleMessage(msg));
+    this.client.on("interactionCreate", (interaction) => this.handleSlashCommand(interaction));
     await this.client.login(this.token);
     logger2.info("平台已启动");
     if (this.pairingGuard && this.pairingStore?.needsBootstrap()) {
@@ -75370,6 +75372,66 @@ class DiscordPlatform extends PlatformAdapter {
       logger2.info(`║  对码: ${code}                                       ║`);
       logger2.info("║  第一个完成对码的用户将成为管理员。                    ║");
       logger2.info("╚══════════════════════════════════════════════════════╝");
+    }
+  }
+  async registerSlashCommands() {
+    if (!this.client.user)
+      return;
+    const commands = [
+      new import_discord.SlashCommandBuilder().setName("new").setDescription("开启新对话（清除当前频道/私聊的对话历史）"),
+      new import_discord.SlashCommandBuilder().setName("compact").setDescription("总结并压缩当前对话（节省 token）"),
+      new import_discord.SlashCommandBuilder().setName("model").setDescription("切换 AI 模型").addStringOption((opt) => opt.setName("name").setDescription("模型名称（留空查看可用列表）").setRequired(false))
+    ];
+    try {
+      const rest = new import_discord.REST().setToken(this.token);
+      await rest.put(import_discord.Routes.applicationCommands(this.client.user.id), { body: commands.map((c) => c.toJSON()) });
+      logger2.info("斜杠命令已注册: /new, /compact, /model");
+    } catch (err) {
+      logger2.error("斜杠命令注册失败:", err);
+    }
+  }
+  async handleSlashCommand(interaction) {
+    if (!interaction.isChatInputCommand())
+      return;
+    if (this.pairingGuard && !this.pairingGuard.isAdmin(interaction.user.id)) {
+      await interaction.reply({ content: "❌ 仅管理员可使用斜杠命令。", ephemeral: true });
+      return;
+    }
+    const sessionId = `discord-${interaction.channelId}`;
+    switch (interaction.commandName) {
+      case "new": {
+        await this.backend.clearSession(sessionId);
+        await interaction.reply({ content: "✅ 已开启新对话，历史记录已清除。" });
+        break;
+      }
+      case "compact": {
+        await interaction.deferReply();
+        try {
+          await this.backend.summarize?.(sessionId);
+          await interaction.editReply("✅ 对话已总结压缩。");
+        } catch (err) {
+          await interaction.editReply(`❌ 总结失败: ${err?.message ?? err}`);
+        }
+        break;
+      }
+      case "model": {
+        const name = interaction.options.getString("name");
+        if (!name) {
+          const models = this.backend.listModels();
+          const lines = models.map((m) => `${m.current ? "▶ " : "  "}**${m.modelName}** (${m.provider ?? "?"})`);
+          await interaction.reply({ content: `\uD83D\uDCCB **可用模型**:
+${lines.join(`
+`)}`, ephemeral: true });
+        } else {
+          try {
+            const result = this.backend.switchModel(name, "discord");
+            await interaction.reply(`✅ 模型已切换为 **${result.modelName}**`);
+          } catch (err) {
+            await interaction.reply({ content: `❌ 切换失败: ${err?.message ?? err}`, ephemeral: true });
+          }
+        }
+        break;
+      }
     }
   }
   async stop() {

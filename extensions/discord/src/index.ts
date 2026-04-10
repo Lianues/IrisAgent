@@ -6,7 +6,7 @@
 
 import { createExtensionLogger, definePlatformFactory, extractText, PlatformAdapter, splitText, type Content, type ImageInput, type IrisBackendLike, type ToolDefinition } from 'irises-extension-sdk';
 import { PairingGuard, PairingStore, type PairingConfig } from 'irises-extension-sdk/pairing';
-import { AttachmentBuilder, Client, GatewayIntentBits, Message, Partials } from 'discord.js';
+import { AttachmentBuilder, Client, GatewayIntentBits, Interaction, Message, Partials, REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
@@ -102,9 +102,11 @@ export class DiscordPlatform extends PlatformAdapter {
 
     this.client.on('ready', () => {
       logger.info(`已连接 | Bot: ${this.client.user?.tag}`);
+      this.registerSlashCommands();
     });
 
     this.client.on('messageCreate', (msg) => this.handleMessage(msg));
+    this.client.on('interactionCreate', (interaction) => this.handleSlashCommand(interaction));
 
     await this.client.login(this.token);
     logger.info('平台已启动');
@@ -117,6 +119,91 @@ export class DiscordPlatform extends PlatformAdapter {
       logger.info(`║  对码: ${code}                                       ║`);
       logger.info('║  第一个完成对码的用户将成为管理员。                    ║');
       logger.info('╚══════════════════════════════════════════════════════╝');
+    }
+  }
+
+  // ============ 斜杠命令 ============
+
+  /** 注册 Discord 斜杠命令 */
+  private async registerSlashCommands(): Promise<void> {
+    if (!this.client.user) return;
+
+    const commands = [
+      new SlashCommandBuilder()
+        .setName('new')
+        .setDescription('开启新对话（清除当前频道/私聊的对话历史）'),
+      new SlashCommandBuilder()
+        .setName('compact')
+        .setDescription('总结并压缩当前对话（节省 token）'),
+      new SlashCommandBuilder()
+        .setName('model')
+        .setDescription('切换 AI 模型')
+        .addStringOption(opt =>
+          opt.setName('name')
+            .setDescription('模型名称（留空查看可用列表）')
+            .setRequired(false),
+        ),
+    ];
+
+    try {
+      const rest = new REST().setToken(this.token);
+      await rest.put(
+        Routes.applicationCommands(this.client.user.id),
+        { body: commands.map(c => c.toJSON()) },
+      );
+      logger.info('斜杠命令已注册: /new, /compact, /model');
+    } catch (err) {
+      logger.error('斜杠命令注册失败:', err);
+    }
+  }
+
+  /** 处理斜杠命令交互 */
+  private async handleSlashCommand(interaction: Interaction): Promise<void> {
+    if (!interaction.isChatInputCommand()) return;
+
+    // 权限检查：仅管理员可用
+    if (this.pairingGuard && !this.pairingGuard.isAdmin(interaction.user.id)) {
+      await interaction.reply({ content: '❌ 仅管理员可使用斜杠命令。', ephemeral: true });
+      return;
+    }
+
+    const sessionId = `discord-${interaction.channelId}`;
+
+    switch (interaction.commandName) {
+      case 'new': {
+        await this.backend.clearSession(sessionId);
+        await interaction.reply({ content: '✅ 已开启新对话，历史记录已清除。' });
+        break;
+      }
+
+      case 'compact': {
+        await interaction.deferReply();
+        try {
+          await this.backend.summarize?.(sessionId);
+          await interaction.editReply('✅ 对话已总结压缩。');
+        } catch (err: any) {
+          await interaction.editReply(`❌ 总结失败: ${err?.message ?? err}`);
+        }
+        break;
+      }
+
+      case 'model': {
+        const name = interaction.options.getString('name');
+        if (!name) {
+          // 列出可用模型
+          const models = this.backend.listModels();
+          const lines = models.map(m => `${m.current ? '▶ ' : '  '}**${m.modelName}** (${m.provider ?? '?'})`);
+          await interaction.reply({ content: `📋 **可用模型**:\n${lines.join('\n')}`, ephemeral: true });
+        } else {
+          try {
+            const result = this.backend.switchModel(name, 'discord');
+            await interaction.reply(`✅ 模型已切换为 **${result.modelName}**`);
+          } catch (err: any) {
+            await interaction.reply({ content: `❌ 切换失败: ${err?.message ?? err}`, ephemeral: true });
+          }
+        }
+        break;
+      }
     }
   }
 
