@@ -131,7 +131,7 @@ export default definePlugin({
 
     // 2. 读取初始配置
     const rawConfig = ctx.readConfigSection('memory');
-    currentConfig = resolveConfig(rawConfig, ctx.getPluginConfig<Partial<MemoryPluginConfig>>());
+    currentConfig = resolveConfig(rawConfig, undefined);
 
     // 3. onReady：根据初始配置决定是否启用 + 注册 Settings Tab
     //    注意：即使 enabled=false 也注册 Settings Tab，让用户能通过 TUI 开启。
@@ -332,7 +332,7 @@ export default definePlugin({
         if (!cachedApi) return;
 
         const newRaw = ctx.readConfigSection('memory');
-        const newConfig = resolveConfig(newRaw, ctx.getPluginConfig<Partial<MemoryPluginConfig>>());
+        const newConfig = resolveConfig(newRaw, undefined);
         const wasEnabled = currentConfig.enabled;
         currentConfig = newConfig;
 

@@ -3,13 +3,11 @@
   "version": "0.1.0",
   "description": "长期记忆系统 — SQLite + FTS5 全文检索",
   "plugin": {
-    "entry": "dist/index.mjs",
-    "configFile": "config.yaml"
+    "entry": "dist/index.mjs"
   },
   "distribution": {
     "files": [
       ".gitignore",
-      "config.yaml",
       "dist/index.mjs",
       "package.json"
     ]
