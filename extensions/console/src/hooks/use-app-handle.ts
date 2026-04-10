@@ -178,6 +178,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
       startStream() {
         if (toolInvocationsRef.current.length > 0) commitTools();
         setIsStreaming(true);
+        setRetryInfo(null);
         uncommittedStreamPartsRef.current = [];
         streamPartsRef.current = [];
         setStreamingParts([]);
