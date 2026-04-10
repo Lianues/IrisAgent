@@ -44,13 +44,16 @@ backgroundExecution:
   systemPrompt: |
 ${promptYaml}
 
-  # 排除的工具列表
-  # 这些工具在定时任务后台执行时不可用。
+  # 全局排除的工具列表（黑名单）
+  # 这些工具在定时任务后台执行时默认不可用。
   # 默认排除：
   #   - sub_agent: 没有父会话上下文，子代理无意义
   #   - history_search: 需要 sessionId，定时任务没有活跃会话
   #   - manage_scheduled_tasks: 防止后台 agent 自行修改/删除定时任务
   # 设置为空数组 [] 可开放所有工具。
+  #
+  # 注意：可在创建任务时通过 allowed_tools（白名单）或 exclude_tools（黑名单）
+  # 为每个任务单独配置工具策略，任务级别配置优先于此全局配置。
   excludeTools:
     - sub_agent
     - history_search

@@ -303,6 +303,9 @@ export class CronScheduler {
       silent: params.silent ?? false,
       urgent: params.urgent ?? false,
       condition: params.condition,
+      // 工具策略：allowedTools 优先，互斥处理
+      allowedTools: params.allowedTools?.length ? params.allowedTools : undefined,
+      excludeTools: (!params.allowedTools?.length && params.excludeTools?.length) ? params.excludeTools : undefined,
       enabled: true,
       createdAt: Date.now(),
       createdInSession: params.createdInSession,
@@ -340,6 +343,21 @@ export class CronScheduler {
     if (params.silent !== undefined) job.silent = params.silent;
     if (params.urgent !== undefined) job.urgent = params.urgent;
     if (params.condition !== undefined) job.condition = params.condition || undefined;
+
+    // 工具策略更新（互斥处理：allowedTools 优先，空数组表示清除）
+    if (params.allowedTools !== undefined && params.allowedTools.length > 0) {
+      // 白名单模式：设置 allowedTools，清除 excludeTools
+      job.allowedTools = params.allowedTools;
+      job.excludeTools = undefined;
+    } else if (params.excludeTools !== undefined && params.excludeTools.length > 0) {
+      // 黑名单模式：设置 excludeTools，清除 allowedTools
+      job.excludeTools = params.excludeTools;
+      job.allowedTools = undefined;
+    } else {
+      // 清除操作：传入空数组时清除对应配置，回退到全局策略
+      if (params.allowedTools !== undefined) job.allowedTools = undefined;
+      if (params.excludeTools !== undefined) job.excludeTools = undefined;
+    }
 
     // [Phase 3] 更新会改变后续调度/执行语义，因此先 kill 当前关联的 TaskBoard 任务，
     // 再按新配置重新注册，避免旧 executor 继续执行过期参数。
@@ -723,10 +741,20 @@ export class CronScheduler {
     if (timeoutHandle.unref) timeoutHandle.unref();
 
     try {
-      // ---- 构建工具集：按配置排除不适用的工具 ----
-      const cronTools = this.backgroundConfig.excludeTools.length > 0
-        ? (this.api.tools.createFiltered?.(this.backgroundConfig.excludeTools) ?? this.api.tools)
-        : this.api.tools;
+      // ---- 构建工具集：优先使用任务级别配置，回退到全局配置 ----
+      let cronTools;
+      if (job.allowedTools && job.allowedTools.length > 0) {
+        // 白名单模式（任务级别）：只允许使用指定的工具
+        cronTools = this.api.tools.createSubset?.(job.allowedTools) ?? this.api.tools;
+      } else if (job.excludeTools && job.excludeTools.length > 0) {
+        // 黑名单模式（任务级别）：排除指定的工具
+        cronTools = this.api.tools.createFiltered?.(job.excludeTools) ?? this.api.tools;
+      } else {
+        // 回退到全局 backgroundExecution.excludeTools 配置
+        cronTools = this.backgroundConfig.excludeTools.length > 0
+          ? (this.api.tools.createFiltered?.(this.backgroundConfig.excludeTools) ?? this.api.tools)
+          : this.api.tools;
+      }
 
       // ---- 构建系统提示词 ----
       const systemPrompt = this.backgroundConfig.systemPrompt;

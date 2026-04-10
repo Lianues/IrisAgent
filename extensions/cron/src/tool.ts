@@ -137,6 +137,7 @@ export const manageScheduledTasksTool: ToolDefinition = {
       '- interval: 固定间隔毫秒数，如 "60000"\n' +
       '- once: 一次性定时，支持相对延迟（如 "30s", "5m", "2h"）或绝对日期时间（如 "2026-04-03 17:30"）\n' +
       '任务触发后会在后台独立拉起一个 agent 执行预设的 instruction 指令（拥有独立的工具调用能力）。\n' +
+      '可通过 allowed_tools（白名单）或 exclude_tools（黑名单）为每个任务单独配置可用工具集，未配置时使用全局默认策略。\n' +
       '执行完成后的行为取决于 silent 参数：\n' +
       '  - silent=false（默认）：执行结果作为通知注入当前会话，由主 agent 处理并回复用户。\n' +
       '  - silent=true：仅向各前端平台广播一条轻量通知（任务名+结果摘要），不触发主 agent 处理，不占用对话。\n' +
@@ -198,6 +199,25 @@ export const manageScheduledTasksTool: ToolDefinition = {
             '  "agent.好感度 > 80 && random() < 0.5"\n' +
             '  "agent.信任度 >= 60 || agent.好感度 >= 90"\n' +
             '  "hour() >= 9 && hour() <= 22"',
+        },
+        allowed_tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '允许使用的工具列表（白名单模式）。设置后任务只能使用这些工具。\n' +
+            '与 exclude_tools 互斥，同时提供时 allowed_tools 优先。\n' +
+            '不设置则使用全局 backgroundExecution.excludeTools 配置。\n' +
+            '示例：["read_file", "write_file", "shell"]',
+        },
+        exclude_tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '排除的工具列表（黑名单模式）。设置后任务不能使用这些工具。\n' +
+            '与 allowed_tools 互斥，同时提供时 allowed_tools 优先。\n' +
+            '不设置则使用全局 backgroundExecution.excludeTools 配置。\n' +
+            '设置为空数组 [] 可清除任务级别配置，回退到全局默认。\n' +
+            '示例：["sub_agent", "manage_scheduled_tasks"]',
         },
       },
       required: ['action'],
@@ -272,6 +292,8 @@ export const manageScheduledTasksTool: ToolDefinition = {
           silent: (args.silent as boolean) ?? false,
           urgent: (args.urgent as boolean) ?? false,
           condition: args.condition as string | undefined,
+          allowedTools: Array.isArray(args.allowed_tools) ? args.allowed_tools as string[] : undefined,
+          excludeTools: Array.isArray(args.exclude_tools) ? args.exclude_tools as string[] : undefined,
           createdInSession: currentSessionId,
         };
 
@@ -288,6 +310,8 @@ export const manageScheduledTasksTool: ToolDefinition = {
             silent: job.silent,
             urgent: job.urgent,
             condition: job.condition,
+            allowedTools: job.allowedTools,
+            excludeTools: job.excludeTools,
             enabled: job.enabled,
             createdAt: new Date(job.createdAt).toISOString(),
           },
@@ -309,6 +333,15 @@ export const manageScheduledTasksTool: ToolDefinition = {
         if (args.silent !== undefined) updateParams.silent = args.silent as boolean;
         if (args.urgent !== undefined) updateParams.urgent = args.urgent as boolean;
         if (args.condition !== undefined) updateParams.condition = args.condition as string;
+        // 工具策略更新
+        if (args.allowed_tools !== undefined) {
+          updateParams.allowedTools = Array.isArray(args.allowed_tools) && (args.allowed_tools as string[]).length > 0
+            ? args.allowed_tools as string[] : [];
+        }
+        if (args.exclude_tools !== undefined) {
+          updateParams.excludeTools = Array.isArray(args.exclude_tools) && (args.exclude_tools as string[]).length > 0
+            ? args.exclude_tools as string[] : [];
+        }
 
         // 如果同时提供了调度类型和值，则更新调度配置
         if (args.schedule_type && args.schedule_value) {
@@ -404,6 +437,8 @@ export const manageScheduledTasksTool: ToolDefinition = {
             enabled: j.enabled,
             silent: j.silent,
             urgent: j.urgent,
+            allowedTools: j.allowedTools ?? null,
+            excludeTools: j.excludeTools ?? null,
             lastRunAt: j.lastRunAt
               ? new Date(j.lastRunAt).toISOString()
               : null,

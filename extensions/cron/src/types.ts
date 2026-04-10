@@ -70,6 +70,18 @@ export interface ScheduledJob {
    *   "hour() >= 9 && hour() <= 22 && random() < 0.3"
    */
   condition?: string;
+  /**
+   * 允许使用的工具列表（白名单模式）。
+   * 设置后，任务只能使用列表中的工具，忽略全局 excludeTools 配置。
+   * 与 excludeTools 互斥，同时设置时 allowedTools 优先。
+   */
+  allowedTools?: string[];
+  /**
+   * 排除的工具列表（黑名单模式）。
+   * 设置后，覆盖全局 backgroundExecution.excludeTools 配置。
+   * 与 allowedTools 互斥，同时设置时 allowedTools 优先。
+   */
+  excludeTools?: string[];
   /** 是否启用 */
   enabled: boolean;
   /** 创建时间戳 */
@@ -98,6 +110,8 @@ export interface CreateJobParams {
   silent?: boolean;
   urgent?: boolean;
   condition?: string;
+  allowedTools?: string[];
+  excludeTools?: string[];
   createdInSession: string;
 }
 
@@ -110,6 +124,8 @@ export interface UpdateJobParams {
   silent?: boolean;
   urgent?: boolean;
   condition?: string;
+  allowedTools?: string[];
+  excludeTools?: string[];
 }
 
 // ============ 插件配置 ============
