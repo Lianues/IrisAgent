@@ -128,6 +128,8 @@ bash:
     enabled: true
 sub_agent:
   autoApprove: false
+manage_variables:
+  autoApprove: true
 # autoApproveAll: true
 # autoApproveConfirmation: true
 # autoApproveDiff: true
