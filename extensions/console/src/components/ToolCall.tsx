@@ -19,9 +19,10 @@ const TERMINAL_STATUSES = new Set<ToolStatus>(['success', 'warning', 'error']);
 
 function getArgsSummary(toolName: string, args: Record<string, unknown>): string {
   switch (toolName) {
+    case 'bash':
     case 'shell': {
       const cmd = String(args.command || '');
-      return cmd.length > 30 ? `"${cmd.slice(0, 30)}${ICONS.ellipsis}"` : `"${cmd}"`;
+      return cmd.length > 60 ? `"${cmd.slice(0, 60)}${ICONS.ellipsis}"` : `"${cmd}"`;
     }
     case 'read_file': {
       const files = Array.isArray(args.files) ? args.files as unknown[] : [];
