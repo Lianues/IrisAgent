@@ -255,7 +255,7 @@ function searchInFilesSummary(result: Record<string, unknown>, args: Record<stri
 
   const count = (result.count ?? 0) as number
   return buildSummary([
-    seg(`${count}`, 'purple'),
+    seg(`${count}`),
     seg(` matches found${suffix}`),
   ])
 }

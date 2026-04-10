@@ -62,5 +62,5 @@ export function SearchInFilesRenderer({ args, result }: ToolRendererProps) {
 
   const count = r.count ?? 0;
   const suffix = r.truncated ? ' (truncated)' : '';
-  return <text fg="#888"><em>{` ${ICONS.resultArrow} `}<span fg="#d2a8ff">{count}</span> matches found{suffix}</em></text>;
+  return <text fg="#888"><em>{` ${ICONS.resultArrow} `}{count} matches found{suffix}</em></text>;
 }
