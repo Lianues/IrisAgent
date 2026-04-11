@@ -10,7 +10,7 @@ services:
     ports:
       - "${IRIS_PORT:-8192}:8192"
     volumes:
-      - iris-data:/data
+      - ${IRIS_DATA_DIR:-~/.iris}:/data
       - ${IRIS_CLI_DIR:-/usr/local/bin}:/host-bin
     environment:
       NODE_ENV: production
@@ -40,7 +40,7 @@ services:
     ports:
       - "${IRIS_PORT:-8192}:8192"
     volumes:
-      - iris-data:/data
+      - ${IRIS_DATA_DIR:-~/.iris}:/data
     environment:
       NODE_ENV: production
       IRIS_DATA_DIR: /data
@@ -54,7 +54,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-
-volumes:
-  iris-data:
-    driver: local
