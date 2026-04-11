@@ -546,7 +546,7 @@ import React10 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// node_modules/irises-extension-sdk/dist/platform.js
+// extensions/console/node_modules/irises-extension-sdk/src/platform.ts
 class BackendHandle {
   _backend;
   _listeners = new Map;
@@ -672,17 +672,7 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
-// node_modules/irises-extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
-// node_modules/tokenx/dist/index.mjs
+// extensions/console/node_modules/tokenx/dist/index.mjs
 var PATTERNS = {
   whitespace: /^\s+$/,
   cjk: /[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F\uFF00-\uFFEF\u30A0-\u30FF\u2E80-\u2EFF\u31C0-\u31EF\u3200-\u32FF\u3300-\u33FF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uD7B0-\uD7FF]/,
@@ -3005,9 +2995,8 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
       ]
     }, undefined, true, undefined, this);
   }
-  const isNotification = msg.isNotification === true;
-  const labelName = isSummary ? "context" : isUser ? "you" : msg.isCommand ? "shell" : isNotification ? "bg-task" : (msg.modelName || modelName || "iris").toLowerCase();
-  const labelColor = isSummary ? C.warn : isUser ? C.roleUser : msg.isError ? C.error : msg.isCommand ? C.command : isNotification ? C.warn : C.roleAssistant;
+  const labelName = isSummary ? "context" : isUser ? "you" : msg.isCommand ? "shell" : (msg.modelName || modelName || "iris").toLowerCase();
+  const labelColor = isSummary ? C.warn : isUser ? C.roleUser : msg.isError ? C.error : msg.isCommand ? C.command : C.roleAssistant;
   const headerText = `${ICONS.separator} ${labelName} `;
   const displayParts = [...msg.parts];
   if (liveParts && liveParts.length > 0)
@@ -3202,7 +3191,8 @@ function ChatMessageList({
   modelName,
   generatingLabel,
   timerPaused,
-  thoughtsToggleSignal
+  thoughtsToggleSignal,
+  hasActiveTools
 }) {
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const lastIsActiveAssistant = lastMessage?.role === "assistant" && (isStreaming || isGenerating && lastMessage.parts.length === 0);
@@ -3255,7 +3245,7 @@ function ChatMessageList({
           ]
         }, message.id, true, undefined, this);
       }),
-      isGenerating && !lastIsActiveAssistant && streamingParts.length === 0 ? /* @__PURE__ */ jsxDEV25("box", {
+      isGenerating && !lastIsActiveAssistant && streamingParts.length === 0 && !hasActiveTools ? /* @__PURE__ */ jsxDEV25("box", {
         flexDirection: "column",
         paddingBottom: 1,
         children: /* @__PURE__ */ jsxDEV25(GeneratingTimer, {
@@ -3274,7 +3264,7 @@ import { useMemo as useMemo3 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// node_modules/irises-extension-sdk/dist/tool-utils.js
+// extensions/console/node_modules/irises-extension-sdk/src/tool-utils.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -8597,7 +8587,8 @@ function App({
         modelName: modelState.currentModelName,
         generatingLabel: appState.generatingLabel,
         timerPaused: appState.pendingApprovals.length > 0 || appState.pendingApplies.length > 0,
-        thoughtsToggleSignal
+        thoughtsToggleSignal,
+        hasActiveTools: appState.toolInvocations.some((t) => t.status === "executing" || t.status === "queued")
       }, undefined, false, undefined, this) : null,
       /* @__PURE__ */ jsxDEV37(BottomPanel, {
         hasMessages,
@@ -9001,7 +8992,7 @@ class ConsolePlatform extends PlatformAdapter {
     return next;
   }
   async start() {
-    this.api?.setLogLevel?.(LogLevel.SILENT);
+    this.api?.setLogLevel?.(4 /* SILENT */);
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
     this.backend.on("assistant:content", (sid, content) => {
       if (sid === this.sessionId) {

@@ -1,10 +1,14 @@
 @echo off
 chcp 65001 >nul 2>&1
 title Iris
-setlocal
+setlocal EnableDelayedExpansion
 
+REM 自动检测安装目录
+set "INSTALL_DIR=%~dp0"
+if exist "%INSTALL_DIR%bin\iris.exe" goto :found_install_dir
 set "INSTALL_DIR=%~dp0..\.."
-for %%I in ("%INSTALL_DIR%") do set "INSTALL_DIR=%%~fI"
+:found_install_dir
+for %%I in ("!INSTALL_DIR!") do set "INSTALL_DIR=%%~fI"
 
 if defined IRIS_DATA_DIR (
   set "DATA_DIR=%IRIS_DATA_DIR%"

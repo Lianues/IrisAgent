@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul 2>&1
 title Iris Installer
-setlocal
+setlocal EnableDelayedExpansion
 
 REM ==========================================
 REM  Iris Windows 二进制安装辅助脚本
@@ -17,8 +17,15 @@ REM    3. 运行 onboard 配置引导
 REM    4. 提示将 bin 目录加入 PATH
 REM ==========================================
 
+REM 自动检测安装目录：根据脚本位置判断
+REM   - 解压根目录（Release zip）：bin\iris.exe 在 %~dp0bin\ 下
+REM   - deploy\windows\（源码仓库）：bin\iris.exe 在 %~dp0..\..\bin\ 下
+set "INSTALL_DIR=%~dp0"
+if exist "%INSTALL_DIR%bin\iris.exe" goto :found_install_dir
 set "INSTALL_DIR=%~dp0..\.."
-for %%I in ("%INSTALL_DIR%") do set "INSTALL_DIR=%%~fI"
+:found_install_dir
+REM 规范化路径（去除末尾反斜杠和 ..）
+for %%I in ("!INSTALL_DIR!") do set "INSTALL_DIR=%%~fI"
 
 if defined IRIS_DATA_DIR (
   set "DATA_DIR=%IRIS_DATA_DIR%"

@@ -1,2 +1,2 @@
-# Iris v1.0.4 Release Notes
-* 修复一个打包问题
+# Iris v1.0.5 Release Notes
+* 修复打包内置依赖缺失问题

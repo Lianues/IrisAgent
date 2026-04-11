@@ -372,17 +372,21 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    // 复制 extension 目录，排除运行时不需要的内容：
-    // - node_modules/：依赖已打包进 dist/index.mjs
-    // - src/：源码已打包进 dist/index.mjs
-    // - web-ui/：web-ui 构建产物已通过 webUiDistDir 单独复制
+    // 复制 extension 目录，排除构建时产物：
+    // - src/：源码已编译进 dist/index.mjs
+    // - web-ui/：web-ui 构建产物已通过 webUiDistDir 单独复制到顶层
+    // - node_modules/：仅在 extension 无 external 依赖时排除；
+    //   有 external 的 extension（如 console）运行时需要从 node_modules 加载这些包
     // dereference: true 修正 Windows 上 symlink/junction EPERM 问题
+    const hasExternals = extension.external.length > 0
     fs.cpSync(extension.sourceDir, targetDir, {
       recursive: true,
       dereference: true,
       filter: (src) => {
         const name = path.basename(src)
-        return name !== "node_modules" && name !== "src" && name !== "web-ui"
+        if (name === "src" || name === "web-ui") return false
+        if (name === "node_modules" && !hasExternals) return false
+        return true
       },
     })
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
@@ -441,6 +445,17 @@ for (const target of targets) {
     copyEmbeddedExtensions(embeddedExtensions, path.join(outDir, "extensions"))
     copyDirectoryIfExists(webUiDistDir, path.join(outDir, "web-ui", "dist"), "web-ui/dist")
     copyDirectoryIfExists(opentuiRuntimeStagingDir, path.join(outDir, "bin", "opentui"), "bin/opentui")
+
+    // 复制平台部署脚本到产物根目录
+    const deployScriptsDir = path.join(rootDir, "deploy", target.os === "win32" ? "windows" : "linux")
+    if (fs.existsSync(deployScriptsDir)) {
+      const scriptExt = target.os === "win32" ? ".bat" : ".sh"
+      for (const file of fs.readdirSync(deployScriptsDir)) {
+        if (!file.endsWith(scriptExt)) continue
+        fs.copyFileSync(path.join(deployScriptsDir, file), path.join(outDir, file))
+      }
+      console.log(`  ✓ deploy scripts copied`)
+    }
 
     const licensePath = path.join(rootDir, "LICENSE")
     if (fs.existsSync(licensePath)) {
