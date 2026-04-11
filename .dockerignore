@@ -2,11 +2,9 @@
 .git
 .gitignore
 
-# Build output (rebuilt inside Docker)
-dist/
-node_modules/
-extensions/web/web-ui/dist/
-extensions/web/web-ui/node_modules/
+# Build output (rebuilt inside Docker; root-level only so extension dist/ is preserved)
+/dist/
+/node_modules/
 
 # Windows portable Node.js
 node/

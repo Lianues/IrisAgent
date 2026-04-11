@@ -36,8 +36,8 @@ RUN cd extensions/console && npm install --legacy-peer-deps
 # ------ Stage 2: Build Vue 3 Web UI (Vite) ------
 FROM deps AS build-ui
 COPY extensions/web/web-ui/ extensions/web/web-ui/
-# web-ui imports shared modules from parent directory
-COPY extensions/web/src/chat-attachments.ts extensions/web/src/chat-attachments.ts
+# web-ui imports shared modules from parent directory via @web-shared alias
+COPY extensions/web/src/ extensions/web/src/
 RUN cd extensions/web/web-ui && npm run build
 
 
@@ -68,12 +68,15 @@ COPY src/ src/
 COPY tsconfig.json tsconfig.build.json ./
 COPY data/ data/
 COPY packages/ packages/
-COPY script/build.ts script/build.ts
+COPY script/ script/
 COPY terminal/ terminal/
-# extensions/console is imported dynamically from src/index.ts
-COPY extensions/console/ extensions/console/
+# All extensions needed: embedded.json lists cron, memory, web, console, telegram
+COPY extensions/ extensions/
 # Overlay pre-built web-ui (build.ts expects extensions/web/web-ui/dist/)
 COPY --from=build-ui /app/extensions/web/web-ui/dist/ extensions/web/web-ui/dist/
+
+# Sync extension metadata and install all extension deps
+RUN npx tsx script/install-extension-deps.ts --frozen-lockfile
 
 # Compile standalone binary for current platform (linux-x64)
 # build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
@@ -91,6 +94,9 @@ WORKDIR /app
 
 # Compiled JS
 COPY --from=build /app/dist/ dist/
+# resolveProjectRoot() checks for data/ relative to dist/src/paths.js → projectRoot = /app/dist
+# workspaceExtensionsDir = projectRoot/extensions; replace tsc's partial output with symlink to full extensions
+RUN ln -s /app/data dist/data && rm -rf dist/extensions && ln -s /app/extensions dist/extensions
 # Runtime dependencies only (devDeps pruned in build stage)
 COPY --from=build /app/node_modules/ node_modules/
 COPY --from=build /app/package.json .
@@ -109,7 +115,8 @@ COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
 # Extension plugins (lark, telegram, web, weixin, etc.)
-COPY extensions/ extensions/
+# Use extensions from bun-compile stage which has node_modules installed via install-extension-deps
+COPY --from=bun-compile /app/extensions/ extensions/
 RUN mkdir -p /data && chown node:node /data
 
 ENV NODE_ENV=production \
@@ -118,7 +125,8 @@ ENV NODE_ENV=production \
 
 EXPOSE 8192
 VOLUME /data
-USER node
+# NOTE: runs as root initially so entrypoint can deploy TUI binaries to /host-bin,
+# then drops to 'node' user via setpriv before starting the main process.
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/entrypoint.sh"]
@@ -148,7 +156,10 @@ RUN chmod +x bin/iris bin/iris-onboard
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
-COPY extensions/ extensions/
+# Extensions with deps from bun-compile stage
+COPY --from=bun-compile /app/extensions/ extensions/
+# Same symlink fix as production stage
+RUN ln -s /app/data dist/data && rm -rf dist/extensions && ln -s /app/extensions dist/extensions
 
 RUN mkdir -p /data && chown 1001:1001 /data
 

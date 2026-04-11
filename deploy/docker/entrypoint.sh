@@ -38,10 +38,29 @@ if [ -f "$PLATFORM_YAML" ] && grep -q 'host: 127\.0\.0\.1' "$PLATFORM_YAML" 2>/d
   echo "[Iris] Set 'host: 0.0.0.0' in $CONFIG_DIR/platform.yaml to fix this."
 fi
 
+# ------ Deploy TUI binary to host (if /host-bin is mounted) ------
+if [ -d /host-bin ] && [ -w /host-bin ]; then
+  for bin in iris iris-onboard; do
+    if [ -f "/app/bin/$bin" ]; then
+      cp "/app/bin/$bin" "/host-bin/$bin"
+      chmod +x "/host-bin/$bin"
+    fi
+  done
+  echo "[Iris] TUI binaries deployed to host: iris, iris-onboard"
+fi
+
+# ------ Drop privileges to 'node' user for the main process ------
+# entrypoint runs as root (for /host-bin write access), then drops to node
+RUN_AS=""
+if [ "$(id -u)" = "0" ]; then
+  chown -R node:node "$IRIS_DATA_DIR" 2>/dev/null || true
+  RUN_AS="setpriv --reuid=node --regid=node --init-groups --"
+fi
+
 # ------ Start the application ------
 # Console (TUI) platform requires the Bun-compiled binary
 if echo "$IRIS_PLATFORM" | grep -qw "console"; then
-  exec /app/bin/iris "$@"
+  exec $RUN_AS /app/bin/iris "$@"
 else
-  exec node --import ./esm-fix.mjs dist/src/index.js "$@"
+  exec $RUN_AS node --import ./esm-fix.mjs dist/src/index.js "$@"
 fi
