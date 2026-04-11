@@ -68,7 +68,7 @@ if (fs.existsSync(dataSrc)) {
 }
 
 // 复制 Web UI 静态资源（供缓存到包装器 bin/.iris 的二进制使用）
-const webUiDistSrc = path.join(dir, "src", "platforms", "web", "web-ui", "dist")
+const webUiDistSrc = path.join(dir, "extensions", "web", "web-ui", "dist")
 const webUiDistDest = path.join(wrapperDir, "web-ui", "dist")
 if (fs.existsSync(webUiDistSrc)) {
   fs.cpSync(webUiDistSrc, webUiDistDest, { recursive: true })

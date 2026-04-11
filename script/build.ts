@@ -372,9 +372,19 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    // 修正：Windows 上 extension 的 node_modules 里可能有 symlink/junction（如 irises-extension-sdk），
-    // cpSync 默认不解引用会 EPERM，加 dereference: true 将链接展开为实际文件再复制
-    fs.cpSync(extension.sourceDir, targetDir, { recursive: true, dereference: true })
+    // 复制 extension 目录，排除运行时不需要的内容：
+    // - node_modules/：依赖已打包进 dist/index.mjs
+    // - src/：源码已打包进 dist/index.mjs
+    // - web-ui/：web-ui 构建产物已通过 webUiDistDir 单独复制
+    // dereference: true 修正 Windows 上 symlink/junction EPERM 问题
+    fs.cpSync(extension.sourceDir, targetDir, {
+      recursive: true,
+      dereference: true,
+      filter: (src) => {
+        const name = path.basename(src)
+        return name !== "node_modules" && name !== "src" && name !== "web-ui"
+      },
+    })
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
   }
 }
