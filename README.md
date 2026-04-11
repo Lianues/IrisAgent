@@ -53,9 +53,17 @@ cd iris
 从 [GitHub Release](https://github.com/Lianues/Iris/releases) 下载 `iris-windows-x64.zip`，解压后运行：
 
 ```bat
-bin\iris.exe onboard
-bin\iris.exe start
+deploy\windows\install.bat
 ```
+
+安装脚本会自动初始化配置、启动引导，并询问是否将 `iris` 加入系统 PATH。完成后重新打开终端即可直接使用：
+
+```bat
+iris onboard
+iris start
+```
+
+如不运行安装脚本，也可直接通过完整路径使用：`bin\iris.exe onboard` / `bin\iris.exe start`。
 
 ### 方式三：Linux 一键安装脚本（可选）
 

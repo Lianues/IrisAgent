@@ -70,16 +70,46 @@ if exist "%ONBOARD_BIN%" (
 
 echo.
 echo ============================================
-echo   安装完成
+echo   配置引导完成
 echo.
-echo   启动命令:
-echo     %MAIN_BIN% start
+echo   是否将 iris 加入系统 PATH？（之后可直接输入 iris 使用）
+echo   目录: %INSTALL_DIR%\bin
+echo ============================================
 echo.
-echo   重新配置:
-echo     %MAIN_BIN% onboard
+
+set /p "ADD_PATH=加入 PATH? [Y/n]: "
+if /I "%ADD_PATH%"=="n" goto :skip_path
+
+REM 检查是否已在 PATH 中
+echo %PATH% | findstr /I /C:"%INSTALL_DIR%\bin" >nul 2>&1
+if %ERRORLEVEL%==0 (
+  echo [OK] 已在 PATH 中，无需重复添加
+  goto :skip_path
+)
+
+REM 写入用户级 PATH（不影响系统级，无需管理员权限）
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%B"
+if not defined USER_PATH (
+  setx PATH "%INSTALL_DIR%\bin" >nul 2>&1
+) else (
+  setx PATH "%USER_PATH%;%INSTALL_DIR%\bin" >nul 2>&1
+)
+
+if %ERRORLEVEL%==0 (
+  echo [OK] 已加入 PATH，重新打开终端后即可直接使用 iris 命令
+) else (
+  echo [WARN] 自动设置失败，请手动将以下目录加入 PATH:
+  echo        %INSTALL_DIR%\bin
+)
+goto :done
+
+:skip_path
+echo [SKIP] 你可以稍后手动将 %INSTALL_DIR%\bin 加入 PATH
+
+:done
 echo.
-echo   如需直接使用 iris 命令，请将以下目录加入 PATH:
-echo     %INSTALL_DIR%\bin
+echo ============================================
+echo   安装完成！启动: iris start  |  重新配置: iris onboard
 echo ============================================
 echo.
 pause
