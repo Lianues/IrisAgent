@@ -197,12 +197,21 @@ jobs:
           git push origin "${{ steps.tag.outputs.tag }}"
 
       - name: Download all artifacts
+        if: ${{ !inputs.build_run_id }}
         uses: actions/download-artifact@v5
         with:
           path: artifacts/
           pattern: iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id || github.run_id }}
+
+      - name: Download all artifacts (from specified run)
+        if: ${{ inputs.build_run_id }}
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts/
+          pattern: iris-*
+          merge-multiple: false
+          run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare release files
@@ -247,12 +256,21 @@ jobs:
           bun-version: "1.2"
 
       - name: Download npm package artifacts
+        if: ${{ !inputs.build_run_id }}
         uses: actions/download-artifact@v5
         with:
           path: dist/bin/
           pattern: npm-iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id || github.run_id }}
+
+      - name: Download npm package artifacts (from specified run)
+        if: ${{ inputs.build_run_id }}
+        uses: actions/download-artifact@v5
+        with:
+          path: dist/bin/
+          pattern: npm-iris-*
+          merge-multiple: false
+          run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Flatten artifact directories
