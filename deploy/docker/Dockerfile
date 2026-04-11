@@ -24,9 +24,13 @@ COPY packages/extension-sdk/package.json packages/extension-sdk/package.json
 # Prepare web-ui directory for its own package.json
 RUN mkdir -p extensions/web/web-ui
 COPY extensions/web/web-ui/package.json extensions/web/web-ui/
+# Console extension (imported dynamically from src/attach.ts, tsc follows the import)
+RUN mkdir -p extensions/console
+COPY extensions/console/package.json extensions/console/
 
 RUN npm install --legacy-peer-deps
 RUN cd extensions/web/web-ui && npm install
+RUN cd extensions/console && npm install --legacy-peer-deps
 
 
 # ------ Stage 2: Build Vue 3 Web UI (Vite) ------
@@ -68,8 +72,8 @@ COPY script/build.ts script/build.ts
 COPY terminal/ terminal/
 # extensions/console is imported dynamically from src/index.ts
 COPY extensions/console/ extensions/console/
-# Overlay pre-built web-ui (build.ts expects src/platforms/web/web-ui/dist/)
-COPY --from=build-ui /app/extensions/web/web-ui/dist/ src/platforms/web/web-ui/dist/
+# Overlay pre-built web-ui (build.ts expects extensions/web/web-ui/dist/)
+COPY --from=build-ui /app/extensions/web/web-ui/dist/ extensions/web/web-ui/dist/
 
 # Compile standalone binary for current platform (linux-x64)
 # build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
