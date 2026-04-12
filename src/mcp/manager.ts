@@ -16,6 +16,13 @@ const logger = createLogger('MCPManager');
 
 export class MCPManager {
   private clients: MCPClient[] = [];
+  /** connectAll 完成后 resolve 的 Promise，供外部等待连接就绪 */
+  private _connectPromise: Promise<void> | undefined;
+
+  /** 等待后台连接完成（如果尚未调用 connectAll 则立即 resolve） */
+  whenConnected(): Promise<void> {
+    return this._connectPromise ?? Promise.resolve();
+  }
 
   constructor(config: MCPConfig) {
     for (const [name, serverCfg] of Object.entries(config.servers)) {
@@ -32,10 +39,12 @@ export class MCPManager {
   async connectAll(): Promise<void> {
     if (this.clients.length === 0) return;
     logger.info(`正在连接 ${this.clients.length} 个 MCP 服务器...`);
-    await Promise.allSettled(this.clients.map(c => c.connect()));
-
-    const connected = this.clients.filter(c => c.status === 'connected').length;
-    logger.info(`MCP 连接完成: ${connected}/${this.clients.length} 成功`);
+    const p = Promise.allSettled(this.clients.map(c => c.connect())).then(() => {
+      const connected = this.clients.filter(c => c.status === 'connected').length;
+      logger.info(`MCP 连接完成: ${connected}/${this.clients.length} 成功`);
+    });
+    this._connectPromise = p;
+    await p;
   }
 
   /** 获取所有已连接服务器的工具（转换为 ToolDefinition） */

@@ -276,7 +276,10 @@ export class IrisCore {
     if (options.sharedMCPManager) {
       mcpManager = options.sharedMCPManager;
       this._mcpOwned = false;
-      tools.registerAll(mcpManager.getTools());
+      // 共享 MCP 可能仍在后台连接中，等连接完成后再注册工具
+      mcpManager.whenConnected().then(() => {
+        tools.registerAll(mcpManager!.getTools());
+      }).catch(() => { /* 连接失败由 MCPManager 自身日志处理 */ });
     } else if (config.mcp) {
       // 没有共享注入时走原有逻辑：自建 MCPManager。
       // _mcpOwned 保持默认 true，shutdown 时由 Core 自行 disconnect。

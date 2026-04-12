@@ -1334,7 +1334,10 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private async handleListExtensions(): Promise<any[]> {
     const ext = (this.api as any)?.extensions;
     const configManager = this.api?.configManager;
-    if (!ext?.discover || !configManager) return [];
+    if (!ext?.discover || !configManager) {
+      console.error('[ConsolePlatform] handleListExtensions: ext?.discover =', !!ext?.discover, ', configManager =', !!configManager, ', api keys =', this.api ? Object.keys(this.api as any) : 'no api');
+      return [];
+    }
 
     try {
       // 1. 磁盘发现

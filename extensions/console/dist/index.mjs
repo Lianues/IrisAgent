@@ -9837,8 +9837,10 @@ ${summaryText}`;
   async handleListExtensions() {
     const ext = this.api?.extensions;
     const configManager = this.api?.configManager;
-    if (!ext?.discover || !configManager)
+    if (!ext?.discover || !configManager) {
+      console.error("[ConsolePlatform] handleListExtensions: ext?.discover =", !!ext?.discover, ", configManager =", !!configManager, ", api keys =", this.api ? Object.keys(this.api) : "no api");
       return [];
+    }
     try {
       const packages = ext.discover();
       const raw = configManager.readEditableConfig();

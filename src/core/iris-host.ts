@@ -85,9 +85,12 @@ export class IrisHost {
     this.globalMCPConfig = parseMCPConfig(this.globalConfigResult.raw.mcp);
     if (this.globalMCPConfig) {
       this.sharedMCPManager = createMCPManager(this.globalMCPConfig);
-      // 只连接一次，所有配置相同的 Agent 共用这些连接
-      await this.sharedMCPManager.connectAll();
-      console.log('[Iris] 已创建共享 MCPManager（全局 MCP 配置）');
+      // 后台异步连接，不阻塞启动。所有配置相同的 Agent 共用这些连接。
+      this.sharedMCPManager.connectAll().then(() => {
+        console.log('[Iris] 共享 MCPManager 连接完成');
+      }).catch(err => {
+        console.warn('[Iris] 共享 MCPManager 连接失败:', err);
+      });
     }
 
     // 2. 确保 agents.yaml + master agent 存在
