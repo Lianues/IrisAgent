@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createPluginLogger } from 'irises-extension-sdk';
+import { createPluginLogger, resolveDefaultDataDir } from 'irises-extension-sdk';
 // [croner 迁移] 用 croner 替换自实现 cron 解析器，避免继续维护手写解析/逐分钟扫描逻辑。
 import { Cron } from 'croner';
 // [cron 重构] 删除 PluginEventBusLike import（不再使用 eventBus 广播）
@@ -209,11 +209,7 @@ export class CronScheduler {
     // 根据 api.dataDir 确定持久化文件路径
     // 单 agent: ~/.iris/cron-jobs.json
     // 多 agent: ~/.iris/agents/<name>/cron-jobs.json
-    const dataDir = api.dataDir
-      ?? path.join(
-        process.env.HOME ?? process.env.USERPROFILE ?? '.',
-        '.iris',
-      );
+    const dataDir = api.dataDir ?? resolveDefaultDataDir();
     this.filePath = path.join(dataDir, 'cron-jobs.json');
     // 执行记录目录：与 cron-jobs.json 同级的 cron-runs/
     this.runsDir = path.join(dataDir, 'cron-runs');

@@ -12,6 +12,8 @@
  *   - cli.ts（CLI 模式）：直接 new IrisCore() → start() → 使用 → shutdown()
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { loadConfig, findConfigFile, AppConfig } from '../config';
 import type { AgentPaths } from '../paths';
 import { dataDir as globalDataDir, logsDir as globalLogsDir } from '../paths';
@@ -166,6 +168,7 @@ export class IrisCore {
 
   // ---- 内部资源（shutdown 时清理） ----
   private skillWatcherDispose?: () => void;
+  private configWatcherDispose?: () => void;
   private storage?: StorageProvider;
 
   // ---- 构造参数暂存 ----
@@ -530,6 +533,63 @@ export class IrisCore {
     // 构建完整内部 API
     const getMCPManagerFn = () => this._mcpManager;
     const setMCPManagerFn = (m?: MCPManager) => { this._mcpManager = m; };
+
+    // ---- 配置文件监听（外部修改自动热重载） ----
+    const stopConfigWatcher = (() => {
+      let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+      let lastMtimes: Map<string, number> = new Map();
+
+      const getConfigMtimes = (): Map<string, number> => {
+        const mtimes = new Map<string, number>();
+        try {
+          const files = fs.readdirSync(configDir);
+          for (const f of files) {
+            if (!f.endsWith('.yaml')) continue;
+            try {
+              const stat = fs.statSync(path.join(configDir, f));
+              mtimes.set(f, stat.mtimeMs);
+            } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+        return mtimes;
+      };
+
+      lastMtimes = getConfigMtimes();
+
+      const watcher = fs.watch(configDir, { persistent: false }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          const newMtimes = getConfigMtimes();
+          const changed = [...newMtimes.entries()].some(([f, mtime]) => lastMtimes.get(f) !== mtime)
+            || [...lastMtimes.keys()].some(f => !newMtimes.has(f));
+          if (!changed) return;
+          lastMtimes = newMtimes;
+
+          try {
+            const { LayeredConfigManager } = await import('../config/manage');
+            const mgr = new LayeredConfigManager(globalDir, configDir);
+            const merged = mgr.readEditableConfig();
+            const ctx: RuntimeConfigReloadContext = {
+              backend, pluginManager, getMCPManager: getMCPManagerFn, setMCPManager: setMCPManagerFn, extensions,
+              dataDir: effectiveDataDir,
+            };
+            await applyRuntimeConfigReload(ctx, merged);
+            console.log('[ConfigWatcher] 配置文件变更，已自动热重载');
+          } catch (err) {
+            console.warn('[ConfigWatcher] 热重载失败:', err);
+          }
+        }, 300);
+      });
+
+      watcher.on('error', (err) => {
+        console.warn('[ConfigWatcher] 文件监听错误:', err);
+      });
+
+      return () => {
+        clearTimeout(debounceTimer);
+        watcher.close();
+      };
+    })();
     const irisAPI = {
       backend,
       media: { resizeImage, formatDimensionNote, extractDocument, isSupportedDocumentMime, convertToPDF, isConversionAvailable },
@@ -677,6 +737,7 @@ export class IrisCore {
     // ---- 赋值内部资源 ----
     this._mcpManager = mcpManager;
     this.skillWatcherDispose = stopSkillWatcher;
+    this.configWatcherDispose = stopConfigWatcher;
     this.storage = storage;
 
     this._state = 'running';
@@ -708,6 +769,11 @@ export class IrisCore {
       // 停止 Skill 文件监听
       if (this.skillWatcherDispose) {
         try { this.skillWatcherDispose(); } catch { /* 忽略 */ }
+      }
+
+      // 停止配置文件监听
+      if (this.configWatcherDispose) {
+        try { this.configWatcherDispose(); } catch { /* 忽略 */ }
       }
 
       // 反激活插件

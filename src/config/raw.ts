@@ -1,7 +1,7 @@
 /**
  * 原始配置目录读写工具
  *
- * data/configs/ 下每个一级 YAML 文件对应一个配置分区。
+ * ~/.iris/configs/ 下每个一级 YAML 文件对应一个配置分区。
  */
 
 import * as fs from 'fs';

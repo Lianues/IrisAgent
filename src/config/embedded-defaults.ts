@@ -66,9 +66,24 @@ web:
 `,
 
   'storage.yaml': `# 存储配置
+#
+# 会话数据的持久化后端，支持两种模式：
+#
+# json-file（默认）：
+#   - 每个会话一个 .json 文件，存放在 dir 目录下
+#   - 可直接阅读/编辑 JSON 文件，适合小规模使用
+#
+# sqlite：
+#   - 单个 SQLite 数据库文件，WAL 模式，天然支持并发
+#   - 大量会话时性能更优
+
 # 类型: json-file | sqlite
 type: json-file
+
+# 会话数据目录（默认 ~/.iris/sessions/，type 为 json-file 时使用）
 # dir: ~/.iris/sessions
+
+# SQLite 数据库路径（默认 ~/.iris/iris.db，type 为 sqlite 时使用）
 # dbPath: ~/.iris/iris.db
 `,
 
@@ -137,8 +152,39 @@ manage_variables:
 #   - memory_search
 `,
 
-  'memory.yaml': `# 记忆配置
+  'memory.yaml': `# 记忆插件配置
+#
+# 启用后，LLM 可通过 memory_search / memory_add / memory_update / memory_delete 工具
+# 读写长期记忆，实现跨会话的信息持久化。
+#
+# 存储后端：SQLite + FTS5 全文检索
+# 数据库文件默认存放在数据目录下的 memory.db
+
+# 是否启用记忆
 enabled: false
+
+# 数据库路径（相对于数据目录，或绝对路径）
+# dbPath: ./memory.db
+
+# ── 自动提取（对话结束后自动从对话中提取值得记住的信息）──
+autoExtract: true
+# 每 N 轮对话后提取一次
+extractInterval: 1
+
+# ── 智能检索（每轮对话前自动注入相关记忆到上下文）──
+autoRecall: true
+# 每轮注入记忆的最大大小（字节）
+maxContextBytes: 20480
+# 会话级记忆注入总上限（字节）
+sessionBudgetBytes: 61440
+
+# ── 跨会话归纳（定期整理合并冗余记忆）──
+consolidation:
+  enabled: true
+  # 两次归纳之间的最小间隔（小时）
+  minHours: 24
+  # 触发归纳的最少新会话数
+  minSessions: 3
 `,
 
   'sub_agents.yaml': `# 子代理配置
@@ -173,22 +219,78 @@ types:
 `,
 
   'mcp.yaml': `# MCP 服务器配置
+# 连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表
+# 启动时后台异步连接，不阻塞启动
+#
+# 每个服务器支持以下字段：
+#   transport  - 传输方式: stdio | sse | streamable-http
+#   enabled    - 是否启用（默认 true）
+#   timeout    - 连接/listTools 超时，单位 ms（默认 30000）
+#
+# stdio 模式专用：
+#   command    - 要执行的命令
+#   args       - 命令参数数组
+#   env        - 额外环境变量
+#   cwd        - 工作目录
+#
+# sse / streamable-http 模式专用：
+#   url        - MCP 服务器 URL
+#   headers    - 自定义 HTTP 请求头
+
 # servers:
 #   filesystem:
 #     transport: stdio
 #     command: npx
 #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+#     timeout: 30000
+#     enabled: true
+#
+#   remote_tools:
+#     transport: streamable-http
+#     url: https://mcp.example.com/mcp
+#     headers:
+#       Authorization: Bearer your-token
 `,
 
   'modes.yaml': `# 模式配置
 # 不同模式可定义不同的系统提示词和工具策略
+# 通过 /mode 命令切换模式
+#
+# 每个模式支持以下字段：
+#   description    - 模式描述（供人类和 LLM 了解用途）
+#   systemPrompt   - 该模式的系统提示词（覆盖默认提示词）
+#   tools          - 工具过滤规则
+#     include      - 白名单：仅允许这些工具（优先于 exclude）
+#     exclude      - 黑名单：排除这些工具
+
+# code:
+#   description: "代码开发模式"
+#   systemPrompt: "你是一个专注于代码开发的 AI 助手。"
+#   tools:
+#     exclude: [memory_add, memory_delete]
+#
+# readonly:
+#   description: "只读分析模式"
+#   tools:
+#     include: [read_file, search_in_files, find_files, list_files, memory_search, get_current_time]
 `,
 
   'ocr.yaml': `# OCR 配置（可选）
-# provider: openai-compatible
-# apiKey: your-api-key-here
-# baseUrl: https://api.openai.com/v1
-# model: gpt-4o-mini
+#
+# 当主模型不支持图片输入（supportsVision: false）时，
+# Iris 会调用这里配置的 vision 模型提取图片中的文字和内容，
+# 再把提取结果作为文本注入主对话模型的上下文。
+#
+# 何时需要配置：
+#   - 主模型是纯文本模型，但用户会上传图片
+#   - 主模型本身支持图片输入时，通常不需要配置 OCR
+#
+# 删除整个文件或注释掉所有字段即可关闭 OCR 回退。
+
+# provider: openai-compatible    # 当前仅支持 openai-compatible
+# apiKey: your-api-key-here      # OCR 模型的 API Key
+# baseUrl: https://api.openai.com/v1  # API 基地址
+# model: gpt-4o-mini             # 推荐使用轻量 vision 模型
 `,
 
   // plugins.yaml 声明哪些 extension 的 plugin 角色需要被激活（如 cron、memory）。
@@ -208,6 +310,25 @@ plugins:
 
   'summary.yaml': `# 上下文压缩配置（/compact 指令）
 # 使用默认提示词，通常无需修改
+`,
+
+  'cloudflare.yaml': `# Cloudflare 管理配置
+# 用于通过 Web GUI 管理 DNS 记录和 SSL 设置
+#
+# API Token 解析优先级：apiToken > apiTokenEnv > apiTokenFile
+# 三者都不配置则视为未配置 Cloudflare
+
+# 方式一：直接填写 API Token（不推荐，明文存储）
+# apiToken: your-cloudflare-api-token
+
+# 方式二：从环境变量读取（推荐）
+# apiTokenEnv: IRIS_CF_API_TOKEN
+
+# 方式三：从文件读取（绝对路径，或相对于配置目录）
+# apiTokenFile: /etc/iris/cf-token.txt
+
+# Zone ID（不填则自动选择账号下的第一个 zone）
+# zoneId: auto
 `,
 
   'net.yaml': `# 多端互联配置

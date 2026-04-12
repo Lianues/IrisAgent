@@ -1374,7 +1374,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
           source: pkg.source,
         };
       });
-    } catch {
+    } catch (err) {
+      console.error('[ConsolePlatform] handleListExtensions failed:', err);
       return [];
     }
   }

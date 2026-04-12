@@ -1,7 +1,7 @@
 /**
  * 配置管理辅助工具
  *
- * 提供脱敏、深合并，以及基于 data/configs 目录的可编辑配置读写能力。
+ * 提供脱敏、深合并，以及基于 ~/.iris/configs 目录的可编辑配置读写能力。
  */
 
 import { loadRawConfigDir, writeRawConfigDir } from './raw';

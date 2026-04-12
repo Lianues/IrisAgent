@@ -1,0 +1,17 @@
+# Cloudflare 管理配置
+# 用于通过 Web GUI 管理 DNS 记录和 SSL 设置
+#
+# API Token 解析优先级：apiToken > apiTokenEnv > apiTokenFile
+# 三者都不配置则视为未配置 Cloudflare
+
+# 方式一：直接填写 API Token（不推荐，明文存储）
+# apiToken: your-cloudflare-api-token
+
+# 方式二：从环境变量读取（推荐）
+# apiTokenEnv: IRIS_CF_API_TOKEN
+
+# 方式三：从文件读取（绝对路径，或相对于配置目录）
+# apiTokenFile: /etc/iris/cf-token.txt
+
+# Zone ID（不填则自动选择账号下的第一个 zone）
+# zoneId: auto

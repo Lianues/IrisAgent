@@ -72,17 +72,18 @@ cd /opt/iris
 sudo -u iris npm run setup
 sudo -u iris npm run build
 
-# 创建分文件配置目录
-sudo -u iris cp -r data/configs.example data/configs
+# 初始化配置目录（从内置模板复制到运行时数据目录）
+sudo -u iris mkdir -p /opt/iris/.iris/configs
+sudo -u iris cp /opt/iris/data/configs.example/* /opt/iris/.iris/configs/
 
 # 编辑平台配置
-sudo -u iris nano data/configs/platform.yaml
+sudo -u iris nano /opt/iris/.iris/configs/platform.yaml
 
 # 编辑 LLM 配置
-sudo -u iris nano data/configs/llm.yaml
+sudo -u iris nano /opt/iris/.iris/configs/llm.yaml
 ```
 
-**配置要点**（`data/configs/platform.yaml`）：
+**配置要点**（`/opt/iris/.iris/configs/platform.yaml`）：
 
 ```yaml
 type: web
@@ -103,9 +104,9 @@ sudo cp deploy/linux/iris.service /etc/systemd/system/
 # 如果部署路径不是 /opt/iris，编辑服务文件修改 WorkingDirectory
 sudo nano /etc/systemd/system/iris.service
 
-# 创建数据目录
-sudo mkdir -p /opt/iris/data
-sudo chown iris:iris /opt/iris/data
+# 创建运行时数据目录
+sudo mkdir -p /opt/iris/.iris
+sudo chown iris:iris /opt/iris/.iris
 
 # 启用并启动服务
 sudo systemctl daemon-reload
@@ -222,7 +223,7 @@ DNS 记录通过 CF 代理通常 1-5 分钟生效。
 
 ### 8.2 Token 存储建议
 
-Cloudflare Token 推荐通过环境变量或文件提供，避免明文写入 `data/configs/` 中的配置文件：
+Cloudflare Token 推荐通过环境变量或文件提供，避免明文写入 `~/.iris/configs/` 中的配置文件：
 
 ```yaml
 cloudflare:

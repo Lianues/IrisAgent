@@ -1,5 +1,15 @@
 # 模式配置
 # 不同模式可定义不同的系统提示词和工具策略
+# 通过 /mode 命令切换模式
+#
+# 每个模式支持以下字段：
+#   description    - 模式描述（供人类和 LLM 了解用途）
+#   systemPrompt   - 该模式的系统提示词（覆盖默认提示词）
+#   tools          - 工具过滤规则
+#     include      - 白名单：仅允许这些工具（优先于 exclude）
+#     exclude      - 黑名单：排除这些工具
+#
+# 模式名 "default" 为内置默认模式（全部工具可用），无需定义
 
 # code:
 #   description: "代码开发模式"
@@ -8,11 +18,11 @@
 #     exclude: [memory_add, memory_delete]
 #
 # readonly:
-#   description: "只读分析模式"
+#   description: "只读分析模式 — 只能读取文件和搜索，不能修改"
 #   tools:
-#     include: [read_file, memory_search, get_current_time]
+#     include: [read_file, search_in_files, find_files, list_files, memory_search, get_current_time]
 #
 # chat:
-#   description: "纯聊天模式"
+#   description: "纯聊天模式 — 不使用任何文件操作工具"
 #   tools:
 #     include: [get_current_time]

@@ -1421,7 +1421,8 @@ function getActiveTurnSessionId() {
 async function enableMemorySystem(ctx) {
   if (!cachedApi || activeProvider)
     return;
-  const dataPath = currentConfig.dbPath ? path2.resolve(ctx.getConfigDir(), currentConfig.dbPath) : path2.join(cachedApi.dataDir ?? ctx.getConfigDir(), "memory.json");
+  const effectiveDataDir = cachedApi.dataDir ?? ctx.getConfigDir();
+  const dataPath = currentConfig.dbPath ? path2.resolve(effectiveDataDir, currentConfig.dbPath) : path2.join(effectiveDataDir, "memory.db");
   activeProvider = new MemoryStore(dataPath, logger);
   const tools = createMemoryTools(activeProvider);
   cachedApi.tools.registerAll(tools);
@@ -1456,7 +1457,7 @@ var src_default = definePlugin({
   activate(ctx) {
     ctx.ensureConfigFile("memory.yaml", DEFAULT_CONFIG_TEMPLATE);
     const rawConfig = ctx.readConfigSection("memory");
-    currentConfig = resolveConfig(rawConfig, ctx.getPluginConfig());
+    currentConfig = resolveConfig(rawConfig, undefined);
     ctx.onReady(async (api) => {
       cachedApi = api;
       registerSettingsTab(api, ctx);
@@ -1629,7 +1630,7 @@ var src_default = definePlugin({
         if (!cachedApi)
           return;
         const newRaw = ctx.readConfigSection("memory");
-        const newConfig = resolveConfig(newRaw, ctx.getPluginConfig());
+        const newConfig = resolveConfig(newRaw, undefined);
         const wasEnabled = currentConfig.enabled;
         currentConfig = newConfig;
         if (!newConfig.enabled) {

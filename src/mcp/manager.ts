@@ -77,6 +77,11 @@ export class MCPManager {
     }));
   }
 
+  /** 获取所有服务器的状态列表（MCPManagerLike 接口） */
+  listServers(): MCPServerInfo[] {
+    return this.getServerInfo();
+  }
+
   /** 热重载：断开旧连接，用新配置重新连接 */
   async reload(config: MCPConfig): Promise<void> {
     await this.disconnectAll();

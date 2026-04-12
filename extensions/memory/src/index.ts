@@ -79,9 +79,10 @@ function getActiveTurnSessionId(): string | undefined {
 async function enableMemorySystem(ctx: PluginContext): Promise<void> {
   if (!cachedApi || activeProvider) return; // 已初始化或 API 未就绪
 
+  const effectiveDataDir = cachedApi.dataDir ?? ctx.getConfigDir();
   const dataPath = currentConfig.dbPath
-    ? path.resolve(ctx.getConfigDir(), currentConfig.dbPath)
-    : path.join(cachedApi.dataDir ?? ctx.getConfigDir(), 'memory.json');
+    ? path.resolve(effectiveDataDir, currentConfig.dbPath)
+    : path.join(effectiveDataDir, 'memory.db');
 
   activeProvider = new SqliteMemory(dataPath, logger);
 

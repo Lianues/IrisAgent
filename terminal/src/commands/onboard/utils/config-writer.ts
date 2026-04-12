@@ -192,7 +192,6 @@ export function writeConfigs(installDir: string, config: OnboardConfig, skippedS
   if (!existsSync(join(configDir, "storage.yaml"))) {
     writeYaml(join(configDir, "storage.yaml"), {
       type: "json-file",
-      dir: "./data/sessions",
     }, "存储配置")
   }
 }

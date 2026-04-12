@@ -135,7 +135,7 @@ Weixin 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extension
 
 #### 配置
 
-先安装 extension：`iris ext install weixin`。然后在 `data/configs/platform.yaml` 中设置 `type: weixin`（或加入多平台数组）。
+先安装 extension：`iris ext install weixin`。然后在 `~/.iris/configs/platform.yaml` 中设置 `type: weixin`（或加入多平台数组）。
 
 首次启动时无需手动配置凭证，Iris 会自动弹出二维码链接，用微信扫码即可完成登录。登录成功后 Token 自动缓存到 `IRIS_DATA_DIR/configs/weixin-auth.json`，后续启动无需再次扫码。
 
@@ -187,7 +187,7 @@ WXWork 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extension
 
 #### 配置
 
-先安装 extension：`iris ext install wxwork`。然后在 `data/configs/platform.yaml` 中设置 `type: wxwork`（或加入多平台数组），并填写 `wxwork.botId` 和 `wxwork.secret`。
+先安装 extension：`iris ext install wxwork`。然后在 `~/.iris/configs/platform.yaml` 中设置 `type: wxwork`（或加入多平台数组），并填写 `wxwork.botId` 和 `wxwork.secret`。
 
 在企业微信管理后台 → 应用管理 → 智能机器人 中创建并获取 Bot ID 和 Secret。
 
@@ -224,7 +224,7 @@ QQ 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extensions/qq
 
 #### 配置
 
-先安装 extension：`iris ext install qq`。然后在 `data/configs/platform.yaml` 中设置 `type: qq`（或加入多平台数组），并填写 QQ 相关配置：
+先安装 extension：`iris ext install qq`。然后在 `~/.iris/configs/platform.yaml` 中设置 `type: qq`（或加入多平台数组），并填写 QQ 相关配置：
 
 ```yaml
 type: qq
@@ -259,7 +259,7 @@ Discord 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extensio
 
 #### 配置
 
-先安装 extension：`iris ext install discord`。然后在 `data/configs/platform.yaml` 中设置 `type: discord`（或加入多平台数组），并填写 `discord.token`。
+先安装 extension：`iris ext install discord`。然后在 `~/.iris/configs/platform.yaml` 中设置 `type: discord`（或加入多平台数组），并填写 `discord.token`。
 
 ### Telegram
 
@@ -296,7 +296,7 @@ Telegram 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extensi
 
 #### 配置
 
-在 `data/configs/platform.yaml` 中设置 `type: telegram`（或加入多平台数组），并填写 `telegram.token`。
+在 `~/.iris/configs/platform.yaml` 中设置 `type: telegram`（或加入多平台数组），并填写 `telegram.token`。
 
 发行包和仓库默认会附带 `extensions/telegram/`。如果手动精简目录，需保留该目录，或先执行 `iris ext install-local telegram` 再启用 `type: telegram`。
 
@@ -325,7 +325,7 @@ Lark 不再从 `src/platforms/registry.ts` 内置注册，而是由 `extensions/
 
 #### 配置
 
-在 `data/configs/platform.yaml` 中设置 `type: lark`（或加入多平台数组），并填写 `lark.appId` 和 `lark.appSecret`。
+在 `~/.iris/configs/platform.yaml` 中设置 `type: lark`（或加入多平台数组），并填写 `lark.appId` 和 `lark.appSecret`。
 
 发行包和仓库默认会附带 `extensions/lark/`。如果手动精简目录，需保留该目录，或先执行 `iris ext install-local lark` 再启用 `type: lark`。
 

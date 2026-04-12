@@ -61,7 +61,7 @@ describe('Weixin / WXWork: extension registration', () => {
     const weixinPlatform = await registry.create('weixin', {
       backend: {} as any,
       config: { platform: { weixin: { botToken: 'token_xxx', baseUrl: 'https://ilinkai.weixin.qq.com' } } } as any,
-      configDir: 'data/configs',
+      configDir: '__test_placeholder__',
     } as any);
     expect(typeof (weixinPlatform as { start?: unknown }).start).toBe('function');
   });

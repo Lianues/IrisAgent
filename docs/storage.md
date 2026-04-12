@@ -56,7 +56,7 @@ interface SessionMeta {
 
 | 特性 | JSON 文件 | SQLite |
 |------|-----------|--------|
-| 存储路径 | `./data/sessions/` 每会话一个 `.json` 文件 | `./data/iris.db` 单文件 |
+| 存储路径 | `~/.iris/sessions/` 每会话一个 `.json` 文件 | `~/.iris/iris.db` 单文件 |
 | 并发控制 | per-session 写锁（Promise 链串行化） | WAL 模式，天然支持 |
 | 可读性 | 可直接阅读/编辑 JSON 文件 | 需要 SQLite 工具 |
 | 性能 | 小规模适用 | 大量会话更优 |

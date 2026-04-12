@@ -182,9 +182,7 @@ interface Content {
 
 ```bash
 npm run setup    # 安装依赖
-cp -r data/configs.example data/configs
-# 编辑 data/configs/llm.yaml 填入 API Key
-npm run dev      # 开发模式
+npm run dev      # 开发模式（首次运行自动初始化 ~/.iris/configs/，按提示填写 API Key 后重启）
 
 # CLI 模式（外部调用）
 npm run cli -- -p "分析这个项目"

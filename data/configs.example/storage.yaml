@@ -1,10 +1,22 @@
 # 存储配置
+#
+# 会话数据的持久化后端，支持两种模式：
+#
+# json-file（默认）：
+#   - 每个会话一个 .json 文件，存放在 dir 目录下
+#   - 可直接阅读/编辑 JSON 文件，适合小规模使用
+#   - 并发控制通过 per-session 写锁实现
+#
+# sqlite：
+#   - 单个 SQLite 数据库文件，WAL 模式，天然支持并发
+#   - 大量会话时性能更优
+#   - 需要 SQLite 工具查看数据
 
 # 类型: json-file | sqlite
 type: json-file
 
-# 会话数据目录（默认 ~/.iris/sessions/）
+# 会话数据目录（默认 ~/.iris/sessions/，type 为 json-file 时使用）
 # dir: ~/.iris/sessions
 
-# SQLite 数据库路径（type 为 sqlite 时使用，默认 ~/.iris/iris.db）
+# SQLite 数据库路径（默认 ~/.iris/iris.db，type 为 sqlite 时使用）
 # dbPath: ~/.iris/iris.db

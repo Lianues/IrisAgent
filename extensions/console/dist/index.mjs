@@ -16,7 +16,7 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
-// extensions/console/src/terminal-compat.ts
+// src/terminal-compat.ts
 function detectTier() {
   if (process.env.WT_SESSION)
     return "full";
@@ -83,7 +83,7 @@ var init_terminal_compat = __esm(() => {
   SPINNER_FRAMES = terminalTier === "basic" ? ["|", "/", "-", "\\", "|", "/", "-", "\\", "|", "/"] : ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 });
 
-// extensions/console/src/remote-wizard.ts
+// src/remote-wizard.ts
 var exports_remote_wizard = {};
 __export(exports_remote_wizard, {
   showSavePrompt: () => showSavePrompt,
@@ -541,12 +541,12 @@ var init_remote_wizard = __esm(() => {
   };
 });
 
-// extensions/console/src/index.ts
+// src/index.ts
 import React10 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// extensions/console/node_modules/irises-extension-sdk/src/platform.ts
+// ../../packages/extension-sdk/dist/platform.js
 class BackendHandle {
   _backend;
   _listeners = new Map;
@@ -672,7 +672,17 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
-// extensions/console/node_modules/tokenx/dist/index.mjs
+// ../../packages/extension-sdk/dist/logger.js
+var LogLevel;
+(function(LogLevel2) {
+  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
+})(LogLevel || (LogLevel = {}));
+var _logLevel = LogLevel.INFO;
+// node_modules/tokenx/dist/index.mjs
 var PATTERNS = {
   whitespace: /^\s+$/,
   cjk: /[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F\uFF00-\uFFEF\u30A0-\u30FF\u2E80-\u2EFF\u31C0-\u31EF\u3200-\u32FF\u3300-\u33FF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uD7B0-\uD7FF]/,
@@ -734,11 +744,11 @@ function getCharacterCount(text) {
   return Array.from(text).length;
 }
 
-// extensions/console/src/App.tsx
+// src/App.tsx
 import { useCallback as useCallback11, useEffect as useEffect11, useRef as useRef9, useState as useState14 } from "react";
 import { useRenderer } from "@opentui/react";
 
-// extensions/console/src/theme.ts
+// src/theme.ts
 var C = {
   primary: "#6c5ce7",
   primaryLight: "#a29bfe",
@@ -769,7 +779,7 @@ var C = {
   command: "#00cec9"
 };
 
-// extensions/console/src/components/ApprovalBar.tsx
+// src/components/ApprovalBar.tsx
 init_terminal_compat();
 import { jsxDEV, Fragment } from "@opentui/react/jsx-dev-runtime";
 function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, approvalPage = "basic" }) {
@@ -848,7 +858,7 @@ function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, approval
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ConfirmBar.tsx
+// src/components/ConfirmBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV2 } from "@opentui/react/jsx-dev-runtime";
 function ConfirmBar({ message, choice }) {
@@ -901,7 +911,7 @@ function ConfirmBar({ message, choice }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/text-layout.ts
+// src/text-layout.ts
 var IS_CJK_LOCALE = (() => {
   const lang = (process.env.LANG || process.env.LC_ALL || process.env.LC_CTYPE || "").toLowerCase();
   return /^(zh|ja|ko|zh_|ja_|ko_)/.test(lang) || lang.includes(".gb") || lang.includes(".euc") || lang.includes(".big5") || lang.includes(".shift");
@@ -934,7 +944,7 @@ function getTextWidth(text) {
   return splitGraphemes(text).reduce((total, grapheme) => total + getGraphemeWidth(grapheme), 0);
 }
 
-// extensions/console/src/components/HintBar.tsx
+// src/components/HintBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV3, Fragment as Fragment2 } from "@opentui/react/jsx-dev-runtime";
 function truncatePath(fullPath, maxWidth) {
@@ -1048,11 +1058,11 @@ function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, remoteHo
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InputBar.tsx
+// src/components/InputBar.tsx
 import { useEffect as useEffect3, useMemo, useRef as useRef2, useState as useState3 } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 
-// extensions/console/src/input-commands.ts
+// src/input-commands.ts
 var COMMANDS = [
   { name: "/new", description: "新建对话" },
   { name: "/load", description: "加载历史对话" },
@@ -1081,7 +1091,7 @@ function isExactCommandValue(value, cmd) {
   return value === cmd.name || value === getCommandInput(cmd);
 }
 
-// extensions/console/src/hooks/use-text-input.ts
+// src/hooks/use-text-input.ts
 import { useState, useCallback } from "react";
 function wordBoundaryLeft(text, pos) {
   if (pos <= 0)
@@ -1180,7 +1190,7 @@ function useTextInput(initialValue = "") {
   return [state, { handleKey, insert, setValue, set }];
 }
 
-// extensions/console/src/hooks/use-cursor-blink.ts
+// src/hooks/use-cursor-blink.ts
 import { useState as useState2, useEffect } from "react";
 function useCursorBlink(intervalMs = 530) {
   const [visible, setVisible] = useState2(true);
@@ -1193,7 +1203,7 @@ function useCursorBlink(intervalMs = 530) {
   return visible;
 }
 
-// extensions/console/src/hooks/use-paste.ts
+// src/hooks/use-paste.ts
 import { useEffect as useEffect2, useCallback as useCallback2, useLayoutEffect, useRef } from "react";
 import { decodePasteBytes } from "@opentui/core";
 import { useAppContext } from "@opentui/react";
@@ -1214,7 +1224,7 @@ function usePaste(handler) {
   }, [keyHandler, stableHandler]);
 }
 
-// extensions/console/src/components/InputDisplay.tsx
+// src/components/InputDisplay.tsx
 import { jsxDEV as jsxDEV4, Fragment as Fragment3 } from "@opentui/react/jsx-dev-runtime";
 function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, placeholder, transform }) {
   const display = transform ? transform(value) : value;
@@ -1310,7 +1320,7 @@ function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, 
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InputBar.tsx
+// src/components/InputBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV5 } from "@opentui/react/jsx-dev-runtime";
 function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, isRemote }) {
@@ -1557,7 +1567,7 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/StatusBar.tsx
+// src/components/StatusBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV6, Fragment as Fragment4 } from "@opentui/react/jsx-dev-runtime";
 function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, remoteHost, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }) {
@@ -1712,7 +1722,7 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/ThinkingIndicator.tsx
+// src/components/ThinkingIndicator.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV7 } from "@opentui/react/jsx-dev-runtime";
 var BLOCK_COUNT = 4;
@@ -1772,7 +1782,7 @@ function ThinkingIndicator({ level, showHint, isRemote }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/BottomPanel.tsx
+// src/components/BottomPanel.tsx
 import { jsxDEV as jsxDEV8 } from "@opentui/react/jsx-dev-runtime";
 function BottomPanel({
   hasMessages,
@@ -1866,7 +1876,7 @@ function BottomPanel({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/AgentListView.tsx
+// src/components/AgentListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV9 } from "@opentui/react/jsx-dev-runtime";
 function AgentListView({ agents, selectedIndex, currentAgentName }) {
@@ -1941,10 +1951,10 @@ function AgentListView({ agents, selectedIndex, currentAgentName }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/GeneratingTimer.tsx
+// src/components/GeneratingTimer.tsx
 import { useState as useState5, useEffect as useEffect5, useRef as useRef4 } from "react";
 
-// extensions/console/src/components/Spinner.tsx
+// src/components/Spinner.tsx
 import { useState as useState4, useEffect as useEffect4, useRef as useRef3 } from "react";
 init_terminal_compat();
 import { jsxDEV as jsxDEV10 } from "@opentui/react/jsx-dev-runtime";
@@ -1969,7 +1979,7 @@ function Spinner() {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/GeneratingTimer.tsx
+// src/components/GeneratingTimer.tsx
 import { jsxDEV as jsxDEV11 } from "@opentui/react/jsx-dev-runtime";
 function GeneratingTimer({ isGenerating, retryInfo, label, paused }) {
   const [time, setTime] = useState5(0);
@@ -2037,11 +2047,11 @@ function GeneratingTimer({ isGenerating, retryInfo, label, paused }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MessageItem.tsx
+// src/components/MessageItem.tsx
 import React5, { useEffect as useEffect6, useRef as useRef5, useState as useState6 } from "react";
 import { useTerminalDimensions as useTerminalDimensions2 } from "@opentui/react";
 
-// extensions/console/src/components/MarkdownText.tsx
+// src/components/MarkdownText.tsx
 import { useMemo as useMemo2 } from "react";
 import { SyntaxStyle, parseColor } from "@opentui/core";
 import { jsxDEV as jsxDEV12 } from "@opentui/react/jsx-dev-runtime";
@@ -2103,7 +2113,7 @@ function MarkdownText({ text, showCursor }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/default.tsx
+// src/tool-renderers/default.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV13 } from "@opentui/react/jsx-dev-runtime";
 function DefaultRenderer({ result }) {
@@ -2122,7 +2132,7 @@ function DefaultRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/shell.tsx
+// src/tool-renderers/shell.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV14 } from "@opentui/react/jsx-dev-runtime";
 function lineCount(text) {
@@ -2178,7 +2188,7 @@ function ShellRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/read-file.tsx
+// src/tool-renderers/read-file.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV15 } from "@opentui/react/jsx-dev-runtime";
 function basename(p) {
@@ -2235,7 +2245,7 @@ function ReadFileRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/apply-diff.tsx
+// src/tool-renderers/apply-diff.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV16 } from "@opentui/react/jsx-dev-runtime";
 function countPatchLines(patch) {
@@ -2292,7 +2302,7 @@ function ApplyDiffRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/search-in-files.tsx
+// src/tool-renderers/search-in-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV17 } from "@opentui/react/jsx-dev-runtime";
 function truncStr(s, max) {
@@ -2347,7 +2357,7 @@ function SearchInFilesRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/find-files.tsx
+// src/tool-renderers/find-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV18 } from "@opentui/react/jsx-dev-runtime";
 function FindFilesRenderer({ result }) {
@@ -2368,7 +2378,7 @@ function FindFilesRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/list-files.tsx
+// src/tool-renderers/list-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV19 } from "@opentui/react/jsx-dev-runtime";
 function ListFilesRenderer({ result }) {
@@ -2394,7 +2404,7 @@ function ListFilesRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/write-file.tsx
+// src/tool-renderers/write-file.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV20 } from "@opentui/react/jsx-dev-runtime";
 function countLines(content) {
@@ -2452,7 +2462,7 @@ function WriteFileRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/delete-code.tsx
+// src/tool-renderers/delete-code.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV21 } from "@opentui/react/jsx-dev-runtime";
 function DeleteCodeRenderer({ result }) {
@@ -2505,7 +2515,7 @@ function DeleteCodeRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/insert-code.tsx
+// src/tool-renderers/insert-code.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV22 } from "@opentui/react/jsx-dev-runtime";
 function InsertCodeRenderer({ result }) {
@@ -2559,7 +2569,7 @@ function InsertCodeRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/index.ts
+// src/tool-renderers/index.ts
 var renderers = {
   shell: ShellRenderer,
   bash: ShellRenderer,
@@ -2580,7 +2590,7 @@ function getToolDetailRenderer(toolName) {
   return detailRenderers[toolName] ?? null;
 }
 
-// extensions/console/src/components/ToolCall.tsx
+// src/components/ToolCall.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV23 } from "@opentui/react/jsx-dev-runtime";
 var TERMINAL_STATUSES = new Set(["success", "warning", "error"]);
@@ -2786,7 +2796,7 @@ function ToolCall({ invocation }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MessageItem.tsx
+// src/components/MessageItem.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV24 } from "@opentui/react/jsx-dev-runtime";
 function truncateRight(line, maxChars) {
@@ -3180,7 +3190,7 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
   }, undefined, true, undefined, this);
 });
 
-// extensions/console/src/components/ChatMessageList.tsx
+// src/components/ChatMessageList.tsx
 import { jsxDEV as jsxDEV25 } from "@opentui/react/jsx-dev-runtime";
 function ChatMessageList({
   messages,
@@ -3259,12 +3269,12 @@ function ChatMessageList({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/DiffApprovalView.tsx
+// src/components/DiffApprovalView.tsx
 import { useMemo as useMemo3 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// extensions/console/node_modules/irises-extension-sdk/src/tool-utils.ts
+// ../../packages/extension-sdk/dist/tool-utils.js
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -3585,7 +3595,7 @@ function normalizeDeleteCodeArgs(args) {
   });
 }
 
-// extensions/console/src/components/DiffApprovalView.tsx
+// src/components/DiffApprovalView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV26 } from "@opentui/react/jsx-dev-runtime";
 var DEFAULT_SEARCH_PATTERN = "**/*";
@@ -4112,7 +4122,7 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InitWarnings.tsx
+// src/components/InitWarnings.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV27 } from "@opentui/react/jsx-dev-runtime";
 var MAX_VISIBLE_LINES = 3;
@@ -4147,7 +4157,7 @@ function InitWarnings({ warnings, color, icon }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/LogoScreen.tsx
+// src/components/LogoScreen.tsx
 import { jsxDEV as jsxDEV28 } from "@opentui/react/jsx-dev-runtime";
 function LogoScreen() {
   return /* @__PURE__ */ jsxDEV28("box", {
@@ -4192,7 +4202,7 @@ function LogoScreen() {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ToolDetailView.tsx
+// src/components/ToolDetailView.tsx
 import { useState as useState7, useCallback as useCallback3 } from "react";
 import { useKeyboard as useKeyboard2 } from "@opentui/react";
 init_terminal_compat();
@@ -4707,7 +4717,7 @@ function FooterBar({ isFinal, hasAbort, hasChildren }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ModelListView.tsx
+// src/components/ModelListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV30 } from "@opentui/react/jsx-dev-runtime";
 function ModelListView({ models, selectedIndex }) {
@@ -4776,7 +4786,7 @@ function ModelListView({ models, selectedIndex }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/QueueListView.tsx
+// src/components/QueueListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV31 } from "@opentui/react/jsx-dev-runtime";
 function formatQueueTime(timestamp) {
@@ -4924,7 +4934,7 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/ToolListView.tsx
+// src/components/ToolListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV32 } from "@opentui/react/jsx-dev-runtime";
 var STATUS_ICON2 = {
@@ -5093,7 +5103,7 @@ function ToolListView({ tools, selectedIndex }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/SessionListView.tsx
+// src/components/SessionListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV33 } from "@opentui/react/jsx-dev-runtime";
 function SessionListView({ sessions, selectedIndex }) {
@@ -5162,7 +5172,7 @@ function SessionListView({ sessions, selectedIndex }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MemoryListView.tsx
+// src/components/MemoryListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV34 } from "@opentui/react/jsx-dev-runtime";
 var TYPE_LABELS = {
@@ -5298,7 +5308,7 @@ function formatAge(unixSec) {
   return new Date(unixSec * 1000).toLocaleDateString("zh-CN");
 }
 
-// extensions/console/src/components/ExtensionListView.tsx
+// src/components/ExtensionListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV35 } from "@opentui/react/jsx-dev-runtime";
 var STATUS_LABELS = {
@@ -5400,12 +5410,12 @@ function ExtensionListView({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/SettingsView.tsx
+// src/components/SettingsView.tsx
 import { useCallback as useCallback4, useEffect as useEffect7, useMemo as useMemo4, useState as useState8 } from "react";
 import { useKeyboard as useKeyboard3, useTerminalDimensions as useTerminalDimensions3 } from "@opentui/react";
 init_terminal_compat();
 
-// extensions/console/src/diff-approval.ts
+// src/diff-approval.ts
 var CONSOLE_DIFF_APPROVAL_VIEW_TOOLS = new Set([
   "apply_diff",
   "write_file",
@@ -5433,7 +5443,7 @@ function getConsoleDiffApprovalViewDescription(toolName) {
   }
 }
 
-// extensions/console/src/settings.ts
+// src/settings.ts
 var CONSOLE_LLM_PROVIDER_OPTIONS = [
   "gemini",
   "openai-compatible",
@@ -5779,7 +5789,7 @@ class ConsoleSettingsController {
   }
 }
 
-// extensions/console/src/components/SettingsView.tsx
+// src/components/SettingsView.tsx
 import { jsxDEV as jsxDEV36 } from "@opentui/react/jsx-dev-runtime";
 function getToolPolicyMode(configured, autoApprove) {
   if (!configured)
@@ -6812,10 +6822,10 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/hooks/use-app-handle.ts
+// src/hooks/use-app-handle.ts
 import { useCallback as useCallback5, useEffect as useEffect8, useRef as useRef6, useState as useState9 } from "react";
 
-// extensions/console/src/message-utils.ts
+// src/message-utils.ts
 var msgIdCounter = 0;
 function nextMsgId() {
   return `msg-${++msgIdCounter}`;
@@ -6898,7 +6908,7 @@ function appendCommandMessage(setMessages, text, options) {
   ]);
 }
 
-// extensions/console/src/undo-redo.ts
+// src/undo-redo.ts
 var MAX_STACK_SIZE = 200;
 function createUndoRedoStack() {
   return { redoStack: [] };
@@ -6925,7 +6935,7 @@ function clearRedo(stack) {
   stack.redoStack.length = 0;
 }
 
-// extensions/console/src/hooks/use-app-handle.ts
+// src/hooks/use-app-handle.ts
 function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
   const [messages, setMessages] = useState9([]);
   const [streamingParts, setStreamingParts] = useState9([]);
@@ -7272,7 +7282,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
   };
 }
 
-// extensions/console/src/hooks/use-app-keyboard.ts
+// src/hooks/use-app-keyboard.ts
 import { useKeyboard as useKeyboard4 } from "@opentui/react";
 function closeConfirm(setPendingConfirm, setConfirmChoice) {
   setPendingConfirm(null);
@@ -7717,7 +7727,7 @@ function useAppKeyboard({
   });
 }
 
-// extensions/console/src/hooks/use-approval.ts
+// src/hooks/use-approval.ts
 import { useCallback as useCallback6, useEffect as useEffect9, useState as useState10 } from "react";
 function useApproval(pendingApprovals, pendingApplies) {
   const [approvalChoice, setApprovalChoice] = useState10("approve");
@@ -7773,7 +7783,7 @@ function useApproval(pendingApprovals, pendingApplies) {
   };
 }
 
-// extensions/console/src/hooks/use-command-dispatch.ts
+// src/hooks/use-command-dispatch.ts
 import { useCallback as useCallback7 } from "react";
 function resetRedo(undoRedoRef, onClearRedoStack) {
   clearRedo(undoRedoRef.current);
@@ -8087,7 +8097,7 @@ function useCommandDispatch({
   ]);
 }
 
-// extensions/console/src/hooks/use-exit-confirm.ts
+// src/hooks/use-exit-confirm.ts
 import { useCallback as useCallback8, useEffect as useEffect10, useRef as useRef7, useState as useState11 } from "react";
 function useExitConfirm({ timeoutMs = 1500 } = {}) {
   const [exitConfirmArmed, setExitConfirmArmed] = useState11(false);
@@ -8121,7 +8131,7 @@ function useExitConfirm({ timeoutMs = 1500 } = {}) {
   };
 }
 
-// extensions/console/src/hooks/use-message-queue.ts
+// src/hooks/use-message-queue.ts
 import { useCallback as useCallback9, useRef as useRef8, useState as useState12 } from "react";
 var queueIdCounter = 0;
 function useMessageQueue() {
@@ -8219,7 +8229,7 @@ function useMessageQueue() {
   };
 }
 
-// extensions/console/src/hooks/use-model-state.ts
+// src/hooks/use-model-state.ts
 import { useCallback as useCallback10, useState as useState13 } from "react";
 function useModelState({ modelId, modelName, contextWindow }) {
   const [currentModelId, setCurrentModelId] = useState13(modelId);
@@ -8241,7 +8251,7 @@ function useModelState({ modelId, modelName, contextWindow }) {
   };
 }
 
-// extensions/console/src/App.tsx
+// src/App.tsx
 import { jsxDEV as jsxDEV37 } from "@opentui/react/jsx-dev-runtime";
 function App({
   onReady,
@@ -8621,7 +8631,7 @@ function App({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/opentui-runtime.ts
+// src/opentui-runtime.ts
 import * as fs3 from "node:fs";
 import * as path3 from "node:path";
 import { addDefaultParsers, clearEnvCache } from "@opentui/core";
@@ -8753,7 +8763,7 @@ function configureBundledOpenTuiTreeSitter(isCompiledBinary) {
   configured = true;
 }
 
-// extensions/console/src/resize-watcher.ts
+// src/resize-watcher.ts
 function getTerminalSize(renderer) {
   const width = process.stdout.columns || renderer.width || 80;
   const height = process.stdout.rows || renderer.height || 24;
@@ -8808,10 +8818,10 @@ function attachCompiledResizeWatcher(renderer, isCompiledBinary) {
   return dispose;
 }
 
-// extensions/console/src/index.ts
+// src/index.ts
 init_terminal_compat();
 
-// extensions/console/src/console-config.ts
+// src/console-config.ts
 var DEFAULT_CONSOLE_CONFIG = {
   expandSubAgentTools: false
 };
@@ -8822,7 +8832,7 @@ function resolveConsoleConfig(raw) {
   };
 }
 
-// extensions/console/src/index.ts
+// src/index.ts
 function generateCommandPattern(command) {
   const tokens = command.trim().split(/\s+/);
   if (tokens.length === 0 || !tokens[0])
@@ -8992,7 +9002,7 @@ class ConsolePlatform extends PlatformAdapter {
     return next;
   }
   async start() {
-    this.api?.setLogLevel?.(4 /* SILENT */);
+    this.api?.setLogLevel?.(LogLevel.SILENT);
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
     this.backend.on("assistant:content", (sid, content) => {
       if (sid === this.sessionId) {
@@ -9861,7 +9871,8 @@ ${summaryText}`;
           source: pkg.source
         };
       });
-    } catch {
+    } catch (err) {
+      console.error("[ConsolePlatform] handleListExtensions failed:", err);
       return [];
     }
   }
