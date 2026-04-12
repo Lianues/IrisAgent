@@ -75,6 +75,14 @@ export interface PreBootstrapContext {
   getConfigDir(): string;
 
   /**
+   * 获取当前插件的专属数据目录绝对路径。
+   * 目录不存在时自动创建。
+   * 用于存放插件运行时产生或管理的数据文件。
+   * 路径：{dataDir}/extension-data/{pluginName}/
+   */
+  getDataDir(): string;
+
+  /**
    * 确保一个配置文件存在于宿主配置目录中。
    * 文件已存在时不做任何修改，返回 false。
    * 文件不存在时写入提供的内容，返回 true。
@@ -112,6 +120,14 @@ export interface PluginContext {
   getExtensionRootDir(): string | undefined;
   /** 获取宿主配置目录的绝对路径 */
   getConfigDir(): string;
+  /**
+   * 获取当前插件的专属数据目录绝对路径。
+   * 目录不存在时自动创建。
+   * 用于存放插件运行时产生或管理的数据文件（预设、角色卡、数据库等），
+   * 与配置目录（getConfigDir）和扩展代码目录（getExtensionRootDir）分离。
+   * 路径：{dataDir}/extension-data/{pluginName}/
+   */
+  getDataDir(): string;
   /**
    * 确保一个配置文件存在于宿主配置目录中。
    * 文件已存在时返回 false；文件不存在时写入内容并返回 true。

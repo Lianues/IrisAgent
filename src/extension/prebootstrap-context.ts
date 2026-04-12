@@ -72,6 +72,16 @@ export class PreBootstrapContextImpl {
     return this.configDir;
   }
 
+  getDataDir(): string {
+    if (!this.configDir) throw new Error('configDir 未设置');
+    const dataDir = path.dirname(this.configDir);
+    const dir = path.join(dataDir, 'extension-data', this.pluginName);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  }
+
   ensureConfigFile(filename: string, content: string): boolean {
     if (!this.configDir) throw new Error('configDir 未设置');
     const filePath = path.join(this.configDir, filename);
