@@ -79,7 +79,7 @@ function getActiveTurnSessionId(): string | undefined {
 async function enableMemorySystem(ctx: PluginContext): Promise<void> {
   if (!cachedApi || activeProvider) return; // 已初始化或 API 未就绪
 
-  const effectiveDataDir = cachedApi.dataDir ?? ctx.getConfigDir();
+  const effectiveDataDir = ctx.getDataDir();
   const dataPath = currentConfig.dbPath
     ? path.resolve(effectiveDataDir, currentConfig.dbPath)
     : path.join(effectiveDataDir, 'memory.db');

@@ -1,39 +1,28 @@
-// src/index.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
-// ../../packages/extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
+// ../../packages/extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= LogLevel.DEBUG)
+      if (_logLevel <= 0 /* DEBUG */)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= LogLevel.INFO)
+      if (_logLevel <= 1 /* INFO */)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= LogLevel.WARN)
+      if (_logLevel <= 2 /* WARN */)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= LogLevel.ERROR)
+      if (_logLevel <= 3 /* ERROR */)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin/context.js
+// ../../packages/extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -41,9 +30,15 @@ function createPluginLogger(pluginName, tag) {
 function definePlugin(plugin) {
   return plugin;
 }
+// ../../packages/extension-sdk/src/runtime-paths.ts
+import os from "node:os";
+import path from "node:path";
+function resolveDefaultDataDir(customDataDir) {
+  return path.resolve(customDataDir || process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
+}
 // src/scheduler.ts
 import * as fs from "fs";
-import * as path from "path";
+import * as path2 from "path";
 
 // node_modules/croner/dist/croner.js
 function T(s) {
@@ -832,15 +827,28 @@ var DEFAULT_SCHEDULER_CONFIG = {
     withinMinutes: 5
   }
 };
+var DEFAULT_CRON_SYSTEM_PROMPT = `你是一个自动化定时任务执行器。
+
+你的职责是执行用户预设的定时任务指令，完成后输出简洁的执行报告。
+
+注意事项：
+- 你在后台独立运行，没有用户正在与你对话
+- 你的输出将作为通知推送给用户，请保持简洁明了
+- 如果任务涉及文件操作，请使用可用的工具完成
+- 完成后直接给出结论，不需要寒暄或确认`;
+var DEFAULT_EXCLUDE_TOOLS = ["sub_agent", "history_search", "manage_scheduled_tasks"];
 var DEFAULT_BACKGROUND_CONFIG = {
+  systemPrompt: DEFAULT_CRON_SYSTEM_PROMPT,
+  excludeTools: [...DEFAULT_EXCLUDE_TOOLS],
+  maxToolRounds: 50,
   timeoutMs: 5 * 60 * 1000,
   maxConcurrent: 3,
   retentionDays: 30,
-  retentionCount: 100,
-  maxToolRounds: 15
+  retentionCount: 100
 };
 
 // src/delivery-gate.ts
+var logger = createPluginLogger("cron", "condition");
 function parseTimeToMinutes(time) {
   const parts = time.split(":");
   const hours = parseInt(parts[0], 10);
@@ -864,9 +872,8 @@ function isInQuietHours(config, now) {
   if (!config.quietHours.enabled)
     return false;
   for (const window of config.quietHours.windows) {
-    if (isInTimeWindow(now, window)) {
+    if (isInTimeWindow(now, window))
       return true;
-    }
   }
   return false;
 }
@@ -879,7 +886,26 @@ function hasRecentActivity(config, sessionId, lastActivityMap, now) {
   const thresholdMs = config.skipIfRecentActivity.withinMinutes * 60 * 1000;
   return now - lastActivity < thresholdMs;
 }
-function shouldSkip(job, config, lastActivityMap, now) {
+function evaluateCondition(expression, globalStore, agentName, sessionId) {
+  const agentVars = globalStore.agent(agentName).getAll();
+  const sessionVars = sessionId ? globalStore.session(sessionId).getAll() : {};
+  const globalVars = {};
+  for (const key of globalStore.keys()) {
+    if (!key.startsWith("@")) {
+      globalVars[key] = globalStore.get(key);
+    }
+  }
+  try {
+    const fn = new Function("agent", "session", "global", "random", "now", "hour", "day", "Math", "Date", `"use strict"; return (${expression})`);
+    const result = fn(agentVars, sessionVars, globalVars, () => Math.random(), () => Date.now(), () => new Date().getHours(), () => new Date().getDay(), Math, Date);
+    return { pass: !!result, detail: `表达式求值结果: ${result}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`条件表达式求值失败: "${expression}", error: ${msg}`);
+    return { pass: false, detail: `表达式错误: ${msg}` };
+  }
+}
+function shouldSkip(job, config, lastActivityMap, context, now) {
   const currentDate = now ?? new Date;
   const currentTimestamp = currentDate.getTime();
   if (!job.enabled) {
@@ -900,11 +926,20 @@ function shouldSkip(job, config, lastActivityMap, now) {
       reason: `会话 ${targetSessionId} 在 ${config.skipIfRecentActivity.withinMinutes} 分钟内有活动，跳过任务 "${job.name}"`
     };
   }
+  if (job.condition && context?.globalStore) {
+    const { pass, detail } = evaluateCondition(job.condition, context.globalStore, context.agentName ?? "master", targetSessionId);
+    if (!pass) {
+      return {
+        skip: true,
+        reason: `条件未满足: "${job.condition}" — ${detail}，跳过任务 "${job.name}"`
+      };
+    }
+  }
   return { skip: false };
 }
 
 // src/scheduler.ts
-var logger = createPluginLogger("cron");
+var logger2 = createPluginLogger("cron");
 function generateId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
@@ -912,15 +947,6 @@ function generateId() {
     return v2.toString(16);
   });
 }
-var CRON_SYSTEM_PROMPT = `你是一个自动化定时任务执行器。
-
-你的职责是执行用户预设的定时任务指令，完成后输出简洁的执行报告。
-
-注意事项：
-- 你在后台独立运行，没有用户正在与你对话
-- 你的输出将作为通知推送给用户，请保持简洁明了
-- 如果任务涉及文件操作，请使用可用的工具完成
-- 完成后直接给出结论，不需要寒暄或确认`;
 var cronTaskCounter = 0;
 function createCronTaskId() {
   return `cron_task_${++cronTaskCounter}_${Date.now()}`;
@@ -956,15 +982,15 @@ class CronScheduler {
       return;
     job.currentTaskId = task.taskId;
   };
-  constructor(api, config, taskBoard, agentName, backgroundConfig) {
+  constructor(api, config, taskBoard, agentName, backgroundConfig, dataDir) {
     this.api = api;
     this.config = config ? { ...config } : { ...DEFAULT_SCHEDULER_CONFIG };
     this.taskBoard = taskBoard ?? null;
     this.agentName = agentName ?? "master";
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
-    const dataDir = api.dataDir ?? path.join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".iris");
-    this.filePath = path.join(dataDir, "cron-jobs.json");
-    this.runsDir = path.join(dataDir, "cron-runs");
+    const dir = dataDir ?? resolveDefaultDataDir();
+    this.filePath = path2.join(dir, "cron-jobs.json");
+    this.runsDir = path2.join(dir, "cron-runs");
   }
   async start() {
     if (this.running)
@@ -979,7 +1005,7 @@ class CronScheduler {
       }
     }
     this.startFileWatcher();
-    logger.info(`调度器已启动，共 ${this.jobs.size} 个任务`);
+    logger2.info(`调度器已启动，共 ${this.jobs.size} 个任务`);
   }
   stop() {
     this.running = false;
@@ -996,7 +1022,7 @@ class CronScheduler {
       this.persistTimer = null;
     }
     this.persistSync();
-    logger.info("调度器已停止");
+    logger2.info("调度器已停止");
   }
   createJob(params) {
     const job = {
@@ -1011,6 +1037,9 @@ class CronScheduler {
       },
       silent: params.silent ?? false,
       urgent: params.urgent ?? false,
+      condition: params.condition,
+      allowedTools: params.allowedTools?.length ? params.allowedTools : undefined,
+      excludeTools: !params.allowedTools?.length && params.excludeTools?.length ? params.excludeTools : undefined,
       enabled: true,
       createdAt: Date.now(),
       createdInSession: params.createdInSession
@@ -1020,7 +1049,7 @@ class CronScheduler {
       this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
-    logger.info(`任务已创建: ${job.name} (${job.id})`);
+    logger2.info(`任务已创建: ${job.name} (${job.id})`);
     return job;
   }
   updateJob(id, params) {
@@ -1040,6 +1069,20 @@ class CronScheduler {
       job.silent = params.silent;
     if (params.urgent !== undefined)
       job.urgent = params.urgent;
+    if (params.condition !== undefined)
+      job.condition = params.condition || undefined;
+    if (params.allowedTools !== undefined && params.allowedTools.length > 0) {
+      job.allowedTools = params.allowedTools;
+      job.excludeTools = undefined;
+    } else if (params.excludeTools !== undefined && params.excludeTools.length > 0) {
+      job.excludeTools = params.excludeTools;
+      job.allowedTools = undefined;
+    } else {
+      if (params.allowedTools !== undefined)
+        job.allowedTools = undefined;
+      if (params.excludeTools !== undefined)
+        job.excludeTools = undefined;
+    }
     if (job.currentTaskId) {
       this.taskBoard?.kill(job.currentTaskId);
       job.currentTaskId = undefined;
@@ -1048,7 +1091,7 @@ class CronScheduler {
       this.registerJobToTaskBoard(job);
     }
     this.debouncePersist();
-    logger.info(`任务已更新: ${job.name} (${id})`);
+    logger2.info(`任务已更新: ${job.name} (${id})`);
     return job;
   }
   deleteJob(id) {
@@ -1060,7 +1103,7 @@ class CronScheduler {
     }
     this.jobs.delete(id);
     this.debouncePersist();
-    logger.info(`任务已删除: ${job.name} (${id})`);
+    logger2.info(`任务已删除: ${job.name} (${id})`);
     return true;
   }
   enableJob(id) {
@@ -1068,7 +1111,7 @@ class CronScheduler {
     if (!job)
       return null;
     if (job.schedule.type === "once" && job.schedule.at - Date.now() <= 0) {
-      logger.warn(`拒绝启用已过期的一次性任务: ${job.name} (${id}), ` + `原定时间=${new Date(job.schedule.at).toISOString()}`);
+      logger2.warn(`拒绝启用已过期的一次性任务: ${job.name} (${id}), ` + `原定时间=${new Date(job.schedule.at).toISOString()}`);
       return null;
     }
     job.enabled = true;
@@ -1077,7 +1120,7 @@ class CronScheduler {
     }
     this.registerJobToTaskBoard(job);
     this.debouncePersist();
-    logger.info(`任务已启用: ${job.name} (${id})`);
+    logger2.info(`任务已启用: ${job.name} (${id})`);
     return job;
   }
   disableJob(id) {
@@ -1090,7 +1133,7 @@ class CronScheduler {
       job.currentTaskId = undefined;
     }
     this.debouncePersist();
-    logger.info(`任务已禁用: ${job.name} (${id})`);
+    logger2.info(`任务已禁用: ${job.name} (${id})`);
     return job;
   }
   getJob(id) {
@@ -1118,7 +1161,7 @@ class CronScheduler {
         ...newConfig.skipIfRecentActivity
       };
     }
-    logger.info("调度器配置已热更新");
+    logger2.info("调度器配置已热更新");
   }
   recordActivity(sessionId) {
     this.lastActivityMap.set(sessionId, Date.now());
@@ -1133,7 +1176,7 @@ class CronScheduler {
           job.enabled = false;
         }
         changed = true;
-        logger.warn(`僵尸任务恢复: ${job.name} (${job.id}), type=${job.schedule.type}`);
+        logger2.warn(`僵尸任务恢复: ${job.name} (${job.id}), type=${job.schedule.type}`);
         continue;
       }
       if (job.schedule.type !== "once")
@@ -1143,7 +1186,7 @@ class CronScheduler {
         if (job.enabled) {
           job.enabled = false;
           changed = true;
-          logger.info(`一次性任务已完结，确保禁用: ${job.name} (${job.id}), status=${job.lastRunStatus}`);
+          logger2.info(`一次性任务已完结，确保禁用: ${job.name} (${job.id}), status=${job.lastRunStatus}`);
         }
         continue;
       }
@@ -1152,7 +1195,7 @@ class CronScheduler {
         job.lastRunAt = Date.now();
         job.enabled = false;
         changed = true;
-        logger.warn(`一次性任务已过期，标记为 missed: ${job.name} (${job.id})`);
+        logger2.warn(`一次性任务已过期，标记为 missed: ${job.name} (${job.id})`);
         continue;
       }
     }
@@ -1165,7 +1208,7 @@ class CronScheduler {
       return;
     const schedule = this.buildScheduleConfig(job);
     if (!schedule) {
-      logger.warn(`任务未注册到 TaskBoard（无有效下次执行时间）: ${job.name} (${job.id})`);
+      logger2.warn(`任务未注册到 TaskBoard（无有效下次执行时间）: ${job.name} (${job.id})`);
       return;
     }
     const executor = async (taskId2, signal) => {
@@ -1224,10 +1267,13 @@ class CronScheduler {
   async executeCronJob(job, taskId, signal) {
     const currentJob = this.jobs.get(job.id) ?? job;
     if (!currentJob.enabled) {
-      logger.info(`任务已禁用，跳过执行: ${currentJob.name} (${currentJob.id})`);
+      logger2.info(`任务已禁用，跳过执行: ${currentJob.name} (${currentJob.id})`);
       return;
     }
-    const decision = shouldSkip(currentJob, this.config, this.lastActivityMap);
+    const decision = shouldSkip(currentJob, this.config, this.lastActivityMap, {
+      globalStore: this.api.globalStore,
+      agentName: this.agentName
+    });
     if (decision.skip) {
       currentJob.lastRunAt = Date.now();
       currentJob.lastRunStatus = "skipped";
@@ -1235,7 +1281,7 @@ class CronScheduler {
         currentJob.enabled = false;
       }
       currentJob.currentTaskId = undefined;
-      logger.info(`任务被跳过: ${currentJob.name} — ${decision.reason}`);
+      logger2.info(`任务被跳过: ${currentJob.name} — ${decision.reason}`);
       this.debouncePersist();
       return;
     }
@@ -1248,7 +1294,7 @@ class CronScheduler {
         currentJob.enabled = false;
       }
       currentJob.currentTaskId = undefined;
-      logger.warn(`任务被跳过（并发上限）: ${currentJob.name}`);
+      logger2.warn(`任务被跳过（并发上限）: ${currentJob.name}`);
       this.debouncePersist();
       return;
     }
@@ -1267,14 +1313,20 @@ class CronScheduler {
     const board = this.taskBoard;
     const timeoutHandle = setTimeout(() => {
       board.kill(taskId);
-      logger.warn(`后台任务超时 (${this.backgroundConfig.timeoutMs}ms): ${job.name}`);
+      logger2.warn(`后台任务超时 (${this.backgroundConfig.timeoutMs}ms): ${job.name}`);
     }, this.backgroundConfig.timeoutMs);
     if (timeoutHandle.unref)
       timeoutHandle.unref();
     try {
-      const excludedTools = ["sub_agent", "history_search", "manage_scheduled_tasks"];
-      const cronTools = this.api.tools.createFiltered?.(excludedTools) ?? this.api.tools;
-      const systemPrompt = CRON_SYSTEM_PROMPT;
+      let cronTools;
+      if (job.allowedTools && job.allowedTools.length > 0) {
+        cronTools = this.api.tools.createSubset?.(job.allowedTools) ?? this.api.tools;
+      } else if (job.excludeTools && job.excludeTools.length > 0) {
+        cronTools = this.api.tools.createFiltered?.(job.excludeTools) ?? this.api.tools;
+      } else {
+        cronTools = this.backgroundConfig.excludeTools.length > 0 ? this.api.tools.createFiltered?.(this.backgroundConfig.excludeTools) ?? this.api.tools : this.api.tools;
+      }
+      const systemPrompt = this.backgroundConfig.systemPrompt;
       if (typeof this.api.createToolLoop !== "function") {
         throw new Error("IrisAPI.createToolLoop 不可用，无法执行后台任务");
       }
@@ -1345,7 +1397,7 @@ class CronScheduler {
           durationMs,
           status: "killed"
         });
-        logger.info(`后台任务被中止: ${job.name} (taskId=${taskId})`);
+        logger2.info(`后台任务被中止: ${job.name} (taskId=${taskId})`);
       } else if (loopError) {
         board.fail(taskId, loopError);
         job.lastRunStatus = "error";
@@ -1361,7 +1413,7 @@ class CronScheduler {
           status: "failed",
           error: loopError
         });
-        logger.error(`后台任务失败: ${job.name} (taskId=${taskId}), error="${loopError}"`);
+        logger2.error(`后台任务失败: ${job.name} (taskId=${taskId}), error="${loopError}"`);
       } else {
         board.complete(taskId, finalText);
         job.lastRunStatus = "completed";
@@ -1377,7 +1429,7 @@ class CronScheduler {
           status: "completed",
           resultText: finalText
         });
-        logger.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms`);
+        logger2.info(`后台任务完成: ${job.name} (taskId=${taskId}), duration=${durationMs}ms`);
       }
     } catch (err) {
       const endTime = Date.now();
@@ -1397,7 +1449,7 @@ class CronScheduler {
         status: "failed",
         error: errorMsg
       });
-      logger.error(`后台任务异常: ${job.name} (taskId=${taskId}), error="${errorMsg}"`);
+      logger2.error(`后台任务异常: ${job.name} (taskId=${taskId}), error="${errorMsg}"`);
     } finally {
       job.currentTaskId = undefined;
       clearTimeout(timeoutHandle);
@@ -1411,10 +1463,10 @@ class CronScheduler {
         fs.mkdirSync(this.runsDir, { recursive: true });
       }
       const filename = `${record.jobId}_${record.startTime}.json`;
-      const filePath = path.join(this.runsDir, filename);
+      const filePath = path2.join(this.runsDir, filename);
       fs.writeFileSync(filePath, JSON.stringify(record, null, 2), "utf-8");
     } catch (err) {
-      logger.warn(`保存执行记录失败: ${err}`);
+      logger2.warn(`保存执行记录失败: ${err}`);
     }
   }
   cleanupOldRuns() {
@@ -1431,7 +1483,7 @@ class CronScheduler {
           const timestamp = parseInt(match[1], 10);
           if (now - timestamp > retentionMs) {
             try {
-              fs.unlinkSync(path.join(this.runsDir, file));
+              fs.unlinkSync(path2.join(this.runsDir, file));
               deleted++;
             } catch {}
           }
@@ -1442,16 +1494,16 @@ class CronScheduler {
         const toDelete = remaining.slice(0, remaining.length - this.backgroundConfig.retentionCount);
         for (const file of toDelete) {
           try {
-            fs.unlinkSync(path.join(this.runsDir, file));
+            fs.unlinkSync(path2.join(this.runsDir, file));
             deleted++;
           } catch {}
         }
       }
       if (deleted > 0) {
-        logger.info(`清理了 ${deleted} 条过期执行记录`);
+        logger2.info(`清理了 ${deleted} 条过期执行记录`);
       }
     } catch (err) {
-      logger.warn(`清理执行记录失败: ${err}`);
+      logger2.warn(`清理执行记录失败: ${err}`);
     }
   }
   listRuns(limit = 50) {
@@ -1462,7 +1514,7 @@ class CronScheduler {
       const records = [];
       for (const file of files) {
         try {
-          const raw = fs.readFileSync(path.join(this.runsDir, file), "utf-8");
+          const raw = fs.readFileSync(path2.join(this.runsDir, file), "utf-8");
           records.push(JSON.parse(raw));
         } catch {}
       }
@@ -1478,7 +1530,7 @@ class CronScheduler {
       const files = fs.readdirSync(this.runsDir).filter((f2) => f2.endsWith(".json"));
       for (const file of files) {
         try {
-          const raw = fs.readFileSync(path.join(this.runsDir, file), "utf-8");
+          const raw = fs.readFileSync(path2.join(this.runsDir, file), "utf-8");
           const record = JSON.parse(raw);
           if (record.runId === runId)
             return record;
@@ -1500,7 +1552,7 @@ class CronScheduler {
   }
   persistSync() {
     try {
-      const dir = path.dirname(this.filePath);
+      const dir = path2.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
@@ -1519,13 +1571,13 @@ class CronScheduler {
         this.lastFileModTime = stat.mtimeMs;
       } catch {}
     } catch (err) {
-      logger.error(`持久化写入失败: ${err}`);
+      logger2.error(`持久化写入失败: ${err}`);
     }
   }
   loadFromFile() {
     try {
       if (!fs.existsSync(this.filePath)) {
-        logger.info("持久化文件不存在，从空白状态启动");
+        logger2.info("持久化文件不存在，从空白状态启动");
         return;
       }
       const raw = fs.readFileSync(this.filePath, "utf-8");
@@ -1538,9 +1590,9 @@ class CronScheduler {
         const stat = fs.statSync(this.filePath);
         this.lastFileModTime = stat.mtimeMs;
       } catch {}
-      logger.info(`从文件恢复了 ${parsed.length} 个任务`);
+      logger2.info(`从文件恢复了 ${parsed.length} 个任务`);
     } catch (err) {
-      logger.error(`从文件加载任务失败: ${err}`);
+      logger2.error(`从文件加载任务失败: ${err}`);
     }
   }
   startFileWatcher() {
@@ -1552,7 +1604,7 @@ class CronScheduler {
       });
       this.fileWatcherActive = true;
     } catch (err) {
-      logger.warn(`启动文件监听失败: ${err}`);
+      logger2.warn(`启动文件监听失败: ${err}`);
     }
   }
   stopFileWatcher() {
@@ -1596,7 +1648,7 @@ class CronScheduler {
             this.taskBoard?.kill(existing.currentTaskId);
           }
           this.jobs.delete(id);
-          logger.info(`文件同步: 删除任务 ${id}`);
+          logger2.info(`文件同步: 删除任务 ${id}`);
         }
       }
       for (const job of parsed) {
@@ -1605,7 +1657,7 @@ class CronScheduler {
           this.jobs.set(job.id, job);
           if (job.enabled)
             this.registerJobToTaskBoard(job);
-          logger.info(`文件同步: 新增任务 ${job.name} (${job.id})`);
+          logger2.info(`文件同步: 新增任务 ${job.name} (${job.id})`);
         } else {
           const shouldReschedule = this.shouldRescheduleAfterFileSync(existing, job);
           const existingStr = JSON.stringify(existing);
@@ -1621,13 +1673,13 @@ class CronScheduler {
                 this.registerJobToTaskBoard(existing);
               }
             }
-            logger.info(`文件同步: 更新任务 ${job.name} (${job.id})`);
+            logger2.info(`文件同步: 更新任务 ${job.name} (${job.id})`);
           }
         }
       }
-      logger.info(`文件同步完成，当前共 ${this.jobs.size} 个任务`);
+      logger2.info(`文件同步完成，当前共 ${this.jobs.size} 个任务`);
     } catch (err) {
-      logger.error(`文件同步失败: ${err}`);
+      logger2.error(`文件同步失败: ${err}`);
     }
   }
 }
@@ -1679,7 +1731,7 @@ function parseOnceScheduleValue(value) {
   }
   return { error: `无法解析的 once 时间值: "${trimmed}"。支持的格式：相对延迟（如 "30s", "5m", "2h"）或绝对日期（如 "2026-04-03 17:30"）` };
 }
-var logger2 = createPluginLogger("cron", "tool");
+var logger3 = createPluginLogger("cron", "tool");
 var scheduler = null;
 var currentSessionId = "default";
 function injectScheduler(s2) {
@@ -1697,6 +1749,7 @@ var manageScheduledTasksTool = {
 ` + `- interval: 固定间隔毫秒数，如 "60000"
 ` + `- once: 一次性定时，支持相对延迟（如 "30s", "5m", "2h"）或绝对日期时间（如 "2026-04-03 17:30"）
 ` + `任务触发后会在后台独立拉起一个 agent 执行预设的 instruction 指令（拥有独立的工具调用能力）。
+` + `可通过 allowed_tools（白名单）或 exclude_tools（黑名单）为每个任务单独配置可用工具集，未配置时使用全局默认策略。
 ` + `执行完成后的行为取决于 silent 参数：
 ` + `  - silent=false（默认）：执行结果作为通知注入当前会话，由主 agent 处理并回复用户。
 ` + `  - silent=true：仅向各前端平台广播一条轻量通知（任务名+结果摘要），不触发主 agent 处理，不占用对话。
@@ -1740,6 +1793,38 @@ var manageScheduledTasksTool = {
         urgent: {
           type: "boolean",
           description: "是否为紧急任务（可穿透安静时段）"
+        },
+        condition: {
+          type: "string",
+          description: `条件表达式（可选）。JS 语法，触发时求值，truthy 才执行。
+` + `可用变量（从 GlobalStore 自动读取）：
+` + `  agent.xxx — agent 作用域（跨对话持久）
+` + `  global.xxx — 全局变量
+` + `  session.xxx — 当前会话变量
+` + `内置函数：
+` + `  random() — 0-1 随机数
+` + `  now() — 时间戳(ms)  hour() — 当前小时  day() — 星期
+` + `示例：
+` + `  "agent.好感度 > 80 && random() < 0.5"
+` + `  "agent.信任度 >= 60 || agent.好感度 >= 90"
+` + '  "hour() >= 9 && hour() <= 22"'
+        },
+        allowed_tools: {
+          type: "array",
+          items: { type: "string" },
+          description: `允许使用的工具列表（白名单模式）。设置后任务只能使用这些工具。
+` + `与 exclude_tools 互斥，同时提供时 allowed_tools 优先。
+` + `不设置则使用全局 backgroundExecution.excludeTools 配置。
+` + '示例：["read_file", "write_file", "shell"]'
+        },
+        exclude_tools: {
+          type: "array",
+          items: { type: "string" },
+          description: `排除的工具列表（黑名单模式）。设置后任务不能使用这些工具。
+` + `与 allowed_tools 互斥，同时提供时 allowed_tools 优先。
+` + `不设置则使用全局 backgroundExecution.excludeTools 配置。
+` + `设置为空数组 [] 可清除任务级别配置，回退到全局默认。
+` + '示例：["sub_agent", "manage_scheduled_tasks"]'
         }
       },
       required: ["action"]
@@ -1797,10 +1882,13 @@ var manageScheduledTasksTool = {
           },
           silent: args.silent ?? false,
           urgent: args.urgent ?? false,
+          condition: args.condition,
+          allowedTools: Array.isArray(args.allowed_tools) ? args.allowed_tools : undefined,
+          excludeTools: Array.isArray(args.exclude_tools) ? args.exclude_tools : undefined,
           createdInSession: currentSessionId
         };
         const job = scheduler.createJob(params);
-        logger2.info(`工具调用: 创建任务 "${job.name}" (${job.id})`);
+        logger3.info(`工具调用: 创建任务 "${job.name}" (${job.id})`);
         return {
           success: true,
           job: {
@@ -1810,6 +1898,9 @@ var manageScheduledTasksTool = {
             instruction: job.instruction,
             silent: job.silent,
             urgent: job.urgent,
+            condition: job.condition,
+            allowedTools: job.allowedTools,
+            excludeTools: job.excludeTools,
             enabled: job.enabled,
             createdAt: new Date(job.createdAt).toISOString()
           }
@@ -1829,6 +1920,14 @@ var manageScheduledTasksTool = {
           updateParams.silent = args.silent;
         if (args.urgent !== undefined)
           updateParams.urgent = args.urgent;
+        if (args.condition !== undefined)
+          updateParams.condition = args.condition;
+        if (args.allowed_tools !== undefined) {
+          updateParams.allowedTools = Array.isArray(args.allowed_tools) && args.allowed_tools.length > 0 ? args.allowed_tools : [];
+        }
+        if (args.exclude_tools !== undefined) {
+          updateParams.excludeTools = Array.isArray(args.exclude_tools) && args.exclude_tools.length > 0 ? args.exclude_tools : [];
+        }
         if (args.schedule_type && args.schedule_value) {
           const st = args.schedule_type;
           const sv = args.schedule_value;
@@ -1853,7 +1952,7 @@ var manageScheduledTasksTool = {
         if (!updated) {
           return { error: `未找到任务: ${jobId}` };
         }
-        logger2.info(`工具调用: 更新任务 "${updated.name}" (${jobId})`);
+        logger3.info(`工具调用: 更新任务 "${updated.name}" (${jobId})`);
         return { success: true, job: updated };
       }
       case "delete": {
@@ -1865,7 +1964,7 @@ var manageScheduledTasksTool = {
         if (!deleted) {
           return { error: `未找到任务: ${jobId}` };
         }
-        logger2.info(`工具调用: 删除任务 ${jobId}`);
+        logger3.info(`工具调用: 删除任务 ${jobId}`);
         return { success: true, message: `任务 ${jobId} 已删除` };
       }
       case "enable": {
@@ -1877,7 +1976,7 @@ var manageScheduledTasksTool = {
         if (!enabled) {
           return { error: `未找到任务: ${jobId}` };
         }
-        logger2.info(`工具调用: 启用任务 "${enabled.name}" (${jobId})`);
+        logger3.info(`工具调用: 启用任务 "${enabled.name}" (${jobId})`);
         return { success: true, job: enabled };
       }
       case "disable": {
@@ -1889,7 +1988,7 @@ var manageScheduledTasksTool = {
         if (!disabled) {
           return { error: `未找到任务: ${jobId}` };
         }
-        logger2.info(`工具调用: 禁用任务 "${disabled.name}" (${jobId})`);
+        logger3.info(`工具调用: 禁用任务 "${disabled.name}" (${jobId})`);
         return { success: true, job: disabled };
       }
       case "list": {
@@ -1904,6 +2003,8 @@ var manageScheduledTasksTool = {
             enabled: j.enabled,
             silent: j.silent,
             urgent: j.urgent,
+            allowedTools: j.allowedTools ?? null,
+            excludeTools: j.excludeTools ?? null,
             lastRunAt: j.lastRunAt ? new Date(j.lastRunAt).toISOString() : null,
             lastRunStatus: j.lastRunStatus ?? null
           }))
@@ -1926,22 +2027,110 @@ var manageScheduledTasksTool = {
   }
 };
 
+// src/config-template.ts
+function buildDefaultConfigTemplate() {
+  const promptYaml = DEFAULT_CRON_SYSTEM_PROMPT.split(`
+`).map((line) => `    ${line}`).join(`
+`);
+  return `# ============================================================
+# 定时任务调度插件配置
+# ============================================================
+#
+# 启用后，LLM 可通过 manage_scheduled_tasks 工具
+# 创建、管理定时任务，实现自动化调度。
+#
+# 修改后保存即可生效，无需重启。
+
+# 是否启用调度器
+enabled: true
+
+# ────────────────────────────────────────
+# 后台执行配置
+# ────────────────────────────────────────
+# 定时任务触发后会在后台独立拉起一个 agent 执行指令，
+# 以下参数控制这个后台执行环境的行为。
+backgroundExecution:
+
+  # 定时任务执行时的系统提示词
+  # 定义后台 agent 的角色和行为准则
+  systemPrompt: |
+${promptYaml}
+
+  # 全局排除的工具列表（黑名单）
+  # 这些工具在定时任务后台执行时默认不可用。
+  # 默认排除：
+  #   - sub_agent: 没有父会话上下文，子代理无意义
+  #   - history_search: 需要 sessionId，定时任务没有活跃会话
+  #   - manage_scheduled_tasks: 防止后台 agent 自行修改/删除定时任务
+  # 设置为空数组 [] 可开放所有工具。
+  #
+  # 注意：可在创建任务时通过 allowed_tools（白名单）或 exclude_tools（黑名单）
+  # 为每个任务单独配置工具策略，任务级别配置优先于此全局配置。
+  excludeTools:
+    - sub_agent
+    - history_search
+    - manage_scheduled_tasks
+
+  # 工具循环最大轮次
+  # 单次定时任务执行中 LLM 最多可进行的工具调用轮次。
+  # 超过此轮次后强制结束并返回当前结果。
+  maxToolRounds: 50
+
+  # 单次执行超时时间（毫秒），超时后任务被中止
+  # 默认 5 分钟 = 300000
+  timeoutMs: 300000
+
+  # 同时运行的最大后台任务数
+  # 超过此数量的任务会被跳过（标记为 skipped）
+  maxConcurrent: 3
+
+  # 执行记录保留天数
+  retentionDays: 30
+
+  # 执行记录保留条数上限
+  retentionCount: 100
+
+# ────────────────────────────────────────
+# 安静时段配置
+# ────────────────────────────────────────
+# 在安静时段内，非紧急任务将被跳过
+quietHours:
+  enabled: false
+  windows:
+    - start: "23:00"
+      end: "07:00"
+  # 是否允许紧急任务穿透安静时段
+  allowUrgent: true
+
+# ────────────────────────────────────────
+# 跳过近期活跃会话
+# ────────────────────────────────────────
+# 如果目标会话在指定分钟内有过活动，则跳过本次投递
+skipIfRecentActivity:
+  enabled: false
+  withinMinutes: 5
+`;
+}
+
 // src/index.ts
-var logger3 = createPluginLogger("cron");
+var logger4 = createPluginLogger("cron");
 var schedulerInstance = null;
 var src_default = definePlugin({
   name: "cron",
   version: "0.1.0",
   description: "定时任务调度插件 — Cron / Interval / Once 三种调度模式",
   activate(ctx) {
-    const pluginConfig = ctx.getPluginConfig();
-    const config = resolveConfig(pluginConfig);
+    ctx.ensureConfigFile?.("cron.yaml", buildDefaultConfigTemplate());
+    const rawSection = ctx.readConfigSection?.("cron");
+    const mergedRaw = rawSection ?? {};
+    const config = resolveConfig(mergedRaw);
+    const bgConfig = resolveBackgroundConfig(mergedRaw?.backgroundExecution);
     if (!config.enabled) {
-      logger3.info("调度器未启用（config.enabled = false）");
+      logger4.info("调度器未启用（config.enabled = false）");
       return;
     }
     ctx.registerTool(manageScheduledTasksTool);
-    logger3.info("manage_scheduled_tasks 工具已注册");
+    logger4.info("manage_scheduled_tasks 工具已注册");
     ctx.addHook({
       name: "cron:capture-session",
       priority: 200,
@@ -1951,9 +2140,10 @@ var src_default = definePlugin({
       }
     });
     ctx.onReady(async (api) => {
+      const cronDataDir = ctx.getDataDir();
       const taskBoard = api.taskBoard ?? null;
       const agentName = api.agentName ?? "master";
-      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName);
+      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName, bgConfig, cronDataDir);
       injectScheduler(schedulerInstance);
       api.backend.on("done", (sessionId) => {
         schedulerInstance?.recordActivity(sessionId);
@@ -1961,7 +2151,7 @@ var src_default = definePlugin({
       await schedulerInstance.start();
       registerWebRoutes(api);
       registerSettingsTab(api, ctx);
-      logger3.info("调度器插件初始化完成");
+      logger4.info("调度器插件初始化完成");
     });
   },
   async deactivate() {
@@ -1969,12 +2159,12 @@ var src_default = definePlugin({
       schedulerInstance.stop();
       schedulerInstance = null;
     }
-    logger3.info("调度器插件已卸载");
+    logger4.info("调度器插件已卸载");
   }
 });
 function registerWebRoutes(api) {
   if (!api.registerWebRoute) {
-    logger3.info("Web 路由注册不可用（非 Web 平台），跳过");
+    logger4.info("Web 路由注册不可用（非 Web 平台），跳过");
     return;
   }
   api.registerWebRoute("GET", "/api/plugins/cron/jobs", async (_req, res) => {
@@ -2033,12 +2223,12 @@ function registerWebRoutes(api) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, record }));
   });
-  logger3.info("Web API 路由已注册（5 个端点）");
+  logger4.info("Web API 路由已注册（5 个端点）");
 }
 function registerSettingsTab(api, ctx) {
   const registerTab = api.registerConsoleSettingsTab;
   if (!registerTab) {
-    logger3.info("Console Settings Tab 注册不可用，跳过");
+    logger4.info("Console Settings Tab 注册不可用，跳过");
     return;
   }
   registerTab({
@@ -2145,66 +2335,50 @@ function registerSettingsTab(api, ctx) {
           }
         };
         schedulerInstance?.updateConfig(newConfig);
-        const extRootDir = ctx.getExtensionRootDir();
-        if (extRootDir) {
-          const configPath = path2.join(extRootDir, "config.yaml");
-          const yaml = buildConfigYaml(newConfig);
-          fs2.writeFileSync(configPath, yaml, "utf-8");
-          logger3.info("配置已写回 config.yaml");
-        }
-        return { success: true };
+        return { success: true, message: "配置已生效（如需持久化请编辑 cron.yaml）" };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        logger3.error(`保存配置失败: ${msg}`);
+        logger4.error(`保存配置失败: ${msg}`);
         return { success: false, error: msg };
       }
     }
   });
-  logger3.info("Console Settings Tab 已注册");
+  logger4.info("Console Settings Tab 已注册");
 }
-function resolveConfig(pluginConfig) {
+function resolveConfig(raw) {
+  const quietHours = raw?.quietHours;
+  const skipRecent = raw?.skipIfRecentActivity;
   return {
-    enabled: pluginConfig?.enabled ?? DEFAULT_SCHEDULER_CONFIG.enabled,
+    enabled: raw?.enabled ?? DEFAULT_SCHEDULER_CONFIG.enabled,
     quietHours: {
       ...DEFAULT_SCHEDULER_CONFIG.quietHours,
-      ...pluginConfig?.quietHours
+      ...quietHours ? {
+        enabled: quietHours.enabled ?? DEFAULT_SCHEDULER_CONFIG.quietHours.enabled,
+        allowUrgent: quietHours.allowUrgent ?? DEFAULT_SCHEDULER_CONFIG.quietHours.allowUrgent,
+        ...quietHours.windows ? { windows: quietHours.windows } : {}
+      } : {}
     },
     skipIfRecentActivity: {
       ...DEFAULT_SCHEDULER_CONFIG.skipIfRecentActivity,
-      ...pluginConfig?.skipIfRecentActivity
+      ...skipRecent ? {
+        enabled: skipRecent.enabled ?? DEFAULT_SCHEDULER_CONFIG.skipIfRecentActivity.enabled,
+        withinMinutes: skipRecent.withinMinutes ?? DEFAULT_SCHEDULER_CONFIG.skipIfRecentActivity.withinMinutes
+      } : {}
     }
   };
 }
-function buildConfigYaml(config) {
-  const lines = [];
-  lines.push("# 定时任务调度插件配置");
-  lines.push("#");
-  lines.push("# 启用后，LLM 可通过 manage_scheduled_tasks 工具");
-  lines.push("# 创建、管理定时任务，实现自动化调度。");
-  lines.push("");
-  lines.push("# 是否启用调度器");
-  lines.push(`enabled: ${config.enabled}`);
-  lines.push("");
-  lines.push("# 安静时段配置");
-  lines.push("# 在安静时段内，非紧急任务将被跳过");
-  lines.push("quietHours:");
-  lines.push(`  enabled: ${config.quietHours.enabled}`);
-  lines.push("  windows:");
-  for (const w2 of config.quietHours.windows) {
-    lines.push(`    - start: "${w2.start}"`);
-    lines.push(`      end: "${w2.end}"`);
-  }
-  lines.push("  # 是否允许紧急任务穿透安静时段");
-  lines.push(`  allowUrgent: ${config.quietHours.allowUrgent}`);
-  lines.push("");
-  lines.push("# 跳过近期活跃会话");
-  lines.push("# 如果目标会话在指定分钟内有过活动，则跳过本次投递");
-  lines.push("skipIfRecentActivity:");
-  lines.push(`  enabled: ${config.skipIfRecentActivity.enabled}`);
-  lines.push(`  withinMinutes: ${config.skipIfRecentActivity.withinMinutes}`);
-  return lines.join(`
-`) + `
-`;
+function resolveBackgroundConfig(raw) {
+  if (!raw)
+    return { ...DEFAULT_BACKGROUND_CONFIG };
+  return {
+    systemPrompt: typeof raw.systemPrompt === "string" && raw.systemPrompt.trim() ? raw.systemPrompt.trim() : DEFAULT_BACKGROUND_CONFIG.systemPrompt,
+    excludeTools: Array.isArray(raw.excludeTools) ? raw.excludeTools.filter((t) => typeof t === "string") : [...DEFAULT_BACKGROUND_CONFIG.excludeTools],
+    maxToolRounds: typeof raw.maxToolRounds === "number" && raw.maxToolRounds > 0 ? raw.maxToolRounds : DEFAULT_BACKGROUND_CONFIG.maxToolRounds,
+    timeoutMs: typeof raw.timeoutMs === "number" && raw.timeoutMs > 0 ? raw.timeoutMs : DEFAULT_BACKGROUND_CONFIG.timeoutMs,
+    maxConcurrent: typeof raw.maxConcurrent === "number" && raw.maxConcurrent > 0 ? raw.maxConcurrent : DEFAULT_BACKGROUND_CONFIG.maxConcurrent,
+    retentionDays: typeof raw.retentionDays === "number" && raw.retentionDays > 0 ? raw.retentionDays : DEFAULT_BACKGROUND_CONFIG.retentionDays,
+    retentionCount: typeof raw.retentionCount === "number" && raw.retentionCount > 0 ? raw.retentionCount : DEFAULT_BACKGROUND_CONFIG.retentionCount
+  };
 }
 export {
   src_default as default

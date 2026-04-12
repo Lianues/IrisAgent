@@ -620,39 +620,32 @@ var init_consolidation = __esm(() => {
 
 // src/index.ts
 import * as path2 from "path";
-// ../../packages/extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
+
+// ../../packages/extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= LogLevel.DEBUG)
+      if (_logLevel <= 0 /* DEBUG */)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= LogLevel.INFO)
+      if (_logLevel <= 1 /* INFO */)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= LogLevel.WARN)
+      if (_logLevel <= 2 /* WARN */)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= LogLevel.ERROR)
+      if (_logLevel <= 3 /* ERROR */)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin/context.js
+// ../../packages/extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -1421,7 +1414,7 @@ function getActiveTurnSessionId() {
 async function enableMemorySystem(ctx) {
   if (!cachedApi || activeProvider)
     return;
-  const effectiveDataDir = cachedApi.dataDir ?? ctx.getConfigDir();
+  const effectiveDataDir = ctx.getDataDir();
   const dataPath = currentConfig.dbPath ? path2.resolve(effectiveDataDir, currentConfig.dbPath) : path2.join(effectiveDataDir, "memory.db");
   activeProvider = new MemoryStore(dataPath, logger);
   const tools = createMemoryTools(activeProvider);

@@ -67,6 +67,7 @@ export default definePlugin({
 
     // 5. onReady：系统启动完成后初始化调度器和各种注册
     ctx.onReady(async (api) => {
+      const cronDataDir = ctx.getDataDir();
       // [cron 重构] 从 IrisAPI 获取 taskBoard 和 agentName，
       // 替代原有的 agentTaskRegistry + eventBus 注入方式。
       const taskBoard = (api as any).taskBoard ?? null;
@@ -74,7 +75,7 @@ export default definePlugin({
       const agentName: string = (api as any).agentName ?? 'master';
 
       // 创建调度器实例：传入 taskBoard、agentName 和后台执行配置
-      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName, bgConfig);
+      schedulerInstance = new CronScheduler(api, config, taskBoard, agentName, bgConfig, cronDataDir);
 
       // 将调度器实例注入给工具模块
       injectScheduler(schedulerInstance);

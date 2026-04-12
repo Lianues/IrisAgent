@@ -198,6 +198,7 @@ export class CronScheduler {
     taskBoard?: TaskBoardLike | null,
     agentName?: string,
     backgroundConfig?: Partial<CronBackgroundConfig>,
+    dataDir?: string,
   ) {
     this.api = api;
     this.config = config ? { ...config } : { ...DEFAULT_SCHEDULER_CONFIG };
@@ -206,13 +207,10 @@ export class CronScheduler {
     this.agentName = agentName ?? 'master';
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
 
-    // 根据 api.dataDir 确定持久化文件路径
-    // 单 agent: ~/.iris/cron-jobs.json
-    // 多 agent: ~/.iris/agents/<name>/cron-jobs.json
-    const dataDir = api.dataDir ?? resolveDefaultDataDir();
-    this.filePath = path.join(dataDir, 'cron-jobs.json');
-    // 执行记录目录：与 cron-jobs.json 同级的 cron-runs/
-    this.runsDir = path.join(dataDir, 'cron-runs');
+    // 数据存放在 extension-data/cron/ 下
+    const dir = dataDir ?? resolveDefaultDataDir();
+    this.filePath = path.join(dir, 'cron-jobs.json');
+    this.runsDir = path.join(dir, 'cron-runs');
   }
 
   // ──────────── 生命周期 ────────────
