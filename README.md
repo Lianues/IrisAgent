@@ -81,27 +81,37 @@ Linux 额外支持 systemd 服务管理（`iris service start/stop/status`）。
 
 ### 方式四：Docker
 
+提供两个预构建镜像，发布在 GitHub Container Registry：
+
+| 镜像 | 说明 |
+|------|------|
+| `ghcr.io/lianues/iris:latest` | 生产镜像，含 Web GUI + TUI（~400 MB） |
+| `ghcr.io/lianues/iris:computer-use` | 额外含 Playwright + Chromium，支持 AI 操控浏览器（~900 MB） |
+
 ```bash
 # 下载 compose 文件
+mkdir iris && cd iris
 curl -O https://raw.githubusercontent.com/Lianues/Iris/main/deploy/docker/iris-compose.yml
-curl -O https://raw.githubusercontent.com/Lianues/Iris/main/deploy/docker/iris.env.example
-cp iris.env.example .env
 
-# 启动
+# 启动（自动拉取镜像）
 docker compose -f iris-compose.yml up -d
 
-# 编辑 LLM API Key（首次启动后）
-docker compose -f iris-compose.yml exec iris vi /data/configs/llm.yaml
+# 配置 LLM API Key（首次启动后）
+nano ~/.iris/configs/llm.yaml
 docker compose -f iris-compose.yml restart
 ```
 
-如需浏览器自动化（Computer Use），使用 `computer-use` 镜像：
+启动后：
+- **Web GUI**：浏览器访问 `http://localhost:8192`
+- **TUI**：终端直接输入 `iris`（二进制已自动部署到宿主机）
+
+如需 Computer Use 镜像：
 
 ```bash
 docker compose -f iris-compose.yml --profile computer-use up -d iris-computer-use
 ```
 
-详见 [docs/deploy.md](docs/deploy.md#docker-部署)。
+从源码构建及更多配置详见 [docs/deploy.md](docs/deploy.md#docker-部署)。
 
 ### 方式五：源码开发
 

@@ -4,13 +4,17 @@
 # 使用方式：
 #   1. 下载本文件和 iris.env.example
 #   2. cp iris.env.example .env    # 按需修改环境变量
-#   3. docker compose up -d        # 启动
+#   3. docker compose -f iris-compose.yml up -d
 #   4. 编辑 LLM API Key:
-#      docker compose exec iris vi /data/configs/llm.yaml
-#   5. docker compose restart      # 重启生效
+#      nano ~/.iris/configs/llm.yaml
+#   5. docker compose -f iris-compose.yml restart
+#
+# 启动后：
+#   - Web GUI: http://localhost:8192
+#   - TUI: 直接在终端输入 iris（自动部署到 /usr/local/bin/）
 #
 # Computer Use（含浏览器自动化）：
-#   docker compose --profile computer-use up -d iris-computer-use
+#   docker compose -f iris-compose.yml --profile computer-use up -d iris-computer-use
 # ============================================================
 
 services:
@@ -21,7 +25,8 @@ services:
     ports:
       - "${IRIS_PORT:-8192}:8192"
     volumes:
-      - iris-data:/data
+      - ${IRIS_DATA_DIR:-~/.iris}:/data
+      - ${IRIS_CLI_DIR:-/usr/local/bin}:/host-bin
     environment:
       NODE_ENV: production
       IRIS_DATA_DIR: /data
@@ -45,7 +50,8 @@ services:
     ports:
       - "${IRIS_PORT:-8192}:8192"
     volumes:
-      - iris-data:/data
+      - ${IRIS_DATA_DIR:-~/.iris}:/data
+      - ${IRIS_CLI_DIR:-/usr/local/bin}:/host-bin
     environment:
       NODE_ENV: production
       IRIS_DATA_DIR: /data
@@ -59,7 +65,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-
-volumes:
-  iris-data:
-    driver: local

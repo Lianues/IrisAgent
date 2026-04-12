@@ -311,28 +311,31 @@ sudo systemctl list-timers | grep certbot
 
 | 镜像 | 基础 | 体积 | 说明 |
 |------|------|------|------|
-| `ghcr.io/lianues/iris:latest` | Node 22 Debian slim | ~400 MB | 生产用，含 TUI 二进制 |
-| `ghcr.io/lianues/iris:computer-use` | Ubuntu + Playwright | ~900 MB | 含 Chromium，支持浏览器自动化 |
+| `ghcr.io/lianues/iris:latest` | Node 22 Debian slim | ~400 MB | 生产用，含 Web GUI + TUI 二进制 |
+| `ghcr.io/lianues/iris:computer-use` | Ubuntu + Playwright | ~900 MB | 额外支持 AI 操控浏览器（Chromium） |
 
 ### 快速启动（使用预构建镜像）
 
+无需克隆仓库、无需安装 Node.js，只需下载一个 compose 文件即可运行：
+
 ```bash
-# 下载 compose 文件和环境变量模板
+# 1. 下载 compose 文件
+mkdir iris && cd iris
 curl -O https://raw.githubusercontent.com/Lianues/Iris/main/deploy/docker/iris-compose.yml
-curl -O https://raw.githubusercontent.com/Lianues/Iris/main/deploy/docker/iris.env.example
 
-# 创建环境变量文件（按需修改）
-cp iris.env.example .env
-
-# 启动
+# 2. 启动（自动拉取镜像）
 docker compose -f iris-compose.yml up -d
 
-# 首次启动后编辑 LLM API Key
-docker compose -f iris-compose.yml exec iris vi /data/configs/llm.yaml
+# 3. 配置 LLM API Key
+nano ~/.iris/configs/llm.yaml
 
-# 重启生效
+# 4. 重启生效
 docker compose -f iris-compose.yml restart
 ```
+
+启动后：
+- **Web GUI**：浏览器访问 `http://localhost:8192`
+- **TUI**：终端直接输入 `iris`（二进制已自动部署到 `/usr/local/bin/`）
 
 如需 Computer Use（浏览器自动化）：
 
@@ -342,21 +345,26 @@ docker compose -f iris-compose.yml --profile computer-use up -d iris-computer-us
 
 ### 从源码构建
 
+适用于开发者或需要自定义构建的场景：
+
 ```bash
-cd deploy/docker
+git clone https://github.com/Lianues/Iris.git
+cd Iris
 
 # 构建并启动 production 镜像
-docker compose up -d
+docker compose -f deploy/docker/docker-compose.yml build
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 或构建 computer-use 镜像
-docker compose --profile computer-use up -d iris-computer-use
+docker compose -f deploy/docker/docker-compose.yml --profile computer-use build iris-computer-use
+docker compose -f deploy/docker/docker-compose.yml --profile computer-use up -d iris-computer-use
 ```
 
 也可以直接使用 `docker build`：
 
 ```bash
 # 在项目根目录执行
-docker build -t iris -f deploy/docker/Dockerfile .                          # production
+docker build -t iris -f deploy/docker/Dockerfile .                                # production
 docker build -t iris-cu -f deploy/docker/Dockerfile --target computer-use-base .  # computer-use
 ```
 
@@ -368,25 +376,20 @@ Dockerfile 采用多阶段构建，共 6 个阶段：
 Stage 1: deps            ── 安装所有依赖（含 devDeps、原生编译工具）
 Stage 2: build-ui        ── 构建 Vue 3 Web UI（Vite）
 Stage 3: build           ── 编译 TypeScript，然后 npm prune 移除 devDeps
-Stage 4: bun-compile     ── 使用 Bun 编译独立二进制（含 TUI + onboard）
+Stage 4: bun-compile     ── 安装扩展依赖 + 使用 Bun 编译独立二进制（TUI + onboard）
 Stage 5: production      ── Node 22 Debian slim 最终镜像（默认 target）
-Stage 6: computer-use    ── Playwright Ubuntu 镜像（含 Chromium）
+Stage 6: computer-use    ── Playwright Ubuntu 镜像（含 Chromium + playwright）
 ```
-
-production 镜像特点：
-- 使用 `tini` 作为 init 进程，正确处理信号转发和僵尸进程回收
-- 以非 root 用户 `iris`（UID 1000）运行
-- 数据目录 `/data` 声明为 VOLUME，配置和会话数据持久化
-- 内置 Bun 编译的 `iris` 二进制，支持 Console TUI 和 onboard 配置引导
 
 ### 首次启动行为
 
 容器首次启动时，`entrypoint.sh` 会：
 
-1. 检查 `/data/configs/` 是否为空
-2. 如果为空，从 `/app/data/configs.example/` 复制配置模板
-3. 自动将 `host` 从 `127.0.0.1` 改为 `0.0.0.0`（Docker 端口映射需要）
-4. 提示用户编辑 `llm.yaml` 配置 API Key
+1. 检查 `~/.iris/configs/` 是否为空
+2. 如果为空，从内置模板复制默认配置
+3. 自动将 `web.host` 改为 `0.0.0.0`（Docker 端口映射需要）
+4. 部署 TUI 二进制（`iris`、`iris-onboard`）到宿主机 `/usr/local/bin/`
+5. 以非 root 用户启动应用
 
 ### 环境变量
 
@@ -394,60 +397,54 @@ production 镜像特点：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `IRIS_PLATFORM` | `web` | 启动的平台，逗号分隔（`web,discord,telegram,console` 等）|
+| `IRIS_PLATFORM` | `web` | 启动的平台类型（`web`、`console` 等，逗号分隔）|
 | `IRIS_PORT` | `8192` | 宿主机映射端口 |
-| `WEB_AUTH_TOKEN` | — | Web API 认证令牌（公网部署建议设置）|
-| `WEB_MANAGEMENT_TOKEN` | — | 管理 API 令牌 |
+| `IRIS_DATA_DIR` | `~/.iris` | 宿主机数据目录（配置、会话、数据库） |
+| `IRIS_CLI_DIR` | `/usr/local/bin` | TUI 二进制部署目录 |
 
-> **注意**：设置 `IRIS_PLATFORM=console` 时，entrypoint 会自动切换到 Bun 编译的二进制来启动 TUI。需要以交互模式运行容器（`docker run -it`）。
-
-LLM API Key 不通过环境变量配置，而是编辑数据卷中的 `/data/configs/llm.yaml`。
+LLM API Key 不通过环境变量配置，而是编辑 `~/.iris/configs/llm.yaml`。
 
 ### 数据持久化
 
-容器使用 Docker named volume `iris-data` 挂载到 `/data`，包含：
+容器挂载宿主机 `~/.iris` 到 `/data`，TUI 和 Web GUI 共享同一份配置：
 
 ```
-/data/
+~/.iris/
 ├── configs/          ← 配置文件（首次启动从模板生成）
 │   ├── llm.yaml      ← LLM API Key 和模型配置
 │   ├── platform.yaml  ← 平台和网络配置
 │   └── ...
-└── sessions/         ← 会话数据
-```
-
-备份数据：
-
-```bash
-docker run --rm -v iris-data:/data -v $(pwd):/backup alpine tar czf /backup/iris-data-backup.tar.gz -C /data .
+├── sessions/         ← 会话数据
+└── iris.db           ← SQLite 数据库
 ```
 
 ### Console TUI 和 Onboard
 
-Docker 镜像内置了 Bun 编译的 `iris` 二进制，支持 Console TUI 和交互式配置引导。
-
-**以 TUI 模式启动容器：**
+Docker 启动时会自动将 TUI 二进制部署到宿主机（通过 `/host-bin` 挂载），无需手动提取：
 
 ```bash
-docker run -it -e IRIS_PLATFORM=console -v iris-data:/data ghcr.io/lianues/iris
+# 直接使用（已自动部署）
+iris
+
+# 交互式配置引导
+iris-onboard
 ```
 
-**在已运行的容器中启动 TUI：**
+也可以在容器内直接运行：
 
 ```bash
+# 在已运行的容器中启动 TUI
 docker exec -it iris /app/bin/iris
-```
 
-**首次配置使用 Onboard 引导：**
-
-```bash
-docker run -it -v iris-data:/data ghcr.io/lianues/iris /app/bin/iris-onboard
+# 首次配置使用 Onboard 引导
+docker exec -it iris /app/bin/iris-onboard
 ```
 
 ### CI/CD 自动发布
 
-`release.yml` 中的 `publish-docker` job 在推送 `v*` 标签时自动构建并发布镜像到 GHCR，与二进制构建并行运行：
+`release.yml` 中的 `publish-docker` job 支持两种触发方式：
 
-- 使用 Docker Buildx + GitHub Actions 缓存
-- 同时推送 `latest` / `<version>` 和 `computer-use` / `<version>-computer-use` 标签
-- 所需权限：`packages: write`（已在 workflow 中声明）
+- **推送 `v*` 标签**：自动构建并发布所有内容（Docker + GitHub Release + npm）
+- **手动触发**：在 Actions 页面勾选 `publish_docker` 单独构建 Docker 镜像
+
+镜像推送到 GHCR，同时打 `latest` / `<version>` 和 `computer-use` / `<version>-computer-use` 标签。
