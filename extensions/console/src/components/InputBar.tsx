@@ -217,9 +217,9 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
 
   // ── 输入区域滚动判定 ──────────────────────────────────────
   // 根据终端宽度计算实际渲染行数（含自动换行），超过上限才启用 scrollbox。
-  // 水平开销 = paddingX(2) + border(2) + innerPadding(2) + prompt(3) = 9
+  // 水平开销 = paddingX(2) + border(2) + innerPadding(2) + prompt(3) = 9（不含滚动条）
   const MAX_VISIBLE_INPUT_LINES = 8;
-  const availableWidth = Math.max(1, termWidth - 9);
+  const baseAvailableWidth = Math.max(1, termWidth - 9);
 
   const visualLineCount = useMemo(() => {
     if (!value) return 1;
@@ -228,12 +228,15 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     for (const line of lines) {
       const w = getTextWidth(line);
       // 空行占 1 行；非空行按终端宽度折行
-      count += w === 0 ? 1 : Math.ceil(w / availableWidth);
+      count += w === 0 ? 1 : Math.ceil(w / baseAvailableWidth);
     }
     return count;
-  }, [value, availableWidth]);
+  }, [value, baseAvailableWidth]);
 
   const needsInputScroll = visualLineCount > MAX_VISIBLE_INPUT_LINES;
+
+  // 当滚动条可见时，减去滚动条宽度（1 列）以获得更准确的可用宽度
+  const availableWidth = needsInputScroll ? Math.max(1, baseAvailableWidth - 1) : baseAvailableWidth;
 
   // 提示符样式和 placeholder 根据状态变化
   const promptColor = inputDisabled ? C.dim : isQueueMode ? C.warn : C.accent;
@@ -242,14 +245,24 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
 
   const inputRow = (
     <box flexDirection="row" border={false}>
-      <text fg={promptColor}><strong>{promptChar} </strong></text><InputDisplay
-        value={value}
-        cursor={inputState.cursor}
-        availableWidth={availableWidth}
-        isActive={!inputDisabled}
-        cursorVisible={cursorVisible}
-        placeholder={placeholder}
-      />
+      <text fg={promptColor}><strong>{promptChar} </strong></text>
+      {/* ── Work-around: OpenTUI TextBufferRenderable measureFunc bug ──
+        * 在 row 布局中，Yoga 以 widthMode=AtMost 测量 <text> 元素，
+        * measureFunc 会将高度截断为 Math.min(effectiveHeight=1, measuredHeight)，
+        * 导致多行文本始终报告 height=1，ScrollBox 的 content.height 等于
+        * viewport.height，滚动条无法工作。
+        * 将 InputDisplay 包裹在 column 布局的 <box> 中，使 Yoga 以
+        * widthMode=Exactly 测量文本，绕过 AtMost 分支的高度截断。 */}
+      <box flexGrow={1} flexShrink={1}>
+        <InputDisplay
+          value={value}
+          cursor={inputState.cursor}
+          availableWidth={availableWidth}
+          isActive={!inputDisabled}
+          cursorVisible={cursorVisible}
+          placeholder={placeholder}
+        />
+      </box>
     </box>
   );
 
