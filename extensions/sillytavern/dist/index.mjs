@@ -179,6 +179,8 @@ var src_default = definePlugin({
   activate(ctx) {
     const log = createPluginLogger("sillytavern");
     ctx.ensureConfigFile("sillytavern.yaml", defaultConfigTemplate);
+    const dataDir = ctx.getDataDir();
+    ensureDataDirs(dataDir);
     const rawConfig = ctx.readConfigSection("sillytavern");
     const config = {
       enabled: false,
@@ -198,8 +200,6 @@ var src_default = definePlugin({
       log.warn("未配置预设文件（preset），插件不会生效");
       return;
     }
-    const dataDir = ctx.getDataDir();
-    ensureDataDirs(dataDir);
     log.info(`数据目录: ${dataDir}`);
     let preset;
     let character;

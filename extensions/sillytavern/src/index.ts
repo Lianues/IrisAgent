@@ -36,6 +36,11 @@ export default definePlugin({
     // ── 1. 配置 ──
 
     ctx.ensureConfigFile('sillytavern.yaml', defaultConfigTemplate);
+
+    // 无论是否启用都创建数据目录结构，方便用户放入文件
+    const dataDir = ctx.getDataDir();
+    ensureDataDirs(dataDir);
+
     const rawConfig = ctx.readConfigSection('sillytavern') as Record<string, unknown> | undefined;
     const config: SillyTavernConfig = {
       enabled: false,
@@ -58,13 +63,8 @@ export default definePlugin({
       return;
     }
 
-    // ── 2. 数据目录 ──
-
-    const dataDir = ctx.getDataDir();
-    ensureDataDirs(dataDir);
+    // ── 2. 加载资源 ──
     log.info(`数据目录: ${dataDir}`);
-
-    // ── 3. 加载资源 ──
 
     let preset: PresetInfo;
     let character: CharacterCard | undefined;
