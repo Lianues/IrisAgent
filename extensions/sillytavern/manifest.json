@@ -1,0 +1,15 @@
+{
+  "name": "sillytavern",
+  "version": "0.1.0",
+  "description": "SillyTavern 提示词引擎 — 使用酒馆格式的预设、角色卡、世界书、正则组装提示词",
+  "author": "Iris",
+  "plugin": {
+    "entry": "dist/index.mjs"
+  },
+  "distribution": {
+    "files": [
+      "dist/index.mjs",
+      "package.json"
+    ]
+  }
+}
