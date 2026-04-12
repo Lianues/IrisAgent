@@ -278,11 +278,15 @@ export class IrisCore {
       this._mcpOwned = false;
       tools.registerAll(mcpManager.getTools());
     } else if (config.mcp) {
-      // 没有共享注入时走原有逻辑：自建 MCPManager + connectAll。
+      // 没有共享注入时走原有逻辑：自建 MCPManager。
       // _mcpOwned 保持默认 true，shutdown 时由 Core 自行 disconnect。
+      // 后台异步连接，不阻塞启动。连接完成后自动注册工具。
       mcpManager = createMCPManager(config.mcp);
-      await mcpManager.connectAll();
-      tools.registerAll(mcpManager.getTools());
+      mcpManager.connectAll().then(() => {
+        tools.registerAll(mcpManager!.getTools());
+      }).catch(err => {
+        console.warn('[MCP] 后台连接失败:', err);
+      });
     }
 
     const initWarnings: string[] = [];
