@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "irises-extension-sdk": "file:../../packages/extension-sdk",
-    "fast-tavern": "file:../../npm-fast-tavern"
+    "fast-tavern": "^0.1.5"
   }
 }
