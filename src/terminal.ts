@@ -20,11 +20,24 @@ export const TERMINAL_COMMANDS = new Set([
 export function resolveTerminalBinary(): string {
   const binaryName = process.platform === 'win32' ? 'iris-onboard.exe' : 'iris-onboard';
   const hiddenBinaryName = process.platform === 'win32' ? '.iris-onboard.exe' : '.iris-onboard';
-  const execDir = path.dirname(fs.realpathSync(process.execPath));
-  const candidates = [
-    path.join(execDir, binaryName),
-    path.join(execDir, hiddenBinaryName),
-  ];
+
+  const searchDirs: string[] = [];
+
+  // 优先：npm 包装器传入的真实包目录（PRoot/L2S 安全）
+  const pkgDir = process.env.__IRIS_PKG_DIR;
+  if (pkgDir) {
+    searchDirs.push(path.join(pkgDir, 'bin'));
+  }
+
+  // 回退：从 process.execPath 推导（正常环境）
+  try {
+    searchDirs.push(path.dirname(fs.realpathSync(process.execPath)));
+  } catch { /* ignore */ }
+
+  const candidates = searchDirs.flatMap((dir) => [
+    path.join(dir, binaryName),
+    path.join(dir, hiddenBinaryName),
+  ]);
 
   const terminalBinary = candidates.find((candidate) => fs.existsSync(candidate));
   if (!terminalBinary) {
