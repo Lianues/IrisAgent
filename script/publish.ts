@@ -60,20 +60,6 @@ const version = Object.values(binaries)[0]
 const wrapperDir = path.join(distBinDir, wrapperName)
 fs.mkdirSync(path.join(wrapperDir, "bin"), { recursive: true })
 
-// 复制 data/ 目录（配置模板和示例文件）
-const dataSrc = path.join(dir, "data")
-const dataDest = path.join(wrapperDir, "data")
-if (fs.existsSync(dataSrc)) {
-  fs.cpSync(dataSrc, dataDest, { recursive: true })
-}
-
-// 复制 Web UI 静态资源（供缓存到包装器 bin/.iris 的二进制使用）
-const webUiDistSrc = path.join(dir, "extensions", "web", "web-ui", "dist")
-const webUiDistDest = path.join(wrapperDir, "web-ui", "dist")
-if (fs.existsSync(webUiDistSrc)) {
-  fs.cpSync(webUiDistSrc, webUiDistDest, { recursive: true })
-}
-
 // 复制启动器脚本
 const launcherSrc = path.join(dir, "bin", "iris")
 const launcherDest = path.join(wrapperDir, "bin", "iris")
