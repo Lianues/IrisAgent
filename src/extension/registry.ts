@@ -8,6 +8,7 @@
  * 这样可以先把 plugin 与 channel 统一到 extension 概念下，
  * 后续再接入远程下载与多版本管理。
  */
+import type { PluginEntry } from 'irises-extension-sdk';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -207,6 +208,64 @@ export function discoverLocalExtensions(): ExtensionPackage[] {
 
   return packages;
 }
+
+/**
+ * 自动发现所有具有 plugin 贡献的本地 extension，返回 PluginEntry 列表。
+ *
+ * 与 registerExtensionPlatforms() 对 platform 的处理方式一致：
+ * 扫描 extensions/ 目录，凡 manifest 中含 plugin 贡献的 extension 均自动纳入。
+ * 调用方可将返回值与 plugins.yaml 的显式配置合并，显式配置拥有更高优先级。
+ */
+export function discoverLocalPluginEntries(
+  extensionPackages: ExtensionPackage[] = discoverLocalExtensions(),
+): PluginEntry[] {
+  const entries: PluginEntry[] = [];
+  for (const pkg of extensionPackages) {
+    const pluginContribution = normalizePluginContribution(pkg.manifest);
+    if (!pluginContribution) continue; // 纯 platform extension，跳过
+    entries.push({
+      name: pkg.manifest.name,
+      type: 'local',
+      enabled: true,
+    });
+  }
+  return entries;
+}
+
+/**
+ * 将自动发现的 plugin entries 与 plugins.yaml 中的显式配置合并。
+ *
+ * 合并策略：
+ * - 自动发现的 entry 作为基础列表
+ * - plugins.yaml 中的同名条目覆盖自动发现的（可设 enabled/priority/config）
+ * - plugins.yaml 中独有的条目（如 npm 插件）追加到末尾
+ */
+export function mergePluginEntries(
+  discovered: PluginEntry[],
+  explicit: PluginEntry[],
+): PluginEntry[] {
+  const explicitMap = new Map(explicit.map(e => [e.name, e]));
+  const merged: PluginEntry[] = [];
+
+  for (const entry of discovered) {
+    const override = explicitMap.get(entry.name);
+    if (override) {
+      merged.push(override); // 显式配置优先
+      explicitMap.delete(entry.name);
+    } else {
+      merged.push(entry); // 自动发现，默认 enabled
+    }
+  }
+
+  // 追加 plugins.yaml 中独有的条目（如 npm 插件）
+  for (const entry of explicitMap.values()) {
+    merged.push(entry);
+  }
+
+  return merged;
+}
+
+
 
 
 export function resolveLocalPluginSource(

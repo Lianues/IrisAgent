@@ -50,7 +50,7 @@ import { createInvokeSkillTool } from '../tools/internal/invoke_skill';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { Backend } from './backend';
 import type { StorageProvider } from '../storage/base';
-import { PluginManager, discoverLocalExtensions } from '../extension';
+import { PluginManager, discoverLocalExtensions, discoverLocalPluginEntries, mergePluginEntries } from '../extension';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PlatformRegistry } from './platform-registry';
 import { PluginEventBus } from '../extension/event-bus';
@@ -213,10 +213,15 @@ export class IrisCore {
     // ---- 0. 预加载插件 + PreBootstrap 阶段 ----
     const inlinePlugins = options.inlinePlugins ?? [];
     const pluginManager = new PluginManager();
-    if (config.plugins?.length || inlinePlugins.length > 0) {
+
+    // 自动发现所有 plugin 类型的 extension，与 plugins.yaml 显式配置合并
+    const discoveredPlugins = discoverLocalPluginEntries();
+    const mergedPlugins = mergePluginEntries(discoveredPlugins, config.plugins ?? []);
+
+    if (mergedPlugins.length > 0 || inlinePlugins.length > 0) {
       pluginManager.setConfigDir(configDir);
       pluginManager.setDevSourceExtensions(config.system.devSourceExtensions);
-      await pluginManager.prepareAll(config.plugins ?? [], config, inlinePlugins);
+      await pluginManager.prepareAll(mergedPlugins, config, inlinePlugins);
       await pluginManager.runPreBootstrap(config, extensions);
     }
 

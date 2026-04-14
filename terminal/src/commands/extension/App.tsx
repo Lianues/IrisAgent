@@ -24,8 +24,13 @@ interface ExtensionAppProps {
   installDir: string
 }
 
-type Step = "home" | "download-list" | "download-confirm" | "manage-list" | "manage-action" | "manage-confirm"
+type Step =
+  | "home"
+  | "download-platform-list" | "download-plugin-list" | "download-confirm"
+  | "manage-platform-list" | "manage-plugin-list" | "manage-action" | "manage-confirm"
 type ManageAction = "enable" | "disable" | "delete"
+type DownloadCategory = "platform" | "plugin"
+type ManageCategory = "platform" | "plugin"
 
 type RemoteCatalogState =
   | { status: "idle" | "loading"; items: ExtensionSummary[]; error?: string }
@@ -121,7 +126,7 @@ function buildManageActionOptions(summary: ExtensionSummary): OptionSelectItem[]
     : {
         value: "enable",
         label: "开启",
-        description: "开启该 extension。若包含插件入口，也会同时写入 plugins.yaml。",
+        description: "开启该 extension。重新启用插件和平台扩展。",
       }
 
   return [
@@ -137,25 +142,28 @@ function buildManageActionOptions(summary: ExtensionSummary): OptionSelectItem[]
 function buildActionTitle(action: ManageAction): string {
   switch (action) {
     case "enable":
-      return "开启插件"
+      return "开启扩展"
     case "disable":
-      return "关闭插件"
+      return "关闭扩展"
     case "delete":
-      return "删除插件"
+      return "删除扩展"
   }
 }
 
 function buildActionDescription(action: ManageAction, summary: ExtensionSummary): string {
   switch (action) {
     case "enable":
-      return summary.stateLabel === "平台已启用，插件未启用"
-        ? `将为 ${summary.name} 补启用插件入口。`
-        : `将开启 ${summary.name}。`
+      return `将开启 ${summary.name}。`
     case "disable":
       return `将关闭 ${summary.name}，运行时会跳过该 extension。`
     case "delete":
       return `将删除 ${summary.name} 的本地安装目录，并移除相关本地插件配置。`
   }
+}
+
+function categoryTitle(category: "platform" | "plugin", action: "download" | "manage"): string {
+  const typeLabel = category === "platform" ? "平台" : "插件"
+  return action === "download" ? `下载${typeLabel}` : `管理${typeLabel}`
 }
 
 export function App({ installDir }: ExtensionAppProps) {
@@ -167,10 +175,20 @@ export function App({ installDir }: ExtensionAppProps) {
   const [selectedRemoteExtension, setSelectedRemoteExtension] = useState<ExtensionSummary | null>(null)
   const [selectedInstalledExtension, setSelectedInstalledExtension] = useState<ExtensionSummary | null>(null)
   const [selectedManageAction, setSelectedManageAction] = useState<ManageAction | null>(null)
+  const [downloadCategory, setDownloadCategory] = useState<DownloadCategory>("platform")
+  const [manageCategory, setManageCategory] = useState<ManageCategory>("platform")
   const remoteTimeoutMs = useMemo(() => getRemoteExtensionRequestTimeoutMs(), [])
 
+  // 按类型过滤
+  const remotePlatforms = useMemo(() => remoteCatalogState.items.filter((e) => e.hasPlatforms), [remoteCatalogState.items])
+  const remotePlugins = useMemo(() => remoteCatalogState.items.filter((e) => e.hasPlugin), [remoteCatalogState.items])
+  const installedPlatforms = useMemo(() => installedExtensions.filter((e) => e.hasPlatforms), [installedExtensions])
+  const installedPlugins = useMemo(() => installedExtensions.filter((e) => e.hasPlugin), [installedExtensions])
+
+  const isDownloadStep = step === "download-platform-list" || step === "download-plugin-list"
+
   useEffect(() => {
-    if (step !== "download-list") return
+    if (!isDownloadStep) return
     let cancelled = false
     setRemoteCatalogState({ status: "loading", items: [] })
 
@@ -191,42 +209,71 @@ export function App({ installDir }: ExtensionAppProps) {
     return () => {
       cancelled = true
     }
-  }, [installDir, step, remoteCatalogRefreshToken])
+  }, [installDir, isDownloadStep, remoteCatalogRefreshToken])
 
+  // ==================== 首页 ====================
   if (step === "home") {
     return (
       <OptionSelectPage
-        title="插件安装与管理"
-        description="选择要进行的操作。可从远程仓库下载 extension，也可管理本地已安装的 extension。"
+        title="扩展安装与管理"
+        description="选择要进行的操作。可从远程仓库分别下载平台和插件扩展，也可分类管理本地已安装的扩展。"
         options={[
           {
-            value: "download",
-            label: "下载插件",
-            description: "从远程仓库读取 extensions 目录，查看类型、名称、描述并下载安装。",
+            value: "download-platform",
+            label: "下载平台",
+            description: "从远程仓库浏览和下载平台类扩展（如 Telegram、Discord 等通信平台）。",
           },
           {
-            value: "manage",
+            value: "download-plugin",
+            label: "下载插件",
+            description: "从远程仓库浏览和下载插件类扩展（如 memory、cron 等功能增强）。",
+          },
+          {
+            value: "manage-platform",
+            label: "管理平台",
+            description: "查看本地已安装的平台扩展，执行开启、关闭或删除。",
+          },
+          {
+            value: "manage-plugin",
             label: "管理插件",
-            description: "查看本地已安装的 extension，执行开启、关闭或删除。",
+            description: "查看本地已安装的插件扩展，执行开启、关闭或删除。",
           },
         ]}
         onSelect={(value) => {
-          if (value === "download") {
-            setStep("download-list")
-            return
+          switch (value) {
+            case "download-platform":
+              setDownloadCategory("platform")
+              setStep("download-platform-list")
+              return
+            case "download-plugin":
+              setDownloadCategory("plugin")
+              setStep("download-plugin-list")
+              return
+            case "manage-platform":
+              setManageCategory("platform")
+              setStep("manage-platform-list")
+              return
+            case "manage-plugin":
+              setManageCategory("plugin")
+              setStep("manage-plugin-list")
+              return
           }
-          setStep("manage-list")
         }}
         onBack={() => gracefulExit()}
       />
     )
   }
 
-  if (step === "download-list") {
+  // ==================== 下载列表（平台 / 插件） ====================
+  if (isDownloadStep) {
+    const title = categoryTitle(downloadCategory, "download")
+    const filteredItems = downloadCategory === "platform" ? remotePlatforms : remotePlugins
+    const emptyLabel = downloadCategory === "platform" ? "平台" : "插件"
+
     if (remoteCatalogState.status === "idle" || remoteCatalogState.status === "loading") {
       return (
         <StatusPage
-          title="下载插件"
+          title={title}
           description="正在从远程仓库读取 extension 目录。"
           lines={[
             "请稍候。",
@@ -241,7 +288,7 @@ export function App({ installDir }: ExtensionAppProps) {
     if (remoteCatalogState.status === "error") {
       return (
         <StatusPage
-          title="下载插件"
+          title={title}
           description="远程 extension 列表读取失败。"
           lines={[
             remoteCatalogState.error,
@@ -254,13 +301,13 @@ export function App({ installDir }: ExtensionAppProps) {
       )
     }
 
-    if (remoteCatalogState.items.length === 0) {
+    if (filteredItems.length === 0) {
       return (
         <StatusPage
-          title="下载插件"
-          description="远程仓库中没有可显示的 extension。"
+          title={title}
+          description={`远程仓库中没有可用的${emptyLabel}扩展。`}
           lines={[
-            "当前未发现可用 extension。",
+            `当前未发现可用的${emptyLabel}扩展。`,
             "请稍后再试，或检查远程仓库配置。",
           ]}
           onBack={() => setStep("home")}
@@ -270,11 +317,11 @@ export function App({ installDir }: ExtensionAppProps) {
 
     return (
       <OptionSelectPage
-        title="下载插件"
-        description="从远程仓库选择一个 extension。列表中会显示更细的类型信息，以及本地已安装或源码内嵌版本提示。"
-        options={remoteCatalogState.items.map(buildRemoteExtensionOption)}
+        title={title}
+        description={`从远程仓库选择一个${emptyLabel}扩展。列表中会显示更细的类型信息，以及本地已安装或源码内嵌版本提示。`}
+        options={filteredItems.map(buildRemoteExtensionOption)}
         onSelect={(requestedPath) => {
-          const selected = remoteCatalogState.items.find((item) => item.requestedPath === requestedPath)
+          const selected = filteredItems.find((item) => item.requestedPath === requestedPath)
           if (!selected) return
           setSelectedRemoteExtension(selected)
           setStep("download-confirm")
@@ -284,7 +331,10 @@ export function App({ installDir }: ExtensionAppProps) {
     )
   }
 
+  // ==================== 下载确认 ====================
   if (step === "download-confirm" && selectedRemoteExtension) {
+    const title = categoryTitle(downloadCategory, "download")
+
     const sections: InfoConfirmSection[] = [
       {
         rows: [
@@ -322,16 +372,16 @@ export function App({ installDir }: ExtensionAppProps) {
           selectedRemoteExtension.distributionMode === "bundled"
             ? "当前远程包已通过可直接安装校验。"
             : "当前远程包缺少可运行入口，例如 dist/index.mjs，因此不是可直接安装的发行包。",
-          selectedRemoteExtension.hasPlugin
-            ? "该 extension 包含插件入口。安装成功后会自动写入 plugins.yaml 并设为启用。"
-            : "该 extension 不包含插件入口，安装后只会参与平台或其他扩展能力加载。",
+          "安装成功后扩展将自动注册，无需手动配置。",
         ],
       },
     ]
 
+    const downloadListStep = downloadCategory === "platform" ? "download-platform-list" : "download-plugin-list"
+
     return (
       <InfoConfirmPage
-        title="确认下载插件"
+        title={`确认${title}`}
         description="确认无误后开始下载安装。"
         sections={sections}
         notices={notices}
@@ -345,30 +395,36 @@ export function App({ installDir }: ExtensionAppProps) {
           setRemoteCatalogState({ status: "idle", items: [] })
           setTimeout(() => {
             setSelectedRemoteExtension(null)
-            setStep("download-list")
+            setStep(downloadListStep)
           }, 1200)
         }}
-        onBack={() => setStep("download-list")}
+        onBack={() => setStep(downloadListStep)}
         confirmActionText="Enter / y 开始下载"
         backActionText="Esc / n 返回列表"
-        successTitle="✅ 插件下载完成！"
+        successTitle="✅ 下载完成！"
         successLines={[
-          `${selectedRemoteExtension.name} 已安装。`,
-          "1.2 秒后将返回远程列表。",
+          `${selectedRemoteExtension.name} 已安装并自动注册。`,
+          "1.2 秒后将返回列表。",
         ]}
       />
     )
   }
 
-  if (step === "manage-list") {
-    if (installedExtensions.length === 0) {
+  // ==================== 管理列表（平台 / 插件） ====================
+  if (step === "manage-platform-list" || step === "manage-plugin-list") {
+    const title = categoryTitle(manageCategory, "manage")
+    const filteredInstalled = manageCategory === "platform" ? installedPlatforms : installedPlugins
+    const emptyLabel = manageCategory === "platform" ? "平台" : "插件"
+    const downloadHint = manageCategory === "platform" ? "下载平台" : "下载插件"
+
+    if (filteredInstalled.length === 0) {
       return (
         <StatusPage
-          title="管理插件"
-          description="当前没有本地已安装 extension。"
+          title={title}
+          description={`当前没有本地已安装的${emptyLabel}扩展。`}
           lines={[
-            "尚未在 ~/.iris/extensions/ 下发现已安装 extension。",
-            "请先进入“下载插件”流程，或使用命令行安装。",
+            `尚未在 ~/.iris/extensions/ 下发现已安装的${emptyLabel}扩展。`,
+            `请先进入「${downloadHint}」流程，或使用命令行安装。`,
           ]}
           onBack={() => setStep("home")}
         />
@@ -377,11 +433,11 @@ export function App({ installDir }: ExtensionAppProps) {
 
     return (
       <OptionSelectPage
-        title="管理插件"
-        description="选择一个已安装 extension，然后执行开启、关闭或删除。状态会区分已开启、已关闭、平台已启用而插件未启用等情况。"
-        options={installedExtensions.map(buildInstalledExtensionOption)}
+        title={title}
+        description={`选择一个已安装的${emptyLabel}扩展，然后执行开启、关闭或删除。`}
+        options={filteredInstalled.map(buildInstalledExtensionOption)}
         onSelect={(requestedPath) => {
-          const selected = installedExtensions.find((item) => item.requestedPath === requestedPath)
+          const selected = filteredInstalled.find((item) => item.requestedPath === requestedPath)
           if (!selected) return
           setSelectedInstalledExtension(selected)
           setStep("manage-action")
@@ -391,22 +447,29 @@ export function App({ installDir }: ExtensionAppProps) {
     )
   }
 
+  // ==================== 管理操作选择 ====================
   if (step === "manage-action" && selectedInstalledExtension) {
+    const title = categoryTitle(manageCategory, "manage")
+    const manageListStep = manageCategory === "platform" ? "manage-platform-list" : "manage-plugin-list"
+
     return (
       <OptionSelectPage
-        title="管理插件"
+        title={title}
         description={`${selectedInstalledExtension.name} · ${selectedInstalledExtension.typeLabel} · ${selectedInstalledExtension.stateLabel} · ${selectedInstalledExtension.statusDetail}`}
         options={buildManageActionOptions(selectedInstalledExtension)}
         onSelect={(value) => {
           setSelectedManageAction(value as ManageAction)
           setStep("manage-confirm")
         }}
-        onBack={() => setStep("manage-list")}
+        onBack={() => setStep(manageListStep)}
       />
     )
   }
 
+  // ==================== 管理确认 ====================
   if (step === "manage-confirm" && selectedInstalledExtension && selectedManageAction) {
+    const manageListStep = manageCategory === "platform" ? "manage-platform-list" : "manage-plugin-list"
+
     const sections: InfoConfirmSection[] = [
       {
         rows: [
@@ -443,19 +506,20 @@ export function App({ installDir }: ExtensionAppProps) {
           setTimeout(() => {
             setSelectedManageAction(null)
             setSelectedInstalledExtension(null)
-            setStep("manage-list")
+            setStep(manageListStep)
           }, 1200)
         }}
         onBack={() => setStep("manage-action")}
         successTitle={`✅ ${buildActionTitle(selectedManageAction)}已完成！`}
-        successLines={["1.2 秒后将返回已安装列表。"]}
+        successLines={["1.2 秒后将返回列表。"]}
       />
     )
   }
 
+  // ==================== 兜底 ====================
   return (
     <StatusPage
-      title="插件安装与管理"
+      title="扩展安装与管理"
       description="当前状态不可用。"
       lines={[
         "未找到可显示的页面状态。",

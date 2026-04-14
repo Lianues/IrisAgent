@@ -6,6 +6,8 @@
 
 export {
   discoverLocalExtensions,
+  discoverLocalPluginEntries,
+  mergePluginEntries,
   importLocalExtensionModule,
   registerExtensionPlatforms,
   resolveLocalPluginSource,

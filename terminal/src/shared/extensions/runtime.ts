@@ -251,19 +251,20 @@ function resolveInstalledState(
 
   if (hasPlugin) {
     const pluginEnabled = getPluginEnabledState(manifest.name!)
-    if (hasPlatforms && (pluginEnabled === false || pluginEnabled == null)) {
+    // 自动发现机制下，未在 plugins.yaml 中声明（undefined）视为默认启用；仅显式 false 才关闭
+    if (hasPlatforms && pluginEnabled === false) {
       return {
         enabled: false,
-        stateLabel: "平台已启用，插件未启用",
-        statusDetail: "平台贡献仍可被注册，插件入口当前未在 plugins.yaml 中启用。",
+        stateLabel: "平台已启用，插件已关闭",
+        statusDetail: "平台贡献仍可被注册，插件入口已在 plugins.yaml 中显式关闭。",
       }
     }
 
-    if (!hasPlatforms && (pluginEnabled === false || pluginEnabled == null)) {
+    if (!hasPlatforms && pluginEnabled === false) {
       return {
         enabled: false,
-        stateLabel: "未启用",
-        statusDetail: "该 extension 只包含插件入口，当前未在 plugins.yaml 中启用。",
+        stateLabel: "已关闭",
+        statusDetail: "该 extension 只包含插件入口，已在 plugins.yaml 中显式关闭。",
       }
     }
   }
@@ -410,7 +411,8 @@ function loadEmbeddedExtensions(installDir: string): ExtensionSummary[] {
       results.push(buildSummary(manifest.name!, manifest, {
         rootDir,
         installed: false,
-        enabled: hasPlatformContribution(manifest) || getPluginEnabledState(manifest.name!) === true,
+        // 自动发现机制：embedded 扩展默认启用，仅 plugins.yaml 显式 false 或 disabled marker 关闭
+        enabled: getPluginEnabledState(manifest.name!) !== false && !hasDisabledMarker(rootDir),
         stateLabel: "源码内嵌",
         statusDetail: "当前安装目录已内嵌该 extension。若用户目录安装同名版本，运行时将优先加载用户目录版本。",
         localSource: "embedded",
