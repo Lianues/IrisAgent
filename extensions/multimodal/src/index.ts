@@ -120,16 +120,7 @@ export default definePlugin({
 
     // 2. 读取配置（优先 multimodal.yaml，兼容旧 ocr.yaml）
     const rawConfig = ctx.readConfigSection('multimodal') as MultimodalConfig | undefined;
-    let ocrConfig = rawConfig?.ocr;
-
-    // 向后兼容：如果没有 multimodal.yaml 中的 ocr 配置，尝试读取旧的 ocr.yaml
-    if (!ocrConfig) {
-      const legacyOcr = ctx.readConfigSection('ocr') as Record<string, unknown> | undefined;
-      if (legacyOcr && typeof legacyOcr === 'object' && ('model' in legacyOcr || 'apiKey' in legacyOcr)) {
-        ocrConfig = { model: legacyOcr.model as string | undefined };
-        logger.info('已从旧 ocr.yaml 迁移 OCR 配置');
-      }
-    }
+    const ocrConfig = rawConfig?.ocr;
 
     // 注册 onProcessUserMedia hook — 处理用户多模态输入
     ctx.addHook({
