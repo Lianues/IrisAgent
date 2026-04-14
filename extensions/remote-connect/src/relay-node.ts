@@ -9,8 +9,8 @@
  */
 
 import net from 'node:net';
-import { createLogger } from '../logger';
-import { encodeFrame, FrameDecoder } from '../ipc/framing';
+import { createLogger } from '../../../src/logger';
+import { encodeFrame, FrameDecoder } from '../../../src/ipc/framing';
 import type { RelayConfig, RelayMessage } from './types';
 
 const logger = createLogger('RelayNode');

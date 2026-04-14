@@ -29,6 +29,7 @@ import type { GlobalConfigResult } from '../config';
 import { parseMCPConfig } from '../config/mcp';
 import type { MCPConfig } from '../config/types';
 import type { AgentDefinition } from '../agents';
+import { hostEvents } from './host-events';
 
 export class IrisHost {
   /** 所有活跃的 Core 实例 */
@@ -36,12 +37,6 @@ export class IrisHost {
 
   /** 每个 Core 对应的 IPC 服务器 */
   readonly ipcServers = new Map<string, IPCServer>();
-
-  /** 每个 Core 对应的 Net 服务器（WS→TCP 桥接） */
-  readonly netServers = new Map<string, any>();
-
-  /** 每个 Core 对应的 Relay 节点客户端 */
-  readonly relayNodes = new Map<string, any>();
 
   /** 共享任务板（所有 Core 共用） */
   readonly taskBoard = new CrossAgentTaskBoard();
@@ -172,34 +167,8 @@ export class IrisHost {
       const port = await server.start();
       this.ipcServers.set(agentName, server);
       console.log(`[Iris] IPC 服务已启动: 127.0.0.1:${port} (agent=${agentName})`);
-
-      // Net 多端互联：启动 WS 桥接服务器
-      const netConfig = core.config?.net;
-      if (netConfig?.enabled && netConfig?.token) {
-        try {
-          const { NetServer } = await import('../net/server');
-          const netServer = new NetServer({ ipcPort: port, config: netConfig, agentName });
-          await netServer.start();
-          this.netServers.set(agentName, netServer);
-          console.log(`[Iris] Net 服务已启动: ${netConfig.host ?? '0.0.0.0'}:${netConfig.port ?? 9100} (agent=${agentName})`);
-        } catch (err) {
-          console.warn(`[Iris] Net 服务启动失败 (agent=${agentName}):`, (err as Error).message);
-        }
-      }
-
-      // Net 多端互联：注册到中继服务器
-      const relayConfig = netConfig?.relay;
-      if (relayConfig?.url && relayConfig?.nodeId && relayConfig?.token) {
-        try {
-          const { RelayNodeClient } = await import('../net/relay-node');
-          const relayNode = new RelayNodeClient({ ipcPort: port, relay: relayConfig });
-          relayNode.start();
-          this.relayNodes.set(agentName, relayNode);
-          console.log(`[Iris] Relay 节点已注册: nodeId=${relayConfig.nodeId} → ${relayConfig.url} (agent=${agentName})`);
-        } catch (err) {
-          console.warn(`[Iris] Relay 节点启动失败 (agent=${agentName}):`, (err as Error).message);
-        }
-      }
+      // 通知扩展 IPC 已就绪
+      hostEvents.emit('ipc-ready', { agentName, ipcPort: port });
     } catch (err) {
       console.warn(`[Iris] IPC 服务启动失败 (agent=${agentName}):`, (err as Error).message);
     }
@@ -217,19 +186,8 @@ export class IrisHost {
 
     const handle = oldCore.backendHandle;
 
-    // 先关闭旧的 Net 服务和 Relay 节点（释放端口）
-    const oldNetServer = this.netServers.get(name);
-    if (oldNetServer) {
-      await oldNetServer.stop().catch((err: Error) =>
-        console.warn(`[Iris] 关闭旧 Net Server 失败 (agent=${name}):`, err.message)
-      );
-      this.netServers.delete(name);
-    }
-    const oldRelayNode = this.relayNodes.get(name);
-    if (oldRelayNode) {
-      oldRelayNode.stop();
-      this.relayNodes.delete(name);
-    }
+    // 通知扩展：Agent 即将停止
+    hostEvents.emit('agent-stopping', { agentName: name });
 
     // 关闭旧的 IPC Server（释放端口和 lock 文件）
     const oldIpcServer = this.ipcServers.get(name);
@@ -264,19 +222,8 @@ export class IrisHost {
     const core = this.cores.get(name);
     if (!core) return;
 
-    // 关闭 Net 服务和 Relay 节点
-    const netServer = this.netServers.get(name);
-    if (netServer) {
-      await netServer.stop().catch((err: Error) =>
-        console.warn(`[Iris] 关闭 Net Server 失败 (agent=${name}):`, err.message)
-      );
-      this.netServers.delete(name);
-    }
-    const relayNode = this.relayNodes.get(name);
-    if (relayNode) {
-      relayNode.stop();
-      this.relayNodes.delete(name);
-    }
+    // 通知扩展：Agent 即将销毁
+    hostEvents.emit('agent-stopping', { agentName: name });
 
     // 关闭对应的 IPC Server
     const ipcServer = this.ipcServers.get(name);
@@ -341,14 +288,8 @@ export class IrisHost {
   }
 
   private async doShutdown(): Promise<void> {
-    // 先关闭 Net 服务器和 Relay 节点
-    const netShutdownTasks = [...this.netServers.values()].map(s => s.stop().catch(() => {}));
-    await Promise.allSettled(netShutdownTasks);
-    this.netServers.clear();
-    for (const node of this.relayNodes.values()) {
-      try { node.stop(); } catch {}
-    }
-    this.relayNodes.clear();
+    // 通知扩展：全局关停
+    hostEvents.emit('host-shutdown');
 
     // 关闭 IPC 服务器
     const ipcShutdownTasks = [...this.ipcServers.values()].map(s => s.stop());

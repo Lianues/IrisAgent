@@ -9,8 +9,8 @@
  */
 
 import net from 'node:net';
-import { createLogger } from '../logger';
-import { encodeFrame, FrameDecoder } from '../ipc/framing';
+import { createLogger } from '../../../src/logger';
+import { encodeFrame, FrameDecoder } from '../../../src/ipc/framing';
 import { validateAuthMessage } from './auth';
 import { DiscoveryListener } from './discovery';
 import type { NetConfig } from './types';

@@ -1,0 +1,26 @@
+{
+  "name": "remote-connect",
+  "version": "0.1.0",
+  "description": "远程互联插件 — 跨设备远程控制 Iris 实例（直连 / 中继 / 局域网发现）",
+  "plugin": {
+    "entry": "dist/index.mjs"
+  },
+  "commands": {
+    "relay": {
+      "description": "启动远程互联中继服务器",
+      "entry": "src/relay.ts",
+      "export": "runRelay"
+    },
+    "net": {
+      "description": "配置远程互联",
+      "entry": "src/command.ts",
+      "export": "runNetCommand"
+    }
+  },
+  "distribution": {
+    "files": [
+      "dist/index.mjs",
+      "package.json"
+    ]
+  }
+}

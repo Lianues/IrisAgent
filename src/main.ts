@@ -32,8 +32,6 @@ Iris - AI Agent
 命令:
   iris start              启动平台服务（Web / Telegram 等）
   iris attach             连接已运行的 Iris 实例（跨进程 / 跨设备）
-  iris net                配置多端互联（Net）
-  iris relay              启动多端互联中继服务器
   iris chat <prompt>      执行 AI 提示词（CLI 模式）
   iris onboard            交互式配置引导
   iris models             模型配置界面
@@ -100,14 +98,6 @@ if (command && TERMINAL_COMMANDS.has(command)) {
   // 跨进程 / 跨设备连接已运行的 Iris 实例
   const { runAttach } = await import('./attach');
   await runAttach(args.slice(1));
-} else if (command === 'relay') {
-  // 启动多端互联中继服务器
-  const { runRelay } = await import('./net/relay');
-  await runRelay(args.slice(1));
-} else if (command === 'net') {
-  // Net 多端互联配置
-  const { runNetCommand } = await import('./net/command');
-  runNetCommand(args.slice(1));
 } else if (!command || command === 'serve' || command === 'start') {
   // 平台服务（默认命令）
   if (command) {
@@ -115,8 +105,12 @@ if (command && TERMINAL_COMMANDS.has(command)) {
   }
   await import('./index');
 } else {
-  // 未知命令
-  console.error(`未知命令: ${command}`);
-  console.error('运行 iris --help 查看可用命令。');
-  process.exit(1);
+  // 尝试匹配扩展注册的 CLI 命令
+  const { tryExtensionCommand } = await import('./extension/cli-dispatch');
+  const handled = await tryExtensionCommand(command, args.slice(1));
+  if (!handled) {
+    console.error(`未知命令: ${command}`);
+    console.error('运行 iris --help 查看可用命令。');
+    process.exit(1);
+  }
 }

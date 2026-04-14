@@ -9,7 +9,7 @@
 
 import * as dgram from 'node:dgram';
 import * as os from 'node:os';
-import { createLogger } from '../logger';
+import { createLogger } from '../../../src/logger';
 import type { DiscoveryProbe, DiscoveryResponse, DiscoveredInstance } from './types';
 
 const logger = createLogger('Discovery');

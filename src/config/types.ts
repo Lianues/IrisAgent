@@ -3,7 +3,6 @@
  */
 
 import type { OCRConfig } from './ocr';
-import type { NetConfig } from '../net/types';
 
 /**
  * 对码（Pairing）配置。
@@ -347,8 +346,6 @@ export interface AppConfig {
   plugins?: Array<{ name: string; type?: 'local' | 'npm' | 'inline'; enabled?: boolean; priority?: number; config?: Record<string, unknown> }>;
   /** 上下文压缩配置（对应 summary.yaml） */
   summary: SummaryConfig;
-  /** 多端互联配置（对应 net.yaml，可选） */
-  net?: NetConfig;
 }
 
 /** 子代理类型定义（配置文件格式） */

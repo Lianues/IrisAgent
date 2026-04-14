@@ -13,7 +13,7 @@
  * 启动方式：iris relay --port 9001
  */
 
-import { createLogger } from '../logger';
+import { createLogger } from '../../../src/logger';
 import { constantTimeEqual } from './auth';
 import type { RelayMessage } from './types';
 
@@ -322,7 +322,7 @@ export async function runRelay(argv: string[]): Promise<void> {
       host = argv[++i];
     } else if (argv[i] === '--help' || argv[i] === '-h') {
       console.log(`
-iris relay — 启动多端互联中继服务器
+iris relay — 启动远程互联中继服务器
 
 参数:
   --port <number>  监听端口（默认: 9001）

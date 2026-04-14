@@ -2,7 +2,7 @@
  * IPCClientLike — IPC 客户端最小接口
  *
  * 从 IPCClient 中提取的最小接口，
- * 同时被 TCP IPCClient 和 WS WsIPCClient 实现，
+ * 同时被 TCP IPCClient 和远程互联扩展的 WsIPCClient 实现，
  * 使 RemoteBackendHandle/RemoteToolHandle/RemoteApiProxy 对传输层无感知。
  */
 

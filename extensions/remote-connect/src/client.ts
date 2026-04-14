@@ -9,10 +9,10 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { createLogger } from '../logger';
-import type { IPCClientLike } from '../ipc/client-like';
-import type { HandshakeResult } from '../ipc/protocol';
-import { Methods } from '../ipc/protocol';
+import { createLogger } from '../../../src/logger';
+import type { IPCClientLike } from '../../../src/ipc/client-like';
+import type { HandshakeResult } from '../../../src/ipc/protocol';
+import { Methods } from '../../../src/ipc/protocol';
 import type { RelayMessage } from './types';
 
 const logger = createLogger('WsIPCClient');

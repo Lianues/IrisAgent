@@ -1,10 +1,10 @@
 /**
- * iris net — CLI 快捷配置 Net 多端互联
+ * iris net — CLI 快捷配置远程互联
  *
  * 用法:
- *   iris net                        显示当前 Net 配置
- *   iris net enable                 启用 Net 服务
- *   iris net disable                禁用 Net 服务
+ *   iris net                        显示当前配置
+ *   iris net enable                 启用远程互联服务
+ *   iris net disable                禁用远程互联服务
  *   iris net set <key> <value>      设置配置项
  *   iris net token <value>          设置认证 token
  *   iris net port <number>          设置端口
@@ -16,8 +16,8 @@
  *   iris net set relay.url wss://relay.example.com:9001
  */
 
-import { configDir } from '../paths';
-import { readEditableConfig, updateEditableConfig } from '../config/manage';
+import { configDir } from '../../../src/paths';
+import { readEditableConfig, updateEditableConfig } from '../../../src/config/manage';
 
 export function runNetCommand(argv: string[]): void {
   const sub = argv[0];
@@ -29,14 +29,14 @@ export function runNetCommand(argv: string[]): void {
 
   if (sub === 'enable') {
     update({ net: { enabled: true } });
-    console.log('✓ Net 服务已启用。重启 Iris 后生效。');
+    console.log('✓ 远程互联服务已启用。重启 Iris 后生效。');
     showStatus();
     return;
   }
 
   if (sub === 'disable') {
     update({ net: { enabled: false } });
-    console.log('✓ Net 服务已禁用。重启 Iris 后生效。');
+    console.log('✓ 远程互联服务已禁用。重启 Iris 后生效。');
     return;
   }
 
@@ -90,7 +90,7 @@ function showStatus(): void {
   const net = config?.net ?? {};
 
   console.log('');
-  console.log('  Net 多端互联配置:');
+  console.log('  远程互联配置:');
   console.log('');
   console.log(`  启用:    ${net.enabled ? '是 ✓' : '否'}`);
   console.log(`  端口:    ${net.port ?? 9100}`);
@@ -124,8 +124,8 @@ function showHelp(): void {
 
 命令:
   (无)               显示当前配置
-  enable             启用 Net 服务
-  disable            禁用 Net 服务
+  enable             启用远程互联服务
+  disable            禁用远程互联服务
   token <value>      设置认证 Token
   port <number>      设置监听端口
   set <key> <value>  设置任意配置项
