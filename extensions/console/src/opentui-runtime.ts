@@ -34,20 +34,38 @@ function warnRuntimeIssue(message: string): void {
 function resolveBundledRuntimeDir(isCompiledBinary: boolean): string | null {
   if (!isCompiledBinary) return null;
 
+  // 收集候选搜索目录
+  const searchDirs: string[] = [];
+
+  // 优先：npm 包装器传入的真实包目录（PRoot/L2S 安全）
+  const pkgDir = process.env.__IRIS_PKG_DIR;
+  if (pkgDir) {
+    searchDirs.push(path.join(pkgDir, 'bin'));
+    // npm 包装器场景：搜索 node_modules/irises-*/bin/
+    try {
+      const nodeModulesDir = path.join(pkgDir, 'node_modules');
+      if (fs.existsSync(nodeModulesDir)) {
+        for (const entry of fs.readdirSync(nodeModulesDir)) {
+          if (entry.startsWith('irises-')) {
+            searchDirs.push(path.join(nodeModulesDir, entry, 'bin'));
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 回退：从 process.execPath 推导（正常环境）
   try {
     const execDir = path.dirname(fs.realpathSync(process.execPath));
-    const candidates = [
-      path.join(execDir, OPENTUI_RUNTIME_DIR_NAME),
-      path.join(path.resolve(execDir, '..'), OPENTUI_RUNTIME_DIR_NAME),
-    ];
+    searchDirs.push(execDir);
+    searchDirs.push(path.resolve(execDir, '..'));
+  } catch { /* ignore */ }
 
-    for (const candidate of candidates) {
-      if (fs.existsSync(path.join(candidate, 'parser.worker.js'))) {
-        return candidate;
-      }
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, OPENTUI_RUNTIME_DIR_NAME);
+    if (fs.existsSync(path.join(candidate, 'parser.worker.js'))) {
+      return candidate;
     }
-  } catch {
-    // ignore
   }
 
   return null;
