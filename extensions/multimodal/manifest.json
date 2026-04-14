@@ -1,0 +1,11 @@
+{
+  "name": "multimodal",
+  "version": "0.1.0",
+  "description": "多模态处理 — 图片缩放、OCR、文档提取、Office→PDF 转换",
+  "plugin": {
+    "entry": "dist/index.mjs"
+  },
+  "distribution": {
+    "files": [".gitignore", "dist/index.mjs", "package.json"]
+  }
+}

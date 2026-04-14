@@ -21,7 +21,6 @@ import { createLLMRouter } from '../llm/factory';
 import { LLMRouter } from '../llm/router';
 import { createSkillWatcher } from '../config/skill-loader';
 import { createMCPManager, MCPManager } from '../mcp';
-import type { OCRProvider } from '../ocr';
 import { ToolRegistry } from '../tools/registry';
 import { ToolStateManager } from '../tools/state';
 import { setToolLimits } from '../tools/tool-limits';
@@ -66,9 +65,6 @@ import { parseSystemConfig } from '../config/system';
 import { parseToolsConfig } from '../config/tools';
 import { setGlobalLogLevel, getGlobalLogLevel, LogLevel } from '../logger';
 import { isCompiledBinary } from '../paths';
-import { resizeImage, formatDimensionNote } from '../media/image-resize';
-import { extractDocument, isSupportedDocumentMime } from '../media/document-extract';
-import { convertToPDF, isConversionAvailable } from '../media/office-to-pdf';
 import {
   // 多 Agent 配置分层重构：移除 setAgentEnabled / createManifestIfNotExists 导入
   getAgentStatus,
@@ -243,15 +239,6 @@ export class IrisCore {
     }
     const storage = await storageFactory(config.storage) as StorageProvider;
 
-    // ---- 2.6 创建 OCR 服务 ----
-    let ocrService: OCRProvider | undefined;
-    if (config.ocr) {
-      const ocrFactory = extensions.ocrProviders.get(config.ocr.provider);
-      if (!ocrFactory) {
-        throw new Error(`未注册的 OCR provider: ${config.ocr.provider}`);
-      }
-      ocrService = await ocrFactory(config.ocr) as OCRProvider;
-    }
 
     // ---- 3. 注册工具 ----
     const tools = new ToolRegistry();
@@ -347,7 +334,6 @@ export class IrisCore {
       toolsConfig: config.tools,
       defaultMode,
       currentLLMConfig: router.getCurrentConfig(),
-      ocrService,
       summaryModelName: config.llm.summaryModelName,
       summaryConfig: config.summary,
       skills: config.system.skills,
@@ -604,7 +590,7 @@ export class IrisCore {
     })();
     const irisAPI = {
       backend,
-      media: { resizeImage, formatDimensionNote, extractDocument, isSupportedDocumentMime, convertToPDF, isConversionAvailable },
+      media: undefined,
       router,
       storage,
       tools,
@@ -612,7 +598,7 @@ export class IrisCore {
       prompt,
       config,
       get mcpManager() { return getMCPManagerFn(); },
-      ocrService,
+      ocrService: undefined,
       extensions,
       // 分层配置修复：用 LayeredConfigManager 替代原来的单目录闭包。
       // 读时返回 global + agent 合并后的完整配置（解决 settings UI 空白问题），

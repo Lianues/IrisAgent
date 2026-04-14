@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Office 文档转 PDF 模块
  *
  * 使用 LibreOffice 将 DOCX/PPTX/XLSX 转换为 PDF。

@@ -1,6 +1,10 @@
 {
   "extensions": [
     {
+      "name": "multimodal",
+      "external": ["sharp", "jszip", "mammoth", "xlsx", "pdf-parse", "libreoffice-convert"]
+    },
+    {
       "name": "cron"
     },
     {

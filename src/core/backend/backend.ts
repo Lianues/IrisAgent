@@ -36,8 +36,7 @@ import { ToolRegistry } from '../../tools/registry';
 import { ToolStateManager } from '../../tools/state';
 import { PromptAssembler } from '../../prompt/assembler';
 import { ModeRegistry, ModeDefinition, applyToolFilter } from '../../modes';
-import type { OCRProvider } from '../../ocr';
-import { isOCRTextPart } from '../../ocr';
+import { supportsVision as llmSupportsVision, supportsNativePDF, supportsNativeOffice } from '../../llm/vision';
 import { ToolLoop, ToolLoopConfig, LLMCaller } from '../tool-loop';
 import { createLogger } from '../../logger';
 import { sanitizeHistory } from '../history-sanitizer';
@@ -54,7 +53,7 @@ import type { CrossAgentTaskBoard, TaskRecord } from '../cross-agent-task-board'
 import { ToolExecutionHandle } from '../../tools/handle';
 
 import type { BackendConfig, ImageInput, DocumentInput, UndoScope, UndoOperationResult, RedoOperationResult, NotificationPayload } from './types';
-import { buildStoredUserParts } from './media';
+import { buildMinimalParts } from './media';
 import { prepareHistoryForLLM, preparePartsForLLM } from './history';
 import { callLLMStream } from './stream';
 import { UndoRedoManager } from './undo-redo';
@@ -98,7 +97,6 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
   private modeRegistry?: ModeRegistry;
   private defaultMode?: string;
   private currentLLMConfig?: LLMConfig;
-  private ocrService?: OCRProvider;
   private summaryModelName?: string;
   private summaryConfig?: SummaryConfig;
 
@@ -186,7 +184,6 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     this.modeRegistry = modeRegistry;
     this.defaultMode = config?.defaultMode;
     this.currentLLMConfig = config?.currentLLMConfig;
-    this.ocrService = config?.ocrService;
     this.summaryModelName = config?.summaryModelName;
     this.summaryConfig = config?.summaryConfig;
 
@@ -811,7 +808,6 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     toolsConfig?: ToolsConfig;
     systemPrompt?: string;
     currentLLMConfig?: LLMConfig;
-    ocrService?: OCRProvider;
     skills?: SkillDefinition[];
   }): void {
     if (opts.stream !== undefined) this.stream = opts.stream;
@@ -821,7 +817,6 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     if (opts.maxRetries !== undefined) this.toolLoopConfig.maxRetries = opts.maxRetries;
     if (opts.systemPrompt !== undefined) this.prompt.setSystemPrompt(opts.systemPrompt);
     if ('currentLLMConfig' in opts) this.currentLLMConfig = opts.currentLLMConfig;
-    if ('ocrService' in opts) this.ocrService = opts.ocrService;
     if ('skills' in opts) {
       this.skills = opts.skills ?? [];
       this._onSkillsChanged?.();
@@ -1056,11 +1051,32 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     // 清除本会话上一轮残留的工具调用记录
     this.toolState.clearSession(sessionId);
 
-    // 构建用户消息 parts（处理图片/文档/OCR）
-    const storedUserParts = await buildStoredUserParts(text, images, documents, {
-      currentLLMConfig: this.currentLLMConfig,
-      ocrService: this.ocrService,
-    });
+    // 构建用户消息 parts — hook 优先，兜底最小化处理
+    let storedUserParts: Part[] | undefined;
+    for (const hook of this.pluginHooks) {
+      try {
+        const result = await hook.onProcessUserMedia?.({
+          sessionId,
+          text,
+          images,
+          documents,
+          capabilities: {
+            supportsVision: llmSupportsVision(this.currentLLMConfig),
+            supportsNativePDF: supportsNativePDF(this.currentLLMConfig),
+            supportsNativeOffice: supportsNativeOffice(this.currentLLMConfig),
+          },
+        });
+        if (result) {
+          storedUserParts = result.parts;
+          break;
+        }
+      } catch (err) {
+        logger.warn(`插件钩子 "${hook.name}" onProcessUserMedia 执行失败:`, err);
+      }
+    }
+    if (!storedUserParts) {
+      storedUserParts = buildMinimalParts(text, images, documents);
+    }
     const llmUserParts = preparePartsForLLM(storedUserParts, this.currentLLMConfig);
 
     // 1. 加载历史并追加用户消息
@@ -1370,13 +1386,10 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
         isInlineDataPart(p) && !isDocumentMimeType(p.inlineData.mimeType)
       );
       const titleText = userParts.reduce((result, part) => {
-        if (isOCRTextPart(part)) {
-          return result;
-        }
-
         if (isTextPart(part)) {
           const text = part.text ?? '';
-          if (text.startsWith('[Image: original ') || text.startsWith('[Document: ')) {
+          // 跳过扩展生成的标记文本（如坐标映射、文档标签、OCR 标记等）
+          if (text.startsWith('[') || text.startsWith('[[')) {
             return result;
           }
           return result + text;

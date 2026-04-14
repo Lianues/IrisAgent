@@ -5,9 +5,7 @@
 import { Backend } from '../core/backend';
 import { dataDir } from '../paths';
 import { createLLMRouter } from '../llm/factory';
-import { OCRService, type OCRProvider } from '../ocr';
 import { parseLLMConfig } from './llm';
-import { parseOCRConfig } from './ocr';
 import { parseToolsConfig } from './tools';
 import { parseMCPConfig } from './mcp';
 import { parseSystemConfig } from './system';
@@ -24,7 +22,7 @@ export interface RuntimeConfigReloadContext {
   setMCPManager(manager?: MCPManager): void;
   /** Skill 文件系统扫描使用的数据目录（多 Agent 模式下为 agent 专属目录） */
   dataDir?: string;
-  extensions?: Pick<BootstrapExtensionRegistry, 'llmProviders' | 'ocrProviders'>;
+  extensions?: Pick<BootstrapExtensionRegistry, 'llmProviders'>;
 }
 
 export interface RuntimeConfigSummary {
@@ -43,30 +41,11 @@ function unregisterOldMcpTools(tools: ToolRegistry): void {
   }
 }
 
-async function createReloadOCRProvider(
-  context: RuntimeConfigReloadContext,
-  ocrConfig: ReturnType<typeof parseOCRConfig>,
-): Promise<OCRProvider | undefined> {
-  if (!ocrConfig) return undefined;
-
-  const registeredFactory = context.extensions?.ocrProviders.get(ocrConfig.provider);
-  if (registeredFactory) {
-    return await registeredFactory(ocrConfig);
-  }
-
-  if (ocrConfig.provider === 'openai-compatible') {
-    return new OCRService(ocrConfig);
-  }
-
-  throw new Error(`未注册的 OCR provider: ${ocrConfig.provider}`);
-}
-
 export async function applyRuntimeConfigReload(
   context: RuntimeConfigReloadContext,
   mergedConfig: any,
 ): Promise<RuntimeConfigSummary> {
   const llmConfig = parseLLMConfig(mergedConfig.llm);
-  const ocrConfig = parseOCRConfig(mergedConfig.ocr);
   const toolsConfig = parseToolsConfig(mergedConfig.tools);
   const previousModelName = context.backend.getCurrentModelName();
   const newRouter = createLLMRouter(llmConfig, previousModelName, context.extensions?.llmProviders);
@@ -86,7 +65,6 @@ export async function applyRuntimeConfigReload(
     toolsConfig,
     systemPrompt: mergedConfig.system?.systemPrompt || DEFAULT_SYSTEM_PROMPT,
     currentLLMConfig: newRouter.getCurrentConfig(),
-    ocrService: await createReloadOCRProvider(context, ocrConfig),
     // 热重载 Skill 定义
     skills: systemConfig.skills,
   });

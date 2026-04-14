@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 文档文本提取模块
  *
  * 移植自 Pi 的 attachment-utils.ts，适配 Node.js。
@@ -9,13 +9,9 @@ import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
-const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
+import type { DocumentInput } from 'irises-extension-sdk';
 
-export interface DocumentInput {
-  fileName: string;
-  mimeType: string;
-  data: string; // base64
-}
+const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
 
 export interface ExtractedDocument {
   fileName: string;

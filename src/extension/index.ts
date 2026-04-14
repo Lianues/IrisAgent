@@ -77,5 +77,4 @@ export type {
   BootstrapExtensionRegistry,
   LLMProviderFactory,
   StorageFactory,
-  OCRFactory,
 } from '../bootstrap/extensions';

@@ -15,6 +15,7 @@ export interface NamedFactoryRegistryLike<TFactory> {
 export type LLMProviderFactory = (config: Record<string, unknown>) => unknown;
 export type StorageFactory = (config: Record<string, unknown>) => Promise<unknown> | unknown;
 export type MemoryFactory = (config: Record<string, unknown>) => Promise<unknown> | unknown;
+/** @deprecated OCR 功能已迁移至 multimodal 扩展 */
 export type OCRFactory = (config: Record<string, unknown>) => Promise<unknown> | unknown;
 export type PlatformFactory = (context: IrisPlatformFactoryContextLike) => Promise<unknown> | unknown;
 
@@ -23,6 +24,7 @@ export interface BootstrapExtensionRegistryLike {
   storageProviders: NamedFactoryRegistryLike<StorageFactory>;
   /** @deprecated Memory 已迁移为独立扩展插件 */
   memoryProviders?: NamedFactoryRegistryLike<MemoryFactory>;
+  /** @deprecated OCR 功能已迁移至 multimodal 扩展 */
   ocrProviders: NamedFactoryRegistryLike<OCRFactory>;
   platforms: NamedFactoryRegistryLike<PlatformFactory>;
 }

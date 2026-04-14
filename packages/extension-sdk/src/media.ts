@@ -4,6 +4,26 @@
 
 import type { DocumentInput } from './platform.js';
 
+// ── 多模态输入类型（预留） ──
+
+/** 音频输入（预留，供 onProcessUserMedia hook 使用） */
+export interface AudioInput {
+  mimeType: string;
+  data: string;
+  fileName?: string;
+  /** 时长（秒） */
+  duration?: number;
+}
+
+/** 视频输入（预留，供 onProcessUserMedia hook 使用） */
+export interface VideoInput {
+  mimeType: string;
+  data: string;
+  fileName?: string;
+  /** 时长（秒） */
+  duration?: number;
+}
+
 // ── 图片缩放 ──
 
 /** 图片缩放选项 */
@@ -71,7 +91,8 @@ export interface MediaServiceLike {
 
 /**
  * OCR 服务接口。
- * 插件通过 `api.ocrService` 访问，可复用宿主已配置的 OCR 能力从图片中提取文字。
+ * @deprecated OCR 功能已迁移至 multimodal 扩展，通过 onProcessUserMedia hook 实现。
+ * 保留此接口仅为向后兼容。
  */
 export interface OCRProviderLike {
   /** 从图片中提取文字 */

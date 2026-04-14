@@ -2,7 +2,6 @@
  * 配置类型定义
  */
 
-import type { OCRConfig } from './ocr';
 
 /**
  * 对码（Pairing）配置。
@@ -318,7 +317,8 @@ export interface SummaryConfig {
  */
 export interface GlobalConfig {
   llm: LLMRegistryConfig;
-  ocr?: OCRConfig;
+  /** @deprecated OCR 配置已迁移至 multimodal 扩展 */
+  ocr?: Record<string, unknown>;
   /** 存储引擎类型选择是进程级决策，Agent 只需独立的路径 */
   storage: StorageConfig;
 }
@@ -326,7 +326,8 @@ export interface GlobalConfig {
 export interface AppConfig {
   [key: string]: unknown;
   llm: LLMRegistryConfig;
-  ocr?: OCRConfig;
+  /** @deprecated OCR 配置已迁移至 multimodal 扩展 */
+  ocr?: Record<string, unknown>;
   platform: PlatformConfig;
   storage: StorageConfig;
   tools: ToolsConfig;

@@ -1,0 +1,11 @@
+{
+  "name": "@iris-extension/multimodal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm --external sharp --external jszip --external mammoth --external xlsx --external pdf-parse --external libreoffice-convert"
+  },
+  "dependencies": {
+    "irises-extension-sdk": "file:../../packages/extension-sdk"
+  }
+}

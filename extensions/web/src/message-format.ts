@@ -9,6 +9,11 @@ import type { Content, Part, TextPart } from 'irises-extension-sdk';
 import { isTextPart, isThoughtTextPart, isInlineDataPart, isFunctionCallPart, isFunctionResponsePart } from 'irises-extension-sdk';
 
 // ── 内联自 src/ocr（避免耦合内部模块）──
+/**
+ * 判断是否为 OCR 扩展生成的标记文本 Part。
+ * 当 multimodal 扩展使用 [[IRIS_OCR_IMAGE_ 前缀标记 OCR 结果时，
+ * Web UI 渲染时需要跳过这些 Part（它们仅供 LLM 使用）。
+ */
 const OCR_TEXT_MARKER_RE = /^\[\[IRIS_OCR_IMAGE_(\d+)\]\]\n/;
 function isOCRTextPart(part: Part): part is TextPart & { text: string } {
   return isTextPart(part) && typeof part.text === 'string' && OCR_TEXT_MARKER_RE.test(part.text);

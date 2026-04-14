@@ -24,7 +24,6 @@ import { EMBEDDED_CONFIG_DEFAULTS } from './embedded-defaults';
 import type { AgentPaths } from '../paths';
 import { AppConfig, GlobalConfig } from './types';
 import { parseLLMConfig } from './llm';
-import { parseOCRConfig } from './ocr';
 import { fieldOverride, entryMerge } from './merge';
 import type { ConfigSectionKey } from './raw';
 import { parsePlatformConfig } from './platform';
@@ -55,7 +54,6 @@ export type {
   SubAgentsConfig,
   SubAgentTypeDef,
 } from './types';
-export type { OCRConfig } from './ocr';
 
 /**
  * 返回配置目录的绝对路径。
@@ -132,7 +130,7 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
 
   return {
     llm: parseLLMConfig(data.llm),
-    ocr: parseOCRConfig(data.ocr),
+    ocr: data.ocr,
     platform: parsePlatformConfig(data.platform),
     storage: parseStorageConfig(data.storage, agentPaths),
     tools: parseToolsConfig(data.tools),
@@ -213,7 +211,7 @@ export function loadGlobalConfig(): GlobalConfigResult {
 
   const config: GlobalConfig = {
     llm: parseLLMConfig(raw.llm),
-    ocr: parseOCRConfig(raw.ocr),
+    ocr: raw.ocr,
     storage: parseStorageConfig(raw.storage),
   };
 

@@ -45,11 +45,13 @@ export type {
 } from './platform.js';
 
 export type {
+  AudioInput,
   ExtractedDocument,
   ImageResizeOptions,
   MediaServiceLike,
   OCRProviderLike,
   ResizedImage,
+  VideoInput,
 } from './media.js';
 
 export type {

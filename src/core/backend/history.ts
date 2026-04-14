@@ -4,12 +4,13 @@
  * 将存储中的原始历史消息转换为 LLM 可消费的格式，包括：
  * - 从最后一条总结消息开始截取
  * - 图片/文档根据模型能力剥离或保留
- * - OCR 文本标记处理
+ * - functionCall/functionResponse 深拷贝
+ *
+ * OCR 文本标记等扩展特有的清理逻辑由扩展自身通过 onBeforeLLMCall hook 处理。
  */
 
 import type { LLMConfig } from '../../config/types';
 import { supportsVision as llmSupportsVision, isDocumentMimeType, supportsNativePDF, supportsNativeOffice } from '../../llm/vision';
-import { isOCRTextPart, stripOCRTextMarker } from '../../ocr';
 import type { Content, Part } from '../../types';
 import { isFunctionCallPart, isFunctionResponsePart, isInlineDataPart, isTextPart } from '../../types';
 import { IMAGE_UNAVAILABLE_NOTICE, DOCUMENT_UNAVAILABLE_NOTICE } from './types';
@@ -45,28 +46,21 @@ export function prepareHistoryForLLM(
 }
 
 /**
- * 对单条消息的 Parts 进行 LLM 投喂前的清理：
+ * 对单条消息的 Parts 进行 LLM 投喂前的通用清理：
  * - 非 vision 模型剥离图片 inlineData，补充不可用提示
- * - OCR 文本在非 vision 模式下去除标记前缀
  * - 文档按端点能力保留或剥离
  * - functionCall/functionResponse 深拷贝
+ * - text 浅拷贝
+ *
+ * 扩展特有的 Part 处理（如 OCR 标记清洗）由扩展通过 onBeforeLLMCall hook 自行处理。
  */
 export function preparePartsForLLM(parts: Part[], currentLLMConfig?: LLMConfig): Part[] {
   const visionEnabled = llmSupportsVision(currentLLMConfig);
   const prepared: Part[] = [];
   let strippedImageCount = 0;
   let strippedDocumentCount = 0;
-  let hasOCRContext = false;
 
   for (const part of parts) {
-    if (isOCRTextPart(part)) {
-      hasOCRContext = true;
-      if (!visionEnabled && part.text) {
-        prepared.push({ ...part, text: stripOCRTextMarker(part.text) });
-      }
-      continue;
-    }
-
     if (isInlineDataPart(part)) {
       const mime = part.inlineData.mimeType;
       if (isDocumentMimeType(mime)) {
@@ -79,7 +73,7 @@ export function preparePartsForLLM(parts: Part[], currentLLMConfig?: LLMConfig):
           strippedDocumentCount++;
         }
       } else {
-        // 图片 InlineDataPart：现有逻辑
+        // 图片 InlineDataPart
         if (visionEnabled) {
           prepared.push({ inlineData: { ...part.inlineData } });
         } else {
@@ -127,7 +121,7 @@ export function preparePartsForLLM(parts: Part[], currentLLMConfig?: LLMConfig):
     void _exhaustive;
   }
 
-  if (!visionEnabled && strippedImageCount > 0 && !hasOCRContext) {
+  if (!visionEnabled && strippedImageCount > 0) {
     prepared.unshift({ text: IMAGE_UNAVAILABLE_NOTICE(strippedImageCount) });
   }
   if (strippedDocumentCount > 0) {

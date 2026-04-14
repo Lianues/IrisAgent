@@ -5,7 +5,6 @@
  */
 
 import type { LLMConfig, StorageConfig } from '../config/types';
-import type { OCRConfig } from '../config/ocr';
 import type { LLMProviderLike } from '../llm/providers/base';
 import { createGeminiProvider } from '../llm/providers/gemini';
 import { createOpenAICompatibleProvider } from '../llm/providers/openai-compatible';
@@ -14,8 +13,6 @@ import { createOpenAIResponsesProvider } from '../llm/providers/openai-responses
 import type { StorageProvider } from '../storage/base';
 import { JsonFileStorage } from '../storage/json-file';
 import { SqliteStorage } from '../storage/sqlite';
-import type { OCRProvider } from '../ocr';
-import { OCRService } from '../ocr';
 import { PlatformRegistry } from '../core/platform-registry';
 
 /** 通用命名工厂注册表 */
@@ -45,16 +42,15 @@ export class NamedFactoryRegistry<TFactory> {
 
 export type LLMProviderFactory = (config: LLMConfig) => LLMProviderLike;
 export type StorageFactory = (config: StorageConfig) => Promise<StorageProvider> | StorageProvider;
-export type OCRFactory = (config: OCRConfig) => Promise<OCRProvider> | OCRProvider;
 
 export class LLMProviderFactoryRegistry extends NamedFactoryRegistry<LLMProviderFactory> {}
 export class StorageFactoryRegistry extends NamedFactoryRegistry<StorageFactory> {}
-export class OCRFactoryRegistry extends NamedFactoryRegistry<OCRFactory> {}
 
 export interface BootstrapExtensionRegistry {
   llmProviders: LLMProviderFactoryRegistry;
   storageProviders: StorageFactoryRegistry;
-  ocrProviders: OCRFactoryRegistry;
+  /** @deprecated OCR 功能已迁移至 multimodal 扩展 */
+  ocrProviders: NamedFactoryRegistry<(config: Record<string, unknown>) => Promise<unknown> | unknown>;
   platforms: PlatformRegistry;
 }
 
@@ -74,8 +70,7 @@ export function createBootstrapExtensionRegistry(): BootstrapExtensionRegistry {
   storageProviders.register('json-file', (config) => new JsonFileStorage(config.dir));
   storageProviders.register('sqlite', (config) => new SqliteStorage(config.dbPath));
 
-  const ocrProviders = new OCRFactoryRegistry();
-  ocrProviders.register('openai-compatible', (config) => new OCRService(config));
+  const ocrProviders = new NamedFactoryRegistry<(config: Record<string, unknown>) => Promise<unknown> | unknown>();
 
   return {
     llmProviders,

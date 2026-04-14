@@ -22,6 +22,8 @@ import type {
   StorageFactory,
 } from './types.js';
 import type { ServiceRegistryLike } from './service.js';
+import type { AudioInput, VideoInput } from '../media.js';
+import type { ImageInput, DocumentInput } from '../platform.js';
 import type { ConfigContributionRegistryLike } from './config-contribution.js';
 import type { GlobalStoreLike } from './global-store.js';
 
@@ -38,6 +40,31 @@ export type ToolExecInterception =
 export interface PluginHook {
   name: string;
   priority?: number;
+  /**
+   * 用户发送多模态消息时调用。
+   * 插件可处理图片（缩放、OCR）、文档（提取文本、转换 PDF）等多模态内容，
+   * 返回处理后的 Part 数组用于存储。
+   *
+   * 返回 undefined 表示不处理，交给下一个插件或后端兜底逻辑。
+   * 返回 { parts } 表示接管处理，后续插件和兜底逻辑不再执行。
+   *
+   * @param params.capabilities 当前模型的多模态能力，供插件决策处理策略
+   */
+  onProcessUserMedia?(params: {
+    sessionId: string;
+    text: string;
+    images?: ImageInput[];
+    documents?: DocumentInput[];
+    /** 预留：音频输入 */
+    audio?: AudioInput[];
+    /** 预留：视频输入 */
+    video?: VideoInput[];
+    capabilities: {
+      supportsVision: boolean;
+      supportsNativePDF: boolean;
+      supportsNativeOffice: boolean;
+    };
+  }): Promise<{ parts: Part[] } | undefined> | { parts: Part[] } | undefined;
   onBeforeChat?(params: { sessionId: string; text: string }): Promise<{ text: string } | undefined> | { text: string } | undefined;
   onAfterChat?(params: { sessionId: string; content: string }): Promise<{ content: string } | undefined> | { content: string } | undefined;
   onBeforeToolExec?(params: { toolName: string; args: Record<string, unknown> }): Promise<ToolExecInterception | undefined> | ToolExecInterception | undefined;
@@ -62,6 +89,7 @@ export interface PreBootstrapContext {
   registerLLMProvider(name: string, factory: LLMProviderFactory): void;
   registerStorageProvider(type: string, factory: StorageFactory): void;
   registerMemoryProvider(type: string, factory: MemoryFactory): void;
+  /** @deprecated OCR 功能已迁移至 multimodal 扩展，此方法保留为空操作以兼容旧插件 */
   registerOCRProvider(name: string, factory: OCRFactory): void;
   registerPlatform(name: string, factory: PlatformFactory): void;
   getExtensions(): BootstrapExtensionRegistryLike;

@@ -3,7 +3,6 @@
  */
 
 import type { LLMConfig, ToolsConfig, SkillDefinition, SummaryConfig } from '../../config/types';
-import type { OCRProvider } from '../../ocr';
 import type { Part, Content, UsageMetadata, ToolInvocation, ToolAttachment } from '../../types';
 import type { ToolExecutionHandle } from '../../tools/handle';
 import type { LLMModelInfo } from '../../llm/router';
@@ -61,7 +60,27 @@ export interface ImageInput {
   data: string;
 }
 
-export type { DocumentInput } from '../../media/document-extract.js';
+export interface DocumentInput {
+  fileName: string;
+  mimeType: string;
+  data: string;
+}
+
+/** 音频输入（预留，供 onProcessUserMedia hook 使用） */
+export interface AudioInput {
+  mimeType: string;
+  data: string;
+  fileName?: string;
+  duration?: number;
+}
+
+/** 视频输入（预留，供 onProcessUserMedia hook 使用） */
+export interface VideoInput {
+  mimeType: string;
+  data: string;
+  fileName?: string;
+  duration?: number;
+}
 
 // ============ 配置与事件 ============
 
@@ -80,8 +99,6 @@ export interface BackendConfig {
   defaultMode?: string;
   /** 当前活动模型配置（用于 vision 能力判定） */
   currentLLMConfig?: LLMConfig;
-  /** OCR 服务（当主模型不支持 vision 时回退使用） */
-  ocrService?: OCRProvider;
   /** 用于 /compact 上下文压缩的模型名称（需在 LLMRouter 中已注册） */
   summaryModelName?: string;
   /** 上下文压缩提示词配置 */

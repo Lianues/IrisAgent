@@ -3,7 +3,7 @@
  */
 
 import type { AppConfig } from '../config/types';
-import type { BootstrapExtensionRegistry, LLMProviderFactory, StorageFactory, OCRFactory } from '../bootstrap/extensions';
+import type { BootstrapExtensionRegistry, LLMProviderFactory, StorageFactory } from '../bootstrap/extensions';
 import type { PlatformFactory } from '../core/platform-registry';
 import type { PreBootstrapContext, PluginLogger } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
@@ -42,8 +42,9 @@ export class PreBootstrapContextImpl {
     // no-op: memory 现在由 extensions/memory 插件自行管理
   }
 
-  registerOCRProvider(name: string, factory: OCRFactory): void {
-    this.extensions.ocrProviders.register(name, factory);
+  /** @deprecated OCR 功能已迁移至 multimodal 扩展，此方法保留为空操作以兼容旧插件 */
+  registerOCRProvider(_name: string, _factory: unknown): void {
+    // no-op: OCR 现在由 multimodal 扩展通过 onProcessUserMedia hook 实现
   }
 
   registerPlatform(name: string, factory: PlatformFactory): void {

@@ -109,6 +109,7 @@ export interface RawEditableConfig {
   mcp?: Record<string, unknown>;
   platform?: Record<string, unknown>;
   storage?: Record<string, unknown>;
+    /** @deprecated OCR 配置已迁移至 multimodal 扩展 */
   ocr?: Record<string, unknown>;
   modes?: Record<string, unknown>;
   sub_agents?: Record<string, unknown>;
@@ -211,7 +212,7 @@ export interface IrisAPI {
   prompt: PromptAssemblerLike;
   config: AppConfigLike;
   mcpManager?: MCPManagerLike;
-  /** OCR 服务（当主模型不支持 vision 时回退使用）。未配置 OCR 时为 undefined。 */
+  /** @deprecated OCR 功能已迁移至 multimodal 扩展，通过 onProcessUserMedia hook 实现。保留仅为向后兼容。 */
   ocrService?: OCRProviderLike;
   /** 媒体处理服务：图片缩放、文档提取、Office→PDF 转换 */
   media?: MediaServiceLike;
