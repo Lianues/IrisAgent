@@ -142,7 +142,7 @@ export class ClaudeFormat implements FormatAdapter {
       body.tools = allDecls.map(decl => ({
         name: decl.name,
         description: decl.description,
-        input_schema: sanitizeSchemaForClaude(decl.parameters),
+        input_schema: sanitizeSchemaForClaude(decl.parameters) ?? { type: 'object', properties: {} },
       }));
     }
 
