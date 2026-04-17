@@ -427,6 +427,7 @@ for (const target of targets) {
       target: compileTarget,
       define: {
         "globalThis.IRIS_VERSION": `'${version}'`,
+        "globalThis.__IRIS_COMPILED__": "true",
       },
       external: ["chromium-bidi", "electron"],
     })

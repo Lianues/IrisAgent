@@ -116,10 +116,12 @@ export const projectRoot = resolveProjectRoot();
 /** 源码仓库中的 extension 收录目录 */
 export const workspaceExtensionsDir = path.join(projectRoot, 'extensions');
 
-/** 是否运行在编译后的独立二进制中（import.meta.url 对应的 data/ 不存在） */
-export const isCompiledBinary = !fs.existsSync(
-  path.join(path.resolve(path.dirname(__filename_paths), '..'), 'data')
-);
+/**
+ * 是否运行在编译后的独立二进制中。
+ *
+ * 通过编译时 define 注入的 globalThis.__IRIS_COMPILED__ 标志判断。
+ */
+export const isCompiledBinary: boolean = (globalThis as any).__IRIS_COMPILED__ === true;
 
 // ============ 多 Agent 路径支持 ============
 
