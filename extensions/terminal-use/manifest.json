@@ -1,0 +1,17 @@
+{
+  "name": "terminal-use",
+  "version": "0.1.0",
+  "description": "Persistent headless terminal session tools for Iris",
+  "plugin": {
+    "entry": "dist/index.mjs",
+    "configFile": "config.yaml"
+  },
+  "distribution": {
+    "files": [
+      "config.yaml",
+      "dist/index.mjs",
+      "dist/terminal-sidecar.mjs",
+      "package.json"
+    ]
+  }
+}

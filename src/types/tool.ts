@@ -154,6 +154,9 @@ export type ToolParallelResolver = (args: Record<string, unknown>) => boolean;
 /** 工具并行策略 */
 export type ToolParallelPolicy = boolean | ToolParallelResolver;
 
+/** 工具审批模式 */
+export type ToolApprovalMode = 'scheduler' | 'handler';
+
 /** 完整的工具定义 = 声明 + 执行器 */
 export interface ToolDefinition {
   declaration: FunctionDeclaration;
@@ -164,4 +167,10 @@ export interface ToolDefinition {
    * 默认 false（串行）。仅适用于可以安全并行的调用。
    */
   parallel?: ToolParallelPolicy;
+  /**
+   * 工具审批由谁负责。
+   * - scheduler（默认）：沿用全局 tools.yaml 的 autoApprove / showApprovalView 逻辑
+   * - handler：调度器仅提供 requestApproval/approvedByUser，上层 handler 自己决定何时请求确认
+   */
+  approvalMode?: ToolApprovalMode;
 }

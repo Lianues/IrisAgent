@@ -90,6 +90,26 @@ function extractShellCommand(call: FunctionCallPart): string {
 }
 
 /**
+ * 判断是否为“命令类工具”。
+ *
+ * 仅用于 command 字符串相关逻辑（allow/denyPatterns、approvedByUser 透传）。
+ */
+function isCommandToolName(toolName: string): boolean {
+  return toolName === 'shell' || toolName === 'bash';
+}
+
+/**
+ * 工具是否声明“由 handler 自己管理审批”。
+ *
+ * 典型场景：
+ * - shell / bash 这类命令工具：需要先跑静态白名单 / AI 分类器，再在必要时请求确认
+ * - extension 私有工具：希望通过自身配置贡献决定 autoApprove，而不是耦合宿主 tools.yaml
+ */
+function isHandlerManagedApprovalTool(call: FunctionCallPart, registry: ToolRegistry): boolean {
+  return registry.get(call.functionCall.name)?.approvalMode === 'handler';
+}
+
+/**
  * 从 shell 命令生成前缀通配模式。
  *
  * 取前两个 token + `*`（第二个以 `-` 开头时只取第一个）。
@@ -110,28 +130,31 @@ export function generateCommandPattern(command: string): string {
 /**
  * 判断工具调用是否应该自动批准（跳过 scheduler Y/N）。
  *
- * 对 shell/bash 工具（3 层优先级）：
+ * 对 handler-managed 的命令类工具（shell / bash，3 层优先级）：
  *   1. denyPatterns 匹配 → 不自动批准（弹 Y/N，跳过分类器直接让用户决定）
  *   2. 其他情况 → 自动批准，安全判定交给 handler 内层
  *      （allowPatterns / autoApprove 通过 userExplicitlyApproved 控制是否跳过分类器）
  *
- * 对非 shell 工具：行为不变，按 autoApprove 配置决定。
+ * 对非命令类工具：行为不变，按 autoApprove 配置决定。
  */
 function shouldAutoApprove(
   call: FunctionCallPart,
   policy: ToolPolicyConfig,
+  registry: ToolRegistry,
 ): boolean {
-  if (call.functionCall.name === 'shell' || call.functionCall.name === 'bash') {
+  if (isHandlerManagedApprovalTool(call, registry)) {
+    if (isCommandToolName(call.functionCall.name)) {
     // denyPatterns 匹配 → 不自动批准（触发 scheduler Y/N）
-    const command = extractShellCommand(call);
-    if (policy.denyPatterns?.length && matchesAnyPattern(command, policy.denyPatterns)) {
-      return false;
+      const command = extractShellCommand(call);
+      if (policy.denyPatterns?.length && matchesAnyPattern(command, policy.denyPatterns)) {
+        return false;
+      }
     }
-    // 其他情况自动批准，安全判定交给 handler（或 approvedByUser 跳过分类器）
+    // 其余 handler-managed 工具默认放行到 handler，自身决定是否 requestApproval。
     return true;
   }
 
-  // 非 shell 工具：按 autoApprove 配置决定
+  // 非命令类工具：按 autoApprove 配置决定
   return policy.autoApprove;
 }
 
@@ -399,47 +422,51 @@ async function executeSingle(
   // 在有 toolState 的平台（Console）会弹出审批，
   // 不支持交互审批的平台（如 WXWork）应使用 autoApproveHandle 自动批准。
   const effectivePolicy: ToolPolicyConfig = policy ?? { autoApprove: false };
+  const toolDef = registry.get(toolName);
 
   // 全局开关（最高优先级）
   const globalSkipConfirmation = toolsConfig.autoApproveAll === true || toolsConfig.autoApproveConfirmation === true;
   const globalSkipDiff = toolsConfig.autoApproveAll === true || toolsConfig.autoApproveDiff === true;
-  const autoApproved = globalSkipConfirmation || shouldAutoApprove(call, effectivePolicy);
+  const autoApproved = globalSkipConfirmation || shouldAutoApprove(call, effectivePolicy, registry);
   const interactiveApproval = canUseInteractiveApproval(toolState, invocationId);
 
-  // 追踪用户是否通过交互审批明确批准了此次调用（用于 shell 安全分类器覆盖）
+  // 追踪用户是否通过交互审批明确批准了此次调用（用于 handler-managed 工具）
   let userExplicitlyApproved = false;
 
-  // 对非 shell 工具：autoApprove 跳过审批时，标记为用户已批准。
-  // 对 shell 工具：以下场景设置 approvedByUser，让 handler 跳过 AI 分类器：
+  // 对非命令类工具：autoApprove 跳过审批时，标记为用户已批准。
+  // 对 handler-managed 的命令类工具：以下场景设置 approvedByUser，让 handler 跳过 AI 分类器：
   //   - 全局跳过确认（autoApproveAll / autoApproveConfirmation）
   //   - 工具级 autoApprove: true
   //   - allowPatterns 匹配
   // 默认（autoApprove: false + 无 pattern 匹配）→ handler 正常跑分类器（不变）。
-  const isShell = toolName === 'shell' || toolName === 'bash';
-  if (!isShell) {
+  const isCommandTool = isCommandToolName(toolName);
+  const handlerManagedApproval = toolDef?.approvalMode === 'handler';
+  if (!handlerManagedApproval) {
     if (autoApproved) {
       userExplicitlyApproved = true;
     }
-  } else if (globalSkipConfirmation || (autoApproved && effectivePolicy.autoApprove)) {
+  } else if (isCommandTool && (globalSkipConfirmation || (autoApproved && effectivePolicy.autoApprove))) {
     // autoApproved 条件确保 denyPatterns 匹配时（autoApproved=false）autoApprove 不生效，
     // 维持 denyPatterns > autoApprove 的优先级。
     // globalSkipConfirmation 是最高优先级，不受 denyPatterns 约束（因为它已在 autoApproved 计算中生效）。
     userExplicitlyApproved = true;
-  } else if (autoApproved && effectivePolicy.allowPatterns?.length) {
+  } else if (isCommandTool && autoApproved && effectivePolicy.allowPatterns?.length) {
     // 仅在 denyPatterns 未匹配时（autoApproved = true）才检查 allowPatterns，
     // 确保 denyPatterns 优先级高于 allowPatterns。
     const command = extractShellCommand(call);
     if (matchesAnyPattern(command, effectivePolicy.allowPatterns)) {
       userExplicitlyApproved = true;
     }
+  } else if (handlerManagedApproval && globalSkipConfirmation) {
+    userExplicitlyApproved = true;
   }
 
   if (!autoApproved) {
     // [安全修复] 非交互上下文不能等待人工确认，否则后台委派 / 子代理会永久卡死。
     if (!interactiveApproval) {
-      // Shell/bash: handler 有自己的安全流水线（分类器/force），不在 scheduler 层硬拦截。
+      // 命令类工具: handler 有自己的安全流水线（分类器/force），不在 scheduler 层硬拦截。
       // fall through 到 handler，让 handler 的分类器/force 机制处理。
-      if (!isShell) {
+      if (!handlerManagedApproval) {
         const approvalError = `当前执行上下文无法进行人工确认，工具「${toolName}」被权限策略拦截。请在目标 Agent 的 tools.yaml 中为该工具开启 autoApprove。`;
         if (toolState && invocationId) {
           toolState.transition(invocationId, 'error', { error: approvalError });
@@ -507,7 +534,6 @@ async function executeSingle(
   // 目的：在工具 handler 和插件钩子看到参数之前，先做类型修正和合法性校验。
   // 这样插件钩子拿到的已经是修正后的参数，handler 不会因为类型错误崩溃，
   // 校验失败时模型能收到可读的错误描述并自行修正重试。
-  const toolDef = registry.get(toolName);
   const toolSchema = toolDef?.declaration.parameters as ToolParameterSchema | undefined;
   if (toolSchema) {
     // 1. 类型容错：boolean/number/array 字符串静默转换
@@ -580,7 +606,7 @@ async function executeSingle(
       approvedByUser: userExplicitlyApproved || undefined,
       // requestApproval: handler 执行过程中可调用此方法请求 Y/N 弹窗确认。
       // 仅在可交互上下文（Console 前台会话）中提供。
-      // 用途：shell/bash handler 在 AI 分类器拒绝后弹出 Y/N，而不是返回错误让 LLM 对话确认。
+      // 用途：命令类 handler 在 AI 分类器拒绝后弹出 Y/N，而不是返回错误让 LLM 对话确认。
       requestApproval: (interactiveApproval && toolState && invocationId)
         ? async () => {
             toolState.transition(invocationId, 'awaiting_approval');

@@ -1,0 +1,15 @@
+{
+  "name": "@iris-extension/terminal-use",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run build:plugin && bun run build:sidecar",
+    "build:plugin": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm --external=node-pty --external=@xterm/headless",
+    "build:sidecar": "bun build ./src/terminal-sidecar.ts --outfile ./dist/terminal-sidecar.mjs --target=node --format=esm --external=node-pty --external=@xterm/headless"
+  },
+  "dependencies": {
+    "@xterm/headless": "^5.5.0",
+    "irises-extension-sdk": "file:../../packages/extension-sdk",
+    "node-pty": "^1.1.0"
+  }
+}

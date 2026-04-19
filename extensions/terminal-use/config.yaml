@@ -1,0 +1,15 @@
+# terminal-use 默认配置
+#
+# 用户可在 configs/terminal_use.yaml 或 plugins.yaml 中的 config 字段覆盖。
+
+enabled: false
+cols: 120
+rows: 32
+scrollback: 5000
+startupTimeoutMs: 10000
+defaultCommandTimeoutMs: 30000
+defaultWaitTimeoutMs: 10000
+idleQuietMs: 350
+maxDisplayChars: 12000
+maxCommandOutputChars: 50000
+maxRecentSnapshots: 3

@@ -57,11 +57,13 @@ export interface ToolExecutionContext {
 export type ToolHandler = (args: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown> | AsyncIterable<unknown>;
 export type ToolParallelResolver = (args: Record<string, unknown>) => boolean;
 export type ToolParallelPolicy = boolean | ToolParallelResolver;
+export type ToolApprovalMode = 'scheduler' | 'handler';
 
 export interface ToolDefinition {
   declaration: FunctionDeclaration;
   handler: ToolHandler;
   parallel?: ToolParallelPolicy;
+  approvalMode?: ToolApprovalMode;
 }
 
 

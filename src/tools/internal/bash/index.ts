@@ -177,6 +177,7 @@ function maybeLearnAfterExec(
  */
 export function createBashTool(deps?: BashToolDeps): ToolDefinition {
   return {
+    approvalMode: 'handler',
     declaration: {
       name: 'bash',
       description: `在项目目录下执行 Bash/Shell 命令。返回 stdout、stderr 和退出码。

@@ -96,6 +96,7 @@ export type {
   ToolExecutionContext,
   ToolHandler,
   ToolInvocation,
+  ToolApprovalMode,
   ToolParallelPolicy,
   ToolParallelResolver,
   ToolStatus,

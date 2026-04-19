@@ -94,6 +94,7 @@ type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 | `sub_agent` | `sub-agent/index.ts`（工厂函数动态创建） | 委派子任务给独立子代理 |
 | `mcp__*` | 由 `MCPManager` 动态创建 | MCP 外部服务器提供的工具 |
 | `click_at` / `type_text_at` / ... | 由 `computer-use/tools.ts` 动态创建 | Computer Use 浏览器操控工具（共 13 个），详见 [computer-use.md](./computer-use.md) |
+| `get_terminal_snapshot` / `restart_terminal` / `exec_terminal_command` / ... | 由 `terminal-use` 扩展动态创建 | 持久化无头终端工具（终端页面文本快照 + 交互式按键/输入），需启用 terminal-use 插件，详见 [terminal-use.md](./terminal-use.md) |
 
 ## sub_agent 工具
 

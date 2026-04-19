@@ -208,6 +208,7 @@ function maybeLearnAfterExec(
  */
 export function createShellTool(deps?: ShellToolDeps): ToolDefinition {
   return {
+    approvalMode: 'handler',
     declaration: {
       name: 'shell',
       description: `在项目目录下通过 PowerShell 执行命令。返回 stdout、stderr 和退出码。
