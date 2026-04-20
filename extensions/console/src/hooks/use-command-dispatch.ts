@@ -28,6 +28,10 @@ type SetSettingsInitialSection = Dispatch<SetStateAction<SettingsInitialSection>
 
 interface UseCommandDispatchOptions {
   onSubmit: (text: string) => void;
+  /** 附加文件（图片/文档/音频/视频）到下一条消息 */
+  onFileAttach: (filePath: string) => void;
+  /** 打开文件浏览器视图 */
+  onOpenFileBrowser: () => void;
   onUndo: () => Promise<boolean>;
   onRedo: () => Promise<boolean>;
   onClearRedoStack: () => void;
@@ -79,6 +83,8 @@ function resetRedo(undoRedoRef: MutableRefObject<UndoRedoStack>, onClearRedoStac
 
 export function useCommandDispatch({
   onSubmit,
+  onFileAttach,
+  onOpenFileBrowser,
   onUndo,
   onRedo,
   onClearRedoStack,
@@ -371,10 +377,30 @@ export function useCommandDispatch({
       return;
     }
 
+    // ── /file 命令 — 附加文件到下一条消息 ──
+    if (text.startsWith('/file ') || text === '/file') {
+      const filePath = text.slice(6).trim();
+      if (!filePath) {
+        // 无参数 → 打开文件浏览器
+        onOpenFileBrowser();
+        return;
+      }
+      if (filePath === 'clear') {
+        // /file clear → 清空所有待发送附件
+        onFileAttach('__clear__');
+        return;
+      }
+      // 有参数 → 直接附加指定路径
+      onFileAttach(filePath);
+      return;
+    }
+
     resetRedo(undoRedoRef, onClearRedoStack);
     onSubmit(text);
   }, [
     commitTools,
+    onFileAttach,
+    onOpenFileBrowser,
     modelState,
     onClearRedoStack,
     onExit,

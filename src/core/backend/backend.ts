@@ -52,8 +52,8 @@ import { StreamingToolExecutor } from '../../tools/streaming-executor';
 import type { CrossAgentTaskBoard, TaskRecord } from '../cross-agent-task-board';
 import { ToolExecutionHandle } from '../../tools/handle';
 
-import type { BackendConfig, ImageInput, DocumentInput, UndoScope, UndoOperationResult, RedoOperationResult, NotificationPayload } from './types';
-import { buildMinimalParts } from './media';
+import type { BackendConfig, ImageInput, DocumentInput, AudioInput, VideoInput, UndoScope, UndoOperationResult, RedoOperationResult, NotificationPayload } from './types';
+import { buildMinimalParts, estimateMultimodalTokens } from './media';
 import { prepareHistoryForLLM, preparePartsForLLM } from './history';
 import { callLLMStream } from './stream';
 import { UndoRedoManager } from './undo-redo';
@@ -317,7 +317,7 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
    *   因此 await chat() 的行为与改造前一致——等到 turn 结束才返回。
    *   这保证了所有平台层的 await backend.chat() 调用无需修改。
    */
-  async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[], platformName?: string): Promise<void> {
+  async chat(sessionId: string, text: string, images?: ImageInput[], documents?: DocumentInput[], platformName?: string, audio?: AudioInput[], video?: VideoInput[]): Promise<void> {
     // 插件钩子: onBeforeChat（可修改用户消息文本）
     // 注意：钩子在入队前执行，确保修改后的文本被队列存储。
     for (const hook of this.pluginHooks) {
@@ -336,6 +336,8 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
       text,
       images,
       documents,
+      audio,
+      video,
       platformName,
     });
 
@@ -966,7 +968,7 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
         };
         await sessionContext.run(execCtx, () =>
           agentContext.run('main', () =>
-            this.handleMessage(msg.sessionId, msg.text, msg.turnId, abortController.signal, msg.images, msg.documents, msg.platformName)
+            this.handleMessage(msg.sessionId, msg.text, msg.turnId, abortController.signal, msg.images, msg.documents, msg.platformName, msg.audio, msg.video)
           )
         );
       }
@@ -1049,7 +1051,7 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     });
   }
 
-  private async handleMessage(sessionId: string, text: string, turnId: string, signal?: AbortSignal, images?: ImageInput[], documents?: DocumentInput[], platformName?: string): Promise<void> {
+  private async handleMessage(sessionId: string, text: string, turnId: string, signal?: AbortSignal, images?: ImageInput[], documents?: DocumentInput[], platformName?: string, audio?: AudioInput[], video?: VideoInput[]): Promise<void> {
     // 清除本会话上一轮残留的工具调用记录
     this.toolState.clearSession(sessionId);
 
@@ -1062,6 +1064,8 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
           text,
           images,
           documents,
+          audio,
+          video,
           capabilities: {
             supportsVision: llmSupportsVision(this.currentLLMConfig),
             supportsNativePDF: supportsNativePDF(this.currentLLMConfig),
@@ -1077,7 +1081,7 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
       }
     }
     if (!storedUserParts) {
-      storedUserParts = buildMinimalParts(text, images, documents);
+      storedUserParts = buildMinimalParts(text, images, documents, audio, video);
     }
     const llmUserParts = preparePartsForLLM(storedUserParts, this.currentLLMConfig);
 
@@ -1103,7 +1107,7 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     if (autoThreshold && storedHistory.length > 0) {
       const lastTokens = this.lastSessionTokens.get(sessionId) ?? 0;
       if (lastTokens > 0) {
-        const estUser = estimateTokenCount(extractText(storedUserParts) || '');
+        const estUser = (estimateTokenCount(extractText(storedUserParts) || '')) + estimateMultimodalTokens(storedUserParts);
         if (lastTokens + estUser > autoThreshold) {
           logger.info(`Auto-compact (pre-message): ${lastTokens} + ${estUser} > ${autoThreshold}`);
           try {
@@ -1125,7 +1129,9 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
     // 2. 新用户消息会让 redo 失效
     this.undoRedo.clearRedo(sessionId);
     const userTextForTokens = extractText(storedUserParts);
-    const estimatedUserTokens = userTextForTokens ? estimateTokenCount(userTextForTokens) : 0;
+    const textTokens = userTextForTokens ? estimateTokenCount(userTextForTokens) : 0;
+    const multimodalTokens = estimateMultimodalTokens(storedUserParts);
+    const estimatedUserTokens = textTokens + multimodalTokens;
     await this.storage.addMessage(sessionId, {
       role: 'user',
       parts: storedUserParts,

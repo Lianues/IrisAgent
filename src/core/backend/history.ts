@@ -66,16 +66,16 @@ export function preparePartsForLLM(parts: Part[], currentLLMConfig?: LLMConfig):
       if (isDocumentMimeType(mime)) {
         // 文档 InlineDataPart：按端点能力决定保留或剥离
         if (mime === 'application/pdf' && supportsNativePDF(currentLLMConfig)) {
-          prepared.push({ inlineData: { ...part.inlineData } });
+          prepared.push({ inlineData: { mimeType: part.inlineData.mimeType, data: part.inlineData.data } });
         } else if (mime !== 'application/pdf' && supportsNativeOffice(currentLLMConfig)) {
-          prepared.push({ inlineData: { ...part.inlineData } });
+          prepared.push({ inlineData: { mimeType: part.inlineData.mimeType, data: part.inlineData.data } });
         } else {
           strippedDocumentCount++;
         }
       } else {
         // 图片 InlineDataPart
         if (visionEnabled) {
-          prepared.push({ inlineData: { ...part.inlineData } });
+          prepared.push({ inlineData: { mimeType: part.inlineData.mimeType, data: part.inlineData.data } });
         } else {
           strippedImageCount++;
         }

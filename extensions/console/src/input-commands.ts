@@ -31,11 +31,12 @@ export const COMMANDS: Command[] = [
   { name: '/extension', description: '管理扩展插件（查看/启用/禁用）' },
   { name: '/dream',    description: '整理长期记忆（合并冗余、清理过时）' },
   { name: '/queue',    description: '查看/管理排队消息' },
+  { name: '/file',     description: '附加文件（图片/文档/音频/视频）  clear 清空' },
   { name: '/exit',     description: '退出应用' },
 ];
 
 export function getCommandInput(cmd: Command): string {
-  return cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' ? `${cmd.name} ` : cmd.name;
+  return cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' || cmd.name === '/file' ? `${cmd.name} ` : cmd.name;
 }
 
 export function isExactCommandValue(value: string, cmd: Command): boolean {

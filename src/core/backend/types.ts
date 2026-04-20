@@ -58,6 +58,7 @@ export interface RedoOperationResult {
 export interface ImageInput {
   mimeType: string;
   data: string;
+  fileName?: string;
 }
 
 export interface DocumentInput {

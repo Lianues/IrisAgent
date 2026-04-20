@@ -110,13 +110,25 @@ function convertPartsToMessageParts(
     }
   }
 
-  for (const part of parts) {
+  for (let pi = 0; pi < parts.length; pi++) {
+    const part = parts[pi];
     if ('text' in part) {
       if (part.thought === true) {
         result.push({ type: 'thought', text: part.text ?? '', durationMs: part.thoughtDurationMs });
       } else {
         result.push({ type: 'text', text: part.text ?? '' });
       }
+      continue;
+    }
+
+    if ('inlineData' in part) {
+      const mime = part.inlineData.mimeType || '';
+      const fileType = mime.startsWith('image/') ? 'image'
+        : mime.startsWith('audio/') ? 'audio'
+        : mime.startsWith('video/') ? 'video'
+        : 'document';
+      const fileName = (part.inlineData as any).name || mime;
+      result.push({ type: 'file', fileType, fileName, mimeType: mime });
       continue;
     }
 
@@ -249,6 +261,11 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   /** 当前是否正在生成响应（用于阻止 addErrorMessage 破坏流式占位消息） */
   private _isGenerating = false;
 
+  /** 待发送的文件附件（由 /file 命令添加，handleInput 时消费） */
+  private _pendingImages: import('irises-extension-sdk').ImageInput[] = [];
+  private _pendingDocuments: import('irises-extension-sdk').DocumentInput[] = [];
+  private _pendingAudio: import('irises-extension-sdk').AudioInput[] = [];
+  private _pendingVideo: import('irises-extension-sdk').VideoInput[] = [];
   constructor(backend: IrisBackendLike, options: ConsolePlatformOptions) {
     super();
     this.backend = backend;
@@ -544,6 +561,17 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
           resolve();
         },
         onSubmit: (text: string) => this.handleInput(text),
+        onFileAttach: (filePath: string) => this.handleFileAttach(filePath),
+        onRemoveFile: (index: number) => this.handleRemoveFile(index),
+        onFileBrowserSelect: (dirPath: string, entry: any, showHidden: boolean) => {
+          this.handleFileBrowserSelect(dirPath, entry, showHidden);
+        },
+        onFileBrowserGoUp: (dirPath: string, showHidden: boolean) => {
+          this.handleFileBrowserGoUp(dirPath, showHidden);
+        },
+        onFileBrowserToggleHidden: (dirPath: string, showHidden: boolean) => {
+          this.handleFileBrowserToggleHidden(dirPath, showHidden);
+        },
         onUndo: async () => {
           try {
             const result = await this.enqueueHistoryMutation(async () => {
@@ -1570,6 +1598,253 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   }
 
   /**
+   * 处理 /file 命令：
+   * - '__open_browser__' → 打开文件浏览器
+   * - 具体路径 → 直接附加文件
+   */
+  private handleFileAttach(filePath: string): void {
+    if (filePath === '__open_browser__') {
+      const realProcess = require('process') as typeof import('process');
+      this.openFileBrowser(realProcess.cwd());
+      return;
+    }
+    if (filePath === '__clear__') {
+      this._pendingImages = [];
+      this._pendingDocuments = [];
+      this._pendingAudio = [];
+      this._pendingVideo = [];
+      this.appHandle?.setPendingFiles([]);
+      this.appHandle?.addCommandMessage('已清空所有待发送附件');
+      return;
+    }
+    const fs = require('fs');
+    const path = require('path');
+
+    // 解析路径（支持相对路径）
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      this.appHandle?.addCommandMessage(`文件不存在: ${resolved}`);
+      return;
+    }
+
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) {
+      this.appHandle?.addCommandMessage(`不是一个文件: ${resolved}`);
+      return;
+    }
+
+    // 文件大小限制 (20MB)
+    const MAX_FILE_SIZE = 20 * 1024 * 1024;
+    if (stat.size > MAX_FILE_SIZE) {
+      this.appHandle?.addCommandMessage(`文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，最大支持 20MB`);
+      return;
+    }
+
+    const ext = path.extname(resolved).toLowerCase();
+    const mimeType = this.detectMimeType(ext);
+    const fileType = this.classifyFileType(mimeType);
+    const data = fs.readFileSync(resolved).toString('base64');
+    const fileName = path.basename(resolved);
+
+    if (fileType === 'image') {
+      this._pendingImages.push({ mimeType, data, fileName });
+    } else if (fileType === 'audio') {
+      this._pendingAudio.push({ mimeType, data, fileName });
+    } else if (fileType === 'video') {
+      this._pendingVideo.push({ mimeType, data, fileName });
+    } else {
+      this._pendingDocuments.push({ fileName, mimeType, data });
+    }
+
+    // 更新 UI
+    this.appHandle?.setPendingFiles(this.getPendingFilesList());
+    this.appHandle?.addCommandMessage(`已附加: ${fileName} (${fileType})`);
+  }
+
+  /**
+   * 移除指定索引的待发送文件附件。
+   * 索引对应 getPendingFilesList() 的顺序：images → documents → audio → video。
+   */
+  private handleRemoveFile(index: number): void {
+    let offset = 0;
+    if (index < offset + this._pendingImages.length) {
+      this._pendingImages.splice(index - offset, 1);
+    } else if (index < (offset += this._pendingImages.length, offset + this._pendingDocuments.length)) {
+      this._pendingDocuments.splice(index - offset, 1);
+    } else if (index < (offset += this._pendingDocuments.length, offset + this._pendingAudio.length)) {
+      this._pendingAudio.splice(index - offset, 1);
+    } else {
+      offset += this._pendingAudio.length;
+      this._pendingVideo.splice(index - offset, 1);
+    }
+    this.appHandle?.setPendingFiles(this.getPendingFilesList());
+  }
+
+
+
+  /** 获取当前待发送文件的 UI 展示列表 */
+  private getPendingFilesList(): import('./components/InputBar').PendingFile[] {
+    const files: import('./components/InputBar').PendingFile[] = [];
+    for (const img of this._pendingImages) {
+      files.push({ path: img.fileName || '(image)', fileType: 'image', mimeType: img.mimeType });
+    }
+    for (const doc of this._pendingDocuments) {
+      files.push({ path: doc.fileName, fileType: 'document', mimeType: doc.mimeType });
+    }
+    for (const a of this._pendingAudio) {
+      files.push({ path: a.fileName || '(audio)', fileType: 'audio', mimeType: a.mimeType });
+    }
+    for (const v of this._pendingVideo) {
+      files.push({ path: v.fileName || '(video)', fileType: 'video', mimeType: v.mimeType });
+    }
+    return files;
+  }
+
+  /** 根据扩展名检测 MIME 类型 */
+  private detectMimeType(ext: string): string {
+    const mimeMap: Record<string, string> = {
+      // 图片
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+      '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.tiff': 'image/tiff', '.tif': 'image/tiff',
+      // 音频
+      '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+      '.flac': 'audio/flac', '.aac': 'audio/aac', '.m4a': 'audio/mp4',
+      '.wma': 'audio/x-ms-wma', '.opus': 'audio/opus', '.webm': 'audio/webm',
+      // 视频
+      '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.mov': 'video/quicktime',
+      '.mkv': 'video/x-matroska', '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv',
+      '.m4v': 'video/mp4', '.3gp': 'video/3gpp',
+      // 文档
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv',
+      '.json': 'application/json', '.xml': 'application/xml',
+      '.html': 'text/html', '.htm': 'text/html',
+      '.zip': 'application/zip', '.tar': 'application/x-tar', '.gz': 'application/gzip',
+      // 脚本/配置
+      '.sh': 'text/x-shellscript', '.bash': 'text/x-shellscript', '.zsh': 'text/x-shellscript',
+      '.py': 'text/x-python', '.js': 'text/javascript', '.ts': 'text/typescript',
+      '.yaml': 'text/yaml', '.yml': 'text/yaml', '.toml': 'text/plain', '.ini': 'text/plain',
+      '.cfg': 'text/plain', '.conf': 'text/plain', '.log': 'text/plain',
+    };
+    return mimeMap[ext] || 'application/octet-stream';
+  }
+
+  /** 根据 MIME 类型分类文件 */
+  /** 根据 MIME 类型分类文件 */
+  private classifyFileType(mimeType: string): 'image' | 'audio' | 'video' | 'document' | 'other' {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('text/')) return 'document';
+    if (mimeType === 'application/pdf' || mimeType === 'application/json' ||
+        mimeType === 'application/xml' || mimeType.includes('document') ||
+        mimeType.includes('spreadsheet') || mimeType.includes('presentation') ||
+        mimeType === 'application/zip' || mimeType === 'application/x-tar' ||
+        mimeType === 'application/gzip') return 'document';
+    if (mimeType === 'application/octet-stream') return 'other';
+    return 'other';
+  }
+
+  /**
+   * 打开文件浏览器视图，列出指定目录的内容。
+   */
+  private openFileBrowser(dirPath: string): void {
+    const entries = this.listDirectory(dirPath);
+    this.appHandle?.openFileBrowser(dirPath, entries);
+  }
+
+  /**
+   * 列出目录内容，返回排序后的条目列表（目录在前，文件在后）。
+   */
+  private listDirectory(dirPath: string, showHidden = false): import('./components/FileBrowserView').FileBrowserEntry[] {
+    const fs = require('fs');
+    const path = require('path');
+
+    try {
+      const items = fs.readdirSync(dirPath);
+      const entries: import('./components/FileBrowserView').FileBrowserEntry[] = [];
+
+      for (const name of items) {
+        // 过滤隐藏文件
+        if (!showHidden && name.startsWith('.')) continue;
+
+        try {
+          const fullPath = path.join(dirPath, name);
+          const stat = fs.statSync(fullPath);
+          const isDirectory = stat.isDirectory();
+
+          if (isDirectory) {
+            entries.push({ name, isDirectory: true });
+          } else {
+            const ext = path.extname(name).toLowerCase();
+            const mimeType = this.detectMimeType(ext);
+            const fileType = this.classifyFileType(mimeType);
+            entries.push({ name, isDirectory: false, size: stat.size, fileType });
+          }
+        } catch {
+          // 跳过无权限的文件
+        }
+      }
+
+      // 排序：目录在前（字母序），文件在后（字母序）
+      entries.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      return entries;
+    } catch (err: any) {
+      this.appHandle?.addCommandMessage(`无法读取目录: ${err.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 文件浏览器中选择文件时的处理（由键盘事件通过 AppHandle 回调触发）。
+   */
+  handleFileBrowserSelect(dirPath: string, entry: import('./components/FileBrowserView').FileBrowserEntry, showHidden: boolean): void {
+    const path = require('path');
+
+    if (entry.isDirectory) {
+      // 进入子目录
+      const newPath = path.resolve(dirPath, entry.name);
+      const entries = this.listDirectory(newPath, showHidden);
+      this.appHandle?.openFileBrowser(newPath, entries);
+    } else {
+      // 选择文件 → 附加
+      const fullPath = path.join(dirPath, entry.name);
+      this.handleFileAttach(fullPath);
+    }
+  }
+
+  /**
+   * 文件浏览器中返回上级目录。
+   */
+  handleFileBrowserGoUp(dirPath: string, showHidden: boolean): void {
+    const path = require('path');
+    const parentPath = path.dirname(dirPath);
+    if (parentPath === dirPath) return; // 已在根目录
+    const entries = this.listDirectory(parentPath, showHidden);
+    this.appHandle?.openFileBrowser(parentPath, entries);
+  }
+
+  /**
+   * 文件浏览器中切换隐藏文件显示。
+   */
+  handleFileBrowserToggleHidden(dirPath: string, showHidden: boolean): void {
+    const entries = this.listDirectory(dirPath, !showHidden);
+    this.appHandle?.openFileBrowser(dirPath, entries);
+  }
+
+
+
+
+
+  /**
    * 处理用户输入：发送消息给 Backend，并在完成后自动排流队列中的下一条消息。
    *
    * 流程：
@@ -1581,12 +1856,57 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     this._isGenerating = true;
     this.appHandle?.setGenerating(true);
 
+    // 首次发送时取出并消费待发送的文件附件
+    const images = this._pendingImages.length > 0 ? [...this._pendingImages] : undefined;
+    const documents = this._pendingDocuments.length > 0 ? [...this._pendingDocuments] : undefined;
+    const audio = this._pendingAudio.length > 0 ? [...this._pendingAudio] : undefined;
+    const video = this._pendingVideo.length > 0 ? [...this._pendingVideo] : undefined;
+    this._pendingImages = [];
+    this._pendingDocuments = [];
+    this._pendingAudio = [];
+    this._pendingVideo = [];
+    this.appHandle?.setPendingFiles([]);
+
+    let isFirstMessage = true;
     let currentText: string | undefined = text;
     while (currentText) {
-      this.appHandle?.addMessage('user', currentText);
+      // 构建用户消息的 MessagePart[]（文本 + 文件附件）
+      if (isFirstMessage && (images || documents || audio || video)) {
+        const userParts: MessagePart[] = [];
+        if (images) {
+          for (const img of images) {
+            userParts.push({ type: 'file', fileType: 'image', fileName: img.fileName || img.mimeType, mimeType: img.mimeType });
+          }
+        }
+        if (documents) {
+          for (const doc of documents) {
+            userParts.push({ type: 'file', fileType: 'document', fileName: doc.fileName, mimeType: doc.mimeType });
+          }
+        }
+        if (audio) {
+          for (const a of audio) {
+            userParts.push({ type: 'file', fileType: 'audio', fileName: a.fileName || a.mimeType, mimeType: a.mimeType });
+          }
+        }
+        if (video) {
+          for (const v of video) {
+            userParts.push({ type: 'file', fileType: 'video', fileName: v.fileName || v.mimeType, mimeType: v.mimeType });
+          }
+        }
+        if (currentText.trim()) userParts.push({ type: 'text', text: currentText });
+        this.appHandle?.addStructuredMessage('user', userParts);
+      } else {
+        this.appHandle?.addMessage('user', currentText);
+      }
       this.currentToolIds.clear();
       try {
-        await this.backend.chat(this.sessionId, currentText, undefined, undefined, 'console');
+        // 只有第一条消息携带文件附件，队列中的后续消息不带
+        if (isFirstMessage) {
+          await this.backend.chat(this.sessionId, currentText, images, documents, 'console', audio, video);
+          isFirstMessage = false;
+        } else {
+          await this.backend.chat(this.sessionId, currentText, undefined, undefined, 'console');
+        }
       } finally {
         this.appHandle?.commitTools();
       }

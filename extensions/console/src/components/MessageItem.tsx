@@ -13,6 +13,22 @@ import { ToolCall } from './ToolCall';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
 
+/** 截断文件路径：保留头尾，中间用 … 替代 */
+function truncateMiddle(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const keep = Math.max(4, Math.floor((maxChars - 3) / 2));
+  return `${text.slice(0, keep)}${ICONS.ellipsis}${text.slice(text.length - keep)}`;
+}
+
+const FILE_TYPE_ICONS: Record<string, string> = {
+  image: '📷',
+  document: '📄',
+  audio: '🎵',
+  video: '🎬',
+  other: '📎',
+};
+
+
 function truncateRight(line: string, maxChars: number): string {
   if (line.length <= maxChars) return line;
   return `${line.slice(0, maxChars - 1)}${ICONS.ellipsis}`;
@@ -62,7 +78,8 @@ function formatTime(ms: number): string {
 export type MessagePart =
   | { type: 'text'; text: string }
   | { type: 'thought'; text: string; durationMs?: number }
-  | { type: 'tool_use'; tools: ToolInvocation[] };
+  | { type: 'tool_use'; tools: ToolInvocation[] }
+  | { type: 'file'; fileType: 'image' | 'document' | 'audio' | 'video'; fileName: string; mimeType: string };
 
 /** 异步子代理通知的结构化内容 */
 export interface NotificationPayload {
@@ -114,7 +131,8 @@ interface MessageItemProps {
 type RenderGroup =
   | { kind: 'text'; part: MessagePart & { type: 'text' }; index: number }
   | { kind: 'thought'; part: MessagePart & { type: 'thought' }; index: number }
-  | { kind: 'tools'; tools: ToolInvocation[]; startIndex: number };
+  | { kind: 'tools'; tools: ToolInvocation[]; startIndex: number }
+  | { kind: 'file'; part: MessagePart & { type: 'file' }; index: number };
 
 function groupParts(parts: MessagePart[]): RenderGroup[] {
   const groups: RenderGroup[] = [];
@@ -138,6 +156,9 @@ function groupParts(parts: MessagePart[]): RenderGroup[] {
       i++;
     } else if (part.type === 'thought') {
       groups.push({ kind: 'thought', part: part as MessagePart & { type: 'thought' }, index: i });
+      i++;
+    } else if (part.type === 'file') {
+      groups.push({ kind: 'file', part: part as MessagePart & { type: 'file' }, index: i });
       i++;
     } else {
       i++;
@@ -342,6 +363,20 @@ export const MessageItem = React.memo(function MessageItem(
                   <text fg={C.accent}><strong>{`${ICONS.separator} tools`}</strong></text>
                   {group.tools.map(inv => <ToolCall key={inv.id} invocation={inv} />)}
                 </box>
+              </box>
+            );
+          }
+
+          if (group.kind === 'file') {
+            const icon = FILE_TYPE_ICONS[group.part.fileType] || '📎';
+            const maxNameLen = Math.max(20, termWidth - 15);
+            const displayName = truncateMiddle(group.part.fileName, maxNameLen);
+            return (
+              <box key={`file-${group.index}`} marginTop={gi > 0 ? 1 : 0}>
+                <text>
+                  <span fg={C.primaryLight}>{icon} {displayName}</span>
+                  <span fg={C.dim}> ({group.part.mimeType})</span>
+                </text>
               </box>
             );
           }

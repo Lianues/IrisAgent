@@ -118,6 +118,14 @@ interface UseAppKeyboardOptions {
   setExtensionTogglingName: SetState<string | null>;
   setExtensionStatusMessage: SetState<string | null>;
   setExtensionStatusIsError: SetState<boolean>;
+  /** file-browser 视图用 */
+  fileBrowserPath: string;
+  fileBrowserEntries: import('../components/FileBrowserView').FileBrowserEntry[];
+  fileBrowserShowHidden: boolean;
+  setFileBrowserShowHidden: SetState<boolean>;
+  onFileBrowserSelect?: (dirPath: string, entry: any, showHidden: boolean) => void;
+  onFileBrowserGoUp?: (dirPath: string, showHidden: boolean) => void;
+  onFileBrowserToggleHidden?: (dirPath: string, showHidden: boolean) => void;
 }
 
 function closeConfirm(
@@ -205,6 +213,13 @@ export function useAppKeyboard({
   setExtensionTogglingName,
   setExtensionStatusMessage,
   setExtensionStatusIsError,
+  fileBrowserPath,
+  fileBrowserEntries,
+  fileBrowserShowHidden,
+  setFileBrowserShowHidden,
+  onFileBrowserSelect,
+  onFileBrowserGoUp,
+  onFileBrowserToggleHidden,
 }: UseAppKeyboardOptions) {
   const setModelStatus = (message: string | null, isError = false) => {
     setModelStatusMessage(message);
@@ -420,6 +435,10 @@ export function useAppKeyboard({
           setModelStatus(null);
           return;
         }
+        setViewMode('chat');
+        return;
+      }
+      if (viewMode === 'file-browser') {
         setViewMode('chat');
         return;
       }
@@ -657,6 +676,28 @@ export function useAppKeyboard({
       }
       return;
     }
+
+    // ── 文件浏览器视图键盘处理 ──────────────────────────
+    if (viewMode === 'file-browser') {
+      if (key.name === 'up') {
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      } else if (key.name === 'down') {
+        setSelectedIndex((prev) => Math.min(fileBrowserEntries.length - 1, prev + 1));
+      } else if (key.name === 'enter' || key.name === 'return') {
+        const selected = fileBrowserEntries[selectedIndex];
+        if (selected) {
+          if (!selected.isDirectory) setViewMode('chat');
+          onFileBrowserSelect?.(fileBrowserPath, selected, fileBrowserShowHidden);
+        }
+      } else if (key.name === 'backspace' || (key.name === 'left' && !key.shift)) {
+        onFileBrowserGoUp?.(fileBrowserPath, fileBrowserShowHidden);
+      } else if (key.sequence === '.') {
+        onFileBrowserToggleHidden?.(fileBrowserPath, fileBrowserShowHidden);
+      }
+      return;
+    }
+
+
 
     if (viewMode === 'model-list') {
       if (modelEditingField) {

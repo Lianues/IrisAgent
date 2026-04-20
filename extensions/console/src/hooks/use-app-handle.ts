@@ -16,6 +16,8 @@ export interface AppHandle {
   addMessage(role: 'user' | 'assistant', content: string, meta?: MessageMeta): void;
   addStructuredMessage(role: 'user' | 'assistant', parts: MessagePart[], meta?: MessageMeta): void;
   addErrorMessage(text: string): void;
+  /** 添加一次性命令消息（如 shell 输出、/file 反馈），下次用户发消息时自动清除 */
+  addCommandMessage(text: string): void;
   startStream(): void;
   pushStreamParts(parts: MessagePart[]): void;
   endStream(): void;
@@ -55,6 +57,16 @@ export interface AppHandle {
    * 返回下一条消息的文本，队列为空时返回 undefined。
    */
   drainQueue(): string | undefined;
+  /** 更新待发送文件附件列表（由 /file 命令在平台层调用） */
+  setPendingFiles(files: import('../components/InputBar').PendingFile[]): void;
+  /** 打开文件浏览器（设置路径、条目列表并切换视图） */
+  openFileBrowser(path: string, entries: import('../components/FileBrowserView').FileBrowserEntry[]): void;
+  /** 文件浏览器：选择条目（进入目录或附加文件） */
+  fileBrowserSelect(dirPath: string, entry: import('../components/FileBrowserView').FileBrowserEntry, showHidden: boolean): void;
+  /** 文件浏览器：返回上级目录 */
+  fileBrowserGoUp(dirPath: string, showHidden: boolean): void;
+  /** 文件浏览器：切换隐藏文件 */
+  fileBrowserToggleHidden(dirPath: string, showHidden: boolean): void;
   /** 打开工具详情视图 */
   openToolDetail(data: ToolDetailData, breadcrumb: ToolDetailBreadcrumb[]): void;
   /** 更新当前工具详情数据（Handle 事件驱动） */
@@ -70,6 +82,16 @@ interface UseAppHandleOptions {
   undoRedoRef: MutableRefObject<UndoRedoStack>;
   /** App 组件设置的队列出队回调，drainQueue 时调用 */
   drainCallbackRef: MutableRefObject<(() => string | undefined) | null>;
+  /** setPendingFiles 回调（由 App 注入） */
+  setPendingFilesRef: MutableRefObject<((files: import('../components/InputBar').PendingFile[]) => void) | null>;
+  /** 打开文件浏览器的回调 */
+  openFileBrowserRef: MutableRefObject<((path: string, entries: import('../components/FileBrowserView').FileBrowserEntry[]) => void) | null>;
+  /** 文件浏览器操作回调（由平台注入） */
+  fileBrowserCallbackRef: MutableRefObject<{
+    select: (dirPath: string, entry: import('../components/FileBrowserView').FileBrowserEntry, showHidden: boolean) => void;
+    goUp: (dirPath: string, showHidden: boolean) => void;
+    toggleHidden: (dirPath: string, showHidden: boolean) => void;
+  } | null>;
 }
 
 export interface UseAppHandleReturn {
@@ -98,7 +120,7 @@ export interface UseAppHandleReturn {
   toolListItems: ToolInvocation[];
 }
 
-export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppHandleOptions): UseAppHandleReturn {
+export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef }: UseAppHandleOptions): UseAppHandleReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -165,6 +187,12 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
           { id: nextMsgId(), role: 'assistant', parts: [{ type: 'text', text }], isError: true },
         ]);
       },
+      addCommandMessage(text) {
+        setMessages((prev) => [
+          ...prev.filter((m) => !m.isCommand),
+          { id: nextMsgId(), role: 'assistant', parts: [{ type: 'text', text }], isCommand: true },
+        ]);
+      },
       addStructuredMessage(role, parts, meta) {
         clearRedo(undoRedoRef.current);
         const normalizedParts = mergeMessageParts(parts);
@@ -173,7 +201,10 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
           setMessages((prev) => appendAssistantParts(prev, normalizedParts, meta));
           return;
         }
-        setMessages((prev) => [...prev, { id: nextMsgId(), role, parts: normalizedParts, ...meta }]);
+        setMessages((prev) => [
+          ...prev.filter((m) => !m.isError && !m.isCommand && !(m.role === 'assistant' && m.parts.length === 0)),
+          { id: nextMsgId(), role, parts: normalizedParts, createdAt: Date.now(), ...meta },
+        ]);
       },
       startStream() {
         if (toolInvocationsRef.current.length > 0) commitTools();
@@ -433,13 +464,28 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }: UseAppH
       drainQueue() {
         return drainCallbackRef.current?.() ?? undefined;
       },
+      setPendingFiles(files) {
+        setPendingFilesRef.current?.(files);
+      },
+      openFileBrowser(path, entries) {
+        openFileBrowserRef.current?.(path, entries);
+      },
+      fileBrowserSelect(dirPath, entry, showHidden) {
+        fileBrowserCallbackRef.current?.select(dirPath, entry, showHidden);
+      },
+      fileBrowserGoUp(dirPath, showHidden) {
+        fileBrowserCallbackRef.current?.goUp(dirPath, showHidden);
+      },
+      fileBrowserToggleHidden(dirPath, showHidden) {
+        fileBrowserCallbackRef.current?.toggleHidden(dirPath, showHidden);
+      },
       openToolList(tools: ToolInvocation[]) {
         setToolListItems(tools);
       },
     };
 
     onReady(handle);
-  }, [commitTools, drainCallbackRef, onReady, undoRedoRef]);
+  }, [commitTools, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef, onReady, undoRedoRef]);
 
   return {
     messages,

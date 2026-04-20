@@ -4,6 +4,7 @@ import type { ToolExecutionHandleLike } from './tool.js';
 export type ImageInput = {
   mimeType: string;
   data: string;
+  fileName?: string;
 };
 
 export type DocumentInput = {
@@ -109,6 +110,8 @@ export interface IrisBackendLike {
     images?: ImageInput[],
     documents?: DocumentInput[],
     platform?: string,
+    audio?: import('./media.js').AudioInput[],
+    video?: import('./media.js').VideoInput[],
   ): Promise<unknown>;
   isStreamEnabled(): boolean;
   clearSession(sessionId: string): Promise<void>;
@@ -218,8 +221,10 @@ export class BackendHandle implements IrisBackendLike {
     images?: ImageInput[],
     documents?: DocumentInput[],
     platform?: string,
+    audio?: import('./media.js').AudioInput[],
+    video?: import('./media.js').VideoInput[],
   ): Promise<unknown> {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
 
   isStreamEnabled(): boolean { return this._backend.isStreamEnabled(); }

@@ -13,7 +13,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { ImageInput, DocumentInput } from './backend/types';
+import type { ImageInput, DocumentInput, AudioInput, VideoInput } from './backend/types';
 import { createLogger } from '../logger';
 
 const logger = createLogger('MessageQueue');
@@ -67,6 +67,10 @@ export interface QueuedMessage {
   images?: ImageInput[];
   /** 附带的文档（可选，仅 mode='chat' 时有效） */
   documents?: DocumentInput[];
+  /** 附带的音频（可选，仅 mode='chat' 时有效） */
+  audio?: AudioInput[];
+  /** 附带的视频（可选，仅 mode='chat' 时有效） */
+  video?: VideoInput[];
   /** 来源平台名称（可选） */
   platformName?: string;
 }

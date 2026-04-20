@@ -10,6 +10,14 @@ import type { ConsoleSettingsSaveResult, ConsoleSettingsSnapshot } from './setti
 export interface AppProps {
   onReady: (handle: AppHandle) => void;
   onSubmit: (text: string) => void;
+  /** 附加文件到下一条消息（/file 命令） */
+  onFileAttach?: (filePath: string) => void;
+  /** 移除指定索引的待发送文件附件 */
+  onRemoveFile?: (index: number) => void;
+  /** 文件浏览器操作回调 */
+  onFileBrowserSelect?: (dirPath: string, entry: any, showHidden: boolean) => void;
+  onFileBrowserGoUp?: (dirPath: string, showHidden: boolean) => void;
+  onFileBrowserToggleHidden?: (dirPath: string, showHidden: boolean) => void;
   onUndo: () => Promise<boolean>;
   onRedo: () => Promise<boolean>;
   onClearRedoStack: () => void;

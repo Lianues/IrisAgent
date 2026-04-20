@@ -1,35 +1,5 @@
 import { createRequire } from "node:module";
-var __create = Object.create;
-var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
-var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
-  target = mod != null ? __create(__getProtoOf(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
-  for (let key of __getOwnPropNames(mod))
-    if (!__hasOwnProp.call(to, key))
-      __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
-        enumerable: true
-      });
-  if (canCache)
-    cache.set(mod, to);
-  return to;
-};
-var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __returnValue = (v) => v;
 function __exportSetter(name, newValue) {
   this[name] = __returnValue.bind(null, newValue);
@@ -46,7 +16,7 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
-// extensions/console/src/terminal-compat.ts
+// src/terminal-compat.ts
 function detectTier() {
   if (process.env.WT_SESSION)
     return "full";
@@ -113,7 +83,7 @@ var init_terminal_compat = __esm(() => {
   SPINNER_FRAMES = terminalTier === "basic" ? ["|", "/", "-", "\\", "|", "/", "-", "\\", "|", "/"] : ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 });
 
-// extensions/console/src/remote-wizard.ts
+// src/remote-wizard.ts
 var exports_remote_wizard = {};
 __export(exports_remote_wizard, {
   showSavePrompt: () => showSavePrompt,
@@ -571,7 +541,7 @@ var init_remote_wizard = __esm(() => {
   };
 });
 
-// src/logger/index.ts
+// ../../src/logger/index.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 
 class Logger {
@@ -615,7 +585,7 @@ var init_logger = __esm(() => {
   agentContext = new AsyncLocalStorage;
 });
 
-// src/ipc/protocol.ts
+// ../../src/ipc/protocol.ts
 var Methods, Events, BACKEND_EVENT_TO_IPC, IPC_TO_BACKEND_EVENT;
 var init_protocol = __esm(() => {
   Methods = {
@@ -718,2871 +688,7 @@ var init_protocol = __esm(() => {
   IPC_TO_BACKEND_EVENT = Object.fromEntries(Object.entries(BACKEND_EVENT_TO_IPC).map(([k, v]) => [v, k]));
 });
 
-// node_modules/ws/lib/constants.js
-var require_constants = __commonJS((exports, module) => {
-  var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
-  var hasBlob = typeof Blob !== "undefined";
-  if (hasBlob)
-    BINARY_TYPES.push("blob");
-  module.exports = {
-    BINARY_TYPES,
-    CLOSE_TIMEOUT: 30000,
-    EMPTY_BUFFER: Buffer.alloc(0),
-    GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
-    hasBlob,
-    kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
-    kListener: Symbol("kListener"),
-    kStatusCode: Symbol("status-code"),
-    kWebSocket: Symbol("websocket"),
-    NOOP: () => {}
-  };
-});
-
-// node_modules/ws/lib/buffer-util.js
-var require_buffer_util = __commonJS((exports, module) => {
-  var { EMPTY_BUFFER } = require_constants();
-  var FastBuffer = Buffer[Symbol.species];
-  function concat(list, totalLength) {
-    if (list.length === 0)
-      return EMPTY_BUFFER;
-    if (list.length === 1)
-      return list[0];
-    const target = Buffer.allocUnsafe(totalLength);
-    let offset = 0;
-    for (let i = 0;i < list.length; i++) {
-      const buf = list[i];
-      target.set(buf, offset);
-      offset += buf.length;
-    }
-    if (offset < totalLength) {
-      return new FastBuffer(target.buffer, target.byteOffset, offset);
-    }
-    return target;
-  }
-  function _mask(source, mask, output, offset, length) {
-    for (let i = 0;i < length; i++) {
-      output[offset + i] = source[i] ^ mask[i & 3];
-    }
-  }
-  function _unmask(buffer, mask) {
-    for (let i = 0;i < buffer.length; i++) {
-      buffer[i] ^= mask[i & 3];
-    }
-  }
-  function toArrayBuffer(buf) {
-    if (buf.length === buf.buffer.byteLength) {
-      return buf.buffer;
-    }
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
-  }
-  function toBuffer(data) {
-    toBuffer.readOnly = true;
-    if (Buffer.isBuffer(data))
-      return data;
-    let buf;
-    if (data instanceof ArrayBuffer) {
-      buf = new FastBuffer(data);
-    } else if (ArrayBuffer.isView(data)) {
-      buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
-    } else {
-      buf = Buffer.from(data);
-      toBuffer.readOnly = false;
-    }
-    return buf;
-  }
-  module.exports = {
-    concat,
-    mask: _mask,
-    toArrayBuffer,
-    toBuffer,
-    unmask: _unmask
-  };
-  if (!process.env.WS_NO_BUFFER_UTIL) {
-    try {
-      const bufferUtil = (()=>{throw new Error("Cannot require module "+"bufferutil");})();
-      module.exports.mask = function(source, mask, output, offset, length) {
-        if (length < 48)
-          _mask(source, mask, output, offset, length);
-        else
-          bufferUtil.mask(source, mask, output, offset, length);
-      };
-      module.exports.unmask = function(buffer, mask) {
-        if (buffer.length < 32)
-          _unmask(buffer, mask);
-        else
-          bufferUtil.unmask(buffer, mask);
-      };
-    } catch (e) {}
-  }
-});
-
-// node_modules/ws/lib/limiter.js
-var require_limiter = __commonJS((exports, module) => {
-  var kDone = Symbol("kDone");
-  var kRun = Symbol("kRun");
-
-  class Limiter {
-    constructor(concurrency) {
-      this[kDone] = () => {
-        this.pending--;
-        this[kRun]();
-      };
-      this.concurrency = concurrency || Infinity;
-      this.jobs = [];
-      this.pending = 0;
-    }
-    add(job) {
-      this.jobs.push(job);
-      this[kRun]();
-    }
-    [kRun]() {
-      if (this.pending === this.concurrency)
-        return;
-      if (this.jobs.length) {
-        const job = this.jobs.shift();
-        this.pending++;
-        job(this[kDone]);
-      }
-    }
-  }
-  module.exports = Limiter;
-});
-
-// node_modules/ws/lib/permessage-deflate.js
-var require_permessage_deflate = __commonJS((exports, module) => {
-  var zlib = __require("zlib");
-  var bufferUtil = require_buffer_util();
-  var Limiter = require_limiter();
-  var { kStatusCode } = require_constants();
-  var FastBuffer = Buffer[Symbol.species];
-  var TRAILER = Buffer.from([0, 0, 255, 255]);
-  var kPerMessageDeflate = Symbol("permessage-deflate");
-  var kTotalLength = Symbol("total-length");
-  var kCallback = Symbol("callback");
-  var kBuffers = Symbol("buffers");
-  var kError = Symbol("error");
-  var zlibLimiter;
-
-  class PerMessageDeflate {
-    constructor(options, isServer, maxPayload) {
-      this._maxPayload = maxPayload | 0;
-      this._options = options || {};
-      this._threshold = this._options.threshold !== undefined ? this._options.threshold : 1024;
-      this._isServer = !!isServer;
-      this._deflate = null;
-      this._inflate = null;
-      this.params = null;
-      if (!zlibLimiter) {
-        const concurrency = this._options.concurrencyLimit !== undefined ? this._options.concurrencyLimit : 10;
-        zlibLimiter = new Limiter(concurrency);
-      }
-    }
-    static get extensionName() {
-      return "permessage-deflate";
-    }
-    offer() {
-      const params = {};
-      if (this._options.serverNoContextTakeover) {
-        params.server_no_context_takeover = true;
-      }
-      if (this._options.clientNoContextTakeover) {
-        params.client_no_context_takeover = true;
-      }
-      if (this._options.serverMaxWindowBits) {
-        params.server_max_window_bits = this._options.serverMaxWindowBits;
-      }
-      if (this._options.clientMaxWindowBits) {
-        params.client_max_window_bits = this._options.clientMaxWindowBits;
-      } else if (this._options.clientMaxWindowBits == null) {
-        params.client_max_window_bits = true;
-      }
-      return params;
-    }
-    accept(configurations) {
-      configurations = this.normalizeParams(configurations);
-      this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
-      return this.params;
-    }
-    cleanup() {
-      if (this._inflate) {
-        this._inflate.close();
-        this._inflate = null;
-      }
-      if (this._deflate) {
-        const callback = this._deflate[kCallback];
-        this._deflate.close();
-        this._deflate = null;
-        if (callback) {
-          callback(new Error("The deflate stream was closed while data was being processed"));
-        }
-      }
-    }
-    acceptAsServer(offers) {
-      const opts = this._options;
-      const accepted = offers.find((params) => {
-        if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && !params.client_max_window_bits) {
-          return false;
-        }
-        return true;
-      });
-      if (!accepted) {
-        throw new Error("None of the extension offers can be accepted");
-      }
-      if (opts.serverNoContextTakeover) {
-        accepted.server_no_context_takeover = true;
-      }
-      if (opts.clientNoContextTakeover) {
-        accepted.client_no_context_takeover = true;
-      }
-      if (typeof opts.serverMaxWindowBits === "number") {
-        accepted.server_max_window_bits = opts.serverMaxWindowBits;
-      }
-      if (typeof opts.clientMaxWindowBits === "number") {
-        accepted.client_max_window_bits = opts.clientMaxWindowBits;
-      } else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) {
-        delete accepted.client_max_window_bits;
-      }
-      return accepted;
-    }
-    acceptAsClient(response) {
-      const params = response[0];
-      if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) {
-        throw new Error('Unexpected parameter "client_no_context_takeover"');
-      }
-      if (!params.client_max_window_bits) {
-        if (typeof this._options.clientMaxWindowBits === "number") {
-          params.client_max_window_bits = this._options.clientMaxWindowBits;
-        }
-      } else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) {
-        throw new Error('Unexpected or invalid parameter "client_max_window_bits"');
-      }
-      return params;
-    }
-    normalizeParams(configurations) {
-      configurations.forEach((params) => {
-        Object.keys(params).forEach((key) => {
-          let value = params[key];
-          if (value.length > 1) {
-            throw new Error(`Parameter "${key}" must have only a single value`);
-          }
-          value = value[0];
-          if (key === "client_max_window_bits") {
-            if (value !== true) {
-              const num = +value;
-              if (!Number.isInteger(num) || num < 8 || num > 15) {
-                throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-              }
-              value = num;
-            } else if (!this._isServer) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-          } else if (key === "server_max_window_bits") {
-            const num = +value;
-            if (!Number.isInteger(num) || num < 8 || num > 15) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-            value = num;
-          } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
-            if (value !== true) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-          } else {
-            throw new Error(`Unknown parameter "${key}"`);
-          }
-          params[key] = value;
-        });
-      });
-      return configurations;
-    }
-    decompress(data, fin, callback) {
-      zlibLimiter.add((done) => {
-        this._decompress(data, fin, (err, result) => {
-          done();
-          callback(err, result);
-        });
-      });
-    }
-    compress(data, fin, callback) {
-      zlibLimiter.add((done) => {
-        this._compress(data, fin, (err, result) => {
-          done();
-          callback(err, result);
-        });
-      });
-    }
-    _decompress(data, fin, callback) {
-      const endpoint = this._isServer ? "client" : "server";
-      if (!this._inflate) {
-        const key = `${endpoint}_max_window_bits`;
-        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-        this._inflate = zlib.createInflateRaw({
-          ...this._options.zlibInflateOptions,
-          windowBits
-        });
-        this._inflate[kPerMessageDeflate] = this;
-        this._inflate[kTotalLength] = 0;
-        this._inflate[kBuffers] = [];
-        this._inflate.on("error", inflateOnError);
-        this._inflate.on("data", inflateOnData);
-      }
-      this._inflate[kCallback] = callback;
-      this._inflate.write(data);
-      if (fin)
-        this._inflate.write(TRAILER);
-      this._inflate.flush(() => {
-        const err = this._inflate[kError];
-        if (err) {
-          this._inflate.close();
-          this._inflate = null;
-          callback(err);
-          return;
-        }
-        const data2 = bufferUtil.concat(this._inflate[kBuffers], this._inflate[kTotalLength]);
-        if (this._inflate._readableState.endEmitted) {
-          this._inflate.close();
-          this._inflate = null;
-        } else {
-          this._inflate[kTotalLength] = 0;
-          this._inflate[kBuffers] = [];
-          if (fin && this.params[`${endpoint}_no_context_takeover`]) {
-            this._inflate.reset();
-          }
-        }
-        callback(null, data2);
-      });
-    }
-    _compress(data, fin, callback) {
-      const endpoint = this._isServer ? "server" : "client";
-      if (!this._deflate) {
-        const key = `${endpoint}_max_window_bits`;
-        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-        this._deflate = zlib.createDeflateRaw({
-          ...this._options.zlibDeflateOptions,
-          windowBits
-        });
-        this._deflate[kTotalLength] = 0;
-        this._deflate[kBuffers] = [];
-        this._deflate.on("data", deflateOnData);
-      }
-      this._deflate[kCallback] = callback;
-      this._deflate.write(data);
-      this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
-        if (!this._deflate) {
-          return;
-        }
-        let data2 = bufferUtil.concat(this._deflate[kBuffers], this._deflate[kTotalLength]);
-        if (fin) {
-          data2 = new FastBuffer(data2.buffer, data2.byteOffset, data2.length - 4);
-        }
-        this._deflate[kCallback] = null;
-        this._deflate[kTotalLength] = 0;
-        this._deflate[kBuffers] = [];
-        if (fin && this.params[`${endpoint}_no_context_takeover`]) {
-          this._deflate.reset();
-        }
-        callback(null, data2);
-      });
-    }
-  }
-  module.exports = PerMessageDeflate;
-  function deflateOnData(chunk) {
-    this[kBuffers].push(chunk);
-    this[kTotalLength] += chunk.length;
-  }
-  function inflateOnData(chunk) {
-    this[kTotalLength] += chunk.length;
-    if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
-      this[kBuffers].push(chunk);
-      return;
-    }
-    this[kError] = new RangeError("Max payload size exceeded");
-    this[kError].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
-    this[kError][kStatusCode] = 1009;
-    this.removeListener("data", inflateOnData);
-    this.reset();
-  }
-  function inflateOnError(err) {
-    this[kPerMessageDeflate]._inflate = null;
-    if (this[kError]) {
-      this[kCallback](this[kError]);
-      return;
-    }
-    err[kStatusCode] = 1007;
-    this[kCallback](err);
-  }
-});
-
-// node_modules/ws/lib/validation.js
-var require_validation = __commonJS((exports, module) => {
-  var { isUtf8 } = __require("buffer");
-  var { hasBlob } = require_constants();
-  var tokenChars = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    0,
-    1,
-    1,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    1,
-    0,
-    1,
-    0
-  ];
-  function isValidStatusCode(code) {
-    return code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3000 && code <= 4999;
-  }
-  function _isValidUTF8(buf) {
-    const len = buf.length;
-    let i = 0;
-    while (i < len) {
-      if ((buf[i] & 128) === 0) {
-        i++;
-      } else if ((buf[i] & 224) === 192) {
-        if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) {
-          return false;
-        }
-        i += 2;
-      } else if ((buf[i] & 240) === 224) {
-        if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || buf[i] === 237 && (buf[i + 1] & 224) === 160) {
-          return false;
-        }
-        i += 3;
-      } else if ((buf[i] & 248) === 240) {
-        if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) {
-          return false;
-        }
-        i += 4;
-      } else {
-        return false;
-      }
-    }
-    return true;
-  }
-  function isBlob(value) {
-    return hasBlob && typeof value === "object" && typeof value.arrayBuffer === "function" && typeof value.type === "string" && typeof value.stream === "function" && (value[Symbol.toStringTag] === "Blob" || value[Symbol.toStringTag] === "File");
-  }
-  module.exports = {
-    isBlob,
-    isValidStatusCode,
-    isValidUTF8: _isValidUTF8,
-    tokenChars
-  };
-  if (isUtf8) {
-    module.exports.isValidUTF8 = function(buf) {
-      return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
-    };
-  } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
-    try {
-      const isValidUTF8 = (()=>{throw new Error("Cannot require module "+"utf-8-validate");})();
-      module.exports.isValidUTF8 = function(buf) {
-        return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
-      };
-    } catch (e) {}
-  }
-});
-
-// node_modules/ws/lib/receiver.js
-var require_receiver = __commonJS((exports, module) => {
-  var { Writable } = __require("stream");
-  var PerMessageDeflate = require_permessage_deflate();
-  var {
-    BINARY_TYPES,
-    EMPTY_BUFFER,
-    kStatusCode,
-    kWebSocket
-  } = require_constants();
-  var { concat, toArrayBuffer, unmask } = require_buffer_util();
-  var { isValidStatusCode, isValidUTF8 } = require_validation();
-  var FastBuffer = Buffer[Symbol.species];
-  var GET_INFO = 0;
-  var GET_PAYLOAD_LENGTH_16 = 1;
-  var GET_PAYLOAD_LENGTH_64 = 2;
-  var GET_MASK = 3;
-  var GET_DATA = 4;
-  var INFLATING = 5;
-  var DEFER_EVENT = 6;
-
-  class Receiver extends Writable {
-    constructor(options = {}) {
-      super();
-      this._allowSynchronousEvents = options.allowSynchronousEvents !== undefined ? options.allowSynchronousEvents : true;
-      this._binaryType = options.binaryType || BINARY_TYPES[0];
-      this._extensions = options.extensions || {};
-      this._isServer = !!options.isServer;
-      this._maxPayload = options.maxPayload | 0;
-      this._skipUTF8Validation = !!options.skipUTF8Validation;
-      this[kWebSocket] = undefined;
-      this._bufferedBytes = 0;
-      this._buffers = [];
-      this._compressed = false;
-      this._payloadLength = 0;
-      this._mask = undefined;
-      this._fragmented = 0;
-      this._masked = false;
-      this._fin = false;
-      this._opcode = 0;
-      this._totalPayloadLength = 0;
-      this._messageLength = 0;
-      this._fragments = [];
-      this._errored = false;
-      this._loop = false;
-      this._state = GET_INFO;
-    }
-    _write(chunk, encoding, cb) {
-      if (this._opcode === 8 && this._state == GET_INFO)
-        return cb();
-      this._bufferedBytes += chunk.length;
-      this._buffers.push(chunk);
-      this.startLoop(cb);
-    }
-    consume(n) {
-      this._bufferedBytes -= n;
-      if (n === this._buffers[0].length)
-        return this._buffers.shift();
-      if (n < this._buffers[0].length) {
-        const buf = this._buffers[0];
-        this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
-        return new FastBuffer(buf.buffer, buf.byteOffset, n);
-      }
-      const dst = Buffer.allocUnsafe(n);
-      do {
-        const buf = this._buffers[0];
-        const offset = dst.length - n;
-        if (n >= buf.length) {
-          dst.set(this._buffers.shift(), offset);
-        } else {
-          dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
-          this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
-        }
-        n -= buf.length;
-      } while (n > 0);
-      return dst;
-    }
-    startLoop(cb) {
-      this._loop = true;
-      do {
-        switch (this._state) {
-          case GET_INFO:
-            this.getInfo(cb);
-            break;
-          case GET_PAYLOAD_LENGTH_16:
-            this.getPayloadLength16(cb);
-            break;
-          case GET_PAYLOAD_LENGTH_64:
-            this.getPayloadLength64(cb);
-            break;
-          case GET_MASK:
-            this.getMask();
-            break;
-          case GET_DATA:
-            this.getData(cb);
-            break;
-          case INFLATING:
-          case DEFER_EVENT:
-            this._loop = false;
-            return;
-        }
-      } while (this._loop);
-      if (!this._errored)
-        cb();
-    }
-    getInfo(cb) {
-      if (this._bufferedBytes < 2) {
-        this._loop = false;
-        return;
-      }
-      const buf = this.consume(2);
-      if ((buf[0] & 48) !== 0) {
-        const error = this.createError(RangeError, "RSV2 and RSV3 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_2_3");
-        cb(error);
-        return;
-      }
-      const compressed = (buf[0] & 64) === 64;
-      if (compressed && !this._extensions[PerMessageDeflate.extensionName]) {
-        const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-        cb(error);
-        return;
-      }
-      this._fin = (buf[0] & 128) === 128;
-      this._opcode = buf[0] & 15;
-      this._payloadLength = buf[1] & 127;
-      if (this._opcode === 0) {
-        if (compressed) {
-          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-          cb(error);
-          return;
-        }
-        if (!this._fragmented) {
-          const error = this.createError(RangeError, "invalid opcode 0", true, 1002, "WS_ERR_INVALID_OPCODE");
-          cb(error);
-          return;
-        }
-        this._opcode = this._fragmented;
-      } else if (this._opcode === 1 || this._opcode === 2) {
-        if (this._fragmented) {
-          const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
-          cb(error);
-          return;
-        }
-        this._compressed = compressed;
-      } else if (this._opcode > 7 && this._opcode < 11) {
-        if (!this._fin) {
-          const error = this.createError(RangeError, "FIN must be set", true, 1002, "WS_ERR_EXPECTED_FIN");
-          cb(error);
-          return;
-        }
-        if (compressed) {
-          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-          cb(error);
-          return;
-        }
-        if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
-          const error = this.createError(RangeError, `invalid payload length ${this._payloadLength}`, true, 1002, "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH");
-          cb(error);
-          return;
-        }
-      } else {
-        const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
-        cb(error);
-        return;
-      }
-      if (!this._fin && !this._fragmented)
-        this._fragmented = this._opcode;
-      this._masked = (buf[1] & 128) === 128;
-      if (this._isServer) {
-        if (!this._masked) {
-          const error = this.createError(RangeError, "MASK must be set", true, 1002, "WS_ERR_EXPECTED_MASK");
-          cb(error);
-          return;
-        }
-      } else if (this._masked) {
-        const error = this.createError(RangeError, "MASK must be clear", true, 1002, "WS_ERR_UNEXPECTED_MASK");
-        cb(error);
-        return;
-      }
-      if (this._payloadLength === 126)
-        this._state = GET_PAYLOAD_LENGTH_16;
-      else if (this._payloadLength === 127)
-        this._state = GET_PAYLOAD_LENGTH_64;
-      else
-        this.haveLength(cb);
-    }
-    getPayloadLength16(cb) {
-      if (this._bufferedBytes < 2) {
-        this._loop = false;
-        return;
-      }
-      this._payloadLength = this.consume(2).readUInt16BE(0);
-      this.haveLength(cb);
-    }
-    getPayloadLength64(cb) {
-      if (this._bufferedBytes < 8) {
-        this._loop = false;
-        return;
-      }
-      const buf = this.consume(8);
-      const num = buf.readUInt32BE(0);
-      if (num > Math.pow(2, 53 - 32) - 1) {
-        const error = this.createError(RangeError, "Unsupported WebSocket frame: payload length > 2^53 - 1", false, 1009, "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH");
-        cb(error);
-        return;
-      }
-      this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
-      this.haveLength(cb);
-    }
-    haveLength(cb) {
-      if (this._payloadLength && this._opcode < 8) {
-        this._totalPayloadLength += this._payloadLength;
-        if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
-          const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
-          cb(error);
-          return;
-        }
-      }
-      if (this._masked)
-        this._state = GET_MASK;
-      else
-        this._state = GET_DATA;
-    }
-    getMask() {
-      if (this._bufferedBytes < 4) {
-        this._loop = false;
-        return;
-      }
-      this._mask = this.consume(4);
-      this._state = GET_DATA;
-    }
-    getData(cb) {
-      let data = EMPTY_BUFFER;
-      if (this._payloadLength) {
-        if (this._bufferedBytes < this._payloadLength) {
-          this._loop = false;
-          return;
-        }
-        data = this.consume(this._payloadLength);
-        if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) {
-          unmask(data, this._mask);
-        }
-      }
-      if (this._opcode > 7) {
-        this.controlMessage(data, cb);
-        return;
-      }
-      if (this._compressed) {
-        this._state = INFLATING;
-        this.decompress(data, cb);
-        return;
-      }
-      if (data.length) {
-        this._messageLength = this._totalPayloadLength;
-        this._fragments.push(data);
-      }
-      this.dataMessage(cb);
-    }
-    decompress(data, cb) {
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      perMessageDeflate.decompress(data, this._fin, (err, buf) => {
-        if (err)
-          return cb(err);
-        if (buf.length) {
-          this._messageLength += buf.length;
-          if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
-            const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
-            cb(error);
-            return;
-          }
-          this._fragments.push(buf);
-        }
-        this.dataMessage(cb);
-        if (this._state === GET_INFO)
-          this.startLoop(cb);
-      });
-    }
-    dataMessage(cb) {
-      if (!this._fin) {
-        this._state = GET_INFO;
-        return;
-      }
-      const messageLength = this._messageLength;
-      const fragments = this._fragments;
-      this._totalPayloadLength = 0;
-      this._messageLength = 0;
-      this._fragmented = 0;
-      this._fragments = [];
-      if (this._opcode === 2) {
-        let data;
-        if (this._binaryType === "nodebuffer") {
-          data = concat(fragments, messageLength);
-        } else if (this._binaryType === "arraybuffer") {
-          data = toArrayBuffer(concat(fragments, messageLength));
-        } else if (this._binaryType === "blob") {
-          data = new Blob(fragments);
-        } else {
-          data = fragments;
-        }
-        if (this._allowSynchronousEvents) {
-          this.emit("message", data, true);
-          this._state = GET_INFO;
-        } else {
-          this._state = DEFER_EVENT;
-          setImmediate(() => {
-            this.emit("message", data, true);
-            this._state = GET_INFO;
-            this.startLoop(cb);
-          });
-        }
-      } else {
-        const buf = concat(fragments, messageLength);
-        if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
-          const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
-          cb(error);
-          return;
-        }
-        if (this._state === INFLATING || this._allowSynchronousEvents) {
-          this.emit("message", buf, false);
-          this._state = GET_INFO;
-        } else {
-          this._state = DEFER_EVENT;
-          setImmediate(() => {
-            this.emit("message", buf, false);
-            this._state = GET_INFO;
-            this.startLoop(cb);
-          });
-        }
-      }
-    }
-    controlMessage(data, cb) {
-      if (this._opcode === 8) {
-        if (data.length === 0) {
-          this._loop = false;
-          this.emit("conclude", 1005, EMPTY_BUFFER);
-          this.end();
-        } else {
-          const code = data.readUInt16BE(0);
-          if (!isValidStatusCode(code)) {
-            const error = this.createError(RangeError, `invalid status code ${code}`, true, 1002, "WS_ERR_INVALID_CLOSE_CODE");
-            cb(error);
-            return;
-          }
-          const buf = new FastBuffer(data.buffer, data.byteOffset + 2, data.length - 2);
-          if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
-            const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
-            cb(error);
-            return;
-          }
-          this._loop = false;
-          this.emit("conclude", code, buf);
-          this.end();
-        }
-        this._state = GET_INFO;
-        return;
-      }
-      if (this._allowSynchronousEvents) {
-        this.emit(this._opcode === 9 ? "ping" : "pong", data);
-        this._state = GET_INFO;
-      } else {
-        this._state = DEFER_EVENT;
-        setImmediate(() => {
-          this.emit(this._opcode === 9 ? "ping" : "pong", data);
-          this._state = GET_INFO;
-          this.startLoop(cb);
-        });
-      }
-    }
-    createError(ErrorCtor, message, prefix, statusCode, errorCode) {
-      this._loop = false;
-      this._errored = true;
-      const err = new ErrorCtor(prefix ? `Invalid WebSocket frame: ${message}` : message);
-      Error.captureStackTrace(err, this.createError);
-      err.code = errorCode;
-      err[kStatusCode] = statusCode;
-      return err;
-    }
-  }
-  module.exports = Receiver;
-});
-
-// node_modules/ws/lib/sender.js
-var require_sender = __commonJS((exports, module) => {
-  var { Duplex } = __require("stream");
-  var { randomFillSync } = __require("crypto");
-  var PerMessageDeflate = require_permessage_deflate();
-  var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
-  var { isBlob, isValidStatusCode } = require_validation();
-  var { mask: applyMask, toBuffer } = require_buffer_util();
-  var kByteLength = Symbol("kByteLength");
-  var maskBuffer = Buffer.alloc(4);
-  var RANDOM_POOL_SIZE = 8 * 1024;
-  var randomPool;
-  var randomPoolPointer = RANDOM_POOL_SIZE;
-  var DEFAULT = 0;
-  var DEFLATING = 1;
-  var GET_BLOB_DATA = 2;
-
-  class Sender {
-    constructor(socket, extensions, generateMask) {
-      this._extensions = extensions || {};
-      if (generateMask) {
-        this._generateMask = generateMask;
-        this._maskBuffer = Buffer.alloc(4);
-      }
-      this._socket = socket;
-      this._firstFragment = true;
-      this._compress = false;
-      this._bufferedBytes = 0;
-      this._queue = [];
-      this._state = DEFAULT;
-      this.onerror = NOOP;
-      this[kWebSocket] = undefined;
-    }
-    static frame(data, options) {
-      let mask;
-      let merge = false;
-      let offset = 2;
-      let skipMasking = false;
-      if (options.mask) {
-        mask = options.maskBuffer || maskBuffer;
-        if (options.generateMask) {
-          options.generateMask(mask);
-        } else {
-          if (randomPoolPointer === RANDOM_POOL_SIZE) {
-            if (randomPool === undefined) {
-              randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
-            }
-            randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
-            randomPoolPointer = 0;
-          }
-          mask[0] = randomPool[randomPoolPointer++];
-          mask[1] = randomPool[randomPoolPointer++];
-          mask[2] = randomPool[randomPoolPointer++];
-          mask[3] = randomPool[randomPoolPointer++];
-        }
-        skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
-        offset = 6;
-      }
-      let dataLength;
-      if (typeof data === "string") {
-        if ((!options.mask || skipMasking) && options[kByteLength] !== undefined) {
-          dataLength = options[kByteLength];
-        } else {
-          data = Buffer.from(data);
-          dataLength = data.length;
-        }
-      } else {
-        dataLength = data.length;
-        merge = options.mask && options.readOnly && !skipMasking;
-      }
-      let payloadLength = dataLength;
-      if (dataLength >= 65536) {
-        offset += 8;
-        payloadLength = 127;
-      } else if (dataLength > 125) {
-        offset += 2;
-        payloadLength = 126;
-      }
-      const target = Buffer.allocUnsafe(merge ? dataLength + offset : offset);
-      target[0] = options.fin ? options.opcode | 128 : options.opcode;
-      if (options.rsv1)
-        target[0] |= 64;
-      target[1] = payloadLength;
-      if (payloadLength === 126) {
-        target.writeUInt16BE(dataLength, 2);
-      } else if (payloadLength === 127) {
-        target[2] = target[3] = 0;
-        target.writeUIntBE(dataLength, 4, 6);
-      }
-      if (!options.mask)
-        return [target, data];
-      target[1] |= 128;
-      target[offset - 4] = mask[0];
-      target[offset - 3] = mask[1];
-      target[offset - 2] = mask[2];
-      target[offset - 1] = mask[3];
-      if (skipMasking)
-        return [target, data];
-      if (merge) {
-        applyMask(data, mask, target, offset, dataLength);
-        return [target];
-      }
-      applyMask(data, mask, data, 0, dataLength);
-      return [target, data];
-    }
-    close(code, data, mask, cb) {
-      let buf;
-      if (code === undefined) {
-        buf = EMPTY_BUFFER;
-      } else if (typeof code !== "number" || !isValidStatusCode(code)) {
-        throw new TypeError("First argument must be a valid error code number");
-      } else if (data === undefined || !data.length) {
-        buf = Buffer.allocUnsafe(2);
-        buf.writeUInt16BE(code, 0);
-      } else {
-        const length = Buffer.byteLength(data);
-        if (length > 123) {
-          throw new RangeError("The message must not be greater than 123 bytes");
-        }
-        buf = Buffer.allocUnsafe(2 + length);
-        buf.writeUInt16BE(code, 0);
-        if (typeof data === "string") {
-          buf.write(data, 2);
-        } else {
-          buf.set(data, 2);
-        }
-      }
-      const options = {
-        [kByteLength]: buf.length,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 8,
-        readOnly: false,
-        rsv1: false
-      };
-      if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, buf, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(buf, options), cb);
-      }
-    }
-    ping(data, mask, cb) {
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (byteLength > 125) {
-        throw new RangeError("The data size must not be greater than 125 bytes");
-      }
-      const options = {
-        [kByteLength]: byteLength,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 9,
-        readOnly,
-        rsv1: false
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, false, options, cb]);
-        } else {
-          this.getBlobData(data, false, options, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(data, options), cb);
-      }
-    }
-    pong(data, mask, cb) {
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (byteLength > 125) {
-        throw new RangeError("The data size must not be greater than 125 bytes");
-      }
-      const options = {
-        [kByteLength]: byteLength,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 10,
-        readOnly,
-        rsv1: false
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, false, options, cb]);
-        } else {
-          this.getBlobData(data, false, options, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(data, options), cb);
-      }
-    }
-    send(data, options, cb) {
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      let opcode = options.binary ? 2 : 1;
-      let rsv1 = options.compress;
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (this._firstFragment) {
-        this._firstFragment = false;
-        if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) {
-          rsv1 = byteLength >= perMessageDeflate._threshold;
-        }
-        this._compress = rsv1;
-      } else {
-        rsv1 = false;
-        opcode = 0;
-      }
-      if (options.fin)
-        this._firstFragment = true;
-      const opts = {
-        [kByteLength]: byteLength,
-        fin: options.fin,
-        generateMask: this._generateMask,
-        mask: options.mask,
-        maskBuffer: this._maskBuffer,
-        opcode,
-        readOnly,
-        rsv1
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
-        } else {
-          this.getBlobData(data, this._compress, opts, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, this._compress, opts, cb]);
-      } else {
-        this.dispatch(data, this._compress, opts, cb);
-      }
-    }
-    getBlobData(blob, compress, options, cb) {
-      this._bufferedBytes += options[kByteLength];
-      this._state = GET_BLOB_DATA;
-      blob.arrayBuffer().then((arrayBuffer) => {
-        if (this._socket.destroyed) {
-          const err = new Error("The socket was closed while the blob was being read");
-          process.nextTick(callCallbacks, this, err, cb);
-          return;
-        }
-        this._bufferedBytes -= options[kByteLength];
-        const data = toBuffer(arrayBuffer);
-        if (!compress) {
-          this._state = DEFAULT;
-          this.sendFrame(Sender.frame(data, options), cb);
-          this.dequeue();
-        } else {
-          this.dispatch(data, compress, options, cb);
-        }
-      }).catch((err) => {
-        process.nextTick(onError, this, err, cb);
-      });
-    }
-    dispatch(data, compress, options, cb) {
-      if (!compress) {
-        this.sendFrame(Sender.frame(data, options), cb);
-        return;
-      }
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      this._bufferedBytes += options[kByteLength];
-      this._state = DEFLATING;
-      perMessageDeflate.compress(data, options.fin, (_, buf) => {
-        if (this._socket.destroyed) {
-          const err = new Error("The socket was closed while data was being compressed");
-          callCallbacks(this, err, cb);
-          return;
-        }
-        this._bufferedBytes -= options[kByteLength];
-        this._state = DEFAULT;
-        options.readOnly = false;
-        this.sendFrame(Sender.frame(buf, options), cb);
-        this.dequeue();
-      });
-    }
-    dequeue() {
-      while (this._state === DEFAULT && this._queue.length) {
-        const params = this._queue.shift();
-        this._bufferedBytes -= params[3][kByteLength];
-        Reflect.apply(params[0], this, params.slice(1));
-      }
-    }
-    enqueue(params) {
-      this._bufferedBytes += params[3][kByteLength];
-      this._queue.push(params);
-    }
-    sendFrame(list, cb) {
-      if (list.length === 2) {
-        this._socket.cork();
-        this._socket.write(list[0]);
-        this._socket.write(list[1], cb);
-        this._socket.uncork();
-      } else {
-        this._socket.write(list[0], cb);
-      }
-    }
-  }
-  module.exports = Sender;
-  function callCallbacks(sender, err, cb) {
-    if (typeof cb === "function")
-      cb(err);
-    for (let i = 0;i < sender._queue.length; i++) {
-      const params = sender._queue[i];
-      const callback = params[params.length - 1];
-      if (typeof callback === "function")
-        callback(err);
-    }
-  }
-  function onError(sender, err, cb) {
-    callCallbacks(sender, err, cb);
-    sender.onerror(err);
-  }
-});
-
-// node_modules/ws/lib/event-target.js
-var require_event_target = __commonJS((exports, module) => {
-  var { kForOnEventAttribute, kListener } = require_constants();
-  var kCode = Symbol("kCode");
-  var kData = Symbol("kData");
-  var kError = Symbol("kError");
-  var kMessage = Symbol("kMessage");
-  var kReason = Symbol("kReason");
-  var kTarget = Symbol("kTarget");
-  var kType = Symbol("kType");
-  var kWasClean = Symbol("kWasClean");
-
-  class Event {
-    constructor(type) {
-      this[kTarget] = null;
-      this[kType] = type;
-    }
-    get target() {
-      return this[kTarget];
-    }
-    get type() {
-      return this[kType];
-    }
-  }
-  Object.defineProperty(Event.prototype, "target", { enumerable: true });
-  Object.defineProperty(Event.prototype, "type", { enumerable: true });
-
-  class CloseEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kCode] = options.code === undefined ? 0 : options.code;
-      this[kReason] = options.reason === undefined ? "" : options.reason;
-      this[kWasClean] = options.wasClean === undefined ? false : options.wasClean;
-    }
-    get code() {
-      return this[kCode];
-    }
-    get reason() {
-      return this[kReason];
-    }
-    get wasClean() {
-      return this[kWasClean];
-    }
-  }
-  Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
-  Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
-  Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
-
-  class ErrorEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kError] = options.error === undefined ? null : options.error;
-      this[kMessage] = options.message === undefined ? "" : options.message;
-    }
-    get error() {
-      return this[kError];
-    }
-    get message() {
-      return this[kMessage];
-    }
-  }
-  Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
-  Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
-
-  class MessageEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kData] = options.data === undefined ? null : options.data;
-    }
-    get data() {
-      return this[kData];
-    }
-  }
-  Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
-  var EventTarget = {
-    addEventListener(type, handler, options = {}) {
-      for (const listener of this.listeners(type)) {
-        if (!options[kForOnEventAttribute] && listener[kListener] === handler && !listener[kForOnEventAttribute]) {
-          return;
-        }
-      }
-      let wrapper;
-      if (type === "message") {
-        wrapper = function onMessage(data, isBinary) {
-          const event = new MessageEvent("message", {
-            data: isBinary ? data : data.toString()
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "close") {
-        wrapper = function onClose(code, message) {
-          const event = new CloseEvent("close", {
-            code,
-            reason: message.toString(),
-            wasClean: this._closeFrameReceived && this._closeFrameSent
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "error") {
-        wrapper = function onError(error) {
-          const event = new ErrorEvent("error", {
-            error,
-            message: error.message
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "open") {
-        wrapper = function onOpen() {
-          const event = new Event("open");
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else {
-        return;
-      }
-      wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
-      wrapper[kListener] = handler;
-      if (options.once) {
-        this.once(type, wrapper);
-      } else {
-        this.on(type, wrapper);
-      }
-    },
-    removeEventListener(type, handler) {
-      for (const listener of this.listeners(type)) {
-        if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
-          this.removeListener(type, listener);
-          break;
-        }
-      }
-    }
-  };
-  module.exports = {
-    CloseEvent,
-    ErrorEvent,
-    Event,
-    EventTarget,
-    MessageEvent
-  };
-  function callListener(listener, thisArg, event) {
-    if (typeof listener === "object" && listener.handleEvent) {
-      listener.handleEvent.call(listener, event);
-    } else {
-      listener.call(thisArg, event);
-    }
-  }
-});
-
-// node_modules/ws/lib/extension.js
-var require_extension = __commonJS((exports, module) => {
-  var { tokenChars } = require_validation();
-  function push(dest, name, elem) {
-    if (dest[name] === undefined)
-      dest[name] = [elem];
-    else
-      dest[name].push(elem);
-  }
-  function parse(header) {
-    const offers = Object.create(null);
-    let params = Object.create(null);
-    let mustUnescape = false;
-    let isEscaping = false;
-    let inQuotes = false;
-    let extensionName;
-    let paramName;
-    let start = -1;
-    let code = -1;
-    let end = -1;
-    let i = 0;
-    for (;i < header.length; i++) {
-      code = header.charCodeAt(i);
-      if (extensionName === undefined) {
-        if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (i !== 0 && (code === 32 || code === 9)) {
-          if (end === -1 && start !== -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          const name = header.slice(start, end);
-          if (code === 44) {
-            push(offers, name, params);
-            params = Object.create(null);
-          } else {
-            extensionName = name;
-          }
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      } else if (paramName === undefined) {
-        if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (code === 32 || code === 9) {
-          if (end === -1 && start !== -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          push(params, header.slice(start, end), true);
-          if (code === 44) {
-            push(offers, extensionName, params);
-            params = Object.create(null);
-            extensionName = undefined;
-          }
-          start = end = -1;
-        } else if (code === 61 && start !== -1 && end === -1) {
-          paramName = header.slice(start, i);
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      } else {
-        if (isEscaping) {
-          if (tokenChars[code] !== 1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (start === -1)
-            start = i;
-          else if (!mustUnescape)
-            mustUnescape = true;
-          isEscaping = false;
-        } else if (inQuotes) {
-          if (tokenChars[code] === 1) {
-            if (start === -1)
-              start = i;
-          } else if (code === 34 && start !== -1) {
-            inQuotes = false;
-            end = i;
-          } else if (code === 92) {
-            isEscaping = true;
-          } else {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-        } else if (code === 34 && header.charCodeAt(i - 1) === 61) {
-          inQuotes = true;
-        } else if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (start !== -1 && (code === 32 || code === 9)) {
-          if (end === -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          let value = header.slice(start, end);
-          if (mustUnescape) {
-            value = value.replace(/\\/g, "");
-            mustUnescape = false;
-          }
-          push(params, paramName, value);
-          if (code === 44) {
-            push(offers, extensionName, params);
-            params = Object.create(null);
-            extensionName = undefined;
-          }
-          paramName = undefined;
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      }
-    }
-    if (start === -1 || inQuotes || code === 32 || code === 9) {
-      throw new SyntaxError("Unexpected end of input");
-    }
-    if (end === -1)
-      end = i;
-    const token = header.slice(start, end);
-    if (extensionName === undefined) {
-      push(offers, token, params);
-    } else {
-      if (paramName === undefined) {
-        push(params, token, true);
-      } else if (mustUnescape) {
-        push(params, paramName, token.replace(/\\/g, ""));
-      } else {
-        push(params, paramName, token);
-      }
-      push(offers, extensionName, params);
-    }
-    return offers;
-  }
-  function format(extensions) {
-    return Object.keys(extensions).map((extension) => {
-      let configurations = extensions[extension];
-      if (!Array.isArray(configurations))
-        configurations = [configurations];
-      return configurations.map((params) => {
-        return [extension].concat(Object.keys(params).map((k) => {
-          let values = params[k];
-          if (!Array.isArray(values))
-            values = [values];
-          return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
-        })).join("; ");
-      }).join(", ");
-    }).join(", ");
-  }
-  module.exports = { format, parse };
-});
-
-// node_modules/ws/lib/websocket.js
-var require_websocket = __commonJS((exports, module) => {
-  var EventEmitter = __require("events");
-  var https = __require("https");
-  var http = __require("http");
-  var net = __require("net");
-  var tls = __require("tls");
-  var { randomBytes, createHash } = __require("crypto");
-  var { Duplex, Readable } = __require("stream");
-  var { URL: URL2 } = __require("url");
-  var PerMessageDeflate = require_permessage_deflate();
-  var Receiver = require_receiver();
-  var Sender = require_sender();
-  var { isBlob } = require_validation();
-  var {
-    BINARY_TYPES,
-    CLOSE_TIMEOUT,
-    EMPTY_BUFFER,
-    GUID,
-    kForOnEventAttribute,
-    kListener,
-    kStatusCode,
-    kWebSocket,
-    NOOP
-  } = require_constants();
-  var {
-    EventTarget: { addEventListener, removeEventListener }
-  } = require_event_target();
-  var { format, parse } = require_extension();
-  var { toBuffer } = require_buffer_util();
-  var kAborted = Symbol("kAborted");
-  var protocolVersions = [8, 13];
-  var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
-  var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-
-  class WebSocket2 extends EventEmitter {
-    constructor(address, protocols, options) {
-      super();
-      this._binaryType = BINARY_TYPES[0];
-      this._closeCode = 1006;
-      this._closeFrameReceived = false;
-      this._closeFrameSent = false;
-      this._closeMessage = EMPTY_BUFFER;
-      this._closeTimer = null;
-      this._errorEmitted = false;
-      this._extensions = {};
-      this._paused = false;
-      this._protocol = "";
-      this._readyState = WebSocket2.CONNECTING;
-      this._receiver = null;
-      this._sender = null;
-      this._socket = null;
-      if (address !== null) {
-        this._bufferedAmount = 0;
-        this._isServer = false;
-        this._redirects = 0;
-        if (protocols === undefined) {
-          protocols = [];
-        } else if (!Array.isArray(protocols)) {
-          if (typeof protocols === "object" && protocols !== null) {
-            options = protocols;
-            protocols = [];
-          } else {
-            protocols = [protocols];
-          }
-        }
-        initAsClient(this, address, protocols, options);
-      } else {
-        this._autoPong = options.autoPong;
-        this._closeTimeout = options.closeTimeout;
-        this._isServer = true;
-      }
-    }
-    get binaryType() {
-      return this._binaryType;
-    }
-    set binaryType(type) {
-      if (!BINARY_TYPES.includes(type))
-        return;
-      this._binaryType = type;
-      if (this._receiver)
-        this._receiver._binaryType = type;
-    }
-    get bufferedAmount() {
-      if (!this._socket)
-        return this._bufferedAmount;
-      return this._socket._writableState.length + this._sender._bufferedBytes;
-    }
-    get extensions() {
-      return Object.keys(this._extensions).join();
-    }
-    get isPaused() {
-      return this._paused;
-    }
-    get onclose() {
-      return null;
-    }
-    get onerror() {
-      return null;
-    }
-    get onopen() {
-      return null;
-    }
-    get onmessage() {
-      return null;
-    }
-    get protocol() {
-      return this._protocol;
-    }
-    get readyState() {
-      return this._readyState;
-    }
-    get url() {
-      return this._url;
-    }
-    setSocket(socket, head, options) {
-      const receiver = new Receiver({
-        allowSynchronousEvents: options.allowSynchronousEvents,
-        binaryType: this.binaryType,
-        extensions: this._extensions,
-        isServer: this._isServer,
-        maxPayload: options.maxPayload,
-        skipUTF8Validation: options.skipUTF8Validation
-      });
-      const sender = new Sender(socket, this._extensions, options.generateMask);
-      this._receiver = receiver;
-      this._sender = sender;
-      this._socket = socket;
-      receiver[kWebSocket] = this;
-      sender[kWebSocket] = this;
-      socket[kWebSocket] = this;
-      receiver.on("conclude", receiverOnConclude);
-      receiver.on("drain", receiverOnDrain);
-      receiver.on("error", receiverOnError);
-      receiver.on("message", receiverOnMessage);
-      receiver.on("ping", receiverOnPing);
-      receiver.on("pong", receiverOnPong);
-      sender.onerror = senderOnError;
-      if (socket.setTimeout)
-        socket.setTimeout(0);
-      if (socket.setNoDelay)
-        socket.setNoDelay();
-      if (head.length > 0)
-        socket.unshift(head);
-      socket.on("close", socketOnClose);
-      socket.on("data", socketOnData);
-      socket.on("end", socketOnEnd);
-      socket.on("error", socketOnError);
-      this._readyState = WebSocket2.OPEN;
-      this.emit("open");
-    }
-    emitClose() {
-      if (!this._socket) {
-        this._readyState = WebSocket2.CLOSED;
-        this.emit("close", this._closeCode, this._closeMessage);
-        return;
-      }
-      if (this._extensions[PerMessageDeflate.extensionName]) {
-        this._extensions[PerMessageDeflate.extensionName].cleanup();
-      }
-      this._receiver.removeAllListeners();
-      this._readyState = WebSocket2.CLOSED;
-      this.emit("close", this._closeCode, this._closeMessage);
-    }
-    close(code, data) {
-      if (this.readyState === WebSocket2.CLOSED)
-        return;
-      if (this.readyState === WebSocket2.CONNECTING) {
-        const msg = "WebSocket was closed before the connection was established";
-        abortHandshake(this, this._req, msg);
-        return;
-      }
-      if (this.readyState === WebSocket2.CLOSING) {
-        if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
-          this._socket.end();
-        }
-        return;
-      }
-      this._readyState = WebSocket2.CLOSING;
-      this._sender.close(code, data, !this._isServer, (err) => {
-        if (err)
-          return;
-        this._closeFrameSent = true;
-        if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) {
-          this._socket.end();
-        }
-      });
-      setCloseTimer(this);
-    }
-    pause() {
-      if (this.readyState === WebSocket2.CONNECTING || this.readyState === WebSocket2.CLOSED) {
-        return;
-      }
-      this._paused = true;
-      this._socket.pause();
-    }
-    ping(data, mask, cb) {
-      if (this.readyState === WebSocket2.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof data === "function") {
-        cb = data;
-        data = mask = undefined;
-      } else if (typeof mask === "function") {
-        cb = mask;
-        mask = undefined;
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket2.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      if (mask === undefined)
-        mask = !this._isServer;
-      this._sender.ping(data || EMPTY_BUFFER, mask, cb);
-    }
-    pong(data, mask, cb) {
-      if (this.readyState === WebSocket2.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof data === "function") {
-        cb = data;
-        data = mask = undefined;
-      } else if (typeof mask === "function") {
-        cb = mask;
-        mask = undefined;
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket2.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      if (mask === undefined)
-        mask = !this._isServer;
-      this._sender.pong(data || EMPTY_BUFFER, mask, cb);
-    }
-    resume() {
-      if (this.readyState === WebSocket2.CONNECTING || this.readyState === WebSocket2.CLOSED) {
-        return;
-      }
-      this._paused = false;
-      if (!this._receiver._writableState.needDrain)
-        this._socket.resume();
-    }
-    send(data, options, cb) {
-      if (this.readyState === WebSocket2.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof options === "function") {
-        cb = options;
-        options = {};
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket2.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      const opts = {
-        binary: typeof data !== "string",
-        mask: !this._isServer,
-        compress: true,
-        fin: true,
-        ...options
-      };
-      if (!this._extensions[PerMessageDeflate.extensionName]) {
-        opts.compress = false;
-      }
-      this._sender.send(data || EMPTY_BUFFER, opts, cb);
-    }
-    terminate() {
-      if (this.readyState === WebSocket2.CLOSED)
-        return;
-      if (this.readyState === WebSocket2.CONNECTING) {
-        const msg = "WebSocket was closed before the connection was established";
-        abortHandshake(this, this._req, msg);
-        return;
-      }
-      if (this._socket) {
-        this._readyState = WebSocket2.CLOSING;
-        this._socket.destroy();
-      }
-    }
-  }
-  Object.defineProperty(WebSocket2, "CONNECTING", {
-    enumerable: true,
-    value: readyStates.indexOf("CONNECTING")
-  });
-  Object.defineProperty(WebSocket2.prototype, "CONNECTING", {
-    enumerable: true,
-    value: readyStates.indexOf("CONNECTING")
-  });
-  Object.defineProperty(WebSocket2, "OPEN", {
-    enumerable: true,
-    value: readyStates.indexOf("OPEN")
-  });
-  Object.defineProperty(WebSocket2.prototype, "OPEN", {
-    enumerable: true,
-    value: readyStates.indexOf("OPEN")
-  });
-  Object.defineProperty(WebSocket2, "CLOSING", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSING")
-  });
-  Object.defineProperty(WebSocket2.prototype, "CLOSING", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSING")
-  });
-  Object.defineProperty(WebSocket2, "CLOSED", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSED")
-  });
-  Object.defineProperty(WebSocket2.prototype, "CLOSED", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSED")
-  });
-  [
-    "binaryType",
-    "bufferedAmount",
-    "extensions",
-    "isPaused",
-    "protocol",
-    "readyState",
-    "url"
-  ].forEach((property) => {
-    Object.defineProperty(WebSocket2.prototype, property, { enumerable: true });
-  });
-  ["open", "error", "close", "message"].forEach((method) => {
-    Object.defineProperty(WebSocket2.prototype, `on${method}`, {
-      enumerable: true,
-      get() {
-        for (const listener of this.listeners(method)) {
-          if (listener[kForOnEventAttribute])
-            return listener[kListener];
-        }
-        return null;
-      },
-      set(handler) {
-        for (const listener of this.listeners(method)) {
-          if (listener[kForOnEventAttribute]) {
-            this.removeListener(method, listener);
-            break;
-          }
-        }
-        if (typeof handler !== "function")
-          return;
-        this.addEventListener(method, handler, {
-          [kForOnEventAttribute]: true
-        });
-      }
-    });
-  });
-  WebSocket2.prototype.addEventListener = addEventListener;
-  WebSocket2.prototype.removeEventListener = removeEventListener;
-  module.exports = WebSocket2;
-  function initAsClient(websocket, address, protocols, options) {
-    const opts = {
-      allowSynchronousEvents: true,
-      autoPong: true,
-      closeTimeout: CLOSE_TIMEOUT,
-      protocolVersion: protocolVersions[1],
-      maxPayload: 100 * 1024 * 1024,
-      skipUTF8Validation: false,
-      perMessageDeflate: true,
-      followRedirects: false,
-      maxRedirects: 10,
-      ...options,
-      socketPath: undefined,
-      hostname: undefined,
-      protocol: undefined,
-      timeout: undefined,
-      method: "GET",
-      host: undefined,
-      path: undefined,
-      port: undefined
-    };
-    websocket._autoPong = opts.autoPong;
-    websocket._closeTimeout = opts.closeTimeout;
-    if (!protocolVersions.includes(opts.protocolVersion)) {
-      throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} ` + `(supported versions: ${protocolVersions.join(", ")})`);
-    }
-    let parsedUrl;
-    if (address instanceof URL2) {
-      parsedUrl = address;
-    } else {
-      try {
-        parsedUrl = new URL2(address);
-      } catch (e) {
-        throw new SyntaxError(`Invalid URL: ${address}`);
-      }
-    }
-    if (parsedUrl.protocol === "http:") {
-      parsedUrl.protocol = "ws:";
-    } else if (parsedUrl.protocol === "https:") {
-      parsedUrl.protocol = "wss:";
-    }
-    websocket._url = parsedUrl.href;
-    const isSecure = parsedUrl.protocol === "wss:";
-    const isIpcUrl = parsedUrl.protocol === "ws+unix:";
-    let invalidUrlMessage;
-    if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) {
-      invalidUrlMessage = `The URL's protocol must be one of "ws:", "wss:", ` + '"http:", "https:", or "ws+unix:"';
-    } else if (isIpcUrl && !parsedUrl.pathname) {
-      invalidUrlMessage = "The URL's pathname is empty";
-    } else if (parsedUrl.hash) {
-      invalidUrlMessage = "The URL contains a fragment identifier";
-    }
-    if (invalidUrlMessage) {
-      const err = new SyntaxError(invalidUrlMessage);
-      if (websocket._redirects === 0) {
-        throw err;
-      } else {
-        emitErrorAndClose(websocket, err);
-        return;
-      }
-    }
-    const defaultPort = isSecure ? 443 : 80;
-    const key = randomBytes(16).toString("base64");
-    const request = isSecure ? https.request : http.request;
-    const protocolSet = new Set;
-    let perMessageDeflate;
-    opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
-    opts.defaultPort = opts.defaultPort || defaultPort;
-    opts.port = parsedUrl.port || defaultPort;
-    opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
-    opts.headers = {
-      ...opts.headers,
-      "Sec-WebSocket-Version": opts.protocolVersion,
-      "Sec-WebSocket-Key": key,
-      Connection: "Upgrade",
-      Upgrade: "websocket"
-    };
-    opts.path = parsedUrl.pathname + parsedUrl.search;
-    opts.timeout = opts.handshakeTimeout;
-    if (opts.perMessageDeflate) {
-      perMessageDeflate = new PerMessageDeflate(opts.perMessageDeflate !== true ? opts.perMessageDeflate : {}, false, opts.maxPayload);
-      opts.headers["Sec-WebSocket-Extensions"] = format({
-        [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
-      });
-    }
-    if (protocols.length) {
-      for (const protocol of protocols) {
-        if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) {
-          throw new SyntaxError("An invalid or duplicated subprotocol was specified");
-        }
-        protocolSet.add(protocol);
-      }
-      opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
-    }
-    if (opts.origin) {
-      if (opts.protocolVersion < 13) {
-        opts.headers["Sec-WebSocket-Origin"] = opts.origin;
-      } else {
-        opts.headers.Origin = opts.origin;
-      }
-    }
-    if (parsedUrl.username || parsedUrl.password) {
-      opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
-    }
-    if (isIpcUrl) {
-      const parts = opts.path.split(":");
-      opts.socketPath = parts[0];
-      opts.path = parts[1];
-    }
-    let req;
-    if (opts.followRedirects) {
-      if (websocket._redirects === 0) {
-        websocket._originalIpc = isIpcUrl;
-        websocket._originalSecure = isSecure;
-        websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
-        const headers = options && options.headers;
-        options = { ...options, headers: {} };
-        if (headers) {
-          for (const [key2, value] of Object.entries(headers)) {
-            options.headers[key2.toLowerCase()] = value;
-          }
-        }
-      } else if (websocket.listenerCount("redirect") === 0) {
-        const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
-        if (!isSameHost || websocket._originalSecure && !isSecure) {
-          delete opts.headers.authorization;
-          delete opts.headers.cookie;
-          if (!isSameHost)
-            delete opts.headers.host;
-          opts.auth = undefined;
-        }
-      }
-      if (opts.auth && !options.headers.authorization) {
-        options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
-      }
-      req = websocket._req = request(opts);
-      if (websocket._redirects) {
-        websocket.emit("redirect", websocket.url, req);
-      }
-    } else {
-      req = websocket._req = request(opts);
-    }
-    if (opts.timeout) {
-      req.on("timeout", () => {
-        abortHandshake(websocket, req, "Opening handshake has timed out");
-      });
-    }
-    req.on("error", (err) => {
-      if (req === null || req[kAborted])
-        return;
-      req = websocket._req = null;
-      emitErrorAndClose(websocket, err);
-    });
-    req.on("response", (res) => {
-      const location = res.headers.location;
-      const statusCode = res.statusCode;
-      if (location && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
-        if (++websocket._redirects > opts.maxRedirects) {
-          abortHandshake(websocket, req, "Maximum redirects exceeded");
-          return;
-        }
-        req.abort();
-        let addr;
-        try {
-          addr = new URL2(location, address);
-        } catch (e) {
-          const err = new SyntaxError(`Invalid URL: ${location}`);
-          emitErrorAndClose(websocket, err);
-          return;
-        }
-        initAsClient(websocket, addr, protocols, options);
-      } else if (!websocket.emit("unexpected-response", req, res)) {
-        abortHandshake(websocket, req, `Unexpected server response: ${res.statusCode}`);
-      }
-    });
-    req.on("upgrade", (res, socket, head) => {
-      websocket.emit("upgrade", res);
-      if (websocket.readyState !== WebSocket2.CONNECTING)
-        return;
-      req = websocket._req = null;
-      const upgrade = res.headers.upgrade;
-      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
-        abortHandshake(websocket, socket, "Invalid Upgrade header");
-        return;
-      }
-      const digest = createHash("sha1").update(key + GUID).digest("base64");
-      if (res.headers["sec-websocket-accept"] !== digest) {
-        abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
-        return;
-      }
-      const serverProt = res.headers["sec-websocket-protocol"];
-      let protError;
-      if (serverProt !== undefined) {
-        if (!protocolSet.size) {
-          protError = "Server sent a subprotocol but none was requested";
-        } else if (!protocolSet.has(serverProt)) {
-          protError = "Server sent an invalid subprotocol";
-        }
-      } else if (protocolSet.size) {
-        protError = "Server sent no subprotocol";
-      }
-      if (protError) {
-        abortHandshake(websocket, socket, protError);
-        return;
-      }
-      if (serverProt)
-        websocket._protocol = serverProt;
-      const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
-      if (secWebSocketExtensions !== undefined) {
-        if (!perMessageDeflate) {
-          const message = "Server sent a Sec-WebSocket-Extensions header but no extension " + "was requested";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        let extensions;
-        try {
-          extensions = parse(secWebSocketExtensions);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Extensions header";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        const extensionNames = Object.keys(extensions);
-        if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate.extensionName) {
-          const message = "Server indicated an extension that was not requested";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        try {
-          perMessageDeflate.accept(extensions[PerMessageDeflate.extensionName]);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Extensions header";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        websocket._extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
-      }
-      websocket.setSocket(socket, head, {
-        allowSynchronousEvents: opts.allowSynchronousEvents,
-        generateMask: opts.generateMask,
-        maxPayload: opts.maxPayload,
-        skipUTF8Validation: opts.skipUTF8Validation
-      });
-    });
-    if (opts.finishRequest) {
-      opts.finishRequest(req, websocket);
-    } else {
-      req.end();
-    }
-  }
-  function emitErrorAndClose(websocket, err) {
-    websocket._readyState = WebSocket2.CLOSING;
-    websocket._errorEmitted = true;
-    websocket.emit("error", err);
-    websocket.emitClose();
-  }
-  function netConnect(options) {
-    options.path = options.socketPath;
-    return net.connect(options);
-  }
-  function tlsConnect(options) {
-    options.path = undefined;
-    if (!options.servername && options.servername !== "") {
-      options.servername = net.isIP(options.host) ? "" : options.host;
-    }
-    return tls.connect(options);
-  }
-  function abortHandshake(websocket, stream, message) {
-    websocket._readyState = WebSocket2.CLOSING;
-    const err = new Error(message);
-    Error.captureStackTrace(err, abortHandshake);
-    if (stream.setHeader) {
-      stream[kAborted] = true;
-      stream.abort();
-      if (stream.socket && !stream.socket.destroyed) {
-        stream.socket.destroy();
-      }
-      process.nextTick(emitErrorAndClose, websocket, err);
-    } else {
-      stream.destroy(err);
-      stream.once("error", websocket.emit.bind(websocket, "error"));
-      stream.once("close", websocket.emitClose.bind(websocket));
-    }
-  }
-  function sendAfterClose(websocket, data, cb) {
-    if (data) {
-      const length = isBlob(data) ? data.size : toBuffer(data).length;
-      if (websocket._socket)
-        websocket._sender._bufferedBytes += length;
-      else
-        websocket._bufferedAmount += length;
-    }
-    if (cb) {
-      const err = new Error(`WebSocket is not open: readyState ${websocket.readyState} ` + `(${readyStates[websocket.readyState]})`);
-      process.nextTick(cb, err);
-    }
-  }
-  function receiverOnConclude(code, reason) {
-    const websocket = this[kWebSocket];
-    websocket._closeFrameReceived = true;
-    websocket._closeMessage = reason;
-    websocket._closeCode = code;
-    if (websocket._socket[kWebSocket] === undefined)
-      return;
-    websocket._socket.removeListener("data", socketOnData);
-    process.nextTick(resume, websocket._socket);
-    if (code === 1005)
-      websocket.close();
-    else
-      websocket.close(code, reason);
-  }
-  function receiverOnDrain() {
-    const websocket = this[kWebSocket];
-    if (!websocket.isPaused)
-      websocket._socket.resume();
-  }
-  function receiverOnError(err) {
-    const websocket = this[kWebSocket];
-    if (websocket._socket[kWebSocket] !== undefined) {
-      websocket._socket.removeListener("data", socketOnData);
-      process.nextTick(resume, websocket._socket);
-      websocket.close(err[kStatusCode]);
-    }
-    if (!websocket._errorEmitted) {
-      websocket._errorEmitted = true;
-      websocket.emit("error", err);
-    }
-  }
-  function receiverOnFinish() {
-    this[kWebSocket].emitClose();
-  }
-  function receiverOnMessage(data, isBinary) {
-    this[kWebSocket].emit("message", data, isBinary);
-  }
-  function receiverOnPing(data) {
-    const websocket = this[kWebSocket];
-    if (websocket._autoPong)
-      websocket.pong(data, !this._isServer, NOOP);
-    websocket.emit("ping", data);
-  }
-  function receiverOnPong(data) {
-    this[kWebSocket].emit("pong", data);
-  }
-  function resume(stream) {
-    stream.resume();
-  }
-  function senderOnError(err) {
-    const websocket = this[kWebSocket];
-    if (websocket.readyState === WebSocket2.CLOSED)
-      return;
-    if (websocket.readyState === WebSocket2.OPEN) {
-      websocket._readyState = WebSocket2.CLOSING;
-      setCloseTimer(websocket);
-    }
-    this._socket.end();
-    if (!websocket._errorEmitted) {
-      websocket._errorEmitted = true;
-      websocket.emit("error", err);
-    }
-  }
-  function setCloseTimer(websocket) {
-    websocket._closeTimer = setTimeout(websocket._socket.destroy.bind(websocket._socket), websocket._closeTimeout);
-  }
-  function socketOnClose() {
-    const websocket = this[kWebSocket];
-    this.removeListener("close", socketOnClose);
-    this.removeListener("data", socketOnData);
-    this.removeListener("end", socketOnEnd);
-    websocket._readyState = WebSocket2.CLOSING;
-    if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
-      const chunk = this.read(this._readableState.length);
-      websocket._receiver.write(chunk);
-    }
-    websocket._receiver.end();
-    this[kWebSocket] = undefined;
-    clearTimeout(websocket._closeTimer);
-    if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) {
-      websocket.emitClose();
-    } else {
-      websocket._receiver.on("error", receiverOnFinish);
-      websocket._receiver.on("finish", receiverOnFinish);
-    }
-  }
-  function socketOnData(chunk) {
-    if (!this[kWebSocket]._receiver.write(chunk)) {
-      this.pause();
-    }
-  }
-  function socketOnEnd() {
-    const websocket = this[kWebSocket];
-    websocket._readyState = WebSocket2.CLOSING;
-    websocket._receiver.end();
-    this.end();
-  }
-  function socketOnError() {
-    const websocket = this[kWebSocket];
-    this.removeListener("error", socketOnError);
-    this.on("error", NOOP);
-    if (websocket) {
-      websocket._readyState = WebSocket2.CLOSING;
-      this.destroy();
-    }
-  }
-});
-
-// node_modules/ws/lib/stream.js
-var require_stream = __commonJS((exports, module) => {
-  var WebSocket2 = require_websocket();
-  var { Duplex } = __require("stream");
-  function emitClose(stream) {
-    stream.emit("close");
-  }
-  function duplexOnEnd() {
-    if (!this.destroyed && this._writableState.finished) {
-      this.destroy();
-    }
-  }
-  function duplexOnError(err) {
-    this.removeListener("error", duplexOnError);
-    this.destroy();
-    if (this.listenerCount("error") === 0) {
-      this.emit("error", err);
-    }
-  }
-  function createWebSocketStream(ws, options) {
-    let terminateOnDestroy = true;
-    const duplex = new Duplex({
-      ...options,
-      autoDestroy: false,
-      emitClose: false,
-      objectMode: false,
-      writableObjectMode: false
-    });
-    ws.on("message", function message(msg, isBinary) {
-      const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
-      if (!duplex.push(data))
-        ws.pause();
-    });
-    ws.once("error", function error(err) {
-      if (duplex.destroyed)
-        return;
-      terminateOnDestroy = false;
-      duplex.destroy(err);
-    });
-    ws.once("close", function close() {
-      if (duplex.destroyed)
-        return;
-      duplex.push(null);
-    });
-    duplex._destroy = function(err, callback) {
-      if (ws.readyState === ws.CLOSED) {
-        callback(err);
-        process.nextTick(emitClose, duplex);
-        return;
-      }
-      let called = false;
-      ws.once("error", function error(err2) {
-        called = true;
-        callback(err2);
-      });
-      ws.once("close", function close() {
-        if (!called)
-          callback(err);
-        process.nextTick(emitClose, duplex);
-      });
-      if (terminateOnDestroy)
-        ws.terminate();
-    };
-    duplex._final = function(callback) {
-      if (ws.readyState === ws.CONNECTING) {
-        ws.once("open", function open() {
-          duplex._final(callback);
-        });
-        return;
-      }
-      if (ws._socket === null)
-        return;
-      if (ws._socket._writableState.finished) {
-        callback();
-        if (duplex._readableState.endEmitted)
-          duplex.destroy();
-      } else {
-        ws._socket.once("finish", function finish() {
-          callback();
-        });
-        ws.close();
-      }
-    };
-    duplex._read = function() {
-      if (ws.isPaused)
-        ws.resume();
-    };
-    duplex._write = function(chunk, encoding, callback) {
-      if (ws.readyState === ws.CONNECTING) {
-        ws.once("open", function open() {
-          duplex._write(chunk, encoding, callback);
-        });
-        return;
-      }
-      ws.send(chunk, callback);
-    };
-    duplex.on("end", duplexOnEnd);
-    duplex.on("error", duplexOnError);
-    return duplex;
-  }
-  module.exports = createWebSocketStream;
-});
-
-// node_modules/ws/lib/subprotocol.js
-var require_subprotocol = __commonJS((exports, module) => {
-  var { tokenChars } = require_validation();
-  function parse(header) {
-    const protocols = new Set;
-    let start = -1;
-    let end = -1;
-    let i = 0;
-    for (i;i < header.length; i++) {
-      const code = header.charCodeAt(i);
-      if (end === -1 && tokenChars[code] === 1) {
-        if (start === -1)
-          start = i;
-      } else if (i !== 0 && (code === 32 || code === 9)) {
-        if (end === -1 && start !== -1)
-          end = i;
-      } else if (code === 44) {
-        if (start === -1) {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-        if (end === -1)
-          end = i;
-        const protocol2 = header.slice(start, end);
-        if (protocols.has(protocol2)) {
-          throw new SyntaxError(`The "${protocol2}" subprotocol is duplicated`);
-        }
-        protocols.add(protocol2);
-        start = end = -1;
-      } else {
-        throw new SyntaxError(`Unexpected character at index ${i}`);
-      }
-    }
-    if (start === -1 || end !== -1) {
-      throw new SyntaxError("Unexpected end of input");
-    }
-    const protocol = header.slice(start, i);
-    if (protocols.has(protocol)) {
-      throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
-    }
-    protocols.add(protocol);
-    return protocols;
-  }
-  module.exports = { parse };
-});
-
-// node_modules/ws/lib/websocket-server.js
-var require_websocket_server = __commonJS((exports, module) => {
-  var EventEmitter = __require("events");
-  var http = __require("http");
-  var { Duplex } = __require("stream");
-  var { createHash } = __require("crypto");
-  var extension = require_extension();
-  var PerMessageDeflate = require_permessage_deflate();
-  var subprotocol = require_subprotocol();
-  var WebSocket2 = require_websocket();
-  var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
-  var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
-  var RUNNING = 0;
-  var CLOSING = 1;
-  var CLOSED = 2;
-
-  class WebSocketServer extends EventEmitter {
-    constructor(options, callback) {
-      super();
-      options = {
-        allowSynchronousEvents: true,
-        autoPong: true,
-        maxPayload: 100 * 1024 * 1024,
-        skipUTF8Validation: false,
-        perMessageDeflate: false,
-        handleProtocols: null,
-        clientTracking: true,
-        closeTimeout: CLOSE_TIMEOUT,
-        verifyClient: null,
-        noServer: false,
-        backlog: null,
-        server: null,
-        host: null,
-        path: null,
-        port: null,
-        WebSocket: WebSocket2,
-        ...options
-      };
-      if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
-        throw new TypeError('One and only one of the "port", "server", or "noServer" options ' + "must be specified");
-      }
-      if (options.port != null) {
-        this._server = http.createServer((req, res) => {
-          const body = http.STATUS_CODES[426];
-          res.writeHead(426, {
-            "Content-Length": body.length,
-            "Content-Type": "text/plain"
-          });
-          res.end(body);
-        });
-        this._server.listen(options.port, options.host, options.backlog, callback);
-      } else if (options.server) {
-        this._server = options.server;
-      }
-      if (this._server) {
-        const emitConnection = this.emit.bind(this, "connection");
-        this._removeListeners = addListeners(this._server, {
-          listening: this.emit.bind(this, "listening"),
-          error: this.emit.bind(this, "error"),
-          upgrade: (req, socket, head) => {
-            this.handleUpgrade(req, socket, head, emitConnection);
-          }
-        });
-      }
-      if (options.perMessageDeflate === true)
-        options.perMessageDeflate = {};
-      if (options.clientTracking) {
-        this.clients = new Set;
-        this._shouldEmitClose = false;
-      }
-      this.options = options;
-      this._state = RUNNING;
-    }
-    address() {
-      if (this.options.noServer) {
-        throw new Error('The server is operating in "noServer" mode');
-      }
-      if (!this._server)
-        return null;
-      return this._server.address();
-    }
-    close(cb) {
-      if (this._state === CLOSED) {
-        if (cb) {
-          this.once("close", () => {
-            cb(new Error("The server is not running"));
-          });
-        }
-        process.nextTick(emitClose, this);
-        return;
-      }
-      if (cb)
-        this.once("close", cb);
-      if (this._state === CLOSING)
-        return;
-      this._state = CLOSING;
-      if (this.options.noServer || this.options.server) {
-        if (this._server) {
-          this._removeListeners();
-          this._removeListeners = this._server = null;
-        }
-        if (this.clients) {
-          if (!this.clients.size) {
-            process.nextTick(emitClose, this);
-          } else {
-            this._shouldEmitClose = true;
-          }
-        } else {
-          process.nextTick(emitClose, this);
-        }
-      } else {
-        const server = this._server;
-        this._removeListeners();
-        this._removeListeners = this._server = null;
-        server.close(() => {
-          emitClose(this);
-        });
-      }
-    }
-    shouldHandle(req) {
-      if (this.options.path) {
-        const index = req.url.indexOf("?");
-        const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
-        if (pathname !== this.options.path)
-          return false;
-      }
-      return true;
-    }
-    handleUpgrade(req, socket, head, cb) {
-      socket.on("error", socketOnError);
-      const key = req.headers["sec-websocket-key"];
-      const upgrade = req.headers.upgrade;
-      const version = +req.headers["sec-websocket-version"];
-      if (req.method !== "GET") {
-        const message = "Invalid HTTP method";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
-        return;
-      }
-      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
-        const message = "Invalid Upgrade header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-        return;
-      }
-      if (key === undefined || !keyRegex.test(key)) {
-        const message = "Missing or invalid Sec-WebSocket-Key header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-        return;
-      }
-      if (version !== 13 && version !== 8) {
-        const message = "Missing or invalid Sec-WebSocket-Version header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, {
-          "Sec-WebSocket-Version": "13, 8"
-        });
-        return;
-      }
-      if (!this.shouldHandle(req)) {
-        abortHandshake(socket, 400);
-        return;
-      }
-      const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
-      let protocols = new Set;
-      if (secWebSocketProtocol !== undefined) {
-        try {
-          protocols = subprotocol.parse(secWebSocketProtocol);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Protocol header";
-          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-          return;
-        }
-      }
-      const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
-      const extensions = {};
-      if (this.options.perMessageDeflate && secWebSocketExtensions !== undefined) {
-        const perMessageDeflate = new PerMessageDeflate(this.options.perMessageDeflate, true, this.options.maxPayload);
-        try {
-          const offers = extension.parse(secWebSocketExtensions);
-          if (offers[PerMessageDeflate.extensionName]) {
-            perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
-            extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
-          }
-        } catch (err) {
-          const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
-          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-          return;
-        }
-      }
-      if (this.options.verifyClient) {
-        const info = {
-          origin: req.headers[`${version === 8 ? "sec-websocket-origin" : "origin"}`],
-          secure: !!(req.socket.authorized || req.socket.encrypted),
-          req
-        };
-        if (this.options.verifyClient.length === 2) {
-          this.options.verifyClient(info, (verified, code, message, headers) => {
-            if (!verified) {
-              return abortHandshake(socket, code || 401, message, headers);
-            }
-            this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
-          });
-          return;
-        }
-        if (!this.options.verifyClient(info))
-          return abortHandshake(socket, 401);
-      }
-      this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
-    }
-    completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
-      if (!socket.readable || !socket.writable)
-        return socket.destroy();
-      if (socket[kWebSocket]) {
-        throw new Error("server.handleUpgrade() was called more than once with the same " + "socket, possibly due to a misconfiguration");
-      }
-      if (this._state > RUNNING)
-        return abortHandshake(socket, 503);
-      const digest = createHash("sha1").update(key + GUID).digest("base64");
-      const headers = [
-        "HTTP/1.1 101 Switching Protocols",
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        `Sec-WebSocket-Accept: ${digest}`
-      ];
-      const ws = new this.options.WebSocket(null, undefined, this.options);
-      if (protocols.size) {
-        const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
-        if (protocol) {
-          headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
-          ws._protocol = protocol;
-        }
-      }
-      if (extensions[PerMessageDeflate.extensionName]) {
-        const params = extensions[PerMessageDeflate.extensionName].params;
-        const value = extension.format({
-          [PerMessageDeflate.extensionName]: [params]
-        });
-        headers.push(`Sec-WebSocket-Extensions: ${value}`);
-        ws._extensions = extensions;
-      }
-      this.emit("headers", headers, req);
-      socket.write(headers.concat(`\r
-`).join(`\r
-`));
-      socket.removeListener("error", socketOnError);
-      ws.setSocket(socket, head, {
-        allowSynchronousEvents: this.options.allowSynchronousEvents,
-        maxPayload: this.options.maxPayload,
-        skipUTF8Validation: this.options.skipUTF8Validation
-      });
-      if (this.clients) {
-        this.clients.add(ws);
-        ws.on("close", () => {
-          this.clients.delete(ws);
-          if (this._shouldEmitClose && !this.clients.size) {
-            process.nextTick(emitClose, this);
-          }
-        });
-      }
-      cb(ws, req);
-    }
-  }
-  module.exports = WebSocketServer;
-  function addListeners(server, map) {
-    for (const event of Object.keys(map))
-      server.on(event, map[event]);
-    return function removeListeners() {
-      for (const event of Object.keys(map)) {
-        server.removeListener(event, map[event]);
-      }
-    };
-  }
-  function emitClose(server) {
-    server._state = CLOSED;
-    server.emit("close");
-  }
-  function socketOnError() {
-    this.destroy();
-  }
-  function abortHandshake(socket, code, message, headers) {
-    message = message || http.STATUS_CODES[code];
-    headers = {
-      Connection: "close",
-      "Content-Type": "text/html",
-      "Content-Length": Buffer.byteLength(message),
-      ...headers
-    };
-    socket.once("finish", socket.destroy);
-    socket.end(`HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
-` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join(`\r
-`) + `\r
-\r
-` + message);
-  }
-  function abortHandshakeOrEmitwsClientError(server, req, socket, code, message, headers) {
-    if (server.listenerCount("wsClientError")) {
-      const err = new Error(message);
-      Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
-      server.emit("wsClientError", err, socket, req);
-    } else {
-      abortHandshake(socket, code, message, headers);
-    }
-  }
-});
-
-// node_modules/ws/wrapper.mjs
-var exports_wrapper = {};
-__export(exports_wrapper, {
-  default: () => wrapper_default,
-  createWebSocketStream: () => import_stream.default,
-  WebSocketServer: () => import_websocket_server.default,
-  WebSocket: () => import_websocket.default,
-  Sender: () => import_sender.default,
-  Receiver: () => import_receiver.default
-});
-var import_stream, import_receiver, import_sender, import_websocket, import_websocket_server, wrapper_default;
-var init_wrapper = __esm(() => {
-  import_stream = __toESM(require_stream(), 1);
-  import_receiver = __toESM(require_receiver(), 1);
-  import_sender = __toESM(require_sender(), 1);
-  import_websocket = __toESM(require_websocket(), 1);
-  import_websocket_server = __toESM(require_websocket_server(), 1);
-  wrapper_default = import_websocket.default;
-});
-
-// extensions/remote-connect/src/client.ts
+// ../remote-connect/src/client.ts
 var exports_client = {};
 __export(exports_client, {
   WsIPCClient: () => WsIPCClient
@@ -3737,7 +843,7 @@ var init_client = __esm(() => {
           if (this.isBun) {
             this.ws = new WebSocket(wsUrl);
           } else {
-            Promise.resolve().then(() => (init_wrapper(), exports_wrapper)).then(({ default: WS }) => {
+            import("ws").then(({ default: WS }) => {
               this.ws = new WS(wsUrl);
               this.setupWsListeners(resolve3, reject);
             }).catch(reject);
@@ -4020,7 +1126,7 @@ var init_client = __esm(() => {
   };
 });
 
-// extensions/remote-connect/src/discovery.ts
+// ../remote-connect/src/discovery.ts
 var exports_discovery = {};
 __export(exports_discovery, {
   discoverLanInstances: () => discoverLanInstances,
@@ -4183,12 +1289,12 @@ var init_discovery = __esm(() => {
   isWindows = process.platform === "win32";
 });
 
-// extensions/console/src/index.ts
+// src/index.ts
 import React11 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// extensions/console/node_modules/irises-extension-sdk/src/platform.ts
+// node_modules/irises-extension-sdk/dist/platform.js
 class BackendHandle {
   _backend;
   _listeners = new Map;
@@ -4314,7 +1420,17 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
-// extensions/console/node_modules/tokenx/dist/index.mjs
+// node_modules/irises-extension-sdk/dist/logger.js
+var LogLevel;
+(function(LogLevel2) {
+  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
+})(LogLevel || (LogLevel = {}));
+var _logLevel = LogLevel.INFO;
+// node_modules/tokenx/dist/index.mjs
 var PATTERNS = {
   whitespace: /^\s+$/,
   cjk: /[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F\uFF00-\uFFEF\u30A0-\u30FF\u2E80-\u2EFF\u31C0-\u31EF\u3200-\u32FF\u3300-\u33FF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uD7B0-\uD7FF]/,
@@ -4376,11 +1492,11 @@ function getCharacterCount(text) {
   return Array.from(text).length;
 }
 
-// extensions/console/src/App.tsx
+// src/App.tsx
 import { useCallback as useCallback11, useEffect as useEffect11, useRef as useRef9, useState as useState14 } from "react";
 import { useRenderer } from "@opentui/react";
 
-// extensions/console/src/theme.ts
+// src/theme.ts
 var C = {
   primary: "#6c5ce7",
   primaryLight: "#a29bfe",
@@ -4411,7 +1527,7 @@ var C = {
   command: "#00cec9"
 };
 
-// extensions/console/src/components/ApprovalBar.tsx
+// src/components/ApprovalBar.tsx
 init_terminal_compat();
 import { jsxDEV, Fragment } from "@opentui/react/jsx-dev-runtime";
 function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, approvalPage = "basic" }) {
@@ -4490,7 +1606,7 @@ function ApprovalBar({ toolName, choice, remainingCount, isCommandTool, approval
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ConfirmBar.tsx
+// src/components/ConfirmBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV2 } from "@opentui/react/jsx-dev-runtime";
 function ConfirmBar({ message, choice }) {
@@ -4543,7 +1659,7 @@ function ConfirmBar({ message, choice }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/text-layout.ts
+// src/text-layout.ts
 var IS_CJK_LOCALE = (() => {
   const lang = (process.env.LANG || process.env.LC_ALL || process.env.LC_CTYPE || "").toLowerCase();
   return /^(zh|ja|ko|zh_|ja_|ko_)/.test(lang) || lang.includes(".gb") || lang.includes(".euc") || lang.includes(".big5") || lang.includes(".shift");
@@ -4576,7 +1692,7 @@ function getTextWidth(text) {
   return splitGraphemes(text).reduce((total, grapheme) => total + getGraphemeWidth(grapheme), 0);
 }
 
-// extensions/console/src/components/HintBar.tsx
+// src/components/HintBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV3, Fragment as Fragment2 } from "@opentui/react/jsx-dev-runtime";
 function truncatePath(fullPath, maxWidth) {
@@ -4690,11 +1806,11 @@ function HintBar({ isGenerating, queueSize, copyMode, exitConfirmArmed, remoteHo
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InputBar.tsx
+// src/components/InputBar.tsx
 import { useEffect as useEffect3, useMemo, useRef as useRef2, useState as useState3 } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 
-// extensions/console/src/input-commands.ts
+// src/input-commands.ts
 var COMMANDS = [
   { name: "/new", description: "新建对话" },
   { name: "/load", description: "加载历史对话" },
@@ -4714,16 +1830,17 @@ var COMMANDS = [
   { name: "/extension", description: "管理扩展插件（查看/启用/禁用）" },
   { name: "/dream", description: "整理长期记忆（合并冗余、清理过时）" },
   { name: "/queue", description: "查看/管理排队消息" },
+  { name: "/file", description: "附加文件（图片/文档/音频/视频）  clear 清空" },
   { name: "/exit", description: "退出应用" }
 ];
 function getCommandInput(cmd) {
-  return cmd.name === "/sh" || cmd.name === "/model" || cmd.name === "/remote" ? `${cmd.name} ` : cmd.name;
+  return cmd.name === "/sh" || cmd.name === "/model" || cmd.name === "/remote" || cmd.name === "/file" ? `${cmd.name} ` : cmd.name;
 }
 function isExactCommandValue(value, cmd) {
   return value === cmd.name || value === getCommandInput(cmd);
 }
 
-// extensions/console/src/hooks/use-text-input.ts
+// src/hooks/use-text-input.ts
 import { useState, useCallback } from "react";
 function wordBoundaryLeft(text, pos) {
   if (pos <= 0)
@@ -4822,7 +1939,7 @@ function useTextInput(initialValue = "") {
   return [state, { handleKey, insert, setValue, set }];
 }
 
-// extensions/console/src/hooks/use-cursor-blink.ts
+// src/hooks/use-cursor-blink.ts
 import { useState as useState2, useEffect } from "react";
 function useCursorBlink(intervalMs = 530) {
   const [visible, setVisible] = useState2(true);
@@ -4835,7 +1952,7 @@ function useCursorBlink(intervalMs = 530) {
   return visible;
 }
 
-// extensions/console/src/hooks/use-paste.ts
+// src/hooks/use-paste.ts
 import { useEffect as useEffect2, useCallback as useCallback2, useLayoutEffect, useRef } from "react";
 import { decodePasteBytes } from "@opentui/core";
 import { useAppContext } from "@opentui/react";
@@ -4856,7 +1973,7 @@ function usePaste(handler) {
   }, [keyHandler, stableHandler]);
 }
 
-// extensions/console/src/components/InputDisplay.tsx
+// src/components/InputDisplay.tsx
 import { jsxDEV as jsxDEV4, Fragment as Fragment3 } from "@opentui/react/jsx-dev-runtime";
 function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, placeholder, transform }) {
   const display = transform ? transform(value) : value;
@@ -4952,10 +2069,16 @@ function InputDisplay({ value, cursor, availableWidth, isActive, cursorVisible, 
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InputBar.tsx
+// src/components/InputBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV5 } from "@opentui/react/jsx-dev-runtime";
-function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, isRemote }) {
+var FILE_TYPE_ICONS = {
+  image: "\uD83D\uDCF7",
+  document: "\uD83D\uDCC4",
+  audio: "\uD83C\uDFB5",
+  video: "\uD83C\uDFAC"
+};
+function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote }) {
   const [inputState, inputActions] = useTextInput("");
   const [selectedIndex, setSelectedIndex] = useState3(0);
   const cursorVisible = useCursorBlink();
@@ -5088,6 +2211,10 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
       }
       return;
     }
+    if (key.name === "backspace" && !value && pendingFiles.length > 0) {
+      onRemoveFile(pendingFiles.length - 1);
+      return;
+    }
     inputActions.handleKey(key);
   });
   usePaste((text) => {
@@ -5192,6 +2319,39 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
           }, cmd.name, false, undefined, this);
         })
       }, undefined, false, undefined, this),
+      pendingFiles.length > 0 && /* @__PURE__ */ jsxDEV5("box", {
+        flexDirection: "column",
+        backgroundColor: C.panelBg,
+        paddingX: 1,
+        children: pendingFiles.map((file, i) => {
+          const icon = FILE_TYPE_ICONS[file.fileType] || "\uD83D\uDCCE";
+          const maxNameLen = Math.max(20, termWidth - 20);
+          const displayPath = file.path.length > maxNameLen ? `${file.path.slice(0, Math.floor((maxNameLen - 3) / 2))}${ICONS.ellipsis}${file.path.slice(file.path.length - Math.floor((maxNameLen - 3) / 2))}` : file.path;
+          return /* @__PURE__ */ jsxDEV5("box", {
+            paddingLeft: 1,
+            children: /* @__PURE__ */ jsxDEV5("text", {
+              children: [
+                /* @__PURE__ */ jsxDEV5("span", {
+                  fg: C.primaryLight,
+                  children: [
+                    icon,
+                    " ",
+                    displayPath
+                  ]
+                }, undefined, true, undefined, this),
+                /* @__PURE__ */ jsxDEV5("span", {
+                  fg: C.dim,
+                  children: [
+                    " (",
+                    file.mimeType,
+                    ")"
+                  ]
+                }, undefined, true, undefined, this)
+              ]
+            }, undefined, true, undefined, this)
+          }, `file-${i}`, false, undefined, this);
+        })
+      }, undefined, false, undefined, this),
       /* @__PURE__ */ jsxDEV5("scrollbox", {
         height: Math.min(visualLineCount, MAX_VISIBLE_INPUT_LINES),
         stickyScroll: true,
@@ -5204,7 +2364,7 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/StatusBar.tsx
+// src/components/StatusBar.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV6, Fragment as Fragment4 } from "@opentui/react/jsx-dev-runtime";
 function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, remoteHost, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }) {
@@ -5359,7 +2519,7 @@ function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindo
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/ThinkingIndicator.tsx
+// src/components/ThinkingIndicator.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV7 } from "@opentui/react/jsx-dev-runtime";
 var BLOCK_COUNT = 4;
@@ -5419,7 +2579,7 @@ function ThinkingIndicator({ level, showHint, isRemote }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/BottomPanel.tsx
+// src/components/BottomPanel.tsx
 import { jsxDEV as jsxDEV8 } from "@opentui/react/jsx-dev-runtime";
 function BottomPanel({
   hasMessages,
@@ -5446,7 +2606,9 @@ function BottomPanel({
   thinkingEffort,
   onCycleThinkingEffort,
   remoteHost,
-  isRemote
+  isRemote,
+  pendingFiles,
+  onRemoveFile
 }) {
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
   return /* @__PURE__ */ jsxDEV8("box", {
@@ -5485,6 +2647,8 @@ function BottomPanel({
             onSubmit,
             onPrioritySubmit,
             onCycleThinkingEffort,
+            pendingFiles,
+            onRemoveFile,
             isRemote
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV8(StatusBar, {
@@ -5513,7 +2677,7 @@ function BottomPanel({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/AgentListView.tsx
+// src/components/AgentListView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV9 } from "@opentui/react/jsx-dev-runtime";
 function AgentListView({ agents, selectedIndex, currentAgentName }) {
@@ -5588,14 +2752,14 @@ function AgentListView({ agents, selectedIndex, currentAgentName }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/ChatMessageList.tsx
+// src/components/ChatMessageList.tsx
 import { useMemo as useMemo3 } from "react";
 import { useTerminalDimensions as useTerminalDimensions3 } from "@opentui/react";
 
-// extensions/console/src/components/GeneratingTimer.tsx
+// src/components/GeneratingTimer.tsx
 import { useState as useState5, useEffect as useEffect5, useRef as useRef4 } from "react";
 
-// extensions/console/src/components/Spinner.tsx
+// src/components/Spinner.tsx
 import { useState as useState4, useEffect as useEffect4, useRef as useRef3 } from "react";
 init_terminal_compat();
 import { jsxDEV as jsxDEV10 } from "@opentui/react/jsx-dev-runtime";
@@ -5620,7 +2784,7 @@ function Spinner() {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/GeneratingTimer.tsx
+// src/components/GeneratingTimer.tsx
 import { jsxDEV as jsxDEV11 } from "@opentui/react/jsx-dev-runtime";
 function GeneratingTimer({ isGenerating, retryInfo, label, paused }) {
   const [time, setTime] = useState5(0);
@@ -5688,11 +2852,11 @@ function GeneratingTimer({ isGenerating, retryInfo, label, paused }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MessageItem.tsx
+// src/components/MessageItem.tsx
 import React5, { useEffect as useEffect6, useRef as useRef5, useState as useState6 } from "react";
 import { useTerminalDimensions as useTerminalDimensions2 } from "@opentui/react";
 
-// extensions/console/src/components/MarkdownText.tsx
+// src/components/MarkdownText.tsx
 import { useMemo as useMemo2 } from "react";
 import { SyntaxStyle, parseColor } from "@opentui/core";
 import { jsxDEV as jsxDEV12 } from "@opentui/react/jsx-dev-runtime";
@@ -5754,7 +2918,7 @@ function MarkdownText({ text, showCursor }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/default.tsx
+// src/tool-renderers/default.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV13 } from "@opentui/react/jsx-dev-runtime";
 function DefaultRenderer({ result }) {
@@ -5773,7 +2937,7 @@ function DefaultRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/shell.tsx
+// src/tool-renderers/shell.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV14 } from "@opentui/react/jsx-dev-runtime";
 function lineCount(text) {
@@ -5829,7 +2993,7 @@ function ShellRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/read-file.tsx
+// src/tool-renderers/read-file.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV15 } from "@opentui/react/jsx-dev-runtime";
 function basename(p) {
@@ -5886,7 +3050,7 @@ function ReadFileRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/apply-diff.tsx
+// src/tool-renderers/apply-diff.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV16 } from "@opentui/react/jsx-dev-runtime";
 function countPatchLines(patch) {
@@ -5943,7 +3107,7 @@ function ApplyDiffRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/search-in-files.tsx
+// src/tool-renderers/search-in-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV17 } from "@opentui/react/jsx-dev-runtime";
 function truncStr(s, max) {
@@ -5998,7 +3162,7 @@ function SearchInFilesRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/find-files.tsx
+// src/tool-renderers/find-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV18 } from "@opentui/react/jsx-dev-runtime";
 function FindFilesRenderer({ result }) {
@@ -6019,7 +3183,7 @@ function FindFilesRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/list-files.tsx
+// src/tool-renderers/list-files.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV19 } from "@opentui/react/jsx-dev-runtime";
 function ListFilesRenderer({ result }) {
@@ -6045,7 +3209,7 @@ function ListFilesRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/write-file.tsx
+// src/tool-renderers/write-file.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV20 } from "@opentui/react/jsx-dev-runtime";
 function countLines(content) {
@@ -6103,7 +3267,7 @@ function WriteFileRenderer({ args, result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/delete-code.tsx
+// src/tool-renderers/delete-code.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV21 } from "@opentui/react/jsx-dev-runtime";
 function DeleteCodeRenderer({ result }) {
@@ -6156,7 +3320,7 @@ function DeleteCodeRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/insert-code.tsx
+// src/tool-renderers/insert-code.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV22 } from "@opentui/react/jsx-dev-runtime";
 function InsertCodeRenderer({ result }) {
@@ -6210,7 +3374,7 @@ function InsertCodeRenderer({ result }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/tool-renderers/index.ts
+// src/tool-renderers/index.ts
 var renderers = {
   shell: ShellRenderer,
   bash: ShellRenderer,
@@ -6231,7 +3395,7 @@ function getToolDetailRenderer(toolName) {
   return detailRenderers[toolName] ?? null;
 }
 
-// extensions/console/src/components/ToolCall.tsx
+// src/components/ToolCall.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV23 } from "@opentui/react/jsx-dev-runtime";
 var TERMINAL_STATUSES = new Set(["success", "warning", "error"]);
@@ -6437,9 +3601,22 @@ function ToolCall({ invocation }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MessageItem.tsx
+// src/components/MessageItem.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV24 } from "@opentui/react/jsx-dev-runtime";
+function truncateMiddle(text, maxChars) {
+  if (text.length <= maxChars)
+    return text;
+  const keep = Math.max(4, Math.floor((maxChars - 3) / 2));
+  return `${text.slice(0, keep)}${ICONS.ellipsis}${text.slice(text.length - keep)}`;
+}
+var FILE_TYPE_ICONS2 = {
+  image: "\uD83D\uDCF7",
+  document: "\uD83D\uDCC4",
+  audio: "\uD83C\uDFB5",
+  video: "\uD83C\uDFAC",
+  other: "\uD83D\uDCCE"
+};
 function truncateRight(line, maxChars) {
   if (line.length <= maxChars)
     return line;
@@ -6506,6 +3683,9 @@ function groupParts(parts) {
       i++;
     } else if (part.type === "thought") {
       groups.push({ kind: "thought", part, index: i });
+      i++;
+    } else if (part.type === "file") {
+      groups.push({ kind: "file", part, index: i });
       i++;
     } else {
       i++;
@@ -6792,6 +3972,34 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
                 }, undefined, true, undefined, this)
               }, `tools-${group.startIndex}`, false, undefined, this);
             }
+            if (group.kind === "file") {
+              const icon = FILE_TYPE_ICONS2[group.part.fileType] || "\uD83D\uDCCE";
+              const maxNameLen = Math.max(20, termWidth - 15);
+              const displayName = truncateMiddle(group.part.fileName, maxNameLen);
+              return /* @__PURE__ */ jsxDEV24("box", {
+                marginTop: gi > 0 ? 1 : 0,
+                children: /* @__PURE__ */ jsxDEV24("text", {
+                  children: [
+                    /* @__PURE__ */ jsxDEV24("span", {
+                      fg: C.primaryLight,
+                      children: [
+                        icon,
+                        " ",
+                        displayName
+                      ]
+                    }, undefined, true, undefined, this),
+                    /* @__PURE__ */ jsxDEV24("span", {
+                      fg: C.dim,
+                      children: [
+                        " (",
+                        group.part.mimeType,
+                        ")"
+                      ]
+                    }, undefined, true, undefined, this)
+                  ]
+                }, undefined, true, undefined, this)
+              }, `file-${group.index}`, false, undefined, this);
+            }
             return null;
           }),
           isUser && (msg.createdAt != null || msg.tokenIn != null) && /* @__PURE__ */ jsxDEV24("box", {
@@ -6831,7 +4039,7 @@ var MessageItem = React5.memo(function MessageItem2({ msg, liveTools, liveParts,
   }, undefined, true, undefined, this);
 });
 
-// extensions/console/src/components/ChatMessageList.tsx
+// src/components/ChatMessageList.tsx
 import { jsxDEV as jsxDEV25 } from "@opentui/react/jsx-dev-runtime";
 function ChatMessageList({
   messages,
@@ -6919,12 +4127,12 @@ function ChatMessageList({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/DiffApprovalView.tsx
+// src/components/DiffApprovalView.tsx
 import { useMemo as useMemo4 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// extensions/console/node_modules/irises-extension-sdk/src/tool-utils.ts
+// node_modules/irises-extension-sdk/dist/tool-utils.js
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -7245,7 +4453,7 @@ function normalizeDeleteCodeArgs(args) {
   });
 }
 
-// extensions/console/src/components/DiffApprovalView.tsx
+// src/components/DiffApprovalView.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV26 } from "@opentui/react/jsx-dev-runtime";
 var DEFAULT_SEARCH_PATTERN = "**/*";
@@ -7772,7 +4980,7 @@ function DiffApprovalView({ invocation, pendingCount, choice, view, showLineNumb
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/InitWarnings.tsx
+// src/components/InitWarnings.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV27 } from "@opentui/react/jsx-dev-runtime";
 var MAX_VISIBLE_LINES = 3;
@@ -7807,43 +5015,153 @@ function InitWarnings({ warnings, color, icon }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/LogoScreen.tsx
+// src/components/FileBrowserView.tsx
+init_terminal_compat();
 import { jsxDEV as jsxDEV28 } from "@opentui/react/jsx-dev-runtime";
-function LogoScreen() {
+var FILE_TYPE_ICONS3 = {
+  image: { modern: "\uD83D\uDCF7", basic: "[I]" },
+  audio: { modern: "\uD83C\uDFB5", basic: "[A]" },
+  video: { modern: "\uD83C\uDFAC", basic: "[V]" },
+  document: { modern: "\uD83D\uDCC4", basic: "[D]" },
+  other: { modern: "\uD83D\uDCCE", basic: "[?]" }
+};
+var DIR_ICON = terminalTier === "basic" ? "[/]" : "\uD83D\uDCC1";
+function fileIcon(fileType) {
+  const entry = FILE_TYPE_ICONS3[fileType || "other"] || FILE_TYPE_ICONS3.other;
+  return terminalTier === "basic" ? entry.basic : entry.modern;
+}
+function formatSize(bytes) {
+  if (bytes < 1024)
+    return `${bytes}B`;
+  if (bytes < 1024 * 1024)
+    return `${(bytes / 1024).toFixed(1)}K`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}G`;
+}
+function FileBrowserView({ currentPath, entries, selectedIndex, showHidden }) {
   return /* @__PURE__ */ jsxDEV28("box", {
+    flexDirection: "column",
+    width: "100%",
+    height: "100%",
+    children: [
+      /* @__PURE__ */ jsxDEV28("box", {
+        flexDirection: "column",
+        paddingX: 1,
+        paddingTop: 1,
+        children: [
+          /* @__PURE__ */ jsxDEV28("text", {
+            children: [
+              /* @__PURE__ */ jsxDEV28("span", {
+                fg: C.primary,
+                children: "文件浏览器"
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsxDEV28("span", {
+                fg: C.dim,
+                children: `  ${ICONS.arrowUp}${ICONS.arrowDown} 导航  Enter 选择/进入  Backspace 上级  `
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsxDEV28("span", {
+                fg: C.dim,
+                children: `. 隐藏文件${showHidden ? "(显示中)" : "(已隐藏)"}  Esc 取消`
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this),
+          /* @__PURE__ */ jsxDEV28("text", {
+            fg: C.warn,
+            children: `${ICONS.selectorArrow} ${currentPath}`
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      /* @__PURE__ */ jsxDEV28("scrollbox", {
+        flexGrow: 1,
+        paddingTop: 1,
+        children: [
+          entries.length === 0 && /* @__PURE__ */ jsxDEV28("text", {
+            fg: C.dim,
+            paddingLeft: 2,
+            children: "(空目录)"
+          }, undefined, false, undefined, this),
+          entries.map((entry, index) => {
+            const isSelected = index === selectedIndex;
+            const icon = entry.isDirectory ? DIR_ICON : fileIcon(entry.fileType);
+            const nameColor = entry.isDirectory ? isSelected ? C.warn : "#e0ac69" : isSelected ? C.text : C.textSec;
+            return /* @__PURE__ */ jsxDEV28("box", {
+              paddingLeft: 1,
+              children: /* @__PURE__ */ jsxDEV28("text", {
+                children: [
+                  /* @__PURE__ */ jsxDEV28("span", {
+                    fg: isSelected ? C.accent : C.dim,
+                    children: isSelected ? `${ICONS.selectorArrow} ` : "  "
+                  }, undefined, false, undefined, this),
+                  /* @__PURE__ */ jsxDEV28("span", {
+                    children: [
+                      icon,
+                      " "
+                    ]
+                  }, undefined, true, undefined, this),
+                  isSelected ? /* @__PURE__ */ jsxDEV28("strong", {
+                    children: /* @__PURE__ */ jsxDEV28("span", {
+                      fg: nameColor,
+                      children: entry.name
+                    }, undefined, false, undefined, this)
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV28("span", {
+                    fg: nameColor,
+                    children: entry.name
+                  }, undefined, false, undefined, this),
+                  entry.isDirectory ? /* @__PURE__ */ jsxDEV28("span", {
+                    fg: C.dim,
+                    children: "/"
+                  }, undefined, false, undefined, this) : entry.size != null ? /* @__PURE__ */ jsxDEV28("span", {
+                    fg: C.dim,
+                    children: `  ${formatSize(entry.size)}`
+                  }, undefined, false, undefined, this) : null
+                ]
+              }, undefined, true, undefined, this)
+            }, entry.name, false, undefined, this);
+          })
+        ]
+      }, undefined, true, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
+
+// src/components/LogoScreen.tsx
+import { jsxDEV as jsxDEV29 } from "@opentui/react/jsx-dev-runtime";
+function LogoScreen() {
+  return /* @__PURE__ */ jsxDEV29("box", {
     flexDirection: "column",
     flexGrow: 1,
     padding: 1,
     alignItems: "center",
     justifyContent: "center",
-    children: /* @__PURE__ */ jsxDEV28("box", {
+    children: /* @__PURE__ */ jsxDEV29("box", {
       flexDirection: "column",
       border: false,
       padding: 2,
       alignItems: "center",
       children: [
-        /* @__PURE__ */ jsxDEV28("text", {
+        /* @__PURE__ */ jsxDEV29("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV28("strong", {
+          children: /* @__PURE__ */ jsxDEV29("strong", {
             children: "▀█▀ █▀█ ▀█▀ █▀▀"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV28("text", {
+        /* @__PURE__ */ jsxDEV29("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV28("strong", {
+          children: /* @__PURE__ */ jsxDEV29("strong", {
             children: " █  █▀▄  █  ▀▀█"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV28("text", {
+        /* @__PURE__ */ jsxDEV29("text", {
           fg: C.primary,
-          children: /* @__PURE__ */ jsxDEV28("strong", {
+          children: /* @__PURE__ */ jsxDEV29("strong", {
             children: "▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀"
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV28("text", {
+        /* @__PURE__ */ jsxDEV29("text", {
           children: " "
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV28("text", {
+        /* @__PURE__ */ jsxDEV29("text", {
           fg: C.dim,
           children: "模块化 AI 智能代理框架"
         }, undefined, false, undefined, this)
@@ -7852,11 +5170,11 @@ function LogoScreen() {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ToolDetailView.tsx
+// src/components/ToolDetailView.tsx
 import { useState as useState7, useCallback as useCallback3 } from "react";
 import { useKeyboard as useKeyboard2 } from "@opentui/react";
 init_terminal_compat();
-import { jsxDEV as jsxDEV29 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV30 } from "@opentui/react/jsx-dev-runtime";
 var TERMINAL_STATUSES2 = new Set(["success", "warning", "error"]);
 var STATUS_ICON = {
   streaming: ICONS.statusStreaming,
@@ -7937,27 +5255,27 @@ function childArgsSummary(toolName, args) {
 }
 function Divider({ label }) {
   if (label) {
-    return /* @__PURE__ */ jsxDEV29("text", {
+    return /* @__PURE__ */ jsxDEV30("text", {
       children: [
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: "─── "
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.accent,
-          children: /* @__PURE__ */ jsxDEV29("strong", {
+          children: /* @__PURE__ */ jsxDEV30("strong", {
             children: label
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: " " + "─".repeat(50)
         }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV29("text", {
-    children: /* @__PURE__ */ jsxDEV29("span", {
+  return /* @__PURE__ */ jsxDEV30("text", {
+    children: /* @__PURE__ */ jsxDEV30("span", {
       fg: C.dim,
       children: "─".repeat(60)
     }, undefined, false, undefined, this)
@@ -7993,16 +5311,16 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
     }
   }, [onClose, onAbort, isFinal, invocation.id, children, selectedIdx, onNavigateChild]));
   if (DetailRenderer) {
-    return /* @__PURE__ */ jsxDEV29("box", {
+    return /* @__PURE__ */ jsxDEV30("box", {
       flexDirection: "column",
       width: "100%",
       children: [
-        /* @__PURE__ */ jsxDEV29(BreadcrumbBar, {
+        /* @__PURE__ */ jsxDEV30(BreadcrumbBar, {
           breadcrumb,
           toolName
         }, undefined, false, undefined, this),
         DetailRenderer({ invocation, output, children, onNavigateChild }),
-        /* @__PURE__ */ jsxDEV29(FooterBar, {
+        /* @__PURE__ */ jsxDEV30(FooterBar, {
           isFinal,
           hasAbort: !!onAbort,
           hasChildren: children.length > 0
@@ -8010,22 +5328,22 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
       ]
     }, undefined, true, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
     width: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV29(BreadcrumbBar, {
+      /* @__PURE__ */ jsxDEV30(BreadcrumbBar, {
         breadcrumb,
         toolName
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV29("box", {
+      /* @__PURE__ */ jsxDEV30("box", {
         children: [
-          /* @__PURE__ */ jsxDEV29("text", {
+          /* @__PURE__ */ jsxDEV30("text", {
             children: [
-              /* @__PURE__ */ jsxDEV29("span", {
+              /* @__PURE__ */ jsxDEV30("span", {
                 bg: status === "error" ? C.error : C.accent,
                 fg: C.cursorFg,
-                children: /* @__PURE__ */ jsxDEV29("strong", {
+                children: /* @__PURE__ */ jsxDEV30("strong", {
                   children: [
                     " ",
                     toolName,
@@ -8034,7 +5352,7 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
                 }, undefined, true, undefined, this)
               }, undefined, false, undefined, this),
               "  ",
-              /* @__PURE__ */ jsxDEV29("span", {
+              /* @__PURE__ */ jsxDEV30("span", {
                 fg: isFinal ? status === "error" ? C.error : C.accent : C.dim,
                 children: [
                   STATUS_ICON[status] || ICONS.statusQueued,
@@ -8042,7 +5360,7 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
                   STATUS_LABEL[status] || status
                 ]
               }, undefined, true, undefined, this),
-              dur(createdAt, updatedAt) ? /* @__PURE__ */ jsxDEV29("span", {
+              dur(createdAt, updatedAt) ? /* @__PURE__ */ jsxDEV30("span", {
                 fg: C.dim,
                 children: [
                   "  ",
@@ -8052,16 +5370,16 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
               "  "
             ]
           }, undefined, true, undefined, this),
-          isExecuting && /* @__PURE__ */ jsxDEV29("text", {
-            children: /* @__PURE__ */ jsxDEV29(Spinner, {}, undefined, false, undefined, this)
+          isExecuting && /* @__PURE__ */ jsxDEV30("text", {
+            children: /* @__PURE__ */ jsxDEV30(Spinner, {}, undefined, false, undefined, this)
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV29("box", {
+      /* @__PURE__ */ jsxDEV30("box", {
         marginTop: 0,
-        children: /* @__PURE__ */ jsxDEV29("text", {
+        children: /* @__PURE__ */ jsxDEV30("text", {
           children: [
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: [
                 "  ",
@@ -8070,55 +5388,55 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
                 ts(createdAt)
               ]
             }, undefined, true, undefined, this),
-            isFinal ? /* @__PURE__ */ jsxDEV29("span", {
+            isFinal ? /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: [
                 ` ${ICONS.arrowRight} `,
                 ts(updatedAt)
               ]
-            }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV29("span", {
+            }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: ` ${ICONS.arrowRight} ${ICONS.ellipsis}`
             }, undefined, false, undefined, this)
           ]
         }, undefined, true, undefined, this)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV29(Divider, {
+      /* @__PURE__ */ jsxDEV30(Divider, {
         label: "参数"
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV29(ArgsSection, {
+      /* @__PURE__ */ jsxDEV30(ArgsSection, {
         args
       }, undefined, false, undefined, this),
-      output.length > 0 && /* @__PURE__ */ jsxDEV29("box", {
+      output.length > 0 && /* @__PURE__ */ jsxDEV30("box", {
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV29(Divider, {
+          /* @__PURE__ */ jsxDEV30(Divider, {
             label: `输出 (${output.length})`
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV29(OutputSection, {
+          /* @__PURE__ */ jsxDEV30(OutputSection, {
             output
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      children.length > 0 && /* @__PURE__ */ jsxDEV29("box", {
+      children.length > 0 && /* @__PURE__ */ jsxDEV30("box", {
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV29(Divider, {
+          /* @__PURE__ */ jsxDEV30(Divider, {
             label: `子工具 (${children.length})`
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV29(ChildrenSection, {
+          /* @__PURE__ */ jsxDEV30(ChildrenSection, {
             children,
             selectedIdx
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      isFinal && /* @__PURE__ */ jsxDEV29("box", {
+      isFinal && /* @__PURE__ */ jsxDEV30("box", {
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV29(Divider, {
+          /* @__PURE__ */ jsxDEV30(Divider, {
             label: "结果"
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV29(ResultSection, {
+          /* @__PURE__ */ jsxDEV30(ResultSection, {
             status,
             error,
             result,
@@ -8128,8 +5446,8 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV29(Divider, {}, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV29(FooterBar, {
+      /* @__PURE__ */ jsxDEV30(Divider, {}, undefined, false, undefined, this),
+      /* @__PURE__ */ jsxDEV30(FooterBar, {
         isFinal,
         hasAbort: !!onAbort,
         hasChildren: children.length > 0
@@ -8138,29 +5456,29 @@ function ToolDetailView({ data, breadcrumb, onNavigateChild, onClose, onAbort })
   }, undefined, true, undefined, this);
 }
 function BreadcrumbBar({ breadcrumb, toolName }) {
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     marginBottom: 0,
-    children: /* @__PURE__ */ jsxDEV29("text", {
+    children: /* @__PURE__ */ jsxDEV30("text", {
       children: [
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: `${ICONS.arrowLeft} [Esc] `
         }, undefined, false, undefined, this),
-        breadcrumb.map((b) => /* @__PURE__ */ jsxDEV29("span", {
+        breadcrumb.map((b) => /* @__PURE__ */ jsxDEV30("span", {
           children: [
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: b.toolName
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: " › "
             }, undefined, false, undefined, this)
           ]
         }, b.toolId, true, undefined, this)),
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.accent,
-          children: /* @__PURE__ */ jsxDEV29("strong", {
+          children: /* @__PURE__ */ jsxDEV30("strong", {
             children: toolName
           }, undefined, false, undefined, this)
         }, undefined, false, undefined, this)
@@ -8171,12 +5489,12 @@ function BreadcrumbBar({ breadcrumb, toolName }) {
 function ArgsSection({ args }) {
   const entries = Object.entries(args);
   if (entries.length === 0) {
-    return /* @__PURE__ */ jsxDEV29("text", {
+    return /* @__PURE__ */ jsxDEV30("text", {
       fg: C.dim,
       children: "  (无参数)"
     }, undefined, false, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
     children: [
       entries.slice(0, 8).map(([key, val]) => {
@@ -8190,26 +5508,26 @@ function ArgsSection({ args }) {
         } else {
           display = String(val);
         }
-        return /* @__PURE__ */ jsxDEV29("text", {
+        return /* @__PURE__ */ jsxDEV30("text", {
           children: [
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               fg: C.accent,
               children: [
                 "  ",
                 key
               ]
             }, undefined, true, undefined, this),
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               fg: C.dim,
               children: " = "
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV29("span", {
+            /* @__PURE__ */ jsxDEV30("span", {
               children: display
             }, undefined, false, undefined, this)
           ]
         }, key, true, undefined, this);
       }),
-      entries.length > 8 && /* @__PURE__ */ jsxDEV29("text", {
+      entries.length > 8 && /* @__PURE__ */ jsxDEV30("text", {
         fg: C.dim,
         children: `  ${ICONS.ellipsis} +${entries.length - 8} 更多参数`
       }, undefined, false, undefined, this)
@@ -8219,16 +5537,16 @@ function ArgsSection({ args }) {
 function OutputSection({ output }) {
   const visible = output.length > 20 ? output.slice(-20) : output;
   const skipped = output.length - visible.length;
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
     children: [
-      skipped > 0 && /* @__PURE__ */ jsxDEV29("text", {
+      skipped > 0 && /* @__PURE__ */ jsxDEV30("text", {
         fg: C.dim,
         children: `  ${ICONS.ellipsis} 省略 ${skipped} 条`
       }, undefined, false, undefined, this),
-      visible.map((entry, i) => /* @__PURE__ */ jsxDEV29("text", {
+      visible.map((entry, i) => /* @__PURE__ */ jsxDEV30("text", {
         children: [
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             fg: C.dim,
             children: [
               "  ",
@@ -8236,7 +5554,7 @@ function OutputSection({ output }) {
               " "
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             fg: OUTPUT_COLOR[entry.type] || C.dim,
             children: [
               "[",
@@ -8244,7 +5562,7 @@ function OutputSection({ output }) {
               "]"
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             children: [
               " ",
               truncate(entry.content, 100)
@@ -8256,20 +5574,20 @@ function OutputSection({ output }) {
   }, undefined, true, undefined, this);
 }
 function ChildrenSection({ children, selectedIdx }) {
-  return /* @__PURE__ */ jsxDEV29("box", {
+  return /* @__PURE__ */ jsxDEV30("box", {
     flexDirection: "column",
     children: children.map((child, i) => {
       const sel = i === selectedIdx;
       const icon = STATUS_ICON[child.status] || ICONS.statusQueued;
       const d = dur(child.createdAt, child.updatedAt);
       const summary = childArgsSummary(child.toolName, child.args);
-      return /* @__PURE__ */ jsxDEV29("text", {
+      return /* @__PURE__ */ jsxDEV30("text", {
         children: [
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             fg: sel ? C.accent : C.dim,
             children: sel ? ` ${ICONS.triangleRight} ` : "   "
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             bg: child.status === "error" ? C.error : C.accent,
             fg: C.cursorFg,
             children: [
@@ -8278,20 +5596,20 @@ function ChildrenSection({ children, selectedIdx }) {
               " "
             ]
           }, undefined, true, undefined, this),
-          summary ? /* @__PURE__ */ jsxDEV29("span", {
+          summary ? /* @__PURE__ */ jsxDEV30("span", {
             fg: C.dim,
             children: [
               " ",
               summary
             ]
           }, undefined, true, undefined, this) : null,
-          /* @__PURE__ */ jsxDEV29("span", {
+          /* @__PURE__ */ jsxDEV30("span", {
             children: [
               " ",
               icon
             ]
           }, undefined, true, undefined, this),
-          d ? /* @__PURE__ */ jsxDEV29("span", {
+          d ? /* @__PURE__ */ jsxDEV30("span", {
             fg: C.dim,
             children: [
               " ",
@@ -8305,7 +5623,7 @@ function ChildrenSection({ children, selectedIdx }) {
 }
 function ResultSection({ status, error, result, toolName, args, Renderer }) {
   if (status === "error" && error) {
-    return /* @__PURE__ */ jsxDEV29("text", {
+    return /* @__PURE__ */ jsxDEV30("text", {
       fg: C.error,
       children: [
         "  ",
@@ -8314,7 +5632,7 @@ function ResultSection({ status, error, result, toolName, args, Renderer }) {
     }, undefined, true, undefined, this);
   }
   if (Renderer && result != null) {
-    return /* @__PURE__ */ jsxDEV29("box", {
+    return /* @__PURE__ */ jsxDEV30("box", {
       paddingLeft: 2,
       children: Renderer({ toolName, args, result })
     }, undefined, false, undefined, this);
@@ -8324,41 +5642,41 @@ function ResultSection({ status, error, result, toolName, args, Renderer }) {
     const lines = text_content.split(`
 `);
     const visible = lines.length > 10 ? lines.slice(0, 10) : lines;
-    return /* @__PURE__ */ jsxDEV29("box", {
+    return /* @__PURE__ */ jsxDEV30("box", {
       flexDirection: "column",
       children: [
-        visible.map((line, i) => /* @__PURE__ */ jsxDEV29("text", {
+        visible.map((line, i) => /* @__PURE__ */ jsxDEV30("text", {
           fg: C.dim,
           children: [
             "  ",
             line
           ]
         }, i, true, undefined, this)),
-        lines.length > 10 && /* @__PURE__ */ jsxDEV29("text", {
+        lines.length > 10 && /* @__PURE__ */ jsxDEV30("text", {
           fg: C.dim,
           children: `  ${ICONS.ellipsis} +${lines.length - 10} 行`
         }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV29("text", {
+  return /* @__PURE__ */ jsxDEV30("text", {
     fg: C.dim,
     children: "  (无结果)"
   }, undefined, false, undefined, this);
 }
 function FooterBar({ isFinal, hasAbort, hasChildren }) {
-  return /* @__PURE__ */ jsxDEV29("box", {
-    children: /* @__PURE__ */ jsxDEV29("text", {
+  return /* @__PURE__ */ jsxDEV30("box", {
+    children: /* @__PURE__ */ jsxDEV30("text", {
       children: [
-        /* @__PURE__ */ jsxDEV29("span", {
+        /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: " [Esc/q] 返回"
         }, undefined, false, undefined, this),
-        !isFinal && hasAbort ? /* @__PURE__ */ jsxDEV29("span", {
+        !isFinal && hasAbort ? /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: "  [a] 终止"
         }, undefined, false, undefined, this) : null,
-        hasChildren ? /* @__PURE__ */ jsxDEV29("span", {
+        hasChildren ? /* @__PURE__ */ jsxDEV30("span", {
           fg: C.dim,
           children: `  [${ICONS.arrowUp}${ICONS.arrowDown}] 选择子工具  [Enter] 查看详情`
         }, undefined, false, undefined, this) : null
@@ -8367,9 +5685,9 @@ function FooterBar({ isFinal, hasAbort, hasChildren }) {
   }, undefined, false, undefined, this);
 }
 
-// extensions/console/src/components/ModelListView.tsx
+// src/components/ModelListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV30, Fragment as Fragment5 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV31, Fragment as Fragment5 } from "@opentui/react/jsx-dev-runtime";
 function formatContextWindow(tokens) {
   if (tokens == null || tokens <= 0)
     return "";
@@ -8411,37 +5729,37 @@ function ModelListView({
   const count = models.length;
   const visionStatus = selected ? getVisionStatus(selected.supportsVision) : undefined;
   const cursorVisible = useCursorBlink();
-  return /* @__PURE__ */ jsxDEV30("box", {
+  return /* @__PURE__ */ jsxDEV31("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV30("box", {
+      /* @__PURE__ */ jsxDEV31("box", {
         padding: 1,
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV30("text", {
+          /* @__PURE__ */ jsxDEV31("text", {
             fg: C.primary,
             children: `切换模型 (${count})`
           }, undefined, false, undefined, this),
-          editingField ? /* @__PURE__ */ jsxDEV30(Fragment5, {
+          editingField ? /* @__PURE__ */ jsxDEV31(Fragment5, {
             children: [
-              /* @__PURE__ */ jsxDEV30("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.dim,
                 children: `Enter 保存  Esc 取消  Ctrl+U 清空`
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV30("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.dim,
                 children: editingField === "contextWindow" ? "留空可清除上下文窗口配置" : "编辑模型别名（会同步更新 /model 使用名称）"
               }, undefined, false, undefined, this)
             ]
-          }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV30(Fragment5, {
+          }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV31(Fragment5, {
             children: [
-              /* @__PURE__ */ jsxDEV30("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.dim,
                 children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 切换  d 设默认  r 刷新`
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV30("text", {
+              /* @__PURE__ */ jsxDEV31("text", {
                 fg: C.dim,
                 children: `n 改名  w 改上下文  Esc 返回`
               }, undefined, false, undefined, this)
@@ -8449,26 +5767,26 @@ function ModelListView({
           }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      statusMessage && /* @__PURE__ */ jsxDEV30("box", {
+      statusMessage && /* @__PURE__ */ jsxDEV31("box", {
         paddingLeft: 2,
         paddingRight: 2,
         paddingBottom: 1,
-        children: /* @__PURE__ */ jsxDEV30("text", {
+        children: /* @__PURE__ */ jsxDEV31("text", {
           fg: statusIsError ? C.error : C.accent,
           children: statusMessage
         }, undefined, false, undefined, this)
       }, undefined, false, undefined, this),
-      editingField && selected && /* @__PURE__ */ jsxDEV30("box", {
+      editingField && selected && /* @__PURE__ */ jsxDEV31("box", {
         flexDirection: "column",
         paddingLeft: 2,
         paddingRight: 2,
         paddingBottom: 1,
         children: [
-          /* @__PURE__ */ jsxDEV30("text", {
+          /* @__PURE__ */ jsxDEV31("text", {
             fg: C.warn,
             children: editingField === "modelName" ? `编辑模型名：${selected.modelName}` : `编辑上下文窗口：${selected.modelName}`
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV30(InputDisplay, {
+          /* @__PURE__ */ jsxDEV31(InputDisplay, {
             value: editingValue,
             cursor: editingCursor,
             isActive: true,
@@ -8477,10 +5795,10 @@ function ModelListView({
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV30("scrollbox", {
+      /* @__PURE__ */ jsxDEV31("scrollbox", {
         flexGrow: 1,
         children: [
-          count === 0 && /* @__PURE__ */ jsxDEV30("text", {
+          count === 0 && /* @__PURE__ */ jsxDEV31("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "暂无可用模型。请在 /settings 中配置。"
@@ -8505,48 +5823,48 @@ function ModelListView({
               details.push(ctxStr);
             const detailLine = details.join(` ${ICONS.separator} `);
             const visionIcon = info.supportsVision ? " \uD83D\uDC41" : "";
-            return /* @__PURE__ */ jsxDEV30("box", {
+            return /* @__PURE__ */ jsxDEV31("box", {
               flexDirection: "column",
               paddingLeft: 1,
               children: [
-                /* @__PURE__ */ jsxDEV30("box", {
-                  children: /* @__PURE__ */ jsxDEV30("text", {
+                /* @__PURE__ */ jsxDEV31("box", {
+                  children: /* @__PURE__ */ jsxDEV31("text", {
                     children: [
-                      /* @__PURE__ */ jsxDEV30("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: isSelected ? C.accent : C.dim,
                         children: isSelected ? `${ICONS.selectorArrow} ` : "  "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV30("span", {
+                      /* @__PURE__ */ jsxDEV31("span", {
                         fg: isCurrent ? C.accent : C.dim,
                         children: [
                           isCurrent ? ICONS.bullet : " ",
                           " "
                         ]
                       }, undefined, true, undefined, this),
-                      isSelected ? /* @__PURE__ */ jsxDEV30("strong", {
-                        children: /* @__PURE__ */ jsxDEV30("span", {
+                      isSelected ? /* @__PURE__ */ jsxDEV31("strong", {
+                        children: /* @__PURE__ */ jsxDEV31("span", {
                           fg: C.text,
                           children: info.modelName
                         }, undefined, false, undefined, this)
-                      }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV30("span", {
+                      }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.textSec,
                         children: info.modelName
                       }, undefined, false, undefined, this),
-                      isCurrent && /* @__PURE__ */ jsxDEV30("span", {
+                      isCurrent && /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.accent,
                         children: " [当前]"
                       }, undefined, false, undefined, this),
-                      isDefault && /* @__PURE__ */ jsxDEV30("span", {
+                      isDefault && /* @__PURE__ */ jsxDEV31("span", {
                         fg: C.primaryLight,
                         children: " [默认]"
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this)
                 }, undefined, false, undefined, this),
-                /* @__PURE__ */ jsxDEV30("box", {
+                /* @__PURE__ */ jsxDEV31("box", {
                   paddingLeft: 4,
-                  children: /* @__PURE__ */ jsxDEV30("text", {
-                    children: /* @__PURE__ */ jsxDEV30("span", {
+                  children: /* @__PURE__ */ jsxDEV31("text", {
+                    children: /* @__PURE__ */ jsxDEV31("span", {
                       fg: C.dim,
                       children: [
                         detailLine,
@@ -8560,46 +5878,46 @@ function ModelListView({
           })
         ]
       }, undefined, true, undefined, this),
-      selected && /* @__PURE__ */ jsxDEV30("box", {
+      selected && /* @__PURE__ */ jsxDEV31("box", {
         paddingLeft: 2,
         paddingRight: 2,
         paddingTop: 0,
         paddingBottom: 1,
-        children: /* @__PURE__ */ jsxDEV30("text", {
+        children: /* @__PURE__ */ jsxDEV31("text", {
           children: [
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.dim,
               children: "提供商："
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.textSec,
               children: selected.provider ?? "未知"
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.dim,
               children: " | 模型："
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.textSec,
               children: selected.modelId
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.dim,
               children: " | 上下文："
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.textSec,
               children: formatContextWindowFull(selected.contextWindow)
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: C.dim,
               children: " | 视觉："
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: visionStatus?.color ?? C.dim,
               children: visionStatus?.symbol ?? "?"
             }, undefined, false, undefined, this),
-            /* @__PURE__ */ jsxDEV30("span", {
+            /* @__PURE__ */ jsxDEV31("span", {
               fg: visionStatus?.color ?? C.dim,
               children: ` ${visionStatus?.label ?? "未知"}`
             }, undefined, false, undefined, this)
@@ -8610,9 +5928,9 @@ function ModelListView({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/QueueListView.tsx
+// src/components/QueueListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV31 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV32 } from "@opentui/react/jsx-dev-runtime";
 function formatQueueTime(timestamp) {
   const d = new Date(timestamp);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
@@ -8635,43 +5953,43 @@ function countNewlines(text) {
 function QueueListView({ queue, selectedIndex, editingId, editingValue, editingCursor }) {
   const isEditing = editingId != null;
   const cursorVisible = useCursorBlink();
-  return /* @__PURE__ */ jsxDEV31("box", {
+  return /* @__PURE__ */ jsxDEV32("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV31("box", {
+      /* @__PURE__ */ jsxDEV32("box", {
         padding: 1,
         flexDirection: "column",
         children: [
-          /* @__PURE__ */ jsxDEV31("box", {
+          /* @__PURE__ */ jsxDEV32("box", {
             children: [
-              /* @__PURE__ */ jsxDEV31("text", {
+              /* @__PURE__ */ jsxDEV32("text", {
                 fg: C.primary,
                 children: "消息队列"
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV31("text", {
+              /* @__PURE__ */ jsxDEV32("text", {
                 fg: C.dim,
                 children: `  (${queue.length} 条待发送)`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV31("box", {
+          /* @__PURE__ */ jsxDEV32("box", {
             paddingTop: 0,
-            children: isEditing ? /* @__PURE__ */ jsxDEV31("text", {
+            children: isEditing ? /* @__PURE__ */ jsxDEV32("text", {
               fg: C.dim,
               children: "  Ctrl+J 换行  Enter 确认  Ctrl+U 清空  Esc 取消"
-            }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("text", {
+            }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV32("text", {
               fg: C.dim,
               children: `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Ctrl/Shift+${ICONS.arrowUp}${ICONS.arrowDown} 移动  e 编辑  d 删除  c 清空队列  Esc 返回`
             }, undefined, false, undefined, this)
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV31("scrollbox", {
+      /* @__PURE__ */ jsxDEV32("scrollbox", {
         flexGrow: 1,
         children: [
-          queue.length === 0 && /* @__PURE__ */ jsxDEV31("text", {
+          queue.length === 0 && /* @__PURE__ */ jsxDEV32("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "队列为空"
@@ -8682,37 +6000,37 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
             const time = formatQueueTime(msg.createdAt);
             if (isMsgEditing) {
               const nlCount = countNewlines(editingValue);
-              return /* @__PURE__ */ jsxDEV31("box", {
+              return /* @__PURE__ */ jsxDEV32("box", {
                 paddingLeft: 1,
                 flexDirection: "column",
                 children: [
-                  /* @__PURE__ */ jsxDEV31("text", {
+                  /* @__PURE__ */ jsxDEV32("text", {
                     children: [
-                      /* @__PURE__ */ jsxDEV31("span", {
+                      /* @__PURE__ */ jsxDEV32("span", {
                         fg: C.accent,
                         children: "❯ "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV31("span", {
+                      /* @__PURE__ */ jsxDEV32("span", {
                         fg: C.dim,
                         children: `${index + 1}. `
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV31("span", {
+                      /* @__PURE__ */ jsxDEV32("span", {
                         fg: C.warn,
                         children: "[编辑中]"
                       }, undefined, false, undefined, this),
-                      nlCount > 0 ? /* @__PURE__ */ jsxDEV31("span", {
+                      nlCount > 0 ? /* @__PURE__ */ jsxDEV32("span", {
                         fg: C.dim,
                         children: ` (${nlCount + 1} 行)`
                       }, undefined, false, undefined, this) : null,
-                      /* @__PURE__ */ jsxDEV31("span", {
+                      /* @__PURE__ */ jsxDEV32("span", {
                         fg: C.dim,
                         children: `  ${time}`
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("box", {
+                  /* @__PURE__ */ jsxDEV32("box", {
                     paddingLeft: 4,
-                    children: /* @__PURE__ */ jsxDEV31(InputDisplay, {
+                    children: /* @__PURE__ */ jsxDEV32(InputDisplay, {
                       value: editingValue,
                       cursor: editingCursor,
                       isActive: true,
@@ -8723,28 +6041,28 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
               }, msg.id, true, undefined, this);
             }
             const preview = truncatePreview(msg.text, 60);
-            return /* @__PURE__ */ jsxDEV31("box", {
+            return /* @__PURE__ */ jsxDEV32("box", {
               paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV31("text", {
+              children: /* @__PURE__ */ jsxDEV32("text", {
                 children: [
-                  /* @__PURE__ */ jsxDEV31("span", {
+                  /* @__PURE__ */ jsxDEV32("span", {
                     fg: isSelected ? C.accent : C.dim,
                     children: isSelected ? "❯ " : "  "
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("span", {
+                  /* @__PURE__ */ jsxDEV32("span", {
                     fg: C.dim,
                     children: `${index + 1}. `
                   }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV31("strong", {
-                    children: /* @__PURE__ */ jsxDEV31("span", {
+                  isSelected ? /* @__PURE__ */ jsxDEV32("strong", {
+                    children: /* @__PURE__ */ jsxDEV32("span", {
                       fg: C.text,
                       children: preview
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV31("span", {
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV32("span", {
                     fg: C.textSec,
                     children: preview
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV31("span", {
+                  /* @__PURE__ */ jsxDEV32("span", {
                     fg: C.dim,
                     children: `  ${time}`
                   }, undefined, false, undefined, this)
@@ -8758,9 +6076,9 @@ function QueueListView({ queue, selectedIndex, editingId, editingValue, editingC
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/ToolListView.tsx
+// src/components/ToolListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV32 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV33 } from "@opentui/react/jsx-dev-runtime";
 var STATUS_ICON2 = {
   streaming: ICONS.statusStreaming,
   queued: ICONS.statusQueued,
@@ -8815,38 +6133,38 @@ function argsSummary(toolName, args) {
 }
 function ToolListView({ tools, selectedIndex }) {
   if (tools.length === 0) {
-    return /* @__PURE__ */ jsxDEV32("box", {
+    return /* @__PURE__ */ jsxDEV33("box", {
       flexDirection: "column",
       paddingX: 1,
       children: [
-        /* @__PURE__ */ jsxDEV32("text", {
+        /* @__PURE__ */ jsxDEV33("text", {
           fg: C.dim,
           children: "当前会话没有工具执行记录。"
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV32("text", {
+        /* @__PURE__ */ jsxDEV33("text", {
           fg: C.dim,
           children: " "
         }, undefined, false, undefined, this),
-        /* @__PURE__ */ jsxDEV32("text", {
+        /* @__PURE__ */ jsxDEV33("text", {
           fg: C.dim,
           children: "Esc 返回"
         }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV32("box", {
+  return /* @__PURE__ */ jsxDEV33("box", {
     flexDirection: "column",
     paddingX: 1,
     children: [
-      /* @__PURE__ */ jsxDEV32("text", {
+      /* @__PURE__ */ jsxDEV33("text", {
         children: [
-          /* @__PURE__ */ jsxDEV32("span", {
+          /* @__PURE__ */ jsxDEV33("span", {
             fg: C.accent,
-            children: /* @__PURE__ */ jsxDEV32("strong", {
+            children: /* @__PURE__ */ jsxDEV33("strong", {
               children: " 工具执行记录 "
             }, undefined, false, undefined, this)
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV32("span", {
+          /* @__PURE__ */ jsxDEV33("span", {
             fg: C.dim,
             children: [
               "(",
@@ -8856,11 +6174,11 @@ function ToolListView({ tools, selectedIndex }) {
           }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV32("text", {
+      /* @__PURE__ */ jsxDEV33("text", {
         fg: C.dim,
         children: "─".repeat(60)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV32("scrollbox", {
+      /* @__PURE__ */ jsxDEV33("scrollbox", {
         flexGrow: 1,
         children: tools.map((inv, i) => {
           const sel = i === selectedIndex;
@@ -8869,20 +6187,20 @@ function ToolListView({ tools, selectedIndex }) {
           const summary = argsSummary(inv.toolName, inv.args);
           const time = new Date(inv.createdAt);
           const timeStr = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}:${String(time.getSeconds()).padStart(2, "0")}`;
-          return /* @__PURE__ */ jsxDEV32("text", {
+          return /* @__PURE__ */ jsxDEV33("text", {
             children: [
-              /* @__PURE__ */ jsxDEV32("span", {
+              /* @__PURE__ */ jsxDEV33("span", {
                 fg: sel ? C.accent : C.dim,
                 children: sel ? ` ${ICONS.selectorArrow} ` : "   "
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV32("span", {
+              /* @__PURE__ */ jsxDEV33("span", {
                 fg: C.dim,
                 children: [
                   timeStr,
                   " "
                 ]
               }, undefined, true, undefined, this),
-              /* @__PURE__ */ jsxDEV32("span", {
+              /* @__PURE__ */ jsxDEV33("span", {
                 bg: inv.status === "error" ? C.error : C.accent,
                 fg: C.cursorFg,
                 children: [
@@ -8891,20 +6209,20 @@ function ToolListView({ tools, selectedIndex }) {
                   " "
                 ]
               }, undefined, true, undefined, this),
-              summary ? /* @__PURE__ */ jsxDEV32("span", {
+              summary ? /* @__PURE__ */ jsxDEV33("span", {
                 fg: sel ? undefined : C.dim,
                 children: [
                   " ",
                   summary
                 ]
               }, undefined, true, undefined, this) : null,
-              /* @__PURE__ */ jsxDEV32("span", {
+              /* @__PURE__ */ jsxDEV33("span", {
                 children: [
                   " ",
                   icon
                 ]
               }, undefined, true, undefined, this),
-              d ? /* @__PURE__ */ jsxDEV32("span", {
+              d ? /* @__PURE__ */ jsxDEV33("span", {
                 fg: C.dim,
                 children: [
                   " ",
@@ -8915,11 +6233,11 @@ function ToolListView({ tools, selectedIndex }) {
           }, inv.id, true, undefined, this);
         })
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV32("text", {
+      /* @__PURE__ */ jsxDEV33("text", {
         fg: C.dim,
         children: "─".repeat(60)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV32("text", {
+      /* @__PURE__ */ jsxDEV33("text", {
         fg: C.dim,
         children: ` ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 查看详情  Esc 返回`
       }, undefined, false, undefined, this)
@@ -8927,32 +6245,32 @@ function ToolListView({ tools, selectedIndex }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/SessionListView.tsx
+// src/components/SessionListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV33 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV34 } from "@opentui/react/jsx-dev-runtime";
 function SessionListView({ sessions, selectedIndex }) {
-  return /* @__PURE__ */ jsxDEV33("box", {
+  return /* @__PURE__ */ jsxDEV34("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV33("box", {
+      /* @__PURE__ */ jsxDEV34("box", {
         padding: 1,
         children: [
-          /* @__PURE__ */ jsxDEV33("text", {
+          /* @__PURE__ */ jsxDEV34("text", {
             fg: C.primary,
             children: "历史对话"
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV33("text", {
+          /* @__PURE__ */ jsxDEV34("text", {
             fg: C.dim,
             children: `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 加载  Esc 返回`
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV33("scrollbox", {
+      /* @__PURE__ */ jsxDEV34("scrollbox", {
         flexGrow: 1,
         children: [
-          sessions.length === 0 && /* @__PURE__ */ jsxDEV33("text", {
+          sessions.length === 0 && /* @__PURE__ */ jsxDEV34("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "暂无历史对话"
@@ -8960,24 +6278,24 @@ function SessionListView({ sessions, selectedIndex }) {
           sessions.map((meta, index) => {
             const isSelected = index === selectedIndex;
             const time = new Date(meta.updatedAt ?? 0).toLocaleString("zh-CN");
-            return /* @__PURE__ */ jsxDEV33("box", {
+            return /* @__PURE__ */ jsxDEV34("box", {
               paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV33("text", {
+              children: /* @__PURE__ */ jsxDEV34("text", {
                 children: [
-                  /* @__PURE__ */ jsxDEV33("span", {
+                  /* @__PURE__ */ jsxDEV34("span", {
                     fg: isSelected ? C.accent : C.dim,
                     children: isSelected ? `${ICONS.selectorArrow} ` : "  "
                   }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV33("strong", {
-                    children: /* @__PURE__ */ jsxDEV33("span", {
+                  isSelected ? /* @__PURE__ */ jsxDEV34("strong", {
+                    children: /* @__PURE__ */ jsxDEV34("span", {
                       fg: C.text,
                       children: meta.title
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV33("span", {
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV34("span", {
                     fg: C.textSec,
                     children: meta.title
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV33("span", {
+                  /* @__PURE__ */ jsxDEV34("span", {
                     fg: C.dim,
                     children: [
                       "  ",
@@ -8996,9 +6314,9 @@ function SessionListView({ sessions, selectedIndex }) {
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/MemoryListView.tsx
+// src/components/MemoryListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV34 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV35 } from "@opentui/react/jsx-dev-runtime";
 var TYPE_LABELS = {
   user: "user",
   feedback: "feedback",
@@ -9020,36 +6338,36 @@ function MemoryListView({ memories, selectedIndex, expandedId, filter, pendingDe
   const total = memories.length;
   const shown = filtered.length;
   const filterLabel = filter === "all" ? `(${total} ${ICONS.separator} Tab ${ICONS.triangleRight})` : `[${filter}] (${shown}/${total} ${ICONS.separator} Tab ${ICONS.triangleRight})`;
-  return /* @__PURE__ */ jsxDEV34("box", {
+  return /* @__PURE__ */ jsxDEV35("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV34("box", {
+      /* @__PURE__ */ jsxDEV35("box", {
         padding: 1,
         children: [
-          /* @__PURE__ */ jsxDEV34("text", {
+          /* @__PURE__ */ jsxDEV35("text", {
             fg: C.primary,
             children: `${ICONS.bullet} `
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV34("text", {
+          /* @__PURE__ */ jsxDEV35("text", {
             fg: C.primary,
             children: "Memory "
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV34("text", {
+          /* @__PURE__ */ jsxDEV35("text", {
             fg: C.dim,
             children: filterLabel
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV34("text", {
+          /* @__PURE__ */ jsxDEV35("text", {
             fg: C.dim,
             children: `  ${ICONS.arrowUp}${ICONS.arrowDown} select  Enter expand  D delete  Esc back`
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV34("scrollbox", {
+      /* @__PURE__ */ jsxDEV35("scrollbox", {
         flexGrow: 1,
         children: [
-          filtered.length === 0 && /* @__PURE__ */ jsxDEV34("text", {
+          filtered.length === 0 && /* @__PURE__ */ jsxDEV35("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: filter === "all" ? "No memories yet." : `No ${filter} memories.`
@@ -9060,52 +6378,52 @@ function MemoryListView({ memories, selectedIndex, expandedId, filter, pendingDe
             const isPendingDelete = item.id === pendingDeleteId;
             const typeTag = TYPE_LABELS[item.type] ?? item.type;
             const age = formatAge(item.updatedAt);
-            return /* @__PURE__ */ jsxDEV34("box", {
+            return /* @__PURE__ */ jsxDEV35("box", {
               flexDirection: "column",
               paddingLeft: 1,
               children: [
-                /* @__PURE__ */ jsxDEV34("box", {
-                  children: /* @__PURE__ */ jsxDEV34("text", {
+                /* @__PURE__ */ jsxDEV35("box", {
+                  children: /* @__PURE__ */ jsxDEV35("text", {
                     children: [
-                      /* @__PURE__ */ jsxDEV34("span", {
+                      /* @__PURE__ */ jsxDEV35("span", {
                         fg: isSelected ? C.accent : C.dim,
                         children: isSelected ? `${ICONS.selectorArrow} ` : "  "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV34("span", {
+                      /* @__PURE__ */ jsxDEV35("span", {
                         fg: C.dim,
                         children: `[${typeTag}] `
                       }, undefined, false, undefined, this),
-                      isSelected ? /* @__PURE__ */ jsxDEV34("strong", {
-                        children: /* @__PURE__ */ jsxDEV34("span", {
+                      isSelected ? /* @__PURE__ */ jsxDEV35("strong", {
+                        children: /* @__PURE__ */ jsxDEV35("span", {
                           fg: C.text,
                           children: item.name || `#${item.id}`
                         }, undefined, false, undefined, this)
-                      }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV34("span", {
+                      }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV35("span", {
                         fg: C.textSec,
                         children: item.name || `#${item.id}`
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV34("span", {
+                      /* @__PURE__ */ jsxDEV35("span", {
                         fg: C.dim,
                         children: ` ${ICONS.emDash} ${item.description || "(no description)"}`
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV34("span", {
+                      /* @__PURE__ */ jsxDEV35("span", {
                         fg: C.dim,
                         children: `  ${age}`
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this)
                 }, undefined, false, undefined, this),
-                isPendingDelete && /* @__PURE__ */ jsxDEV34("box", {
+                isPendingDelete && /* @__PURE__ */ jsxDEV35("box", {
                   paddingLeft: 4,
-                  children: /* @__PURE__ */ jsxDEV34("text", {
+                  children: /* @__PURE__ */ jsxDEV35("text", {
                     fg: C.error,
                     children: "Delete this memory? (D) confirm  (Esc) cancel"
                   }, undefined, false, undefined, this)
                 }, undefined, false, undefined, this),
-                isExpanded && !isPendingDelete && /* @__PURE__ */ jsxDEV34("box", {
+                isExpanded && !isPendingDelete && /* @__PURE__ */ jsxDEV35("box", {
                   paddingLeft: 4,
                   paddingBottom: 1,
-                  children: /* @__PURE__ */ jsxDEV34("text", {
+                  children: /* @__PURE__ */ jsxDEV35("text", {
                     fg: C.textSec,
                     children: item.content
                   }, undefined, false, undefined, this)
@@ -9132,9 +6450,9 @@ function formatAge(unixSec) {
   return new Date(unixSec * 1000).toLocaleDateString("zh-CN");
 }
 
-// extensions/console/src/components/ExtensionListView.tsx
+// src/components/ExtensionListView.tsx
 init_terminal_compat();
-import { jsxDEV as jsxDEV35 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV36 } from "@opentui/react/jsx-dev-runtime";
 var STATUS_LABELS = {
   active: { label: "active", color: "#2ecc71" },
   disabled: { label: "disabled", color: "#e74c3c" },
@@ -9149,44 +6467,44 @@ function ExtensionListView({
   statusIsError
 }) {
   const total = extensions.length;
-  return /* @__PURE__ */ jsxDEV35("box", {
+  return /* @__PURE__ */ jsxDEV36("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV35("box", {
+      /* @__PURE__ */ jsxDEV36("box", {
         padding: 1,
         children: [
-          /* @__PURE__ */ jsxDEV35("text", {
+          /* @__PURE__ */ jsxDEV36("text", {
             fg: C.primary,
             children: `${ICONS.bullet} `
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV35("text", {
+          /* @__PURE__ */ jsxDEV36("text", {
             fg: C.primary,
             children: "Extension "
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV35("text", {
+          /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
             children: `(${total} extensions)`
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV35("text", {
+          /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
             children: `  ${ICONS.arrowUp}${ICONS.arrowDown} select  Enter toggle  Esc back`
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      statusMessage && /* @__PURE__ */ jsxDEV35("box", {
+      statusMessage && /* @__PURE__ */ jsxDEV36("box", {
         paddingLeft: 2,
         paddingBottom: 1,
-        children: /* @__PURE__ */ jsxDEV35("text", {
+        children: /* @__PURE__ */ jsxDEV36("text", {
           fg: statusIsError ? C.error : C.accent,
           children: statusMessage
         }, undefined, false, undefined, this)
       }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsxDEV35("scrollbox", {
+      /* @__PURE__ */ jsxDEV36("scrollbox", {
         flexGrow: 1,
         children: [
-          extensions.length === 0 && /* @__PURE__ */ jsxDEV35("text", {
+          extensions.length === 0 && /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
             paddingLeft: 2,
             children: "No extensions found."
@@ -9195,32 +6513,32 @@ function ExtensionListView({
             const isSelected = index === selectedIndex;
             const statusInfo = STATUS_LABELS[item.status] ?? STATUS_LABELS.platform;
             const isToggling = item.name === togglingName;
-            return /* @__PURE__ */ jsxDEV35("box", {
+            return /* @__PURE__ */ jsxDEV36("box", {
               paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV35("text", {
+              children: /* @__PURE__ */ jsxDEV36("text", {
                 children: [
-                  /* @__PURE__ */ jsxDEV35("span", {
+                  /* @__PURE__ */ jsxDEV36("span", {
                     fg: isSelected ? C.accent : C.dim,
                     children: isSelected ? `${ICONS.selectorArrow} ` : "  "
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV35("span", {
+                  /* @__PURE__ */ jsxDEV36("span", {
                     fg: statusInfo.color,
                     children: `[${isToggling ? "..." : statusInfo.label}] `
                   }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV35("strong", {
-                    children: /* @__PURE__ */ jsxDEV35("span", {
+                  isSelected ? /* @__PURE__ */ jsxDEV36("strong", {
+                    children: /* @__PURE__ */ jsxDEV36("span", {
                       fg: C.text,
                       children: item.name
                     }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV35("span", {
+                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV36("span", {
                     fg: C.textSec,
                     children: item.name
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV35("span", {
+                  /* @__PURE__ */ jsxDEV36("span", {
                     fg: C.dim,
                     children: ` v${item.version}`
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV35("span", {
+                  /* @__PURE__ */ jsxDEV36("span", {
                     fg: C.dim,
                     children: ` ${ICONS.emDash} ${item.description || "(no description)"}`
                   }, undefined, false, undefined, this)
@@ -9234,12 +6552,12 @@ function ExtensionListView({
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/components/SettingsView.tsx
+// src/components/SettingsView.tsx
 import { useCallback as useCallback4, useEffect as useEffect7, useMemo as useMemo5, useState as useState8 } from "react";
 import { useKeyboard as useKeyboard3, useTerminalDimensions as useTerminalDimensions4 } from "@opentui/react";
 init_terminal_compat();
 
-// extensions/console/src/diff-approval.ts
+// src/diff-approval.ts
 var CONSOLE_DIFF_APPROVAL_VIEW_TOOLS = new Set([
   "apply_diff",
   "write_file",
@@ -9267,7 +6585,7 @@ function getConsoleDiffApprovalViewDescription(toolName) {
   }
 }
 
-// extensions/console/src/settings.ts
+// src/settings.ts
 var CONSOLE_LLM_PROVIDER_OPTIONS = [
   "gemini",
   "openai-compatible",
@@ -9619,8 +6937,8 @@ class ConsoleSettingsController {
   }
 }
 
-// extensions/console/src/components/SettingsView.tsx
-import { jsxDEV as jsxDEV36 } from "@opentui/react/jsx-dev-runtime";
+// src/components/SettingsView.tsx
+import { jsxDEV as jsxDEV37 } from "@opentui/react/jsx-dev-runtime";
 function getToolPolicyMode(configured, autoApprove) {
   if (!configured)
     return "disabled";
@@ -10453,27 +7771,27 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   }
   const visibleRows = sectionRows.slice(windowStart, windowEnd);
   if (loading && !draft) {
-    return /* @__PURE__ */ jsxDEV36("box", {
+    return /* @__PURE__ */ jsxDEV37("box", {
       width: "100%",
       height: "100%",
       justifyContent: "center",
       alignItems: "center",
-      children: /* @__PURE__ */ jsxDEV36("text", {
+      children: /* @__PURE__ */ jsxDEV37("text", {
         fg: "#888",
         children: "正在加载配置..."
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV36("box", {
+  return /* @__PURE__ */ jsxDEV37("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      /* @__PURE__ */ jsxDEV36("box", {
+      /* @__PURE__ */ jsxDEV37("box", {
         flexDirection: "row",
         flexGrow: 1,
         children: [
-          /* @__PURE__ */ jsxDEV36("box", {
+          /* @__PURE__ */ jsxDEV37("box", {
             width: 24,
             flexShrink: 0,
             flexDirection: "column",
@@ -10481,16 +7799,16 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
             paddingLeft: 2,
             paddingRight: 1,
             children: [
-              /* @__PURE__ */ jsxDEV36("text", {
+              /* @__PURE__ */ jsxDEV37("text", {
                 fg: C.primary,
-                children: /* @__PURE__ */ jsxDEV36("strong", {
+                children: /* @__PURE__ */ jsxDEV37("strong", {
                   children: "IRIS"
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV36("box", {
+              /* @__PURE__ */ jsxDEV37("box", {
                 marginTop: 1,
                 flexDirection: "column",
-                children: sections.map((sec) => /* @__PURE__ */ jsxDEV36("text", {
+                children: sections.map((sec) => /* @__PURE__ */ jsxDEV37("text", {
                   fg: currentSection === sec.id ? C.accent : "#555",
                   children: [
                     currentSection === sec.id ? ICONS.dotFilled : ICONS.dotEmpty,
@@ -10503,32 +7821,32 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this),
-          /* @__PURE__ */ jsxDEV36("box", {
+          /* @__PURE__ */ jsxDEV37("box", {
             flexGrow: 1,
             flexDirection: "column",
             paddingTop: 1,
             paddingLeft: 2,
             children: [
-              /* @__PURE__ */ jsxDEV36("box", {
+              /* @__PURE__ */ jsxDEV37("box", {
                 alignItems: "center",
                 paddingBottom: 1,
                 flexShrink: 0,
-                children: /* @__PURE__ */ jsxDEV36("ascii-font", {
+                children: /* @__PURE__ */ jsxDEV37("ascii-font", {
                   text: "IRIS",
                   font: "block",
                   color: C.primary
                 }, undefined, false, undefined, this)
               }, undefined, false, undefined, this),
-              /* @__PURE__ */ jsxDEV36("box", {
+              /* @__PURE__ */ jsxDEV37("box", {
                 flexDirection: "column",
                 marginBottom: 1,
                 flexShrink: 0,
                 children: [
-                  /* @__PURE__ */ jsxDEV36("text", {
+                  /* @__PURE__ */ jsxDEV37("text", {
                     fg: "#888",
                     children: "在终端内管理模型池、系统参数、工具策略与 MCP 服务器。"
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("text", {
+                  /* @__PURE__ */ jsxDEV37("text", {
                     fg: isDirty ? C.warn : C.accent,
                     children: [
                       isDirty ? `${ICONS.dotFilled} 有未保存修改` : `${ICONS.checkmark} 当前草稿已同步`,
@@ -10537,37 +7855,37 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
                   }, undefined, true, undefined, this)
                 ]
               }, undefined, true, undefined, this),
-              /* @__PURE__ */ jsxDEV36("scrollbox", {
+              /* @__PURE__ */ jsxDEV37("scrollbox", {
                 flexGrow: 1,
                 children: [
-                  windowStart > 0 && /* @__PURE__ */ jsxDEV36("text", {
+                  windowStart > 0 && /* @__PURE__ */ jsxDEV37("text", {
                     fg: "#888",
                     children: ICONS.ellipsis
                   }, undefined, false, undefined, this),
                   visibleRows.map((row) => {
                     const isSelected = row.id === selectedRowId && !!row.target;
                     const prefix = row.kind === "action" ? isSelected ? "❯" : "•" : row.kind === "field" ? isSelected ? "❯" : " " : " ";
-                    return /* @__PURE__ */ jsxDEV36("box", {
+                    return /* @__PURE__ */ jsxDEV37("box", {
                       paddingLeft: row.indent ?? 0,
-                      children: /* @__PURE__ */ jsxDEV36("text", {
+                      children: /* @__PURE__ */ jsxDEV37("text", {
                         children: [
-                          /* @__PURE__ */ jsxDEV36("span", {
+                          /* @__PURE__ */ jsxDEV37("span", {
                             fg: isSelected ? "#00ffff" : C.dim,
                             children: prefix
                           }, undefined, false, undefined, this),
-                          /* @__PURE__ */ jsxDEV36("span", {
+                          /* @__PURE__ */ jsxDEV37("span", {
                             children: " "
                           }, undefined, false, undefined, this),
-                          isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV36("span", {
+                          isSelected && row.kind !== "info" ? /* @__PURE__ */ jsxDEV37("span", {
                             fg: C.accent,
-                            children: /* @__PURE__ */ jsxDEV36("strong", {
+                            children: /* @__PURE__ */ jsxDEV37("strong", {
                               children: row.label
                             }, undefined, false, undefined, this)
-                          }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV36("span", {
+                          }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV37("span", {
                             fg: isSelected ? "#00ffff" : undefined,
                             children: row.label
                           }, undefined, false, undefined, this),
-                          row.value != null && /* @__PURE__ */ jsxDEV36("span", {
+                          row.value != null && /* @__PURE__ */ jsxDEV37("span", {
                             fg: isSelected ? "#00ffff" : C.dim,
                             children: `  ${row.value}`
                           }, undefined, false, undefined, this)
@@ -10575,7 +7893,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
                       }, undefined, true, undefined, this)
                     }, row.id, false, undefined, this);
                   }),
-                  windowEnd < sectionRows.length && /* @__PURE__ */ jsxDEV36("text", {
+                  windowEnd < sectionRows.length && /* @__PURE__ */ jsxDEV37("text", {
                     fg: "#888",
                     children: ICONS.ellipsis
                   }, undefined, false, undefined, this)
@@ -10585,62 +7903,62 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
           }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this),
-      /* @__PURE__ */ jsxDEV36("box", {
+      /* @__PURE__ */ jsxDEV37("box", {
         flexDirection: "column",
         marginTop: 1,
         paddingX: 2,
         children: [
-          /* @__PURE__ */ jsxDEV36("text", {
+          /* @__PURE__ */ jsxDEV37("text", {
             fg: C.dim,
             children: "─".repeat(Math.max(3, termWidth - 4))
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsxDEV36("box", {
+          /* @__PURE__ */ jsxDEV37("box", {
             flexDirection: "column",
             minHeight: 4,
             children: [
-              selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV36("text", {
+              selectedRow?.description && !editor && /* @__PURE__ */ jsxDEV37("text", {
                 fg: "#888",
                 children: selectedRow.description
               }, undefined, false, undefined, this),
-              statusText && /* @__PURE__ */ jsxDEV36("text", {
+              statusText && /* @__PURE__ */ jsxDEV37("text", {
                 fg: getStatusColor(statusKind),
                 children: statusText
               }, undefined, false, undefined, this),
-              editor ? /* @__PURE__ */ jsxDEV36("box", {
+              editor ? /* @__PURE__ */ jsxDEV37("box", {
                 flexDirection: "column",
                 children: [
-                  /* @__PURE__ */ jsxDEV36("text", {
+                  /* @__PURE__ */ jsxDEV37("text", {
                     fg: C.accent,
-                    children: /* @__PURE__ */ jsxDEV36("strong", {
+                    children: /* @__PURE__ */ jsxDEV37("strong", {
                       children: [
                         "编辑：",
                         editor.label
                       ]
                     }, undefined, true, undefined, this)
                   }, undefined, false, undefined, this),
-                  editor.hint && /* @__PURE__ */ jsxDEV36("text", {
+                  editor.hint && /* @__PURE__ */ jsxDEV37("text", {
                     fg: "#888",
                     children: editor.hint
                   }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("box", {
+                  /* @__PURE__ */ jsxDEV37("box", {
                     children: [
-                      /* @__PURE__ */ jsxDEV36("text", {
+                      /* @__PURE__ */ jsxDEV37("text", {
                         fg: C.accent,
                         children: "❯ "
                       }, undefined, false, undefined, this),
-                      /* @__PURE__ */ jsxDEV36("input", {
+                      /* @__PURE__ */ jsxDEV37("input", {
                         value: editorValue,
                         onInput: setEditorValue,
                         focused: true
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("text", {
+                  /* @__PURE__ */ jsxDEV37("text", {
                     fg: "#888",
                     children: `Enter 保存 ${ICONS.separator} Esc 取消`
                   }, undefined, false, undefined, this)
                 ]
-              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV36("text", {
+              }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV37("text", {
                 fg: "#888",
                 children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`
               }, undefined, false, undefined, this)
@@ -10652,10 +7970,10 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/hooks/use-app-handle.ts
+// src/hooks/use-app-handle.ts
 import { useCallback as useCallback5, useEffect as useEffect8, useRef as useRef6, useState as useState9 } from "react";
 
-// extensions/console/src/message-utils.ts
+// src/message-utils.ts
 var msgIdCounter = 0;
 function nextMsgId() {
   return `msg-${++msgIdCounter}`;
@@ -10738,7 +8056,7 @@ function appendCommandMessage(setMessages, text, options) {
   ]);
 }
 
-// extensions/console/src/undo-redo.ts
+// src/undo-redo.ts
 var MAX_STACK_SIZE = 200;
 function createUndoRedoStack() {
   return { redoStack: [] };
@@ -10765,8 +8083,8 @@ function clearRedo(stack) {
   stack.redoStack.length = 0;
 }
 
-// extensions/console/src/hooks/use-app-handle.ts
-function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
+// src/hooks/use-app-handle.ts
+function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef }) {
   const [messages, setMessages] = useState9([]);
   const [streamingParts, setStreamingParts] = useState9([]);
   const [isStreaming, setIsStreaming] = useState9(false);
@@ -10824,6 +8142,12 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
           { id: nextMsgId(), role: "assistant", parts: [{ type: "text", text }], isError: true }
         ]);
       },
+      addCommandMessage(text) {
+        setMessages((prev) => [
+          ...prev.filter((m) => !m.isCommand),
+          { id: nextMsgId(), role: "assistant", parts: [{ type: "text", text }], isCommand: true }
+        ]);
+      },
       addStructuredMessage(role, parts, meta) {
         clearRedo(undoRedoRef.current);
         const normalizedParts = mergeMessageParts(parts);
@@ -10833,7 +8157,10 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
           setMessages((prev) => appendAssistantParts(prev, normalizedParts, meta));
           return;
         }
-        setMessages((prev) => [...prev, { id: nextMsgId(), role, parts: normalizedParts, ...meta }]);
+        setMessages((prev) => [
+          ...prev.filter((m) => !m.isError && !m.isCommand && !(m.role === "assistant" && m.parts.length === 0)),
+          { id: nextMsgId(), role, parts: normalizedParts, createdAt: Date.now(), ...meta }
+        ]);
       },
       startStream() {
         if (toolInvocationsRef.current.length > 0)
@@ -11083,12 +8410,27 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
       drainQueue() {
         return drainCallbackRef.current?.() ?? undefined;
       },
+      setPendingFiles(files) {
+        setPendingFilesRef.current?.(files);
+      },
+      openFileBrowser(path3, entries) {
+        openFileBrowserRef.current?.(path3, entries);
+      },
+      fileBrowserSelect(dirPath, entry, showHidden) {
+        fileBrowserCallbackRef.current?.select(dirPath, entry, showHidden);
+      },
+      fileBrowserGoUp(dirPath, showHidden) {
+        fileBrowserCallbackRef.current?.goUp(dirPath, showHidden);
+      },
+      fileBrowserToggleHidden(dirPath, showHidden) {
+        fileBrowserCallbackRef.current?.toggleHidden(dirPath, showHidden);
+      },
       openToolList(tools) {
         setToolListItems(tools);
       }
     };
     onReady(handle);
-  }, [commitTools, drainCallbackRef, onReady, undoRedoRef]);
+  }, [commitTools, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef, onReady, undoRedoRef]);
   return {
     messages,
     streamingParts,
@@ -11112,7 +8454,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef }) {
   };
 }
 
-// extensions/console/src/hooks/use-app-keyboard.ts
+// src/hooks/use-app-keyboard.ts
 import { useKeyboard as useKeyboard4 } from "@opentui/react";
 function closeConfirm(setPendingConfirm, setConfirmChoice) {
   setPendingConfirm(null);
@@ -11194,7 +8536,14 @@ function useAppKeyboard({
   onListExtensions,
   setExtensionTogglingName,
   setExtensionStatusMessage,
-  setExtensionStatusIsError
+  setExtensionStatusIsError,
+  fileBrowserPath,
+  fileBrowserEntries,
+  fileBrowserShowHidden,
+  setFileBrowserShowHidden,
+  onFileBrowserSelect,
+  onFileBrowserGoUp,
+  onFileBrowserToggleHidden
 }) {
   const setModelStatus = (message, isError = false) => {
     setModelStatusMessage(message);
@@ -11388,6 +8737,10 @@ function useAppKeyboard({
           setModelStatus(null);
           return;
         }
+        setViewMode("chat");
+        return;
+      }
+      if (viewMode === "file-browser") {
         setViewMode("chat");
         return;
       }
@@ -11594,6 +8947,25 @@ function useAppKeyboard({
       }
       return;
     }
+    if (viewMode === "file-browser") {
+      if (key.name === "up") {
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      } else if (key.name === "down") {
+        setSelectedIndex((prev) => Math.min(fileBrowserEntries.length - 1, prev + 1));
+      } else if (key.name === "enter" || key.name === "return") {
+        const selected = fileBrowserEntries[selectedIndex];
+        if (selected) {
+          if (!selected.isDirectory)
+            setViewMode("chat");
+          onFileBrowserSelect?.(fileBrowserPath, selected, fileBrowserShowHidden);
+        }
+      } else if (key.name === "backspace" || key.name === "left" && !key.shift) {
+        onFileBrowserGoUp?.(fileBrowserPath, fileBrowserShowHidden);
+      } else if (key.sequence === ".") {
+        onFileBrowserToggleHidden?.(fileBrowserPath, fileBrowserShowHidden);
+      }
+      return;
+    }
     if (viewMode === "model-list") {
       if (modelEditingField) {
         if (key.name === "escape") {
@@ -11731,7 +9103,7 @@ function useAppKeyboard({
   });
 }
 
-// extensions/console/src/hooks/use-approval.ts
+// src/hooks/use-approval.ts
 import { useCallback as useCallback6, useEffect as useEffect9, useState as useState10 } from "react";
 function useApproval(pendingApprovals, pendingApplies) {
   const [approvalChoice, setApprovalChoice] = useState10("approve");
@@ -11787,7 +9159,7 @@ function useApproval(pendingApprovals, pendingApplies) {
   };
 }
 
-// extensions/console/src/hooks/use-command-dispatch.ts
+// src/hooks/use-command-dispatch.ts
 import { useCallback as useCallback7 } from "react";
 function resetRedo(undoRedoRef, onClearRedoStack) {
   clearRedo(undoRedoRef.current);
@@ -11795,6 +9167,8 @@ function resetRedo(undoRedoRef, onClearRedoStack) {
 }
 function useCommandDispatch({
   onSubmit,
+  onFileAttach,
+  onOpenFileBrowser,
   onUndo,
   onRedo,
   onClearRedoStack,
@@ -12065,10 +9439,25 @@ function useCommandDispatch({
       }
       return;
     }
+    if (text.startsWith("/file ") || text === "/file") {
+      const filePath = text.slice(6).trim();
+      if (!filePath) {
+        onOpenFileBrowser();
+        return;
+      }
+      if (filePath === "clear") {
+        onFileAttach("__clear__");
+        return;
+      }
+      onFileAttach(filePath);
+      return;
+    }
     resetRedo(undoRedoRef, onClearRedoStack);
     onSubmit(text);
   }, [
     commitTools,
+    onFileAttach,
+    onOpenFileBrowser,
     modelState,
     onClearRedoStack,
     onExit,
@@ -12104,7 +9493,7 @@ function useCommandDispatch({
   ]);
 }
 
-// extensions/console/src/hooks/use-exit-confirm.ts
+// src/hooks/use-exit-confirm.ts
 import { useCallback as useCallback8, useEffect as useEffect10, useRef as useRef7, useState as useState11 } from "react";
 function useExitConfirm({ timeoutMs = 1500 } = {}) {
   const [exitConfirmArmed, setExitConfirmArmed] = useState11(false);
@@ -12138,7 +9527,7 @@ function useExitConfirm({ timeoutMs = 1500 } = {}) {
   };
 }
 
-// extensions/console/src/hooks/use-message-queue.ts
+// src/hooks/use-message-queue.ts
 import { useCallback as useCallback9, useRef as useRef8, useState as useState12 } from "react";
 var queueIdCounter = 0;
 function useMessageQueue() {
@@ -12236,7 +9625,7 @@ function useMessageQueue() {
   };
 }
 
-// extensions/console/src/hooks/use-model-state.ts
+// src/hooks/use-model-state.ts
 import { useCallback as useCallback10, useState as useState13 } from "react";
 function useModelState({ modelId, modelName, contextWindow }) {
   const [currentModelId, setCurrentModelId] = useState13(modelId);
@@ -12258,11 +9647,16 @@ function useModelState({ modelId, modelName, contextWindow }) {
   };
 }
 
-// extensions/console/src/App.tsx
-import { jsxDEV as jsxDEV37 } from "@opentui/react/jsx-dev-runtime";
+// src/App.tsx
+import { jsxDEV as jsxDEV38 } from "@opentui/react/jsx-dev-runtime";
 function App({
   onReady,
   onSubmit,
+  onFileAttach,
+  onRemoveFile: onRemoveFileProp,
+  onFileBrowserSelect,
+  onFileBrowserGoUp,
+  onFileBrowserToggleHidden,
   onOpenToolDetail,
   onNavigateToolDetail,
   onCloseToolDetail,
@@ -12331,6 +9725,10 @@ function App({
   const [extensionTogglingName, setExtensionTogglingName] = useState14(null);
   const [extensionStatusMessage, setExtensionStatusMessage] = useState14(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState14(false);
+  const [pendingFiles, setPendingFiles] = useState14([]);
+  const [fileBrowserPath, setFileBrowserPath] = useState14("");
+  const [fileBrowserEntries, setFileBrowserEntries] = useState14([]);
+  const [fileBrowserShowHidden, setFileBrowserShowHidden] = useState14(false);
   const [queueEditingId, setQueueEditingId] = useState14(null);
   const [queueEditState, queueEditActions] = useTextInput("");
   const [modelEditState, modelEditActions] = useTextInput("");
@@ -12345,7 +9743,25 @@ function App({
     const msg = messageQueue.dequeue();
     return msg?.text;
   };
-  const appState = useAppHandle({ onReady, undoRedoRef, drainCallbackRef });
+  const setPendingFilesRef = useRef9(null);
+  setPendingFilesRef.current = setPendingFiles;
+  const openFileBrowserRef = useRef9(null);
+  openFileBrowserRef.current = (path3, entries) => {
+    setFileBrowserPath(path3);
+    setFileBrowserEntries(entries);
+    setSelectedIndex(0);
+    setViewMode("file-browser");
+  };
+  const fileBrowserCallbackRef = useRef9(null);
+  fileBrowserCallbackRef.current = {
+    select: (dirPath, entry, showHidden) => onFileBrowserSelect?.(dirPath, entry, showHidden),
+    goUp: (dirPath, showHidden) => onFileBrowserGoUp?.(dirPath, showHidden),
+    toggleHidden: (dirPath, showHidden) => {
+      setFileBrowserShowHidden((prev) => !prev);
+      onFileBrowserToggleHidden?.(dirPath, showHidden);
+    }
+  };
+  const appState = useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef });
   const approval = useApproval(appState.pendingApprovals, appState.pendingApplies);
   const exitConfirm = useExitConfirm();
   const modelState = useModelState({ modelId, modelName, contextWindow });
@@ -12372,8 +9788,19 @@ function App({
       return newLevel;
     });
   }, [onThinkingEffortChange]);
+  const handleFileAttach = useCallback11((filePath) => {
+    onFileAttach?.(filePath);
+  }, [onFileAttach]);
+  const handleRemoveFile = useCallback11((index) => {
+    onRemoveFileProp?.(index);
+  }, [onRemoveFileProp]);
+  const handleOpenFileBrowser = useCallback11(() => {
+    onFileAttach?.("__open_browser__");
+  }, [onFileAttach]);
   const handleSubmit = useCommandDispatch({
     onSubmit: queueAwareSubmit,
+    onFileAttach: handleFileAttach,
+    onOpenFileBrowser: handleOpenFileBrowser,
     onUndo,
     onRedo,
     onClearRedoStack,
@@ -12528,12 +9955,19 @@ function App({
     onListExtensions,
     setExtensionTogglingName,
     setExtensionStatusMessage,
-    setExtensionStatusIsError
+    setExtensionStatusIsError,
+    fileBrowserPath,
+    fileBrowserEntries,
+    fileBrowserShowHidden,
+    setFileBrowserShowHidden,
+    onFileBrowserSelect,
+    onFileBrowserGoUp,
+    onFileBrowserToggleHidden
   });
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
   const hasMessages = appState.messages.length > 0 || appState.isGenerating;
   if (viewMode === "settings") {
-    return /* @__PURE__ */ jsxDEV37(SettingsView, {
+    return /* @__PURE__ */ jsxDEV38(SettingsView, {
       initialSection: settingsInitialSection,
       onBack: () => setViewMode("chat"),
       onLoad: onLoadSettings,
@@ -12542,13 +9976,13 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (viewMode === "session-list") {
-    return /* @__PURE__ */ jsxDEV37(SessionListView, {
+    return /* @__PURE__ */ jsxDEV38(SessionListView, {
       sessions: sessionList,
       selectedIndex
     }, undefined, false, undefined, this);
   }
   if (viewMode === "model-list") {
-    return /* @__PURE__ */ jsxDEV37(ModelListView, {
+    return /* @__PURE__ */ jsxDEV38(ModelListView, {
       models: modelList,
       selectedIndex,
       defaultModelName,
@@ -12560,14 +9994,14 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (viewMode === "agent-list") {
-    return /* @__PURE__ */ jsxDEV37(AgentListView, {
+    return /* @__PURE__ */ jsxDEV38(AgentListView, {
       agents: agentList,
       selectedIndex,
       currentAgentName: agentName
     }, undefined, false, undefined, this);
   }
   if (viewMode === "memory-list") {
-    return /* @__PURE__ */ jsxDEV37(MemoryListView, {
+    return /* @__PURE__ */ jsxDEV38(MemoryListView, {
       memories: memoryList,
       selectedIndex,
       expandedId: memoryExpandedId,
@@ -12576,7 +10010,7 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (viewMode === "extension-list") {
-    return /* @__PURE__ */ jsxDEV37(ExtensionListView, {
+    return /* @__PURE__ */ jsxDEV38(ExtensionListView, {
       extensions: extensionList,
       selectedIndex,
       togglingName: extensionTogglingName,
@@ -12584,8 +10018,16 @@ function App({
       statusIsError: extensionStatusIsError
     }, undefined, false, undefined, this);
   }
+  if (viewMode === "file-browser") {
+    return /* @__PURE__ */ jsxDEV38(FileBrowserView, {
+      currentPath: fileBrowserPath,
+      entries: fileBrowserEntries,
+      selectedIndex,
+      showHidden: fileBrowserShowHidden
+    }, undefined, false, undefined, this);
+  }
   if (viewMode === "queue-list") {
-    return /* @__PURE__ */ jsxDEV37(QueueListView, {
+    return /* @__PURE__ */ jsxDEV38(QueueListView, {
       queue: messageQueue.queue,
       selectedIndex,
       editingId: queueEditingId,
@@ -12594,7 +10036,7 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (currentApply) {
-    return /* @__PURE__ */ jsxDEV37(DiffApprovalView, {
+    return /* @__PURE__ */ jsxDEV38(DiffApprovalView, {
       invocation: currentApply,
       pendingCount: appState.pendingApplies.length,
       choice: approval.approvalChoice,
@@ -12605,17 +10047,17 @@ function App({
     }, undefined, false, undefined, this);
   }
   if (viewMode === "tool-list") {
-    return /* @__PURE__ */ jsxDEV37(ToolListView, {
+    return /* @__PURE__ */ jsxDEV38(ToolListView, {
       tools: appState.toolListItems,
       selectedIndex
     }, undefined, false, undefined, this);
   }
   if (viewMode === "tool-detail" && appState.toolDetailData) {
-    return /* @__PURE__ */ jsxDEV37("box", {
+    return /* @__PURE__ */ jsxDEV38("box", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
-      children: /* @__PURE__ */ jsxDEV37(ToolDetailView, {
+      children: /* @__PURE__ */ jsxDEV38(ToolDetailView, {
         data: appState.toolDetailData,
         breadcrumb: appState.toolDetailStack,
         onNavigateChild: onNavigateToolDetail,
@@ -12626,18 +10068,18 @@ function App({
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this);
   }
-  return /* @__PURE__ */ jsxDEV37("box", {
+  return /* @__PURE__ */ jsxDEV38("box", {
     flexDirection: "column",
     width: "100%",
     height: "100%",
     children: [
-      !hasMessages ? /* @__PURE__ */ jsxDEV37(LogoScreen, {}, undefined, false, undefined, this) : null,
-      !hasMessages && initWarnings && initWarnings.length > 0 ? /* @__PURE__ */ jsxDEV37(InitWarnings, {
+      !hasMessages ? /* @__PURE__ */ jsxDEV38(LogoScreen, {}, undefined, false, undefined, this) : null,
+      !hasMessages && initWarnings && initWarnings.length > 0 ? /* @__PURE__ */ jsxDEV38(InitWarnings, {
         warnings: initWarnings,
         color: initWarningsColor,
         icon: initWarningsIcon
       }, undefined, false, undefined, this) : null,
-      hasMessages ? /* @__PURE__ */ jsxDEV37(ChatMessageList, {
+      hasMessages ? /* @__PURE__ */ jsxDEV38(ChatMessageList, {
         messages: appState.messages,
         streamingParts: appState.streamingParts,
         isStreaming: appState.isStreaming,
@@ -12650,7 +10092,7 @@ function App({
         hasActiveTools: appState.toolInvocations.some((t) => t.status === "executing" || t.status === "queued"),
         scrollBoxRef: chatScrollBoxRef
       }, undefined, false, undefined, this) : null,
-      /* @__PURE__ */ jsxDEV37(BottomPanel, {
+      /* @__PURE__ */ jsxDEV38(BottomPanel, {
         hasMessages,
         pendingConfirm,
         confirmChoice,
@@ -12675,13 +10117,15 @@ function App({
         thinkingEffort,
         onCycleThinkingEffort: cycleThinkingEffort,
         remoteHost,
-        isRemote: !!remoteHost
+        isRemote: !!remoteHost,
+        pendingFiles,
+        onRemoveFile: handleRemoveFile
       }, undefined, false, undefined, this)
     ]
   }, undefined, true, undefined, this);
 }
 
-// extensions/console/src/opentui-runtime.ts
+// src/opentui-runtime.ts
 import * as fs3 from "node:fs";
 import * as path3 from "node:path";
 import { addDefaultParsers, clearEnvCache } from "@opentui/core";
@@ -12827,7 +10271,7 @@ function configureBundledOpenTuiTreeSitter(isCompiledBinary) {
   configured = true;
 }
 
-// extensions/console/src/resize-watcher.ts
+// src/resize-watcher.ts
 function getTerminalSize(renderer) {
   const width = process.stdout.columns || renderer.width || 80;
   const height = process.stdout.rows || renderer.height || 24;
@@ -12917,10 +10361,10 @@ function attachCompiledResizeWatcher(renderer, isCompiledBinary) {
   return dispose;
 }
 
-// extensions/console/src/index.ts
+// src/index.ts
 init_terminal_compat();
 
-// extensions/console/src/console-config.ts
+// src/console-config.ts
 var DEFAULT_CONSOLE_CONFIG = {
   expandSubAgentTools: false
 };
@@ -12931,7 +10375,7 @@ function resolveConsoleConfig(raw) {
   };
 }
 
-// extensions/console/src/index.ts
+// src/index.ts
 function generateCommandPattern(command) {
   const tokens = command.trim().split(/\s+/);
   if (tokens.length === 0 || !tokens[0])
@@ -12981,13 +10425,21 @@ function convertPartsToMessageParts(parts, toolStatus = "success", responseParts
       responseByIndex.push(rp);
     }
   }
-  for (const part of parts) {
+  for (let pi = 0;pi < parts.length; pi++) {
+    const part = parts[pi];
     if ("text" in part) {
       if (part.thought === true) {
         result.push({ type: "thought", text: part.text ?? "", durationMs: part.thoughtDurationMs });
       } else {
         result.push({ type: "text", text: part.text ?? "" });
       }
+      continue;
+    }
+    if ("inlineData" in part) {
+      const mime = part.inlineData.mimeType || "";
+      const fileType = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "document";
+      const fileName = part.inlineData.name || mime;
+      result.push({ type: "file", fileType, fileName, mimeType: mime });
       continue;
     }
     if ("functionCall" in part) {
@@ -13072,6 +10524,10 @@ class ConsolePlatform extends PlatformAdapter {
   originalSettingsController = null;
   originalAgentName;
   _isGenerating = false;
+  _pendingImages = [];
+  _pendingDocuments = [];
+  _pendingAudio = [];
+  _pendingVideo = [];
   constructor(backend, options) {
     super();
     this.backend = backend;
@@ -13102,7 +10558,7 @@ class ConsolePlatform extends PlatformAdapter {
     return next;
   }
   async start() {
-    this.api?.setLogLevel?.(4 /* SILENT */);
+    this.api?.setLogLevel?.(LogLevel.SILENT);
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
     this.backend.on("assistant:content", (sid, content) => {
       if (sid === this.sessionId) {
@@ -13312,6 +10768,17 @@ ${summaryText}`;
           resolve3();
         },
         onSubmit: (text) => this.handleInput(text),
+        onFileAttach: (filePath) => this.handleFileAttach(filePath),
+        onRemoveFile: (index) => this.handleRemoveFile(index),
+        onFileBrowserSelect: (dirPath, entry, showHidden) => {
+          this.handleFileBrowserSelect(dirPath, entry, showHidden);
+        },
+        onFileBrowserGoUp: (dirPath, showHidden) => {
+          this.handleFileBrowserGoUp(dirPath, showHidden);
+        },
+        onFileBrowserToggleHidden: (dirPath, showHidden) => {
+          this.handleFileBrowserToggleHidden(dirPath, showHidden);
+        },
         onUndo: async () => {
           try {
             const result = await this.enqueueHistoryMutation(async () => {
@@ -14135,15 +11602,274 @@ ${summaryText}`;
       this.appHandle?.setGenerating(false);
     }
   }
+  handleFileAttach(filePath) {
+    if (filePath === "__open_browser__") {
+      const realProcess = __require("process");
+      this.openFileBrowser(realProcess.cwd());
+      return;
+    }
+    if (filePath === "__clear__") {
+      this._pendingImages = [];
+      this._pendingDocuments = [];
+      this._pendingAudio = [];
+      this._pendingVideo = [];
+      this.appHandle?.setPendingFiles([]);
+      this.appHandle?.addCommandMessage("已清空所有待发送附件");
+      return;
+    }
+    const fs4 = __require("fs");
+    const path4 = __require("path");
+    const resolved = path4.resolve(filePath);
+    if (!fs4.existsSync(resolved)) {
+      this.appHandle?.addCommandMessage(`文件不存在: ${resolved}`);
+      return;
+    }
+    const stat = fs4.statSync(resolved);
+    if (!stat.isFile()) {
+      this.appHandle?.addCommandMessage(`不是一个文件: ${resolved}`);
+      return;
+    }
+    const MAX_FILE_SIZE = 20971520;
+    if (stat.size > MAX_FILE_SIZE) {
+      this.appHandle?.addCommandMessage(`文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，最大支持 20MB`);
+      return;
+    }
+    const ext = path4.extname(resolved).toLowerCase();
+    const mimeType = this.detectMimeType(ext);
+    const fileType = this.classifyFileType(mimeType);
+    const data = fs4.readFileSync(resolved).toString("base64");
+    const fileName = path4.basename(resolved);
+    if (fileType === "image") {
+      this._pendingImages.push({ mimeType, data, fileName });
+    } else if (fileType === "audio") {
+      this._pendingAudio.push({ mimeType, data, fileName });
+    } else if (fileType === "video") {
+      this._pendingVideo.push({ mimeType, data, fileName });
+    } else {
+      this._pendingDocuments.push({ fileName, mimeType, data });
+    }
+    this.appHandle?.setPendingFiles(this.getPendingFilesList());
+    this.appHandle?.addCommandMessage(`已附加: ${fileName} (${fileType})`);
+  }
+  handleRemoveFile(index) {
+    let offset = 0;
+    if (index < offset + this._pendingImages.length) {
+      this._pendingImages.splice(index - offset, 1);
+    } else if (index < (offset += this._pendingImages.length, offset + this._pendingDocuments.length)) {
+      this._pendingDocuments.splice(index - offset, 1);
+    } else if (index < (offset += this._pendingDocuments.length, offset + this._pendingAudio.length)) {
+      this._pendingAudio.splice(index - offset, 1);
+    } else {
+      offset += this._pendingAudio.length;
+      this._pendingVideo.splice(index - offset, 1);
+    }
+    this.appHandle?.setPendingFiles(this.getPendingFilesList());
+  }
+  getPendingFilesList() {
+    const files = [];
+    for (const img of this._pendingImages) {
+      files.push({ path: img.fileName || "(image)", fileType: "image", mimeType: img.mimeType });
+    }
+    for (const doc of this._pendingDocuments) {
+      files.push({ path: doc.fileName, fileType: "document", mimeType: doc.mimeType });
+    }
+    for (const a of this._pendingAudio) {
+      files.push({ path: a.fileName || "(audio)", fileType: "audio", mimeType: a.mimeType });
+    }
+    for (const v of this._pendingVideo) {
+      files.push({ path: v.fileName || "(video)", fileType: "video", mimeType: v.mimeType });
+    }
+    return files;
+  }
+  detectMimeType(ext) {
+    const mimeMap = {
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".bmp": "image/bmp",
+      ".svg": "image/svg+xml",
+      ".ico": "image/x-icon",
+      ".tiff": "image/tiff",
+      ".tif": "image/tiff",
+      ".mp3": "audio/mpeg",
+      ".wav": "audio/wav",
+      ".ogg": "audio/ogg",
+      ".flac": "audio/flac",
+      ".aac": "audio/aac",
+      ".m4a": "audio/mp4",
+      ".wma": "audio/x-ms-wma",
+      ".opus": "audio/opus",
+      ".webm": "audio/webm",
+      ".mp4": "video/mp4",
+      ".avi": "video/x-msvideo",
+      ".mov": "video/quicktime",
+      ".mkv": "video/x-matroska",
+      ".flv": "video/x-flv",
+      ".wmv": "video/x-ms-wmv",
+      ".m4v": "video/mp4",
+      ".3gp": "video/3gpp",
+      ".pdf": "application/pdf",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".ppt": "application/vnd.ms-powerpoint",
+      ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ".txt": "text/plain",
+      ".md": "text/markdown",
+      ".csv": "text/csv",
+      ".json": "application/json",
+      ".xml": "application/xml",
+      ".html": "text/html",
+      ".htm": "text/html",
+      ".zip": "application/zip",
+      ".tar": "application/x-tar",
+      ".gz": "application/gzip",
+      ".sh": "text/x-shellscript",
+      ".bash": "text/x-shellscript",
+      ".zsh": "text/x-shellscript",
+      ".py": "text/x-python",
+      ".js": "text/javascript",
+      ".ts": "text/typescript",
+      ".yaml": "text/yaml",
+      ".yml": "text/yaml",
+      ".toml": "text/plain",
+      ".ini": "text/plain",
+      ".cfg": "text/plain",
+      ".conf": "text/plain",
+      ".log": "text/plain"
+    };
+    return mimeMap[ext] || "application/octet-stream";
+  }
+  classifyFileType(mimeType) {
+    if (mimeType.startsWith("image/"))
+      return "image";
+    if (mimeType.startsWith("audio/"))
+      return "audio";
+    if (mimeType.startsWith("video/"))
+      return "video";
+    if (mimeType.startsWith("text/"))
+      return "document";
+    if (mimeType === "application/pdf" || mimeType === "application/json" || mimeType === "application/xml" || mimeType.includes("document") || mimeType.includes("spreadsheet") || mimeType.includes("presentation") || mimeType === "application/zip" || mimeType === "application/x-tar" || mimeType === "application/gzip")
+      return "document";
+    if (mimeType === "application/octet-stream")
+      return "other";
+    return "other";
+  }
+  openFileBrowser(dirPath) {
+    const entries = this.listDirectory(dirPath);
+    this.appHandle?.openFileBrowser(dirPath, entries);
+  }
+  listDirectory(dirPath, showHidden = false) {
+    const fs4 = __require("fs");
+    const path4 = __require("path");
+    try {
+      const items = fs4.readdirSync(dirPath);
+      const entries = [];
+      for (const name of items) {
+        if (!showHidden && name.startsWith("."))
+          continue;
+        try {
+          const fullPath = path4.join(dirPath, name);
+          const stat = fs4.statSync(fullPath);
+          const isDirectory = stat.isDirectory();
+          if (isDirectory) {
+            entries.push({ name, isDirectory: true });
+          } else {
+            const ext = path4.extname(name).toLowerCase();
+            const mimeType = this.detectMimeType(ext);
+            const fileType = this.classifyFileType(mimeType);
+            entries.push({ name, isDirectory: false, size: stat.size, fileType });
+          }
+        } catch {}
+      }
+      entries.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory)
+          return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      return entries;
+    } catch (err) {
+      this.appHandle?.addCommandMessage(`无法读取目录: ${err.message}`);
+      return [];
+    }
+  }
+  handleFileBrowserSelect(dirPath, entry, showHidden) {
+    const path4 = __require("path");
+    if (entry.isDirectory) {
+      const newPath = path4.resolve(dirPath, entry.name);
+      const entries = this.listDirectory(newPath, showHidden);
+      this.appHandle?.openFileBrowser(newPath, entries);
+    } else {
+      const fullPath = path4.join(dirPath, entry.name);
+      this.handleFileAttach(fullPath);
+    }
+  }
+  handleFileBrowserGoUp(dirPath, showHidden) {
+    const path4 = __require("path");
+    const parentPath = path4.dirname(dirPath);
+    if (parentPath === dirPath)
+      return;
+    const entries = this.listDirectory(parentPath, showHidden);
+    this.appHandle?.openFileBrowser(parentPath, entries);
+  }
+  handleFileBrowserToggleHidden(dirPath, showHidden) {
+    const entries = this.listDirectory(dirPath, !showHidden);
+    this.appHandle?.openFileBrowser(dirPath, entries);
+  }
   async handleInput(text) {
     this._isGenerating = true;
     this.appHandle?.setGenerating(true);
+    const images = this._pendingImages.length > 0 ? [...this._pendingImages] : undefined;
+    const documents = this._pendingDocuments.length > 0 ? [...this._pendingDocuments] : undefined;
+    const audio = this._pendingAudio.length > 0 ? [...this._pendingAudio] : undefined;
+    const video = this._pendingVideo.length > 0 ? [...this._pendingVideo] : undefined;
+    this._pendingImages = [];
+    this._pendingDocuments = [];
+    this._pendingAudio = [];
+    this._pendingVideo = [];
+    this.appHandle?.setPendingFiles([]);
+    let isFirstMessage = true;
     let currentText = text;
     while (currentText) {
-      this.appHandle?.addMessage("user", currentText);
+      if (isFirstMessage && (images || documents || audio || video)) {
+        const userParts = [];
+        if (images) {
+          for (const img of images) {
+            userParts.push({ type: "file", fileType: "image", fileName: img.fileName || img.mimeType, mimeType: img.mimeType });
+          }
+        }
+        if (documents) {
+          for (const doc of documents) {
+            userParts.push({ type: "file", fileType: "document", fileName: doc.fileName, mimeType: doc.mimeType });
+          }
+        }
+        if (audio) {
+          for (const a of audio) {
+            userParts.push({ type: "file", fileType: "audio", fileName: a.fileName || a.mimeType, mimeType: a.mimeType });
+          }
+        }
+        if (video) {
+          for (const v of video) {
+            userParts.push({ type: "file", fileType: "video", fileName: v.fileName || v.mimeType, mimeType: v.mimeType });
+          }
+        }
+        if (currentText.trim())
+          userParts.push({ type: "text", text: currentText });
+        this.appHandle?.addStructuredMessage("user", userParts);
+      } else {
+        this.appHandle?.addMessage("user", currentText);
+      }
       this.currentToolIds.clear();
       try {
-        await this.backend.chat(this.sessionId, currentText, undefined, undefined, "console");
+        if (isFirstMessage) {
+          await this.backend.chat(this.sessionId, currentText, images, documents, "console", audio, video);
+          isFirstMessage = false;
+        } else {
+          await this.backend.chat(this.sessionId, currentText, undefined, undefined, "console");
+        }
       } finally {
         this.appHandle?.commitTools();
       }

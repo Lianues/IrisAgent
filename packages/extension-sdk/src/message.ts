@@ -14,6 +14,8 @@ export interface InlineDataPart {
   inlineData: {
     mimeType: string;
     data: string;
+    /** 原始文件名（存储用，发送给 LLM 时剥离） */
+    name?: string;
   };
 }
 

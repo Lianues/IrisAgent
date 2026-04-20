@@ -7,7 +7,7 @@ import type { ApprovalPage } from '../hooks/use-approval';
 import { ApprovalBar } from './ApprovalBar';
 import { ConfirmBar } from './ConfirmBar';
 import { HintBar } from './HintBar';
-import { InputBar } from './InputBar';
+import { InputBar, type PendingFile } from './InputBar';
 import { StatusBar } from './StatusBar';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { C } from '../theme';
@@ -46,6 +46,10 @@ interface BottomPanelProps {
   thinkingEffort: ThinkingEffortLevel;
   /** Shift+Left/Right 切换思考强度 */
   onCycleThinkingEffort: (direction: 1 | -1) => void;
+  /** 待发送的文件附件列表 */
+  pendingFiles: PendingFile[];
+  /** 移除指定索引的待发送文件 */
+  onRemoveFile: (index: number) => void;
 }
 
 export function BottomPanel({
@@ -74,6 +78,8 @@ export function BottomPanel({
   onCycleThinkingEffort,
   remoteHost,
   isRemote,
+  pendingFiles,
+  onRemoveFile,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -107,6 +113,8 @@ export function BottomPanel({
             onSubmit={onSubmit}
             onPrioritySubmit={onPrioritySubmit}
             onCycleThinkingEffort={onCycleThinkingEffort}
+            pendingFiles={pendingFiles}
+            onRemoveFile={onRemoveFile}
             isRemote={isRemote}
           />
           <StatusBar

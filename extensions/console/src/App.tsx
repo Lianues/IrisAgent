@@ -15,6 +15,7 @@ import { AgentListView } from './components/AgentListView';
 import { ChatMessageList } from './components/ChatMessageList';
 import { DiffApprovalView } from './components/DiffApprovalView';
 import { InitWarnings } from './components/InitWarnings';
+import { FileBrowserView } from './components/FileBrowserView';
 import { LogoScreen } from './components/LogoScreen';
 import { ToolDetailView } from './components/ToolDetailView';
 import { ModelListView } from './components/ModelListView';
@@ -43,6 +44,11 @@ export type { AppProps } from './app-props';
 export function App({
   onReady,
   onSubmit,
+  onFileAttach,
+  onRemoveFile: onRemoveFileProp,
+  onFileBrowserSelect,
+  onFileBrowserGoUp,
+  onFileBrowserToggleHidden,
   onOpenToolDetail,
   onNavigateToolDetail,
   onCloseToolDetail,
@@ -118,6 +124,14 @@ export function App({
   const [extensionStatusMessage, setExtensionStatusMessage] = useState<string | null>(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState(false);
 
+  // 待发送文件附件状态
+  const [pendingFiles, setPendingFiles] = useState<import('./components/InputBar').PendingFile[]>([]);
+
+  // 文件浏览器状态
+  const [fileBrowserPath, setFileBrowserPath] = useState('');
+  const [fileBrowserEntries, setFileBrowserEntries] = useState<import('./components/FileBrowserView').FileBrowserEntry[]>([]);
+  const [fileBrowserShowHidden, setFileBrowserShowHidden] = useState(false);
+
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
   const [queueEditState, queueEditActions] = useTextInput('');
@@ -141,7 +155,35 @@ export function App({
     return msg?.text;
   };
 
-  const appState = useAppHandle({ onReady, undoRedoRef, drainCallbackRef });
+  // setPendingFilesRef: 供 AppHandle.setPendingFiles() 调用，更新待发送文件的 UI 状态
+  const setPendingFilesRef = useRef<((files: import('./components/InputBar').PendingFile[]) => void) | null>(null);
+  setPendingFilesRef.current = setPendingFiles;
+
+  // openFileBrowserRef: 供 AppHandle.openFileBrowser() 调用
+  const openFileBrowserRef = useRef<((path: string, entries: import('./components/FileBrowserView').FileBrowserEntry[]) => void) | null>(null);
+  openFileBrowserRef.current = (path, entries) => {
+    setFileBrowserPath(path);
+    setFileBrowserEntries(entries);
+    setSelectedIndex(0);
+    setViewMode('file-browser');
+  };
+
+  // fileBrowserCallbackRef: 文件浏览器操作回调
+  const fileBrowserCallbackRef = useRef<{
+    select: (dirPath: string, entry: any, showHidden: boolean) => void;
+    goUp: (dirPath: string, showHidden: boolean) => void;
+    toggleHidden: (dirPath: string, showHidden: boolean) => void;
+  } | null>(null);
+  fileBrowserCallbackRef.current = {
+    select: (dirPath, entry, showHidden) => onFileBrowserSelect?.(dirPath, entry, showHidden),
+    goUp: (dirPath, showHidden) => onFileBrowserGoUp?.(dirPath, showHidden),
+    toggleHidden: (dirPath, showHidden) => {
+      setFileBrowserShowHidden(prev => !prev);
+      onFileBrowserToggleHidden?.(dirPath, showHidden);
+    },
+  };
+
+  const appState = useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesRef, openFileBrowserRef, fileBrowserCallbackRef });
   const approval = useApproval(appState.pendingApprovals, appState.pendingApplies);
   const exitConfirm = useExitConfirm();
   const modelState = useModelState({ modelId, modelName, contextWindow });
@@ -174,8 +216,22 @@ export function App({
     });
   }, [onThinkingEffortChange]);
 
+  const handleFileAttach = useCallback((filePath: string) => {
+    onFileAttach?.(filePath);
+  }, [onFileAttach]);
+
+  const handleRemoveFile = useCallback((index: number) => {
+    onRemoveFileProp?.(index);
+  }, [onRemoveFileProp]);
+
+  const handleOpenFileBrowser = useCallback(() => {
+    onFileAttach?.('__open_browser__');
+  }, [onFileAttach]);
+
   const handleSubmit = useCommandDispatch({
     onSubmit: queueAwareSubmit,
+    onFileAttach: handleFileAttach,
+    onOpenFileBrowser: handleOpenFileBrowser,
     onUndo,
     onRedo,
     onClearRedoStack,
@@ -338,6 +394,13 @@ export function App({
     setExtensionTogglingName,
     setExtensionStatusMessage,
     setExtensionStatusIsError,
+    fileBrowserPath,
+    fileBrowserEntries,
+    fileBrowserShowHidden,
+    setFileBrowserShowHidden,
+    onFileBrowserSelect,
+    onFileBrowserGoUp,
+    onFileBrowserToggleHidden,
   });
 
   const currentApply = appState.isGenerating ? appState.pendingApplies[0] : undefined;
@@ -399,6 +462,19 @@ export function App({
       />
     );
   }
+
+  if (viewMode === 'file-browser') {
+    return (
+      <FileBrowserView
+        currentPath={fileBrowserPath}
+        entries={fileBrowserEntries}
+        selectedIndex={selectedIndex}
+        showHidden={fileBrowserShowHidden}
+      />
+    );
+  }
+
+
 
   if (viewMode === 'queue-list') {
     return (
@@ -495,6 +571,8 @@ export function App({
         onCycleThinkingEffort={cycleThinkingEffort}
         remoteHost={remoteHost}
         isRemote={!!remoteHost}
+        pendingFiles={pendingFiles}
+        onRemoveFile={handleRemoveFile}
       />
     </box>
   );

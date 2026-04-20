@@ -21,6 +21,17 @@ import { C } from '../theme';
 import { getTextWidth } from '../text-layout';
 import { ICONS } from '../terminal-compat';
 
+/** 待发送的文件附件信息 */
+export interface PendingFile {
+  path: string;
+  fileType: 'image' | 'document' | 'audio' | 'video';
+  mimeType: string;
+}
+
+const FILE_TYPE_ICONS: Record<string, string> = {
+  image: '📷', document: '📄', audio: '🎵', video: '🎬',
+};
+
 interface InputBarProps {
   disabled: boolean;
   isGenerating: boolean;
@@ -30,11 +41,15 @@ interface InputBarProps {
   onPrioritySubmit: (text: string) => void;
   /** Shift+Left/Right 切换思考强度 */
   onCycleThinkingEffort: (direction: 1 | -1) => void;
+  /** 当前待发送的文件附件列表 */
+  pendingFiles: PendingFile[];
+  /** 移除指定索引的待发送文件 */
+  onRemoveFile: (index: number) => void;
   /** 当前是否处于远程连接状态 */
   isRemote?: boolean;
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, isRemote }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
@@ -194,6 +209,12 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
       return;
     }
 
+    // Backspace + 输入框为空 + 有待发送附件 → 移除最后一个附件
+    if (key.name === 'backspace' && !value && pendingFiles.length > 0) {
+      onRemoveFile(pendingFiles.length - 1);
+      return;
+    }
+
     // 委托给 useTextInput 处理其余按键
     inputActions.handleKey(key);
   });
@@ -284,6 +305,27 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
                     ? <strong><span fg={cmd.color ?? C.text}>{padded}</span></strong>
                     : <span fg={cmd.color ?? C.textSec}>{padded}</span>}
                   <span fg={isSelected ? C.textSec : C.dim}>  {cmd.description}</span>
+                </text>
+              </box>
+            );
+          })}
+        </box>
+      )}
+
+      {/* 待发送文件附件（位于指令面板和输入框之间） */}
+      {pendingFiles.length > 0 && (
+        <box flexDirection="column" backgroundColor={C.panelBg} paddingX={1}>
+          {pendingFiles.map((file, i) => {
+            const icon = FILE_TYPE_ICONS[file.fileType] || '📎';
+            const maxNameLen = Math.max(20, termWidth - 20);
+            const displayPath = file.path.length > maxNameLen
+              ? `${file.path.slice(0, Math.floor((maxNameLen - 3) / 2))}${ICONS.ellipsis}${file.path.slice(file.path.length - Math.floor((maxNameLen - 3) / 2))}`
+              : file.path;
+            return (
+              <box key={`file-${i}`} paddingLeft={1}>
+                <text>
+                  <span fg={C.primaryLight}>{icon} {displayPath}</span>
+                  <span fg={C.dim}> ({file.mimeType})</span>
                 </text>
               </box>
             );
