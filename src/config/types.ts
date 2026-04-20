@@ -91,8 +91,6 @@ export interface LLMRegistryConfig {
 export interface WebPlatformConfig {
   port: number;
   host: string;
-  /** 上次使用的模型名称（自动管理） */
-  lastModel?: string;
   /** 全局 API 认证令牌（可选） */
   authToken?: string;
   /** 管理面令牌（可选，启用后 /api/config 需 X-Management-Token） */

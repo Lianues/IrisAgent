@@ -70,7 +70,6 @@ export function parsePlatformConfig(raw: any = {}): PlatformConfig {
     web: {
       port: source.web?.port ?? 8192,
       host: source.web?.host ?? '127.0.0.1',
-      lastModel: source.lastModel?.web,
       authToken: source.web?.authToken,
       managementToken: source.web?.managementToken,
     },
