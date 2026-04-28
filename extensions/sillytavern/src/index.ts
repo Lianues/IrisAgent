@@ -126,8 +126,15 @@ export default definePlugin({
           //       （ST 预设常用正则删掉 history 末尾用户消息，再用此宏单独展示）
           let lastUserMessage = '';
           for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].role === 'user') {
-              lastUserMessage = (history[i].parts || []).map((p: any) => p.text ?? '').join('');
+            const message = history[i];
+            if (message.role === 'user') {
+              if ('parts' in message && Array.isArray(message.parts)) {
+                lastUserMessage = message.parts
+                  .map((part) => 'text' in part ? part.text : '')
+                  .join('');
+              } else if ('content' in message && typeof message.content === 'string') {
+                lastUserMessage = message.content;
+              }
               break;
             }
           }
