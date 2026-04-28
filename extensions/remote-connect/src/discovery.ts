@@ -9,10 +9,10 @@
 
 import * as dgram from 'node:dgram';
 import * as os from 'node:os';
-import { createLogger } from '../../../src/logger';
+import { createExtensionLogger } from 'irises-extension-sdk';
 import type { DiscoveryProbe, DiscoveryResponse, DiscoveredInstance } from './types';
 
-const logger = createLogger('Discovery');
+const logger = createExtensionLogger('Discovery');
 
 const isWindows = process.platform === 'win32';
 

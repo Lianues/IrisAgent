@@ -383,6 +383,8 @@ const SDK_DIST_SHIMS: { dist: string; src: string }[] = [
   { dist: 'pairing/index.js',  src: '../../src/pairing/index.ts' },
   { dist: 'utils/index.js',    src: '../../src/utils/index.ts' },
   { dist: 'plugin/index.js',   src: '../../src/plugin/index.ts' },
+  { dist: 'ipc/index.js',      src: '../../src/ipc/index.ts' },
+  { dist: 'host-events.js',    src: '../src/host-events.ts' },
 ];
 
 /**

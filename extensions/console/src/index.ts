@@ -35,6 +35,7 @@ import {
   type BootstrapExtensionRegistryLike,
   type ConfigManagerLike,
 } from 'irises-extension-sdk';
+import type { IPCClientLike } from 'irises-extension-sdk/ipc';
 import { estimateTokenCount } from 'tokenx';
 import { App, AppHandle, MessageMeta } from './App';
 import { MessagePart } from './components/MessageItem';
@@ -53,6 +54,18 @@ function generateCommandPattern(command: string): string {
   if (tokens[1].startsWith('-')) return tokens[0] + ' *';
   return tokens[0] + ' ' + tokens[1] + ' *';
 }
+
+type WsIPCClientLike = IPCClientLike & {
+  connect(url: string, token: string): Promise<{ agentName: string; streamEnabled: boolean }>;
+  subscribe(sessions: string | string[]): Promise<void>;
+  disconnect(): void;
+};
+
+type WsIPCClientConstructor = new () => WsIPCClientLike;
+type DiscoverLanInstancesFn = () => Promise<import('./remote-wizard').DiscoveredConnection[]>;
+
+const REMOTE_CONNECT_WS_CLIENT_SERVICE = 'remote-connect:WsIPCClient';
+const REMOTE_CONNECT_DISCOVERY_SERVICE = 'remote-connect:discoverLanInstances';
 
 function createToolInvocationFromFunctionCall(
   part: any,
@@ -258,6 +271,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private originalSettingsController: ConsoleSettingsController | null = null;
   /** 远程连接前保存的原始 agentName */
   private originalAgentName?: string;
+  /** Backend 事件监听清理函数；start/stop 之间有效，避免切换 Agent 后重复监听 */
+  private backendListenerDisposers: Array<() => void> = [];
   /** 当前是否正在生成响应（用于阻止 addErrorMessage 破坏流式占位消息） */
   private _isGenerating = false;
 
@@ -287,6 +302,29 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     });
   }
 
+  private getLocalExtensionService<T>(id: string): T | undefined {
+    const api = this.originalApi ?? this.api;
+    return (api?.services as any)?.get?.(id) as T | undefined;
+  }
+
+  private onBackend(event: string, listener: (...args: any[]) => void): void {
+    const backend = this.backend as any;
+    backend.on(event, listener);
+    this.backendListenerDisposers.push(() => backend.off?.(event, listener)
+      ?? backend.removeListener?.(event, listener));
+  }
+
+  private disposeBackendListeners(): void {
+    for (const dispose of this.backendListenerDisposers.splice(0)) {
+      try { dispose(); } catch { /* ignore */ }
+    }
+  }
+
+  private disposeCurrentRemoteBackend(): void {
+    if (!this._isRemote) return;
+    try { (this.backend as any).dispose?.(); } catch { /* ignore */ }
+  }
+
   /**
    * 将一个异步操作排入持久化队列，保证串行执行。
    * 前一个操作失败不会阻塞后续操作。
@@ -304,7 +342,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
 
     // 监听 Backend 事件
-    this.backend.on('assistant:content', (sid: string, content: Content) => {
+    this.onBackend('assistant:content', (sid: string, content: Content) => {
       if (sid === this.sessionId) {
         const meta = getMessageMeta(content);
         const parts = convertPartsToMessageParts(content.parts, 'queued');
@@ -312,32 +350,32 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       }
     });
 
-    this.backend.on('stream:start', (sid: string) => {
+    this.onBackend('stream:start', (sid: string) => {
       if (sid === this.sessionId) {
         this.currentToolIds.clear();
         this.appHandle?.startStream();
       }
     });
 
-    this.backend.on('stream:parts', (sid: string, parts: Part[]) => {
+    this.onBackend('stream:parts', (sid: string, parts: Part[]) => {
       if (sid === this.sessionId) {
         this.appHandle?.pushStreamParts(convertPartsToMessageParts(parts, 'streaming'));
       }
     });
 
-    this.backend.on('stream:chunk', (sid: string, _chunk: string) => {
+    this.onBackend('stream:chunk', (sid: string, _chunk: string) => {
       if (sid === this.sessionId) {
         // console 走 stream:parts，保留 stream:chunk 仅兼容其他平台
       }
     });
 
-    this.backend.on('stream:end', (sid: string) => {
+    this.onBackend('stream:end', (sid: string) => {
       if (sid === this.sessionId) {
         this.appHandle?.endStream();
       }
     });
 
-    this.backend.on('tool:execute' as any, (sid: string, handle: any) => {
+    this.onBackend('tool:execute', (sid: string, handle: any) => {
       if (sid !== this.sessionId) return;
       this._activeHandles.set(handle.id, handle);
       this.currentToolIds.add(handle.id);
@@ -368,32 +406,32 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       refreshUI();
     });
 
-    this.backend.on('error', (sid: string, error: string) => {
+    this.onBackend('error', (sid: string, error: string) => {
       if (sid === this.sessionId) {
         this.appHandle?.addErrorMessage(error);
       }
     });
 
-    this.backend.on('usage', (sid: string, usage: UsageMetadata) => {
+    this.onBackend('usage', (sid: string, usage: UsageMetadata) => {
       if (sid === this.sessionId) {
         this.appHandle?.setUsage(usage);
       }
     });
 
-    this.backend.on('retry', (sid: string, attempt: number, maxRetries: number, error: string) => {
+    this.onBackend('retry', (sid: string, attempt: number, maxRetries: number, error: string) => {
       if (sid === this.sessionId) {
         this.appHandle?.setRetryInfo({ attempt, maxRetries, error });
       }
     });
 
-    this.backend.on('user:token', (sid: string, tokenCount: number) => {
+    this.onBackend('user:token', (sid: string, tokenCount: number) => {
       if (sid === this.sessionId) {
         this.appHandle?.setUserTokens(tokenCount);
       }
     });
 
 
-    this.backend.on('done', (sid: string, durationMs: number) => {
+    this.onBackend('done', (sid: string, durationMs: number) => {
       if (sid === this.sessionId) {
         this.appHandle?.finalizeResponse(durationMs);
         this.appHandle?.clearNotificationContext();
@@ -401,7 +439,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     });
 
     // 监听 turn:start 区分 notification turn 和普通 turn
-    this.backend.on('turn:start' as any, (sid: string, _turnId: string, mode: string) => {
+    this.onBackend('turn:start', (sid: string, _turnId: string, mode: string) => {
       if (sid === this.sessionId) {
         if (mode === 'task-notification') {
           this.appHandle?.setNotificationContext();
@@ -418,7 +456,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     // 委派任务走单独的计数器（delegateTaskCount）；cron 任务根据 silent 标记决定渲染方式。
     // [cron 重构] 第 6 个参数 silent 标识任务是否为静默模式。
     // backgroundTaskCount / spinner / token 动画混在一起。
-    this.backend.on('agent:notification' as any, (sid: string, _taskId: string, status: string, summary: string, taskType?: string, silent?: boolean) => {
+    this.onBackend('agent:notification', (sid: string, _taskId: string, status: string, summary: string, taskType?: string, silent?: boolean) => {
       if (sid === this.sessionId) {
         const isDelegate = taskType === 'delegate';
         const isCron = taskType === 'cron';
@@ -469,7 +507,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
     // 监听 notification:payloads 获取异步子代理/定时任务通知的结构化内容
     // （在 turn:start 之前触发，供前端渲染折叠通知区块）
-    this.backend.on('notification:payloads' as any, (sid: string, payloads: any[]) => {
+    this.onBackend('notification:payloads', (sid: string, payloads: any[]) => {
       if (sid === this.sessionId) {
         this.appHandle?.setNotificationPayloads(payloads);
       }
@@ -479,7 +517,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     // 所有终态任务都会 emit 此事件，不绑定 silent 或任务类型。
     // 平台层自行决定是否消费和如何渲染。
     // 当前策略：silent 任务渲染通知卡片（因为不会有 LLM 回复），非 silent 跳过（避免重复）。
-    this.backend.on('task:result' as any, (
+    this.onBackend('task:result', (
       sid: string, _taskId: string, status: string,
       description: string, _taskType?: string, silent?: boolean, result?: string,
     ) => {
@@ -499,7 +537,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       this.appHandle?.addMessage('assistant', text);
     });
 
-    this.backend.on('auto-compact', (sid: string, summaryText: string) => {
+    this.onBackend('auto-compact', (sid: string, summaryText: string) => {
       if (sid === this.sessionId) {
         const fullText = `[Context Summary]\n\n${summaryText}`;
         const tokenCount = estimateTokenCount(fullText);
@@ -665,6 +703,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   }
 
   async stop(): Promise<void> {
+    this.disposeBackendListeners();
+
     // 幂等保护：onExit 和 shutdown() 都会调用 stop()，
     // 双重 destroy() 会向已恢复的终端重复写入 ANSI 转义序列导致异常。
     if (!this.renderer) return;
@@ -768,6 +808,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
     const targetHandle = network.getPeerBackendHandle?.(targetName);
     if (targetHandle) {
+      if (typeof (targetHandle as any).initCaches === 'function') await (targetHandle as any).initCaches();
+      this.disposeCurrentRemoteBackend();
       this.backend = targetHandle;
       this.agentName = targetName;
 
@@ -785,6 +827,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       // 分层配置修复：切换 Agent 后重建 settingsController
       const peerAPI = network.getPeerAPI?.(targetName) as any;
       if (peerAPI) {
+        if (typeof peerAPI.initCaches === 'function') await peerAPI.initCaches();
         this.api = peerAPI;
         this.settingsController = new ConsoleSettingsController({
           backend: targetHandle,
@@ -811,10 +854,11 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     showConnectingStatus(url);
 
     try {
-      // 跨 extension 边界的运行时动态导入
-      const { WsIPCClient } = await import('../../remote-connect/src/client');
-      // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
-      const { RemoteBackendHandle } = await import('../../src/ipc/remote-backend-handle');
+      const WsIPCClient = this.getLocalExtensionService<WsIPCClientConstructor>(REMOTE_CONNECT_WS_CLIENT_SERVICE);
+      if (!WsIPCClient) {
+        throw new Error('remote-connect 扩展服务不可用，请确认 remote-connect 扩展已安装并启用');
+      }
+      const { RemoteBackendHandle, createRemoteApiProxy } = await import('irises-extension-sdk/ipc');
 
       const wsClient = new WsIPCClient();
       const handshake = await wsClient.connect(url, token);
@@ -827,8 +871,6 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         await remoteBackend.initCaches();
         await wsClient.subscribe('*');
 
-        // @ts-expect-error -- 跨 tsconfig 边界的运行时动态导入
-        const { createRemoteApiProxy } = await import('../../src/ipc/remote-api-proxy');
         remoteApi = createRemoteApiProxy(wsClient, handshake.agentName);
         if (typeof remoteApi.initCaches === 'function') {
           await remoteApi.initCaches();
@@ -989,9 +1031,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     // 启动局域网发现
     let discoveryPromise: Promise<import('./remote-wizard').DiscoveredConnection[]> | undefined;
     try {
-      // 跨 extension 边界的运行时动态导入
-      const { discoverLanInstances } = await import('../../remote-connect/src/discovery');
-      discoveryPromise = discoverLanInstances();
+      const discoverLanInstances = this.getLocalExtensionService<DiscoverLanInstancesFn>(REMOTE_CONNECT_DISCOVERY_SERVICE);
+      if (discoverLanInstances) discoveryPromise = discoverLanInstances();
     } catch {}
 
     const { showRemoteConnectWizard, showSavePrompt } = await import('./remote-wizard');
@@ -1039,6 +1080,8 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
     // 停止 TUI
     await this.stop();
+
+    this.disposeCurrentRemoteBackend();
 
     // 断开远程连接
     if (this.remoteClient) {

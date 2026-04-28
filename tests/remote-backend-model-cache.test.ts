@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IPCClientLike } from '../src/ipc/client-like';
+import { createRemoteApiProxy } from '../src/ipc/remote-api-proxy';
 import { RemoteBackendHandle } from '../src/ipc/remote-backend-handle';
 import { Events, Methods } from '../src/ipc/protocol';
 
@@ -88,5 +89,30 @@ describe('RemoteBackendHandle 模型缓存同步', () => {
 
     expect(backend.listModels()).toEqual(nextModels);
     expect(backend.getCurrentModelInfo()).toEqual(nextModels[1]);
+  });
+
+  it('指定 agentName 时应通过 AGENT_BACKEND_CALL 路由到远端目标 Agent', async () => {
+    const client = new FakeIPCClient({});
+    const backend = new RemoteBackendHandle(client, { agentName: 'worker' });
+
+    await backend.chat('session-1', 'hello', undefined, undefined, 'console');
+
+    expect(client.calls[0]).toEqual({
+      method: Methods.AGENT_BACKEND_CALL,
+      params: ['worker', Methods.CHAT, ['session-1', 'hello', undefined, undefined, 'console']],
+    });
+  });
+
+  it('远程 API 的 getPeerBackendHandle 应返回按目标 Agent 路由的 RemoteBackendHandle', async () => {
+    const client = new FakeIPCClient({});
+    const api = createRemoteApiProxy(client, 'master');
+    const workerBackend = api.agentNetwork.getPeerBackendHandle('worker') as RemoteBackendHandle;
+
+    await workerBackend.clearSession('session-worker');
+
+    expect(client.calls[0]).toEqual({
+      method: Methods.AGENT_BACKEND_CALL,
+      params: ['worker', Methods.CLEAR_SESSION, ['session-worker']],
+    });
   });
 });

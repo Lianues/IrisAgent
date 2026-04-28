@@ -186,7 +186,7 @@ export interface IrisPlugin {
   description?: string;
   preBootstrap?(context: PreBootstrapContext): Promise<void> | void;
   activate(context: PluginContext): Promise<void> | void;
-  deactivate?(): Promise<void> | void;
+  deactivate?(context?: PluginContext): Promise<void> | void;
 }
 
 export interface PluginEntry {

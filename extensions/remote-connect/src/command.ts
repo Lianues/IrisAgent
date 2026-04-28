@@ -16,8 +16,13 @@
  *   iris net set relay.url wss://relay.example.com:9001
  */
 
-import { configDir } from '../../../src/paths';
-import { readEditableConfig, updateEditableConfig } from '../../../src/config/manage';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { parse as parseYAML, stringify as stringifyYAML } from 'yaml';
+import { resolveDefaultDataDir } from 'irises-extension-sdk';
+
+const configDir = path.join(resolveDefaultDataDir(), 'configs');
+const netConfigPath = path.join(configDir, 'net.yaml');
 
 export function runNetCommand(argv: string[]): void {
   const sub = argv[0];
@@ -67,7 +72,7 @@ export function runNetCommand(argv: string[]): void {
     const value = argv[2];
     if (!key || value === undefined) {
       console.error('用法: iris net set <key> <value>');
-      console.error('可用 key: enabled, port, host, token, relay.url, relay.nodeId, relay.token');
+      console.error('可用 key: enabled, port, host, token, gatewayAgent, relay.url, relay.nodeId, relay.token');
       process.exit(1);
     }
     setNestedKey(key, value);
@@ -86,8 +91,7 @@ export function runNetCommand(argv: string[]): void {
 }
 
 function showStatus(): void {
-  const config = readEditableConfig(configDir);
-  const net = config?.net ?? {};
+  const net = readNetConfig();
 
   console.log('');
   console.log('  远程互联配置:');
@@ -96,8 +100,9 @@ function showStatus(): void {
   console.log(`  端口:    ${net.port ?? 9100}`);
   console.log(`  地址:    ${net.host ?? '0.0.0.0'}`);
   console.log(`  Token:   ${net.token ? '••••••••' : '(未设置)'}`);
+  console.log(`  网关:    ${net.gatewayAgent ?? 'master'}`);
 
-  if (net.relay?.url || net.relay?.nodeId) {
+  if (isRecord(net.relay) && (net.relay.url || net.relay.nodeId)) {
     console.log('');
     console.log('  中继:');
     console.log(`    URL:     ${net.relay.url ?? '(未设置)'}`);
@@ -106,7 +111,7 @@ function showStatus(): void {
   }
 
   const remotes = net.remotes;
-  if (remotes && Object.keys(remotes).length > 0) {
+  if (isRecord(remotes) && Object.keys(remotes).length > 0) {
     console.log('');
     console.log('  已保存的连接:');
     for (const [name, entry] of Object.entries(remotes) as [string, any][]) {
@@ -131,7 +136,7 @@ function showHelp(): void {
   set <key> <value>  设置任意配置项
 
 set 可用 key:
-  enabled, port, host, token
+  enabled, port, host, token, gatewayAgent
   relay.url, relay.nodeId, relay.token
 
 示例:
@@ -142,8 +147,10 @@ set 可用 key:
 `.trim());
 }
 
-function update(updates: any): void {
-  updateEditableConfig(configDir, updates);
+function update(updates: { net?: Record<string, unknown> }): void {
+  const netUpdates = updates.net ?? {};
+  const next = deepMerge(readNetConfig(), netUpdates);
+  writeNetConfig(next);
 }
 
 function setNestedKey(key: string, value: string): void {
@@ -163,4 +170,35 @@ function setNestedKey(key: string, value: string): void {
     console.error(`不支持的 key: ${key}`);
     process.exit(1);
   }
+}
+
+function readNetConfig(): Record<string, any> {
+  if (!fs.existsSync(netConfigPath)) return {};
+  const parsed = parseYAML(fs.readFileSync(netConfigPath, 'utf-8'));
+  return isRecord(parsed) ? parsed : {};
+}
+
+function writeNetConfig(net: Record<string, unknown>): void {
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(netConfigPath, stringifyYAML(net, { indent: 2 }), 'utf-8');
+}
+
+function deepMerge(target: Record<string, any>, source: Record<string, unknown>): Record<string, any> {
+  const result: Record<string, any> = { ...target };
+  for (const [key, value] of Object.entries(source)) {
+    if (value === null) {
+      delete result[key];
+    } else if (Array.isArray(value)) {
+      result[key] = [...value];
+    } else if (isRecord(value)) {
+      result[key] = deepMerge(isRecord(result[key]) ? result[key] : {}, value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

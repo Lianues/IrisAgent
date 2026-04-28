@@ -16,6 +16,40 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
+// ../../packages/extension-sdk/dist/logger.js
+function createExtensionLogger(extensionName, tag) {
+  const scope = tag ? `${extensionName}:${tag}` : extensionName;
+  return {
+    debug: (...args) => {
+      if (_logLevel <= LogLevel.DEBUG)
+        console.debug(`[${scope}]`, ...args);
+    },
+    info: (...args) => {
+      if (_logLevel <= LogLevel.INFO)
+        console.log(`[${scope}]`, ...args);
+    },
+    warn: (...args) => {
+      if (_logLevel <= LogLevel.WARN)
+        console.warn(`[${scope}]`, ...args);
+    },
+    error: (...args) => {
+      if (_logLevel <= LogLevel.ERROR)
+        console.error(`[${scope}]`, ...args);
+    }
+  };
+}
+var LogLevel, _logLevel;
+var init_logger = __esm(() => {
+  (function(LogLevel2) {
+    LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+    LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+    LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+    LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+    LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
+  })(LogLevel || (LogLevel = {}));
+  _logLevel = LogLevel.INFO;
+});
+
 // src/terminal-compat.ts
 function detectTier() {
   if (process.env.WT_SESSION)
@@ -541,53 +575,78 @@ var init_remote_wizard = __esm(() => {
   };
 });
 
-// ../../src/logger/index.ts
-import { AsyncLocalStorage } from "node:async_hooks";
-
-class Logger {
-  prefix;
-  constructor(prefix) {
-    this.prefix = prefix;
-  }
-  getEffectivePrefix() {
-    const ctx = agentContext.getStore();
-    if (ctx) {
-      return `[${this.prefix}|${ctx}]`;
-    }
-    return `[${this.prefix}]`;
-  }
-  debug(...args) {
-    if (globalLevel <= 0 /* DEBUG */) {
-      console.debug(this.getEffectivePrefix(), ...args);
-    }
-  }
-  info(...args) {
-    if (globalLevel <= 1 /* INFO */) {
-      console.log(this.getEffectivePrefix(), ...args);
-    }
-  }
-  warn(...args) {
-    if (globalLevel <= 2 /* WARN */) {
-      console.warn(this.getEffectivePrefix(), ...args);
-    }
-  }
-  error(...args) {
-    if (globalLevel <= 3 /* ERROR */) {
-      console.error(this.getEffectivePrefix(), ...args);
-    }
-  }
+// ../../packages/extension-sdk/dist/ipc/framing.js
+import { Transform } from "node:stream";
+function encodeFrame(data) {
+  const payload = Buffer.from(JSON.stringify(data), "utf-8");
+  const header = Buffer.alloc(HEADER_SIZE);
+  header.writeUInt32BE(payload.length, 0);
+  return Buffer.concat([header, payload]);
 }
-function createLogger(prefix) {
-  return new Logger(prefix);
-}
-var globalLevel = 1 /* INFO */, agentContext;
-var init_logger = __esm(() => {
-  agentContext = new AsyncLocalStorage;
+var HEADER_SIZE = 4, MAX_MESSAGE_SIZE, FrameDecoder;
+var init_framing = __esm(() => {
+  MAX_MESSAGE_SIZE = 16 * 1024 * 1024;
+  FrameDecoder = class FrameDecoder extends Transform {
+    buffer = Buffer.alloc(0);
+    constructor() {
+      super({ readableObjectMode: true, writableObjectMode: false });
+    }
+    _transform(chunk, _encoding, callback) {
+      this.buffer = Buffer.concat([this.buffer, chunk]);
+      while (this.buffer.length >= HEADER_SIZE) {
+        const payloadLength = this.buffer.readUInt32BE(0);
+        if (payloadLength > MAX_MESSAGE_SIZE) {
+          this.buffer = Buffer.alloc(0);
+          callback(new Error(`IPC 帧超过最大大小: ${payloadLength} > ${MAX_MESSAGE_SIZE}`));
+          return;
+        }
+        const totalLength = HEADER_SIZE + payloadLength;
+        if (this.buffer.length < totalLength) {
+          break;
+        }
+        const payload = this.buffer.subarray(HEADER_SIZE, totalLength);
+        this.buffer = this.buffer.subarray(totalLength);
+        try {
+          const message = JSON.parse(payload.toString("utf-8"));
+          this.push(message);
+        } catch (err) {
+          callback(new Error(`IPC 帧 JSON 解析失败: ${err.message}`));
+          return;
+        }
+      }
+      callback();
+    }
+    _flush(callback) {
+      if (this.buffer.length > 0) {
+        callback(new Error(`IPC 流结束时有未处理的数据 (${this.buffer.length} 字节)`));
+      } else {
+        callback();
+      }
+    }
+  };
 });
 
-// ../../src/ipc/protocol.ts
-var Methods, Events, BACKEND_EVENT_TO_IPC, IPC_TO_BACKEND_EVENT;
+// ../../packages/extension-sdk/dist/ipc/protocol.js
+function isRequest(msg) {
+  return "id" in msg && "method" in msg;
+}
+function isResponse(msg) {
+  return "id" in msg && !("method" in msg);
+}
+function isNotification(msg) {
+  return !("id" in msg) && "method" in msg;
+}
+var ErrorCodes, Methods, Events, BACKEND_EVENT_TO_IPC, IPC_TO_BACKEND_EVENT;
 var init_protocol = __esm(() => {
+  ErrorCodes = {
+    PARSE_ERROR: -32700,
+    INVALID_REQUEST: -32600,
+    METHOD_NOT_FOUND: -32601,
+    INVALID_PARAMS: -32602,
+    INTERNAL_ERROR: -32603,
+    BACKEND_ERROR: -32000,
+    HANDLE_NOT_FOUND: -32001
+  };
   Methods = {
     CHAT: "backend.chat",
     CLEAR_SESSION: "backend.clearSession",
@@ -634,6 +693,8 @@ var init_protocol = __esm(() => {
     API_CONFIG_MANAGER_UPDATE: "api.configManager.updateEditableConfig",
     API_ROUTER_REMOVE_REQUEST_BODY_KEYS: "api.router.removeCurrentModelRequestBodyKeys",
     API_ROUTER_PATCH_REQUEST_BODY: "api.router.patchCurrentModelRequestBody",
+    AGENT_BACKEND_CALL: "agent.backend.call",
+    AGENT_API_CALL: "agent.api.call",
     SUBSCRIBE: "client.subscribe",
     UNSUBSCRIBE: "client.unsubscribe",
     INIT_SESSION_CWD: "client.initSessionCwd",
@@ -688,605 +749,431 @@ var init_protocol = __esm(() => {
   IPC_TO_BACKEND_EVENT = Object.fromEntries(Object.entries(BACKEND_EVENT_TO_IPC).map(([k, v]) => [v, k]));
 });
 
-// ../remote-connect/src/client.ts
-var exports_client = {};
-__export(exports_client, {
-  WsIPCClient: () => WsIPCClient
-});
+// ../../packages/extension-sdk/dist/ipc/remote-tool-handle.js
 import { EventEmitter } from "node:events";
-var logger, RECONNECT_BASE_DELAY = 1000, RECONNECT_MAX_DELAY = 30000, RECONNECT_JITTER = 0.25, RECONNECT_BUDGET, HEARTBEAT_INTERVAL = 15000, HEARTBEAT_TIMEOUT = 1e4, WsIPCClient;
-var init_client = __esm(() => {
+var logger, RemoteToolHandle;
+var init_remote_tool_handle = __esm(() => {
+  init_protocol();
+  init_logger();
+  logger = createExtensionLogger("RemoteToolHandle");
+  RemoteToolHandle = class RemoteToolHandle extends EventEmitter {
+    client;
+    handleId;
+    toolName;
+    toolId;
+    args;
+    approvalRequired;
+    _state;
+    _preview;
+    _output;
+    _outputHistory = [];
+    constructor(client, serialized) {
+      super();
+      this.client = client;
+      this.handleId = serialized.handleId;
+      this.toolName = serialized.toolName;
+      this.toolId = serialized.toolId;
+      this.args = serialized.args;
+      this._state = serialized.state;
+      this._preview = serialized.preview;
+      this.approvalRequired = serialized.approvalRequired ?? false;
+    }
+    get id() {
+      return this.handleId;
+    }
+    get status() {
+      return this._state;
+    }
+    get state() {
+      return this._state;
+    }
+    get preview() {
+      return this._preview;
+    }
+    get output() {
+      return this._output;
+    }
+    get depth() {
+      return 0;
+    }
+    get parentId() {
+      return;
+    }
+    getSnapshot() {
+      return {
+        id: this.handleId,
+        toolName: this.toolName,
+        toolId: this.toolId,
+        args: this.args,
+        status: this._state,
+        state: this._state,
+        output: this._output,
+        preview: this._preview,
+        approvalRequired: this.approvalRequired
+      };
+    }
+    getOutputHistory() {
+      return this._outputHistory;
+    }
+    getChildren() {
+      return [];
+    }
+    approve(approved = true) {
+      if (approved) {
+        this.client.call(Methods.HANDLE_APPROVE, [this.handleId, true]).catch((err) => logger.warn(`approve 失败: ${err.message}`));
+      } else {
+        this.reject();
+      }
+    }
+    reject() {
+      this.client.call(Methods.HANDLE_REJECT, [this.handleId]).catch((err) => logger.warn(`reject 失败: ${err.message}`));
+    }
+    apply(applied = true) {
+      this.client.call(Methods.HANDLE_APPLY, [this.handleId, applied]).catch((err) => logger.warn(`apply 失败: ${err.message}`));
+    }
+    abort() {
+      this.client.call(Methods.HANDLE_ABORT, [this.handleId]).catch((err) => logger.warn(`abort 失败: ${err.message}`));
+    }
+    _updateState(state) {
+      this._state = state;
+      this.emit("state", state);
+    }
+    _updateOutput(output) {
+      this._output = output;
+      this._outputHistory.push(output);
+      this.emit("output", output);
+    }
+    _updateProgress(progress) {
+      this.emit("progress", progress);
+    }
+    _appendStream(type, data) {
+      this.emit("message", type, data);
+    }
+    sessionId;
+  };
+});
+
+// ../../packages/extension-sdk/dist/ipc/remote-backend-handle.js
+import { EventEmitter as EventEmitter2 } from "node:events";
+var logger2, RemoteBackendHandle;
+var init_remote_backend_handle = __esm(() => {
+  init_remote_tool_handle();
   init_logger();
   init_protocol();
-  logger = createLogger("WsIPCClient");
-  RECONNECT_BUDGET = 10 * 60 * 1000;
-  WsIPCClient = class WsIPCClient extends EventEmitter {
-    ws = null;
-    pendingCalls = new Map;
-    nextId = 1;
-    timeout;
-    connected = false;
-    notificationHandlers = [];
-    reconnectEnabled = false;
-    reconnectAttempt = 0;
-    reconnectBudgetStart = 0;
-    reconnectTimer;
-    reconnectInProgress = false;
-    heartbeatTimer;
-    heartbeatTimeoutTimer;
-    lastTickTime = 0;
-    sleepDetectionTimer;
-    connectUrl = "";
-    connectToken = "";
-    connectMode = "direct";
-    relayNodeId = "";
-    subscribedSessions = [];
-    isBun;
-    constructor(options) {
+  logger2 = createExtensionLogger("RemoteBackend");
+  RemoteBackendHandle = class RemoteBackendHandle extends EventEmitter2 {
+    client;
+    toolHandles = new Map;
+    notificationHandler;
+    targetAgentName;
+    constructor(client, options) {
       super();
-      this.timeout = options?.timeout ?? 30000;
-      this.isBun = typeof globalThis.Bun !== "undefined";
+      this.client = client;
+      this.targetAgentName = options?.agentName;
+      this.setupNotificationForwarding();
     }
-    async connect(url, token) {
-      this.connectUrl = url;
-      this.connectToken = token;
-      this.connectMode = "direct";
-      this.reconnectEnabled = true;
-      await this.doConnect();
-      return this.doHandshake();
-    }
-    async connectViaRelay(relayUrl, nodeId, token) {
-      this.connectUrl = relayUrl;
-      this.connectToken = token;
-      this.connectMode = "relay";
-      this.relayNodeId = nodeId;
-      this.reconnectEnabled = true;
-      await this.doConnect();
-      const connectMsg = { type: "connect", nodeId, token };
-      this.wsSend(JSON.stringify(connectMsg));
-      await new Promise((resolve3, reject) => {
-        const cleanup = () => {
-          clearTimeout(timer);
-          this.offNotification(handler);
-          this.off("close", onClose);
-        };
-        const handler = (method, params) => {
-          if (method === "__relay_paired") {
-            cleanup();
-            resolve3();
-          } else if (method === "__relay_error") {
-            cleanup();
-            reject(new Error(`中继错误: ${params[0]}`));
-          }
-        };
-        const onClose = () => {
-          cleanup();
-          reject(new Error("中继连接断开"));
-        };
-        const timer = setTimeout(() => {
-          cleanup();
-          reject(new Error("中继配对超时"));
-        }, 30000);
-        this.onNotification(handler);
-        this.once("close", onClose);
-      });
-      return this.doHandshake();
-    }
-    async call(method, params, options) {
-      if (!this.ws || !this.connected) {
-        throw new Error("WS 客户端未连接");
+    callRemote(method, params, options) {
+      if (!this.targetAgentName) {
+        return this.client.call(method, params, options);
       }
-      const id = this.nextId++;
-      const request = {
-        jsonrpc: "2.0",
-        id,
-        method,
-        params
-      };
-      return new Promise((resolve3, reject) => {
-        const effectiveTimeout = options?.timeout ?? this.timeout;
-        const timer = effectiveTimeout > 0 ? setTimeout(() => {
-          this.pendingCalls.delete(id);
-          reject(new Error(`WS RPC 请求超时: ${method} (${effectiveTimeout}ms)`));
-        }, effectiveTimeout) : undefined;
-        this.pendingCalls.set(id, { resolve: resolve3, reject, timer });
-        this.wsSend(JSON.stringify(request));
-      });
+      return this.client.call(Methods.AGENT_BACKEND_CALL, [this.targetAgentName, method, params ?? []], options);
     }
-    onNotification(handler) {
-      this.notificationHandlers.push(handler);
+    async chat(sessionId, text, images, documents, platform) {
+      return this.callRemote(Methods.CHAT, [sessionId, text, images, documents, platform], { timeout: 0 });
     }
-    offNotification(handler) {
-      const idx = this.notificationHandlers.indexOf(handler);
-      if (idx >= 0)
-        this.notificationHandlers.splice(idx, 1);
+    isStreamEnabled() {
+      return this._streamEnabled;
     }
-    async subscribe(sessions) {
-      const arr = Array.isArray(sessions) ? sessions : [sessions];
-      this.subscribedSessions = arr;
-      await this.call(Methods.SUBSCRIBE, [sessions]);
+    async clearSession(sessionId) {
+      await this.callRemote(Methods.CLEAR_SESSION, [sessionId]);
     }
-    disconnect() {
-      this.reconnectEnabled = false;
-      this.clearTimers();
-      if (this.ws) {
-        try {
-          this.ws.close();
-        } catch {}
-        this.ws = null;
-      }
-      this.connected = false;
-      this.rejectAllPending("连接已断开");
-    }
-    isConnected() {
-      return this.connected;
-    }
-    doConnect() {
-      return new Promise((resolve3, reject) => {
-        try {
-          if (this.ws) {
-            try {
-              this.ws.onclose = null;
-              this.ws.onerror = null;
-              this.ws.onmessage = null;
-              this.ws.close();
-            } catch {}
-            this.ws = null;
-          }
-          let wsUrl = this.connectUrl;
-          if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
-            wsUrl = "ws://" + wsUrl;
-          }
-          if (this.connectMode === "direct" && !wsUrl.includes("/ws")) {
-            wsUrl = wsUrl.replace(/\/?$/, "/ws");
-          }
-          if (this.isBun) {
-            this.ws = new WebSocket(wsUrl);
-          } else {
-            import("ws").then(({ default: WS }) => {
-              this.ws = new WS(wsUrl);
-              this.setupWsListeners(resolve3, reject);
-            }).catch(reject);
-            return;
-          }
-          this.setupWsListeners(resolve3, reject);
-        } catch (err) {
-          reject(err);
+    switchModel(modelName, platform) {
+      const optimistic = Array.isArray(this._cachedModels) ? this._cachedModels.find((model) => model?.modelName === modelName) : undefined;
+      this.callRemote(Methods.SWITCH_MODEL, [modelName, platform]).then((r) => {
+        if (r && typeof r === "object") {
+          const res = r;
+          this._cachedCurrentModelInfo = r;
+          this.refreshCaches();
         }
-      });
+      }).catch((err) => logger2.warn(`switchModel 失败: ${err.message}`));
+      return { modelName, modelId: optimistic?.modelId ?? modelName };
     }
-    setupWsListeners(resolve3, reject) {
-      let resolved = false;
-      this.ws.onopen = () => {
-        if (this.connectMode === "direct") {
-          this.wsSend(JSON.stringify({ type: "auth", token: this.connectToken }));
-        } else if (this.connectMode === "relay") {
-          if (!resolved) {
-            resolved = true;
-            this.connected = true;
-            this.startHeartbeat();
-            this.startSleepDetection();
-            this.reconnectAttempt = 0;
-            resolve3();
-          }
-        }
-      };
-      this.ws.onmessage = (event) => {
-        const data = typeof event.data === "string" ? event.data : event.data.toString("utf-8");
-        this.handleMessage(data, () => {
-          if (!resolved) {
-            resolved = true;
-            this.connected = true;
-            this.startHeartbeat();
-            this.startSleepDetection();
-            this.reconnectAttempt = 0;
-            resolve3();
-          }
-        });
-      };
-      this.ws.onerror = (err) => {
-        const msg = err?.message || err?.error?.message || "WebSocket error";
-        if (!resolved) {
-          resolved = true;
-          reject(new Error(msg));
-        } else {
-          logger.warn(`WS 错误: ${msg}`);
-        }
-      };
-      this.ws.onclose = () => {
-        this.connected = false;
-        this.stopHeartbeat();
-        this.rejectAllPending("连接已断开");
-        this.emit("close");
-        if (!resolved) {
-          resolved = true;
-          reject(new Error("连接被关闭"));
-        } else if (this.reconnectEnabled && !this.reconnectInProgress) {
-          this.scheduleReconnect();
-        }
-      };
-      if (typeof this.ws.on === "function") {
-        this.ws.on("pong", () => {
-          if (this.heartbeatTimeoutTimer) {
-            clearTimeout(this.heartbeatTimeoutTimer);
-            this.heartbeatTimeoutTimer = undefined;
-          }
-        });
-      }
+    listModels() {
+      return this._cachedModels;
     }
-    handleMessage(data, onAuthOk) {
-      let msg;
-      try {
-        msg = JSON.parse(data);
-      } catch {
-        logger.warn("收到无效 JSON 消息");
-        return;
-      }
-      if (msg.type === "auth_ok") {
-        onAuthOk?.();
-        return;
-      }
-      if (msg.type === "paired") {
-        for (const handler of this.notificationHandlers) {
-          try {
-            handler("__relay_paired", []);
-          } catch {}
-        }
-        onAuthOk?.();
-        return;
-      }
-      if (msg.type === "error") {
-        for (const handler of this.notificationHandlers) {
-          try {
-            handler("__relay_error", [msg.message]);
-          } catch {}
-        }
-        return;
-      }
-      if (msg.type === "peer_disconnected") {
-        logger.warn("远程节点断开连接");
-        try {
-          this.ws?.close();
-        } catch {}
-        return;
-      }
-      if (msg.type === "data" && msg.payload) {
-        msg = msg.payload;
-      }
-      if (msg.jsonrpc === "2.0" && typeof msg.id === "number") {
-        const pending = this.pendingCalls.get(msg.id);
-        if (!pending)
+    async listSessionMetas() {
+      return await this.callRemote(Methods.LIST_SESSION_METAS) ?? [];
+    }
+    abortChat(sessionId) {
+      this.callRemote(Methods.ABORT_CHAT, [sessionId]).catch((err) => logger2.warn(`abortChat 失败: ${err.message}`));
+    }
+    getToolHandle(toolId) {
+      return this.toolHandles.get(toolId);
+    }
+    getToolHandles(sessionId) {
+      return Array.from(this.toolHandles.values()).filter((h) => h.sessionId === sessionId);
+    }
+    async undo(sessionId, scope) {
+      return await this.callRemote(Methods.UNDO, [sessionId, scope]) ?? null;
+    }
+    async redo(sessionId) {
+      return await this.callRemote(Methods.REDO, [sessionId]) ?? null;
+    }
+    clearRedo(sessionId) {
+      this.callRemote(Methods.CLEAR_REDO, [sessionId]).catch((err) => logger2.warn(`clearRedo 失败: ${err.message}`));
+    }
+    async getHistory(sessionId) {
+      return await this.callRemote(Methods.GET_HISTORY, [sessionId]) ?? [];
+    }
+    listSkills() {
+      return this._cachedSkills;
+    }
+    listModes() {
+      return this._cachedModes;
+    }
+    switchMode(modeName) {
+      this.callRemote(Methods.SWITCH_MODE, [modeName]).then(() => this.refreshCaches()).catch((err) => logger2.warn(`switchMode 失败: ${err.message}`));
+      return true;
+    }
+    async summarize(sessionId) {
+      return this.callRemote(Methods.SUMMARIZE, [sessionId], { timeout: 0 });
+    }
+    getToolNames() {
+      return this._cachedToolNames;
+    }
+    getCurrentModelInfo() {
+      return this._cachedCurrentModelInfo;
+    }
+    getDisabledTools() {
+      return this._cachedDisabledTools;
+    }
+    getActiveSessionId() {
+      return;
+    }
+    async runCommand(cmd) {
+      return this.callRemote(Methods.RUN_COMMAND, [cmd], { timeout: 60000 });
+    }
+    resetConfigToDefaults() {
+      this.callRemote(Methods.RESET_CONFIG).catch((err) => logger2.warn(`resetConfig 失败: ${err.message}`));
+      return;
+    }
+    async getAgentTasks(sessionId) {
+      return await this.callRemote(Methods.GET_AGENT_TASKS, [sessionId]) ?? [];
+    }
+    async getRunningAgentTasks(sessionId) {
+      return await this.callRemote(Methods.GET_RUNNING_AGENT_TASKS, [sessionId]) ?? [];
+    }
+    async getAgentTask(taskId) {
+      return await this.callRemote(Methods.GET_AGENT_TASK, [taskId]) ?? undefined;
+    }
+    async getToolPolicies() {
+      return await this.callRemote(Methods.GET_TOOL_POLICIES);
+    }
+    getCwd() {
+      return this._cachedCwd;
+    }
+    setCwd(dirPath) {
+      this.callRemote(Methods.SET_CWD, [dirPath]).then(() => {
+        this._cachedCwd = dirPath;
+      }).catch((err) => logger2.warn(`setCwd 失败: ${err.message}`));
+    }
+    _streamEnabled = true;
+    _cachedModels = [];
+    _cachedSkills = [];
+    _cachedModes = [];
+    _cachedToolNames = [];
+    _cachedCurrentModelInfo = undefined;
+    _cachedDisabledTools = undefined;
+    _cachedCwd = process.cwd();
+    async initCaches() {
+      const [models, skills, modes, toolNames, modelInfo, disabledTools, cwd, streamEnabled] = await Promise.all([
+        this.callRemote(Methods.LIST_MODELS).catch(() => []),
+        this.callRemote(Methods.LIST_SKILLS).catch(() => []),
+        this.callRemote(Methods.LIST_MODES).catch(() => []),
+        this.callRemote(Methods.GET_TOOL_NAMES).catch(() => []),
+        this.callRemote(Methods.GET_CURRENT_MODEL_INFO).catch(() => {
           return;
-        this.pendingCalls.delete(msg.id);
-        if (pending.timer)
-          clearTimeout(pending.timer);
-        if (msg.error) {
-          pending.reject(new Error(msg.error.message));
-        } else {
-          pending.resolve(msg.result);
-        }
-        return;
-      }
-      if (msg.jsonrpc === "2.0" && typeof msg.id === "undefined" && msg.method) {
-        for (const handler of this.notificationHandlers) {
-          try {
-            handler(msg.method, msg.params ?? []);
-          } catch (err) {
-            logger.warn(`通知 handler 错误: ${err.message}`);
-          }
-        }
-        return;
-      }
-    }
-    async doHandshake() {
-      const result = await this.call(Methods.HANDSHAKE);
-      return result;
-    }
-    startHeartbeat() {
-      this.stopHeartbeat();
-      if (this.isBun)
-        return;
-      this.heartbeatTimer = setInterval(() => {
-        if (!this.ws || !this.connected)
+        }),
+        this.callRemote(Methods.GET_DISABLED_TOOLS).catch(() => {
           return;
-        try {
-          if (typeof this.ws.ping === "function") {
-            this.ws.ping();
-            this.heartbeatTimeoutTimer = setTimeout(() => {
-              logger.warn("WS 心跳超时");
-              try {
-                this.ws?.close();
-              } catch {}
-            }, HEARTBEAT_TIMEOUT);
-          }
-        } catch {}
-      }, HEARTBEAT_INTERVAL);
+        }),
+        this.callRemote(Methods.GET_CWD).catch(() => process.cwd()),
+        this.callRemote(Methods.IS_STREAM_ENABLED).catch(() => this._streamEnabled)
+      ]);
+      this._cachedModels = models ?? [];
+      this._cachedSkills = skills ?? [];
+      this._cachedModes = modes ?? [];
+      this._cachedToolNames = toolNames ?? [];
+      this._cachedCurrentModelInfo = modelInfo;
+      this._cachedDisabledTools = disabledTools;
+      this._cachedCwd = cwd || process.cwd();
+      this._streamEnabled = typeof streamEnabled === "boolean" ? streamEnabled : this._streamEnabled;
     }
-    stopHeartbeat() {
-      if (this.heartbeatTimer) {
-        clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = undefined;
-      }
-      if (this.heartbeatTimeoutTimer) {
-        clearTimeout(this.heartbeatTimeoutTimer);
-        this.heartbeatTimeoutTimer = undefined;
-      }
+    refreshCaches() {
+      this.initCaches().catch((err) => logger2.warn(`刷新缓存失败: ${err.message}`));
     }
-    startSleepDetection() {
-      if (this.sleepDetectionTimer) {
-        clearInterval(this.sleepDetectionTimer);
+    dispose() {
+      if (this.notificationHandler) {
+        this.client.offNotification(this.notificationHandler);
+        this.notificationHandler = undefined;
       }
-      this.lastTickTime = Date.now();
-      this.sleepDetectionTimer = setInterval(() => {
-        const now = Date.now();
-        const gap = now - this.lastTickTime;
-        if (gap > 60000) {
-          logger.info(`检测到系统睡眠/唤醒 (gap=${Math.round(gap / 1000)}s)，重置重连预算`);
-          this.reconnectAttempt = 0;
-          this.reconnectBudgetStart = 0;
-        }
-        this.lastTickTime = now;
-      }, 5000);
+      this.toolHandles.clear();
+      this.removeAllListeners();
     }
-    scheduleReconnect() {
-      if (!this.reconnectEnabled)
-        return;
-      const now = Date.now();
-      if (this.reconnectBudgetStart === 0) {
-        this.reconnectBudgetStart = now;
-      }
-      if (now - this.reconnectBudgetStart > RECONNECT_BUDGET) {
-        logger.error("重连预算耗尽，放弃重连");
-        this.reconnectEnabled = false;
-        return;
-      }
-      const baseDelay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, this.reconnectAttempt), RECONNECT_MAX_DELAY);
-      const jitter = baseDelay * RECONNECT_JITTER * (Math.random() * 2 - 1);
-      const delay = Math.max(100, baseDelay + jitter);
-      this.reconnectAttempt++;
-      logger.info(`将在 ${Math.round(delay)}ms 后尝试第 ${this.reconnectAttempt} 次重连...`);
-      this.reconnectTimer = setTimeout(async () => {
-        this.reconnectInProgress = true;
-        try {
-          await this.doConnect();
-          if (this.connectMode === "relay") {
-            const connectMsg = { type: "connect", nodeId: this.relayNodeId, token: this.connectToken };
-            this.wsSend(JSON.stringify(connectMsg));
-            await new Promise((resolve3, reject) => {
-              const cleanup = () => {
-                clearTimeout(timer);
-                this.offNotification(handler);
-                this.off("close", onClose);
-              };
-              const handler = (method, params) => {
-                if (method === "__relay_paired") {
-                  cleanup();
-                  resolve3();
-                } else if (method === "__relay_error") {
-                  cleanup();
-                  reject(new Error(`中继错误: ${params[0]}`));
-                }
-              };
-              const onClose = () => {
-                cleanup();
-                reject(new Error("重连中继连接断开"));
-              };
-              const timer = setTimeout(() => {
-                cleanup();
-                reject(new Error("重连配对超时"));
-              }, 30000);
-              this.onNotification(handler);
-              this.once("close", onClose);
-            });
-          }
-          await this.doHandshake();
-          if (this.subscribedSessions.length > 0) {
-            await this.call(Methods.SUBSCRIBE, [this.subscribedSessions]);
-          }
-          logger.info("重连成功");
-          this.reconnectAttempt = 0;
-          this.reconnectBudgetStart = 0;
-        } catch (err) {
-          logger.warn(`重连失败: ${err.message}`);
-          this.reconnectInProgress = false;
-          this.scheduleReconnect();
+    setupNotificationForwarding() {
+      const handler = (method, params) => {
+        if (method === Events.HANDLE_STATE) {
+          const [handleId, state] = params;
+          this.toolHandles.get(handleId)?._updateState(state);
           return;
         }
-        this.reconnectInProgress = false;
-      }, delay);
-    }
-    wsSend(data) {
-      try {
-        if (this.ws) {
-          this.ws.send(data);
+        if (method === Events.HANDLE_OUTPUT) {
+          const [handleId, output] = params;
+          this.toolHandles.get(handleId)?._updateOutput(output);
+          return;
         }
-      } catch (err) {
-        logger.warn(`WS 发送失败: ${err.message}`);
-      }
-    }
-    rejectAllPending(reason) {
-      for (const [id, pending] of this.pendingCalls) {
-        if (pending.timer)
-          clearTimeout(pending.timer);
-        pending.reject(new Error(reason));
-      }
-      this.pendingCalls.clear();
-    }
-    clearTimers() {
-      this.stopHeartbeat();
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = undefined;
-      }
-      if (this.sleepDetectionTimer) {
-        clearInterval(this.sleepDetectionTimer);
-        this.sleepDetectionTimer = undefined;
-      }
+        if (method === Events.HANDLE_PROGRESS) {
+          const [handleId, progress] = params;
+          this.toolHandles.get(handleId)?._updateProgress(progress);
+          return;
+        }
+        if (method === Events.HANDLE_STREAM) {
+          const [handleId, type, data] = params;
+          this.toolHandles.get(handleId)?._appendStream(type, data);
+          return;
+        }
+        if (method === Events.MODELS_CHANGED) {
+          const [, models, currentModelInfo] = params;
+          if (Array.isArray(models)) {
+            this._cachedModels = models;
+          }
+          if (currentModelInfo !== undefined) {
+            this._cachedCurrentModelInfo = currentModelInfo;
+          }
+          this.emit("models:changed", ...params);
+          return;
+        }
+        const backendEvent = IPC_TO_BACKEND_EVENT[method];
+        if (!backendEvent)
+          return;
+        if (backendEvent === "tool:execute") {
+          const [sessionId, serialized] = params;
+          const handle = new RemoteToolHandle(this.client, serialized);
+          handle.sessionId = sessionId;
+          this.toolHandles.set(handle.handleId, handle);
+          this.emit("tool:execute", sessionId, handle);
+          handle.on("state", (state) => {
+            if (["done", "error", "aborted"].includes(state)) {
+              this.toolHandles.delete(handle.handleId);
+            }
+          });
+          return;
+        }
+        this.emit(backendEvent, ...params);
+      };
+      this.notificationHandler = handler;
+      this.client.onNotification(handler);
     }
   };
 });
 
-// ../remote-connect/src/discovery.ts
-var exports_discovery = {};
-__export(exports_discovery, {
-  discoverLanInstances: () => discoverLanInstances,
-  DiscoveryListener: () => DiscoveryListener
-});
-import * as dgram from "node:dgram";
-import * as os from "node:os";
-
-class DiscoveryListener {
-  socket = null;
-  port;
-  wsPort;
-  agentName;
-  constructor(opts) {
-    this.port = opts.discoveryPort;
-    this.wsPort = opts.wsPort;
-    this.agentName = opts.agentName;
+// ../../packages/extension-sdk/dist/ipc/remote-api-proxy.js
+function callApi(client, targetAgentName, method, params) {
+  if (!targetAgentName) {
+    return client.call(method, params);
   }
-  start() {
-    return new Promise((resolve3) => {
-      let settled = false;
-      const done = () => {
-        if (!settled) {
-          settled = true;
-          resolve3();
-        }
-      };
-      try {
-        this.socket = dgram.createSocket({ type: "udp4", reuseAddr: !isWindows });
-        this.socket.on("message", (msg, rinfo) => {
-          this.handleProbe(msg, rinfo);
-        });
-        this.socket.on("error", (err) => {
-          logger2.warn(`Discovery UDP 错误: ${err.message}`);
-          if (!settled) {
-            try {
-              this.socket?.close();
-            } catch {}
-            this.socket = null;
-            done();
-          }
-        });
-        this.socket.bind(this.port, () => {
-          logger2.info(`Discovery 监听 UDP :${this.port}`);
-          done();
-        });
-      } catch (err) {
-        logger2.warn(`Discovery 启动失败: ${err.message}`);
-        if (this.socket) {
-          try {
-            this.socket.close();
-          } catch {}
-          this.socket = null;
-        }
-        done();
-      }
-    });
-  }
-  stop() {
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch {}
-      this.socket = null;
-    }
-  }
-  handleProbe(msg, rinfo) {
-    try {
-      const probe = JSON.parse(msg.toString("utf-8"));
-      if (probe.type !== "iris-discover" || probe.version !== 1)
-        return;
-      const response = {
-        type: "iris-here",
-        version: 1,
-        name: os.hostname(),
-        port: this.wsPort,
-        agent: this.agentName
-      };
-      const buf = Buffer.from(JSON.stringify(response), "utf-8");
-      this.socket?.send(buf, 0, buf.length, rinfo.port, rinfo.address);
-    } catch {}
-  }
+  return client.call(Methods.AGENT_API_CALL, [targetAgentName, method, params ?? []]);
 }
-function discoverLanInstances(discoveryPort = 9101, timeoutMs = 2000) {
-  return new Promise((resolve3) => {
-    const results = [];
-    const seen = new Set;
-    let resolved = false;
-    const localIPs = new Set;
-    try {
-      const ifaces = os.networkInterfaces();
-      for (const addrs of Object.values(ifaces)) {
-        if (!addrs)
-          continue;
-        for (const addr of addrs) {
-          if (addr.family === "IPv4")
-            localIPs.add(addr.address);
-        }
+function createRemoteApiProxy(client, agentName = "__remote__", options) {
+  const targetAgentName = options?.targetAgentName ?? agentName;
+  let _cachedSettingsTabs = [];
+  let _cachedAgents = [];
+  let _cachedPeers = [];
+  const proxy = {
+    setLogLevel(level) {
+      callApi(client, targetAgentName, Methods.API_SET_LOG_LEVEL, [level]).catch((err) => logger3.warn(`setLogLevel 失败: ${err.message}`));
+    },
+    getConsoleSettingsTabs() {
+      return _cachedSettingsTabs;
+    },
+    listAgents() {
+      return _cachedAgents;
+    },
+    agentNetwork: {
+      selfName: agentName,
+      listPeers() {
+        return _cachedPeers;
+      },
+      getPeerDescription(name) {
+        return;
+      },
+      getPeerBackendHandle(name) {
+        return new RemoteBackendHandle(client, { agentName: name });
+      },
+      getPeerAPI(name) {
+        return createRemoteApiProxy(client, name, { targetAgentName: name });
       }
-    } catch {}
-    localIPs.add("127.0.0.1");
-    let socket;
-    try {
-      socket = dgram.createSocket({ type: "udp4" });
-    } catch {
-      resolve3([]);
-      return;
+    },
+    configManager: {
+      async readEditableConfig() {
+        return callApi(client, targetAgentName, Methods.API_CONFIG_MANAGER_READ);
+      },
+      async updateEditableConfig(...args) {
+        return callApi(client, targetAgentName, Methods.API_CONFIG_MANAGER_UPDATE, args);
+      }
+    },
+    router: {
+      removeCurrentModelRequestBodyKeys(...args) {
+        callApi(client, targetAgentName, Methods.API_ROUTER_REMOVE_REQUEST_BODY_KEYS, args).catch((err) => logger3.warn(`removeCurrentModelRequestBodyKeys 失败: ${err.message}`));
+      },
+      patchCurrentModelRequestBody(...args) {
+        callApi(client, targetAgentName, Methods.API_ROUTER_PATCH_REQUEST_BODY, args).catch((err) => logger3.warn(`patchCurrentModelRequestBody 失败: ${err.message}`));
+      }
+    },
+    async initCaches() {
+      const [tabs, agents, peers] = await Promise.all([
+        callApi(client, targetAgentName, Methods.API_GET_CONSOLE_SETTINGS_TABS).catch(() => []),
+        callApi(client, targetAgentName, Methods.API_LIST_AGENTS).catch(() => []),
+        callApi(client, targetAgentName, Methods.API_AGENT_NETWORK_LIST_PEERS).catch(() => [])
+      ]);
+      _cachedSettingsTabs = tabs ?? [];
+      _cachedAgents = agents ?? [];
+      _cachedPeers = peers ?? [];
     }
-    const finish = () => {
-      if (resolved)
-        return;
-      resolved = true;
-      clearTimeout(timer);
-      try {
-        socket.close();
-      } catch {}
-      resolve3(results);
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    socket.on("message", (msg, rinfo) => {
-      if (resolved)
-        return;
-      try {
-        const resp = JSON.parse(msg.toString("utf-8"));
-        if (resp.type !== "iris-here" || resp.version !== 1)
-          return;
-        if (localIPs.has(rinfo.address))
-          return;
-        const key = `${rinfo.address}:${resp.port}`;
-        if (seen.has(key))
-          return;
-        seen.add(key);
-        results.push({
-          name: resp.name,
-          host: rinfo.address,
-          port: resp.port,
-          agent: resp.agent
-        });
-      } catch {}
-    });
-    socket.on("error", finish);
-    socket.bind(0, () => {
-      if (resolved)
-        return;
-      try {
-        socket.setBroadcast(true);
-        const probe = { type: "iris-discover", version: 1 };
-        const buf = Buffer.from(JSON.stringify(probe), "utf-8");
-        socket.send(buf, 0, buf.length, discoveryPort, "255.255.255.255");
-      } catch {
-        finish();
-      }
-    });
-  });
+  };
+  return proxy;
 }
-var logger2, isWindows;
-var init_discovery = __esm(() => {
+var logger3;
+var init_remote_api_proxy = __esm(() => {
+  init_protocol();
+  init_remote_backend_handle();
   init_logger();
-  logger2 = createLogger("Discovery");
-  isWindows = process.platform === "win32";
+  logger3 = createExtensionLogger("RemoteApiProxy");
+});
+
+// ../../packages/extension-sdk/dist/ipc/index.js
+var exports_ipc = {};
+__export(exports_ipc, {
+  isResponse: () => isResponse,
+  isRequest: () => isRequest,
+  isNotification: () => isNotification,
+  encodeFrame: () => encodeFrame,
+  createRemoteApiProxy: () => createRemoteApiProxy,
+  RemoteToolHandle: () => RemoteToolHandle,
+  RemoteBackendHandle: () => RemoteBackendHandle,
+  Methods: () => Methods,
+  IPC_TO_BACKEND_EVENT: () => IPC_TO_BACKEND_EVENT,
+  FrameDecoder: () => FrameDecoder,
+  Events: () => Events,
+  ErrorCodes: () => ErrorCodes,
+  BACKEND_EVENT_TO_IPC: () => BACKEND_EVENT_TO_IPC
+});
+var init_ipc = __esm(() => {
+  init_framing();
+  init_protocol();
+  init_remote_backend_handle();
+  init_remote_tool_handle();
+  init_remote_api_proxy();
 });
 
 // src/index.ts
@@ -1294,7 +1181,7 @@ import React11 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// node_modules/irises-extension-sdk/dist/platform.js
+// ../../packages/extension-sdk/dist/platform.js
 class BackendHandle {
   _backend;
   _listeners = new Map;
@@ -1333,8 +1220,8 @@ class BackendHandle {
     };
     return this.on(event, wrapper);
   }
-  chat(sessionId, text, images, documents, platform) {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+  chat(sessionId, text, images, documents, platform, audio, video) {
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
   isStreamEnabled() {
     return this._backend.isStreamEnabled();
@@ -1420,16 +1307,10 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
-// node_modules/irises-extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
+
+// ../../packages/extension-sdk/dist/index.js
+init_logger();
+
 // node_modules/tokenx/dist/index.mjs
 var PATTERNS = {
   whitespace: /^\s+$/,
@@ -4132,7 +4013,7 @@ import { useMemo as useMemo4 } from "react";
 import * as fs2 from "fs";
 import * as path2 from "path";
 
-// node_modules/irises-extension-sdk/dist/tool-utils.js
+// ../../packages/extension-sdk/dist/tool-utils.js
 import * as fs from "node:fs";
 import * as path from "node:path";
 function normalizeLineEndings(text) {
@@ -10386,6 +10267,8 @@ function generateCommandPattern(command) {
     return tokens[0] + " *";
   return tokens[0] + " " + tokens[1] + " *";
 }
+var REMOTE_CONNECT_WS_CLIENT_SERVICE = "remote-connect:WsIPCClient";
+var REMOTE_CONNECT_DISCOVERY_SERVICE = "remote-connect:discoverLanInstances";
 function createToolInvocationFromFunctionCall(part, index, defaultStatus, response, durationMs) {
   let status = defaultStatus;
   let result;
@@ -10523,6 +10406,7 @@ class ConsolePlatform extends PlatformAdapter {
   originalApi = null;
   originalSettingsController = null;
   originalAgentName;
+  backendListenerDisposers = [];
   _isGenerating = false;
   _pendingImages = [];
   _pendingDocuments = [];
@@ -10548,6 +10432,29 @@ class ConsolePlatform extends PlatformAdapter {
       extensions: options.extensions
     });
   }
+  getLocalExtensionService(id) {
+    const api = this.originalApi ?? this.api;
+    return api?.services?.get?.(id);
+  }
+  onBackend(event, listener) {
+    const backend = this.backend;
+    backend.on(event, listener);
+    this.backendListenerDisposers.push(() => backend.off?.(event, listener) ?? backend.removeListener?.(event, listener));
+  }
+  disposeBackendListeners() {
+    for (const dispose of this.backendListenerDisposers.splice(0)) {
+      try {
+        dispose();
+      } catch {}
+    }
+  }
+  disposeCurrentRemoteBackend() {
+    if (!this._isRemote)
+      return;
+    try {
+      this.backend.dispose?.();
+    } catch {}
+  }
   enqueueHistoryMutation(task) {
     const next = this.historyMutationQueue.then(task, task);
     this.historyMutationQueue = next.then(() => {
@@ -10560,33 +10467,33 @@ class ConsolePlatform extends PlatformAdapter {
   async start() {
     this.api?.setLogLevel?.(LogLevel.SILENT);
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
-    this.backend.on("assistant:content", (sid, content) => {
+    this.onBackend("assistant:content", (sid, content) => {
       if (sid === this.sessionId) {
         const meta = getMessageMeta(content);
         const parts = convertPartsToMessageParts(content.parts, "queued");
         this.appHandle?.finalizeAssistantParts(parts, meta);
       }
     });
-    this.backend.on("stream:start", (sid) => {
+    this.onBackend("stream:start", (sid) => {
       if (sid === this.sessionId) {
         this.currentToolIds.clear();
         this.appHandle?.startStream();
       }
     });
-    this.backend.on("stream:parts", (sid, parts) => {
+    this.onBackend("stream:parts", (sid, parts) => {
       if (sid === this.sessionId) {
         this.appHandle?.pushStreamParts(convertPartsToMessageParts(parts, "streaming"));
       }
     });
-    this.backend.on("stream:chunk", (sid, _chunk) => {
+    this.onBackend("stream:chunk", (sid, _chunk) => {
       if (sid === this.sessionId) {}
     });
-    this.backend.on("stream:end", (sid) => {
+    this.onBackend("stream:end", (sid) => {
       if (sid === this.sessionId) {
         this.appHandle?.endStream();
       }
     });
-    this.backend.on("tool:execute", (sid, handle) => {
+    this.onBackend("tool:execute", (sid, handle) => {
       if (sid !== this.sessionId)
         return;
       this._activeHandles.set(handle.id, handle);
@@ -10615,33 +10522,33 @@ class ConsolePlatform extends PlatformAdapter {
       });
       refreshUI();
     });
-    this.backend.on("error", (sid, error) => {
+    this.onBackend("error", (sid, error) => {
       if (sid === this.sessionId) {
         this.appHandle?.addErrorMessage(error);
       }
     });
-    this.backend.on("usage", (sid, usage) => {
+    this.onBackend("usage", (sid, usage) => {
       if (sid === this.sessionId) {
         this.appHandle?.setUsage(usage);
       }
     });
-    this.backend.on("retry", (sid, attempt, maxRetries, error) => {
+    this.onBackend("retry", (sid, attempt, maxRetries, error) => {
       if (sid === this.sessionId) {
         this.appHandle?.setRetryInfo({ attempt, maxRetries, error });
       }
     });
-    this.backend.on("user:token", (sid, tokenCount) => {
+    this.onBackend("user:token", (sid, tokenCount) => {
       if (sid === this.sessionId) {
         this.appHandle?.setUserTokens(tokenCount);
       }
     });
-    this.backend.on("done", (sid, durationMs) => {
+    this.onBackend("done", (sid, durationMs) => {
       if (sid === this.sessionId) {
         this.appHandle?.finalizeResponse(durationMs);
         this.appHandle?.clearNotificationContext();
       }
     });
-    this.backend.on("turn:start", (sid, _turnId, mode) => {
+    this.onBackend("turn:start", (sid, _turnId, mode) => {
       if (sid === this.sessionId) {
         if (mode === "task-notification") {
           this.appHandle?.setNotificationContext();
@@ -10650,7 +10557,7 @@ class ConsolePlatform extends PlatformAdapter {
         }
       }
     });
-    this.backend.on("agent:notification", (sid, _taskId, status, summary, taskType, silent) => {
+    this.onBackend("agent:notification", (sid, _taskId, status, summary, taskType, silent) => {
       if (sid === this.sessionId) {
         const isDelegate = taskType === "delegate";
         const isCron = taskType === "cron";
@@ -10693,12 +10600,12 @@ class ConsolePlatform extends PlatformAdapter {
         }
       }
     });
-    this.backend.on("notification:payloads", (sid, payloads) => {
+    this.onBackend("notification:payloads", (sid, payloads) => {
       if (sid === this.sessionId) {
         this.appHandle?.setNotificationPayloads(payloads);
       }
     });
-    this.backend.on("task:result", (sid, _taskId, status, description, _taskType, silent, result) => {
+    this.onBackend("task:result", (sid, _taskId, status, description, _taskType, silent, result) => {
       if (sid !== this.sessionId)
         return;
       if (!silent)
@@ -10714,7 +10621,7 @@ class ConsolePlatform extends PlatformAdapter {
       }
       this.appHandle?.addMessage("assistant", text);
     });
-    this.backend.on("auto-compact", (sid, summaryText) => {
+    this.onBackend("auto-compact", (sid, summaryText) => {
       if (sid === this.sessionId) {
         const fullText = `[Context Summary]
 
@@ -10867,6 +10774,7 @@ ${summaryText}`;
     });
   }
   async stop() {
+    this.disposeBackendListeners();
     if (!this.renderer)
       return;
     const r = this.renderer;
@@ -10928,6 +10836,9 @@ ${summaryText}`;
     await this.stop();
     const targetHandle = network.getPeerBackendHandle?.(targetName);
     if (targetHandle) {
+      if (typeof targetHandle.initCaches === "function")
+        await targetHandle.initCaches();
+      this.disposeCurrentRemoteBackend();
       this.backend = targetHandle;
       this.agentName = targetName;
       const modelInfo = targetHandle.getCurrentModelInfo?.();
@@ -10941,6 +10852,8 @@ ${summaryText}`;
       this._activeHandles.clear();
       const peerAPI = network.getPeerAPI?.(targetName);
       if (peerAPI) {
+        if (typeof peerAPI.initCaches === "function")
+          await peerAPI.initCaches();
         this.api = peerAPI;
         this.settingsController = new ConsoleSettingsController({
           backend: targetHandle,
@@ -10956,19 +10869,21 @@ ${summaryText}`;
     const { showConnectingStatus: showConnectingStatus2, showConnectSuccess: showConnectSuccess2, showConnectError: showConnectError2 } = await Promise.resolve().then(() => (init_remote_wizard(), exports_remote_wizard));
     showConnectingStatus2(url);
     try {
-      const { WsIPCClient: WsIPCClient2 } = await Promise.resolve().then(() => (init_client(), exports_client));
-      const { RemoteBackendHandle } = await import("../../src/ipc/remote-backend-handle");
-      const wsClient = new WsIPCClient2;
+      const WsIPCClient = this.getLocalExtensionService(REMOTE_CONNECT_WS_CLIENT_SERVICE);
+      if (!WsIPCClient) {
+        throw new Error("remote-connect 扩展服务不可用，请确认 remote-connect 扩展已安装并启用");
+      }
+      const { RemoteBackendHandle: RemoteBackendHandle2, createRemoteApiProxy: createRemoteApiProxy2 } = await Promise.resolve().then(() => (init_ipc(), exports_ipc));
+      const wsClient = new WsIPCClient;
       const handshake = await wsClient.connect(url, token);
       let remoteBackend;
       let remoteApi;
       try {
-        remoteBackend = new RemoteBackendHandle(wsClient);
+        remoteBackend = new RemoteBackendHandle2(wsClient);
         remoteBackend._streamEnabled = handshake.streamEnabled;
         await remoteBackend.initCaches();
         await wsClient.subscribe("*");
-        const { createRemoteApiProxy } = await import("../../src/ipc/remote-api-proxy");
-        remoteApi = createRemoteApiProxy(wsClient, handshake.agentName);
+        remoteApi = createRemoteApiProxy2(wsClient, handshake.agentName);
         if (typeof remoteApi.initCaches === "function") {
           await remoteApi.initCaches();
         }
@@ -11099,8 +11014,9 @@ ${summaryText}`;
     }));
     let discoveryPromise;
     try {
-      const { discoverLanInstances: discoverLanInstances2 } = await Promise.resolve().then(() => (init_discovery(), exports_discovery));
-      discoveryPromise = discoverLanInstances2();
+      const discoverLanInstances = this.getLocalExtensionService(REMOTE_CONNECT_DISCOVERY_SERVICE);
+      if (discoverLanInstances)
+        discoveryPromise = discoverLanInstances();
     } catch {}
     const { showRemoteConnectWizard: showRemoteConnectWizard2, showSavePrompt: showSavePrompt2 } = await Promise.resolve().then(() => (init_remote_wizard(), exports_remote_wizard));
     const result = await showRemoteConnectWizard2({
@@ -11134,6 +11050,7 @@ ${summaryText}`;
     if (!this._isRemote || !this.originalBackend)
       return;
     await this.stop();
+    this.disposeCurrentRemoteBackend();
     if (this.remoteClient) {
       this.remoteClient.disconnect();
       this.remoteClient = null;

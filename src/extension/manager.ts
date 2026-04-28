@@ -238,7 +238,7 @@ export class PluginManager {
   async unloadAll(): Promise<void> {
     for (const [name, loaded] of this.plugins) {
       try {
-        await loaded.plugin.deactivate?.();
+        await loaded.plugin.deactivate?.(loaded.context as any);
         logger.info(`插件 "${name}" 已停用`);
       } catch (err) {
         logger.error(`插件 "${name}" 停用失败:`, err);
@@ -252,7 +252,7 @@ export class PluginManager {
   async deactivateAll(): Promise<void> {
     for (const [name, loaded] of this.plugins) {
       try {
-        await loaded.plugin.deactivate?.();
+        await loaded.plugin.deactivate?.(loaded.context as any);
         logger.info(`插件 "${name}" 已反激活`);
       } catch (err) {
         logger.error(`插件 "${name}" 反激活失败:`, err);
@@ -310,7 +310,7 @@ export class PluginManager {
     }
 
     try {
-      await loaded.plugin.deactivate?.();
+      await loaded.plugin.deactivate?.(loaded.context as any);
     } catch (err) {
       logger.error(`插件 "${name}" deactivate 执行失败:`, err);
     }

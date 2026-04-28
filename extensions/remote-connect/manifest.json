@@ -8,12 +8,12 @@
   "commands": {
     "relay": {
       "description": "启动远程互联中继服务器",
-      "entry": "src/relay.ts",
+      "entry": "dist/index.mjs",
       "export": "runRelay"
     },
     "net": {
       "description": "配置远程互联",
-      "entry": "src/command.ts",
+      "entry": "dist/index.mjs",
       "export": "runNetCommand"
     }
   },

@@ -15,11 +15,11 @@
 
 /// <reference path="./ws.d.ts" />
 
-import { createLogger } from '../../../src/logger';
+import { createExtensionLogger } from 'irises-extension-sdk';
 import { constantTimeEqual } from './auth';
 import type { RelayMessage } from './types';
 
-const logger = createLogger('Relay');
+const logger = createExtensionLogger('Relay');
 
 /** 已注册的节点 */
 interface RegisteredNode {

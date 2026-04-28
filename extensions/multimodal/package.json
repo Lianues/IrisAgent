@@ -6,6 +6,14 @@
     "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm --external sharp --external jszip --external mammoth --external xlsx --external pdf-parse --external libreoffice-convert"
   },
   "dependencies": {
-    "irises-extension-sdk": "file:../../packages/extension-sdk"
+    "irises-extension-sdk": "file:../../packages/extension-sdk",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.11.0",
+    "pdf-parse": "^2.4.5",
+    "sharp": "^0.34.5",
+    "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "libreoffice-convert": "^1.8.1"
   }
 }

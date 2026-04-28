@@ -11,13 +11,13 @@
 /// <reference path="./ws.d.ts" />
 
 import net from 'node:net';
-import { createLogger } from '../../../src/logger';
-import { encodeFrame, FrameDecoder } from '../../../src/ipc/framing';
+import { createExtensionLogger } from 'irises-extension-sdk';
+import { encodeFrame, FrameDecoder } from 'irises-extension-sdk/ipc';
 import { validateAuthMessage } from './auth';
 import { DiscoveryListener } from './discovery';
 import type { NetConfig } from './types';
 
-const logger = createLogger('NetServer');
+const logger = createExtensionLogger('NetServer');
 
 /** 速率限制：每个 IP 的失败记录 */
 interface RateLimitEntry {

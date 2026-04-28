@@ -33,6 +33,16 @@
       "import": "./dist/tool-utils.js",
       "default": "./dist/tool-utils.js"
     },
+    "./ipc": {
+      "types": "./dist/ipc/index.d.ts",
+      "import": "./dist/ipc/index.js",
+      "default": "./dist/ipc/index.js"
+    },
+    "./host-events": {
+      "types": "./dist/host-events.d.ts",
+      "import": "./dist/host-events.js",
+      "default": "./dist/host-events.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

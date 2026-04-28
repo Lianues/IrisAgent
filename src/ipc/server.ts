@@ -153,7 +153,9 @@ export class IPCServer extends EventEmitter {
   /** 服务端侧注册的活跃 ToolExecutionHandle，以 handleId 为 key */
   private activeHandles = new Map<string, IPCToolHandle>();
   /** Backend 事件监听器引用（用于关闭时清理） */
-  private eventListeners: Array<{ event: string; listener: (...args: any[]) => void }> = [];
+  private eventListeners: Array<{ agentName: string; backend: IPCBackendLike; event: string; listener: (...args: any[]) => void }> = [];
+  /** 已经接入事件转发的 Backend（key 为 agentName） */
+  private forwardedBackends = new Map<string, IPCBackendLike>();
 
   constructor(options: IPCServerOptions) {
     super();
@@ -184,7 +186,7 @@ export class IPCServer extends EventEmitter {
         const addr = this.server!.address() as net.AddressInfo;
         this.port = addr.port;
         this.writeLockFile();
-        this.setupBackendEventForwarding();
+        this.setupBackendEventForwarding(this.agentName, this.backend);
         logger.info(`IPC 服务已启动: 127.0.0.1:${this.port} (agent=${this.agentName})`);
         resolve(this.port);
       });
@@ -199,10 +201,11 @@ export class IPCServer extends EventEmitter {
     this.clients.clear();
 
     // 移除 Backend 事件监听器
-    for (const { event, listener } of this.eventListeners) {
-      this.backend.removeListener(event, listener);
+    for (const { backend, event, listener } of this.eventListeners) {
+      backend.removeListener(event, listener);
     }
     this.eventListeners = [];
+    this.forwardedBackends.clear();
 
     // 关闭服务器
     if (this.server) {
@@ -411,6 +414,27 @@ export class IPCServer extends EventEmitter {
           break;
         }
 
+        // ---- Agent 路由（远程多 Agent）----
+        case Methods.AGENT_BACKEND_CALL: {
+          const targetAgentName = params[0] as string;
+          const targetMethod = params[1] as string;
+          const targetParams = Array.isArray(params[2]) ? params[2] as unknown[] : [];
+          const targetBackend = this.resolveBackend(targetAgentName);
+          if (!targetBackend) throw new Error(`目标 Agent 不存在或未就绪: ${targetAgentName}`);
+          this.ensureBackendEventForwarding(targetAgentName, targetBackend);
+          result = await this.dispatchBackendMethod(targetAgentName, targetBackend, targetMethod, targetParams);
+          break;
+        }
+        case Methods.AGENT_API_CALL: {
+          const targetAgentName = params[0] as string;
+          const targetMethod = params[1] as string;
+          const targetParams = Array.isArray(params[2]) ? params[2] as unknown[] : [];
+          const targetApi = this.resolveApi(targetAgentName);
+          if (!targetApi) throw new Error(`目标 Agent API 不存在或未就绪: ${targetAgentName}`);
+          result = await this.dispatchApiMethod(targetApi, targetMethod, targetParams);
+          break;
+        }
+
         // ---- 客户端控制 ----
         case Methods.SUBSCRIBE: {
           const sessions = params[0] as string[] | string;
@@ -511,11 +535,153 @@ export class IPCServer extends EventEmitter {
     }
   }
 
+  // ============ Agent 路由辅助 ============
+
+  private resolveBackend(agentName?: string): IPCBackendLike | undefined {
+    if (!agentName || agentName === this.agentName) return this.backend;
+    return this.api?.agentNetwork?.getPeerBackend?.(agentName) as IPCBackendLike | undefined;
+  }
+
+  private resolveApi(agentName?: string): Record<string, any> | undefined {
+    if (!agentName || agentName === this.agentName) return this.api;
+    return this.api?.agentNetwork?.getPeerAPI?.(agentName) as Record<string, any> | undefined;
+  }
+
+  private ensureBackendEventForwarding(agentName: string, backend: IPCBackendLike): void {
+    if (this.forwardedBackends.get(agentName) === backend) return;
+
+    // 目标 Agent 可能已热重载，Backend 实例发生变化。先移除旧实例监听器，
+    // 再为新实例注册，避免远程切换后收不到事件或旧事件重复转发。
+    const stale = this.eventListeners.filter(item => item.agentName === agentName);
+    for (const { backend: oldBackend, event, listener } of stale) {
+      oldBackend.removeListener(event, listener);
+    }
+    this.eventListeners = this.eventListeners.filter(item => item.agentName !== agentName);
+    this.forwardedBackends.delete(agentName);
+
+    this.setupBackendEventForwarding(agentName, backend);
+  }
+
+  private async dispatchBackendMethod(
+    agentName: string,
+    backend: IPCBackendLike,
+    method: string,
+    params: unknown[],
+  ): Promise<unknown> {
+    switch (method) {
+      case Methods.CHAT:
+        return await backend.chat(params[0] as string, params[1] as string, params[2] as unknown[] | undefined, params[3] as unknown[] | undefined, params[4] as string | undefined);
+      case Methods.CLEAR_SESSION:
+        return await backend.clearSession(params[0] as string);
+      case Methods.SWITCH_MODEL:
+        return backend.switchModel(params[0] as string, params[1] as string | undefined);
+      case Methods.LIST_MODELS:
+        return backend.listModels();
+      case Methods.LIST_SESSION_METAS:
+        return await backend.listSessionMetas();
+      case Methods.ABORT_CHAT:
+        backend.abortChat(params[0] as string);
+        return null;
+      case Methods.IS_STREAM_ENABLED:
+        return backend.isStreamEnabled();
+      case Methods.UNDO:
+        return await backend.undo?.(params[0] as string, params[1] as string | undefined) ?? null;
+      case Methods.REDO:
+        return await backend.redo?.(params[0] as string) ?? null;
+      case Methods.CLEAR_REDO:
+        backend.clearRedo?.(params[0] as string);
+        return null;
+      case Methods.GET_HISTORY:
+        return await backend.getHistory?.(params[0] as string) ?? [];
+      case Methods.LIST_SKILLS:
+        return backend.listSkills?.() ?? [];
+      case Methods.LIST_MODES:
+        return backend.listModes?.() ?? [];
+      case Methods.SWITCH_MODE:
+        return backend.switchMode?.(params[0] as string) ?? false;
+      case Methods.SUMMARIZE:
+        return await backend.summarize?.(params[0] as string);
+      case Methods.GET_TOOL_NAMES:
+        return backend.getToolNames?.() ?? [];
+      case Methods.GET_CURRENT_MODEL_INFO:
+        return backend.getCurrentModelInfo?.();
+      case Methods.GET_DISABLED_TOOLS:
+        return backend.getDisabledTools?.();
+      case Methods.GET_ACTIVE_SESSION_ID:
+        return backend.getActiveSessionId?.();
+      case Methods.RUN_COMMAND:
+        return backend.runCommand?.(params[0] as string);
+      case Methods.RESET_CONFIG:
+        return backend.resetConfigToDefaults?.();
+      case Methods.GET_AGENT_TASKS:
+        return backend.getAgentTasks?.(params[0] as string) ?? [];
+      case Methods.GET_RUNNING_AGENT_TASKS:
+        return backend.getRunningAgentTasks?.(params[0] as string) ?? [];
+      case Methods.GET_AGENT_TASK:
+        return backend.getAgentTask?.(params[0] as string);
+      case Methods.GET_TOOL_POLICIES:
+        return backend.getToolPolicies?.();
+      case Methods.GET_CWD:
+        return backend.getCwd?.();
+      case Methods.SET_CWD:
+        backend.setCwd?.(params[0] as string);
+        return null;
+      case Methods.GET_TOOL_HANDLE: {
+        const handle = backend.getToolHandle?.(params[0] as string);
+        return handle ? this.serializeHandle(handle, agentName) : null;
+      }
+      case Methods.GET_TOOL_HANDLES: {
+        const handles = backend.getToolHandles?.(params[0] as string) ?? [];
+        return handles.map((h: any) => this.serializeHandle(h, agentName));
+      }
+      default:
+        throw new Error(`不支持的远程 Agent Backend 方法: ${method}`);
+    }
+  }
+
+  private async dispatchApiMethod(
+    api: Record<string, any>,
+    method: string,
+    params: unknown[],
+  ): Promise<unknown> {
+    switch (method) {
+      case Methods.API_SET_LOG_LEVEL:
+        api.setLogLevel?.(...params);
+        return null;
+      case Methods.API_GET_CONSOLE_SETTINGS_TABS:
+        return api.getConsoleSettingsTabs?.() ?? [];
+      case Methods.API_LIST_AGENTS:
+        return api.listAgents?.() ?? [];
+      case Methods.API_AGENT_NETWORK_LIST_PEERS:
+        return api.agentNetwork?.listPeers?.() ?? [];
+      case Methods.API_AGENT_NETWORK_GET_PEER_DESCRIPTION:
+        return api.agentNetwork?.getPeerDescription?.(...params);
+      case Methods.API_CONFIG_MANAGER_READ:
+        return await api.configManager?.readEditableConfig?.();
+      case Methods.API_CONFIG_MANAGER_UPDATE:
+        return await api.configManager?.updateEditableConfig?.(...params);
+      case Methods.API_ROUTER_REMOVE_REQUEST_BODY_KEYS:
+        api.router?.removeCurrentModelRequestBodyKeys?.(...params);
+        return null;
+      case Methods.API_ROUTER_PATCH_REQUEST_BODY:
+        api.router?.patchCurrentModelRequestBody?.(...params);
+        return null;
+      default:
+        throw new Error(`不支持的远程 Agent API 方法: ${method}`);
+    }
+  }
+
+
   // ============ 工具 Handle 管理 ============
 
-  private serializeHandle(handle: any): SerializedToolHandle {
+  private makeScopedHandleId(agentName: string, handleId: string): string {
+    return `${agentName}::${handleId}`;
+  }
+
+  private serializeHandle(handle: any, agentName = this.agentName): SerializedToolHandle {
     const snapshot = handle.getSnapshot?.() ?? {};
-    const handleId = handle.id ?? snapshot.id ?? '';
+    const rawHandleId = handle.id ?? snapshot.id ?? '';
+    const handleId = this.makeScopedHandleId(agentName, rawHandleId);
 
     // 幂等：如果已经注册过，直接返回序列化结果，不重复注册事件
     if (!this.activeHandles.has(handleId)) {
@@ -588,7 +754,10 @@ export class IPCServer extends EventEmitter {
 
   // ============ Backend 事件转发 ============
 
-  private setupBackendEventForwarding(): void {
+  private setupBackendEventForwarding(agentName: string, backend: IPCBackendLike): void {
+    if (this.forwardedBackends.get(agentName) === backend) return;
+    this.forwardedBackends.set(agentName, backend);
+
     for (const [backendEvent, ipcEvent] of Object.entries(BACKEND_EVENT_TO_IPC)) {
       const listener = (...args: any[]) => {
         // Backend 事件的第一个参数始终是 sessionId
@@ -597,7 +766,7 @@ export class IPCServer extends EventEmitter {
         // 特殊处理 tool:execute 事件：序列化 ToolExecutionHandle
         if (backendEvent === 'tool:execute') {
           const handle = args[1];
-          const serialized = this.serializeHandle(handle);
+          const serialized = this.serializeHandle(handle, agentName);
           this.broadcastToSubscribed(sessionId, {
             jsonrpc: '2.0',
             method: ipcEvent,
@@ -613,8 +782,8 @@ export class IPCServer extends EventEmitter {
         });
       };
 
-      this.backend.on(backendEvent, listener);
-      this.eventListeners.push({ event: backendEvent, listener });
+      backend.on(backendEvent, listener);
+      this.eventListeners.push({ agentName, backend, event: backendEvent, listener });
     }
   }
 

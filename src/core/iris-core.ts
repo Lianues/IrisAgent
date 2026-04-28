@@ -437,6 +437,8 @@ export class IrisCore {
         { key: 'host', label: '监听地址', type: 'text', defaultValue: '0.0.0.0' },
         { key: 'token', label: '认证 Token', type: 'text',
           description: '远程连接密码（首次自动生成，可自行修改）' },
+        { key: 'gatewayAgent', label: '远程网关 Agent', type: 'text', defaultValue: 'master',
+          description: '多 Agent 模式下只由该 Agent 启动远程入口；连接后仍可在远程端切换其他 Agent' },
         { key: 'relay.url', label: '中继地址', type: 'text',
           description: '不在同一局域网时，通过公网中继服务器连接（如 wss://relay.example.com:9001）' },
         { key: 'relay.nodeId', label: '中继节点 ID', type: 'text',
@@ -458,6 +460,7 @@ export class IrisCore {
           port: net.port ?? 9100,
           host: net.host ?? '0.0.0.0',
           token,
+          gatewayAgent: net.gatewayAgent ?? 'master',
           'relay.url': net.relay?.url ?? '',
           'relay.nodeId': net.relay?.nodeId ?? '',
           'relay.token': net.relay?.token ?? '',
@@ -470,6 +473,7 @@ export class IrisCore {
             port: values.port,
             host: values.host,
             token: values.token,
+            gatewayAgent: values.gatewayAgent,
           };
           if (values['relay.url'] || values['relay.nodeId'] || values['relay.token']) {
             netUpdate.relay = {

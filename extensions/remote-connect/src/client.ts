@@ -11,13 +11,11 @@
 /// <reference path="./ws.d.ts" />
 
 import { EventEmitter } from 'node:events';
-import { createLogger } from '../../../src/logger';
-import type { IPCClientLike } from '../../../src/ipc/client-like';
-import type { HandshakeResult } from '../../../src/ipc/protocol';
-import { Methods } from '../../../src/ipc/protocol';
+import { createExtensionLogger } from 'irises-extension-sdk';
+import { Methods, type HandshakeResult, type IPCClientLike } from 'irises-extension-sdk/ipc';
 import type { RelayMessage } from './types';
 
-const logger = createLogger('WsIPCClient');
+const logger = createExtensionLogger('WsIPCClient');
 
 /** 待处理的 RPC 请求 */
 interface PendingCall {

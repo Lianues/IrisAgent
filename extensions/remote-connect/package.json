@@ -6,6 +6,11 @@
     "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm"
   },
   "dependencies": {
-    "irises-extension-sdk": "file:../../packages/extension-sdk"
+    "irises-extension-sdk": "file:../../packages/extension-sdk",
+    "ws": "^8.18.3",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.13"
   }
 }

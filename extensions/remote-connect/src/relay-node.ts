@@ -11,11 +11,11 @@
 /// <reference path="./ws.d.ts" />
 
 import net from 'node:net';
-import { createLogger } from '../../../src/logger';
-import { encodeFrame, FrameDecoder } from '../../../src/ipc/framing';
+import { createExtensionLogger } from 'irises-extension-sdk';
+import { encodeFrame, FrameDecoder } from 'irises-extension-sdk/ipc';
 import type { RelayConfig, RelayMessage } from './types';
 
-const logger = createLogger('RelayNode');
+const logger = createExtensionLogger('RelayNode');
 
 /** 重连配置 */
 const RECONNECT_BASE_DELAY = 2000;

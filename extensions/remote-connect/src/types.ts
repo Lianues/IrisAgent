@@ -17,6 +17,11 @@ export interface NetConfig {
   token?: string;
   /** 中继配置 */
   relay?: RelayConfig;
+  /**
+   * 多 Agent 模式下由哪个 Agent 负责启动唯一远程入口。
+   * 默认 master；其他 Agent 即使继承 net.enabled 也不会重复开服。
+   */
+  gatewayAgent?: string;
   /** 已保存的远程连接 */
   remotes?: Record<string, RemoteEntry>;
 }

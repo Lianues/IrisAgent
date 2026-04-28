@@ -14,9 +14,8 @@
  */
 
 import { definePlugin } from 'irises-extension-sdk';
-import type { PluginContext } from 'irises-extension-sdk';
-import { hostEvents } from '../../../src/core/host-events';
-import type { IpcReadyEvent, AgentStoppingEvent } from '../../../src/core/host-events';
+import { hostEvents, type IpcReadyEvent, type AgentStoppingEvent } from 'irises-extension-sdk/host-events';
+import type { Disposable, IrisAPI, PluginContext } from 'irises-extension-sdk';
 import { NetServer } from './server';
 import { RelayNodeClient } from './relay-node';
 import { parseNetConfig, NET_CONFIG_TEMPLATE } from './config';
@@ -25,20 +24,36 @@ import { discoverLanInstances } from './discovery';
 
 // ── 插件状态（模块级，跨 activate / deactivate） ──
 
+const DEFAULT_GATEWAY_AGENT = 'master';
+
 const netServers = new Map<string, NetServer>();
 const relayNodes = new Map<string, RelayNodeClient>();
-let pluginCtx: PluginContext | null = null;
+interface AgentRuntimeRefs {
+  ctx: PluginContext;
+  api: IrisAPI;
+}
+
+const contextsByAgent = new Map<string, AgentRuntimeRefs>();
+const serviceDisposersByRegistry = new WeakMap<object, Disposable[]>();
+const agentNamesByContext = new WeakMap<object, string>();
+let hostEventListenersRegistered = false;
 
 // ── 事件处理 ──
 
 async function onIpcReady({ agentName, ipcPort }: IpcReadyEvent) {
-  if (!pluginCtx) return;
+  const runtime = contextsByAgent.get(agentName);
+  if (!runtime) return;
+  const { ctx } = runtime;
 
-  const rawConfig = pluginCtx.readConfigSection('net');
+  const rawConfig = readNetConfig(runtime);
   const config = parseNetConfig(rawConfig);
   if (!config) return;
 
-  const logger = pluginCtx.getLogger();
+  const gatewayAgent = config.gatewayAgent ?? DEFAULT_GATEWAY_AGENT;
+  if (agentName !== gatewayAgent) return;
+  if (netServers.has(agentName) || relayNodes.has(agentName)) return;
+
+  const logger = ctx.getLogger();
 
   // 启动直连 WS 桥接服务器
   if (config.enabled && config.token) {
@@ -66,6 +81,16 @@ async function onIpcReady({ agentName, ipcPort }: IpcReadyEvent) {
   }
 }
 
+function readNetConfig(runtime: AgentRuntimeRefs): Record<string, unknown> | undefined {
+  const merged = runtime.api.configManager?.readEditableConfig?.() as Record<string, unknown> | undefined;
+  const fromMerged = merged?.net;
+  if (fromMerged && typeof fromMerged === 'object' && !Array.isArray(fromMerged)) {
+    return fromMerged as Record<string, unknown>;
+  }
+  return runtime.ctx.readConfigSection('net');
+}
+
+
 function onAgentStopping({ agentName }: AgentStoppingEvent) {
   const netServer = netServers.get(agentName);
   if (netServer) {
@@ -77,6 +102,7 @@ function onAgentStopping({ agentName }: AgentStoppingEvent) {
     relayNode.stop();
     relayNodes.delete(agentName);
   }
+  contextsByAgent.delete(agentName);
 }
 
 function onHostShutdown() {
@@ -88,7 +114,41 @@ function onHostShutdown() {
     node.stop();
   }
   relayNodes.clear();
+  contextsByAgent.clear();
 }
+
+function registerInteropServices(ctx: PluginContext): void {
+  const sr = ctx.getServiceRegistry();
+  registerInteropServicesForRegistry(sr);
+}
+
+function registerInteropServicesForRegistry(
+  sr: ReturnType<PluginContext['getServiceRegistry']>,
+): void {
+  const registryKey = sr as unknown as object;
+  serviceDisposersByRegistry.get(registryKey)?.forEach(d => d.dispose());
+  serviceDisposersByRegistry.set(registryKey, [
+    sr.register('remote-connect:WsIPCClient', WsIPCClient),
+    sr.register('remote-connect:discoverLanInstances', discoverLanInstances),
+  ]);
+}
+
+function ensureHostEventListeners(): void {
+  if (hostEventListenersRegistered) return;
+  hostEventListenersRegistered = true;
+  hostEvents.on('ipc-ready', onIpcReady);
+  hostEvents.on('agent-stopping', onAgentStopping);
+  hostEvents.on('host-shutdown', onHostShutdown);
+}
+
+function disposeInteropServices(ctx: PluginContext): void {
+  const registryKey = ctx.getServiceRegistry() as unknown as object;
+  serviceDisposersByRegistry.get(registryKey)?.forEach(d => d.dispose());
+  serviceDisposersByRegistry.delete(registryKey);
+}
+
+
+
 
 // ── 插件定义 ──
 
@@ -98,31 +158,29 @@ export default definePlugin({
   description: '远程互联插件 — 跨设备远程控制 Iris 实例（直连 / 中继 / 局域网发现）',
 
   activate(ctx: PluginContext) {
-    pluginCtx = ctx;
-
     // 释放默认配置文件
     ctx.ensureConfigFile('net.yaml', NET_CONFIG_TEMPLATE);
 
+    ctx.onReady((api) => {
+      contextsByAgent.set(api.agentName ?? 'master', { ctx, api });
+      agentNamesByContext.set(ctx as unknown as object, api.agentName ?? 'master');
+    });
+
     // 注册服务供其他扩展使用（如 console 的远程连接向导）
-    const sr = ctx.getServiceRegistry();
-    sr.register('remote-connect:WsIPCClient', WsIPCClient);
-    sr.register('remote-connect:discoverLanInstances', discoverLanInstances);
+    registerInteropServices(ctx);
 
     // 监听宿主生命周期事件
-    hostEvents.on('ipc-ready', onIpcReady);
-    hostEvents.on('agent-stopping', onAgentStopping);
-    hostEvents.on('host-shutdown', onHostShutdown);
+    ensureHostEventListeners();
   },
 
-  async deactivate() {
-    // 移除事件监听
-    hostEvents.off('ipc-ready', onIpcReady);
-    hostEvents.off('agent-stopping', onAgentStopping);
-    hostEvents.off('host-shutdown', onHostShutdown);
-
-    // 停止所有服务
-    onHostShutdown();
-    pluginCtx = null;
+  async deactivate(ctx?: PluginContext) {
+    if (!ctx) return;
+    const agentName = agentNamesByContext.get(ctx as unknown as object);
+    disposeInteropServices(ctx);
+    if (agentName) {
+      onAgentStopping({ agentName });
+      agentNamesByContext.delete(ctx as unknown as object);
+    }
   },
 });
 

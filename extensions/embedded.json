@@ -22,6 +22,9 @@
       "external": ["@opentui/core", "@opentui/react", "react"]
     },
     {
+      "name": "remote-connect"
+    },
+    {
       "name": "telegram"
     }
   ]
