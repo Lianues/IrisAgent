@@ -11,6 +11,8 @@ import { parseSystemConfig } from './system';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import type { BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PluginManager } from '../extension/manager';
+import type { DeliveryRegistry } from '../extension/delivery-registry';
+import { parseDeliveryConfig } from './delivery';
 
 export interface RuntimeConfigReloadContext {
   backend: Backend;
@@ -18,6 +20,7 @@ export interface RuntimeConfigReloadContext {
   /** Skill 文件系统扫描使用的数据目录（多 Agent 模式下为 agent 专属目录） */
   dataDir?: string;
   extensions?: Pick<BootstrapExtensionRegistry, 'llmProviders'>;
+  deliveryRegistry?: DeliveryRegistry;
 }
 
 export interface RuntimeConfigSummary {
@@ -55,6 +58,12 @@ export async function applyRuntimeConfigReload(
     // 热重载 Skill 定义
     skills: systemConfig.skills,
   });
+
+  if (context.deliveryRegistry) {
+    const deliveryConfig = parseDeliveryConfig(mergedConfig.delivery);
+    context.deliveryRegistry.replaceBindings(deliveryConfig.bindings);
+    context.deliveryRegistry.replacePolicies(deliveryConfig.policies);
+  }
 
   // ---- 触发插件 onConfigReload 钩子 ----
   // MCP 热重载由 mcp 扩展自身通过 onConfigReload 钩子处理

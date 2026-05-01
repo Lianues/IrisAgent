@@ -1,0 +1,19 @@
+{
+  "name": "virtual-lover",
+  "version": "0.1.0",
+  "description": "Virtual companion prompt workshop for Iris; memory is managed by Iris memory extension",
+  "plugin": {
+    "entry": "dist/index.mjs"
+  },
+  "distribution": {
+    "files": [
+      "dist/index.mjs",
+      "package.json",
+      "templates/default/prompt/persona.md",
+      "templates/default/prompt/rules.md",
+      "templates/default/prompt/style.md",
+      "web/app.js",
+      "web/styles.css"
+    ]
+  }
+}

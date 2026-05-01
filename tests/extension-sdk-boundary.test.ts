@@ -32,6 +32,18 @@ function listTypeScriptFiles(dir: string): string[] {
 }
 
 function extractBareSpecifiers(content: string): string[] {
+  return extractImportSpecifiers(content)
+    .filter((specifier) => {
+      if (!specifier || specifier.startsWith('.') || specifier.startsWith('/')) return false;
+      if (specifier.startsWith('node:')) return false;
+      return !builtinModuleSet.has(normalizePackageName(specifier));
+    })
+    .map(normalizePackageName)
+    .filter((specifier, index, array) => array.indexOf(specifier) === index)
+    .sort();
+}
+
+function extractImportSpecifiers(content: string): string[] {
   const matches = new Set<string>();
   const staticImportRe = /(?:import|export)\s+(?:[^'"`]+?\s+from\s+)?['"]([^'"`]+)['"]/g;
   const dynamicImportRe = /import\(\s*['"]([^'"`]+)['"]\s*\)/g;
@@ -40,11 +52,8 @@ function extractBareSpecifiers(content: string): string[] {
     let match: RegExpExecArray | null;
     while ((match = regex.exec(content)) !== null) {
       const specifier = match[1];
-      if (!specifier || specifier.startsWith('.') || specifier.startsWith('/')) continue;
-      if (specifier.startsWith('node:')) continue;
-      const packageName = normalizePackageName(specifier);
-      if (builtinModuleSet.has(packageName)) continue;
-      matches.add(packageName);
+      if (!specifier) continue;
+      matches.add(specifier);
     }
   }
 
@@ -106,6 +115,39 @@ describe('extension sdk boundary', () => {
         const content = fs.readFileSync(filePath, 'utf8');
         if (/(?:from|import\()\s*['"](?:\.\.\/)+src\//.test(content)) {
           offenders.push(path.relative(process.cwd(), filePath));
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('virtual-lover extension 应只依赖 SDK、Node 内置模块与自身源码', () => {
+    const extensionDir = path.join(extensionsRoot, 'virtual-lover');
+    const srcDir = path.join(extensionDir, 'src');
+    if (!fs.existsSync(srcDir)) return;
+
+    const allowedBarePackages = new Set(['irises-extension-sdk']);
+    const srcRootWithSep = `${srcDir}${path.sep}`;
+    const offenders: string[] = [];
+
+    for (const filePath of listTypeScriptFiles(srcDir)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      for (const specifier of extractImportSpecifiers(content)) {
+        if (specifier.startsWith('.') || specifier.startsWith('/')) {
+          const resolved = path.resolve(path.dirname(filePath), specifier);
+          if (resolved !== srcDir && !resolved.startsWith(srcRootWithSep)) {
+            offenders.push(`${path.relative(process.cwd(), filePath)} -> ${specifier}`);
+          }
+          continue;
+        }
+
+        if (specifier.startsWith('node:')) continue;
+
+        const packageName = normalizePackageName(specifier);
+        if (builtinModuleSet.has(packageName)) continue;
+        if (!allowedBarePackages.has(packageName)) {
+          offenders.push(`${path.relative(process.cwd(), filePath)} -> ${specifier}`);
         }
       }
     }

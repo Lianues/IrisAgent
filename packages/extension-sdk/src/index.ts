@@ -88,6 +88,66 @@ export type {
   ToolFilter,
 } from './mode.js';
 
+export {
+  DELIVERY_REGISTRY_SERVICE_ID,
+} from './delivery.js';
+
+export type {
+  DeliveryAttachmentInput,
+  DeliveryBinding,
+  DeliveryBindingAttachmentInput,
+  DeliveryBindingTextInput,
+  DeliveryActivityInput,
+  DeliveryCapabilities,
+  DeliveryPolicy,
+  DeliveryPolicyDecision,
+  DeliveryPolicyEvaluateInput,
+  DeliveryProviderInfo,
+  DeliveryProviderAttachmentInput,
+  DeliveryProviderTextInput,
+  DeliveryQuietHoursPolicy,
+  DeliveryQuietHoursWindow,
+  DeliveryRegistryService,
+  DeliveryRecentTarget,
+  DeliveryRecentTargetFilter,
+  DeliveryRecentActivityPolicy,
+  DeliveryResult,
+  DeliverySendRecord,
+  DeliverySendRecordFilter,
+  DeliveryTarget,
+  DeliveryTargetKind,
+  DeliveryTextInput,
+  PlatformDeliveryProvider,
+} from './delivery.js';
+
+export {
+  SCHEDULER_SERVICE_ID,
+} from './scheduler.js';
+
+export type {
+  SchedulerCreateJobInput,
+  SchedulerDeliveryConfig,
+  SchedulerJob,
+  SchedulerJobFilter,
+  SchedulerScheduleConfig,
+  SchedulerService,
+  SchedulerUpdateJobInput,
+} from './scheduler.js';
+
+export {
+  ENVIRONMENT_CONTEXT_SERVICE_ID,
+  WEATHER_SERVICE_ID,
+} from './environment.js';
+
+export type {
+  EnvironmentContextInput,
+  EnvironmentContextResult,
+  EnvironmentContextService,
+  WeatherQueryInput,
+  WeatherResult,
+  WeatherService,
+} from './environment.js';
+
 export type {
   FunctionDeclaration,
   ToolDefinition,

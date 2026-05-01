@@ -1,14 +1,31 @@
 {
   "name": "memory",
   "version": "0.1.0",
-  "description": "长期记忆系统 — SQLite + FTS5 全文检索",
+  "description": "长期记忆系统 — 主记忆与命名 memory spaces",
   "plugin": {
     "entry": "dist/index.mjs"
   },
   "distribution": {
     "files": [
       ".gitignore",
+      "dist/base.js",
+      "dist/config-template.js",
+      "dist/config.js",
+      "dist/consolidation.js",
+      "dist/extract.js",
+      "dist/index.js",
       "dist/index.mjs",
+      "dist/prompts/consolidation.js",
+      "dist/prompts/extract.js",
+      "dist/prompts/session-notes.js",
+      "dist/prompts/system-rules.js",
+      "dist/retrieval.js",
+      "dist/session-memory.js",
+      "dist/sqlite/index.js",
+      "dist/tools.js",
+      "dist/types.js",
+      "dist/utils/age.js",
+      "dist/utils/manifest.js",
       "package.json"
     ]
   }

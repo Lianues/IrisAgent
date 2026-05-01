@@ -47,7 +47,7 @@ export interface ConsoleSettingsField {
   /** 显示标签 */
   label: string;
   /** 字段类型 */
-  type: 'toggle' | 'number' | 'text' | 'select' | 'readonly';
+  type: 'toggle' | 'number' | 'text' | 'select' | 'readonly' | 'action';
   /** select 类型的可选项 */
   options?: { label: string; value: string }[];
   /** 默认值 */
@@ -56,6 +56,15 @@ export interface ConsoleSettingsField {
   description?: string;
   /** 分组标题（非空时在该字段前插入 section 头行） */
   group?: string;
+}
+
+export interface ConsoleSettingsActionResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  data?: unknown;
+  /** 可选：action 执行后回填到当前 tab 草稿值中，用户仍需按 S 保存。 */
+  patch?: Record<string, unknown>;
 }
 
 /** 插件注册的 Console Settings Tab 页定义 */
@@ -72,6 +81,8 @@ export interface ConsoleSettingsTabDefinition {
   onLoad: () => Promise<Record<string, unknown>>;
   /** 保存修改后的值（用户按 S 保存时调用） */
   onSave: (values: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+  /** 执行 action 字段（用户在 action row 上按 Enter 时调用） */
+  onAction?: (actionKey: string, values: Record<string, unknown>) => Promise<ConsoleSettingsActionResult> | ConsoleSettingsActionResult;
 }
 
 export { LogLevel };
@@ -95,6 +106,8 @@ export interface RawEditableConfig {
   sub_agents?: Record<string, unknown>;
   plugins?: unknown[];
   summary?: Record<string, unknown>;
+  delivery?: Record<string, unknown>;
+  virtual_lover?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

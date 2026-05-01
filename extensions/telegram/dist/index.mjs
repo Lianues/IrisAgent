@@ -8961,8 +8961,8 @@ class BackendHandle {
     };
     return this.on(event, wrapper);
   }
-  chat(sessionId, text, images, documents, platform) {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+  chat(sessionId, text, images, documents, platform, audio, video) {
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
   isStreamEnabled() {
     return this._backend.isStreamEnabled();
@@ -9086,6 +9086,8 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
+// ../../packages/extension-sdk/src/delivery.ts
+var DELIVERY_REGISTRY_SERVICE_ID = "delivery.registry";
 // ../../packages/extension-sdk/src/platform-utils.ts
 function autoApproveHandle(handle) {
   if (handle.status === "awaiting_approval") {
@@ -9163,6 +9165,32 @@ function buildTelegramSessionTarget(params) {
     chatKey,
     scope
   };
+}
+function parseTelegramSessionTarget(sessionId) {
+  const structured = sessionId.match(/^telegram-(dm|group)-(-?\d+)(?:-thread-(\d+))?$/);
+  if (structured) {
+    const scope = structured[1];
+    const chatId = Number(structured[2]);
+    const threadId = structured[3] ? Number(structured[3]) : undefined;
+    return {
+      sessionId,
+      chatId,
+      threadId,
+      chatKey: threadId ? `${scope}:${chatId}:thread:${threadId}` : `${scope}:${chatId}`,
+      scope
+    };
+  }
+  const legacy = sessionId.match(/^telegram-(-?\d+)$/);
+  if (legacy) {
+    const chatId = Number(legacy[1]);
+    return {
+      sessionId,
+      chatId,
+      chatKey: `legacy:${chatId}`,
+      scope: "group"
+    };
+  }
+  throw new Error(`无法解析 Telegram sessionId: ${sessionId}`);
 }
 
 // src/client.ts
@@ -9261,6 +9289,42 @@ class TelegramClient {
     }
     const inputFile = new import_grammy.InputFile(photo);
     const msg = await this.bot.api.sendPhoto(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+  async sendDocument(target, file, fileName, caption) {
+    const extra = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new import_grammy.InputFile(file, fileName) : new import_grammy.InputFile(file);
+    const msg = await this.bot.api.sendDocument(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+  async sendAudio(target, audio, fileName, caption) {
+    const extra = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new import_grammy.InputFile(audio, fileName) : new import_grammy.InputFile(audio);
+    const msg = await this.bot.api.sendAudio(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+  async sendVoice(target, voice, fileName, caption) {
+    const extra = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new import_grammy.InputFile(voice, fileName) : new import_grammy.InputFile(voice);
+    const msg = await this.bot.api.sendVoice(target.chatId, inputFile, extra);
     return msg.message_id;
   }
   async getFile(fileId) {
@@ -9571,6 +9635,7 @@ var DEDUP_CLEANUP_INTERVAL_MS = 60000;
 class TelegramPlatform extends PlatformAdapter {
   backend;
   config;
+  api;
   client;
   messageHandler;
   messageBuilder;
@@ -9579,14 +9644,16 @@ class TelegramPlatform extends PlatformAdapter {
   showToolStatus;
   pairingStore;
   pairingGuard;
+  deliveryProviderDisposable;
   chatStates = new Map;
   activeSessions = new Map;
   messageDedup = new Set;
   lastDedupCleanup = Date.now();
-  constructor(backend, config) {
+  constructor(backend, config, api) {
     super();
     this.backend = backend;
     this.config = config;
+    this.api = api;
     this.client = new TelegramClient(config);
     this.messageHandler = new TelegramMessageHandler(config);
     this.messageBuilder = new TelegramMessageBuilder;
@@ -9606,6 +9673,7 @@ class TelegramPlatform extends PlatformAdapter {
     this.client.onMessage((ctx) => this.handleMessage(ctx));
     this.client.onCallbackQuery((ctx) => this.handleCallbackQuery(ctx));
     await this.client.start();
+    this.registerDeliveryProvider();
     logger5.info("Telegram 平台已启动");
     this.backend.on("task:result", (sid, _taskId, status, description, _taskType, silent, result) => {
       if (!silent)
@@ -9640,6 +9708,8 @@ ${preview}`;
     }
   }
   async stop() {
+    this.deliveryProviderDisposable?.dispose();
+    this.deliveryProviderDisposable = undefined;
     for (const cs of this.chatStates.values()) {
       if (cs.stream?.throttleTimer)
         clearTimeout(cs.stream.throttleTimer);
@@ -9648,6 +9718,69 @@ ${preview}`;
     this.messageDedup.clear();
     await this.client.stop();
     logger5.info("Telegram 平台已停止");
+  }
+  registerDeliveryProvider() {
+    if (this.deliveryProviderDisposable)
+      return;
+    const registry = this.api?.services.get(DELIVERY_REGISTRY_SERVICE_ID);
+    if (!registry) {
+      logger5.warn("delivery.registry service 不可用，Telegram 主动投递能力未注册");
+      return;
+    }
+    const provider = {
+      platform: "telegram",
+      capabilities: {
+        text: true,
+        image: true,
+        audio: true,
+        file: true
+      },
+      sendText: async ({ target, text, sessionId }) => {
+        const telegramTarget = this.resolveDeliveryTarget(target, sessionId);
+        await this.client.sendText(telegramTarget, text);
+        return {
+          ok: true,
+          platform: "telegram",
+          raw: { target: telegramTarget }
+        };
+      },
+      sendAttachment: async ({ target, attachment, caption, sessionId }) => {
+        const telegramTarget = this.resolveDeliveryTarget(target, sessionId);
+        const fileName = attachment.fileName ?? attachment.filename;
+        const finalCaption = caption ?? attachment.caption;
+        let messageId;
+        const attachmentType = String(attachment.type ?? "").toLowerCase();
+        const mimeType = String(attachment.mimeType ?? "").toLowerCase();
+        if (attachmentType === "image" || mimeType.startsWith("image/")) {
+          messageId = await this.client.sendPhoto(telegramTarget, attachment.data, finalCaption);
+        } else if (attachmentType === "voice" || mimeType.includes("ogg")) {
+          messageId = await this.client.sendVoice(telegramTarget, attachment.data, fileName, finalCaption);
+        } else if (attachmentType === "audio" || mimeType.startsWith("audio/")) {
+          messageId = await this.client.sendAudio(telegramTarget, attachment.data, fileName, finalCaption);
+        } else {
+          messageId = await this.client.sendDocument(telegramTarget, attachment.data, fileName, finalCaption);
+        }
+        return { ok: true, platform: "telegram", messageId: String(messageId), raw: { target: telegramTarget } };
+      }
+    };
+    this.deliveryProviderDisposable = registry.registerProvider(provider);
+    logger5.info("Telegram delivery provider 已注册（text/image/audio/file）");
+  }
+  resolveDeliveryTarget(target, sessionId) {
+    if (sessionId) {
+      try {
+        return parseTelegramSessionTarget(sessionId);
+      } catch {}
+    }
+    const chatId = Number(target.id);
+    if (!Number.isFinite(chatId)) {
+      throw new Error(`Telegram delivery target.id 不是有效 chatId: ${target.id}`);
+    }
+    const threadId = typeof target.threadId === "string" && target.threadId.trim() ? Number(target.threadId) : undefined;
+    if (threadId !== undefined && !Number.isFinite(threadId)) {
+      throw new Error(`Telegram delivery target.threadId 无效: ${target.threadId}`);
+    }
+    return buildTelegramSessionTarget({ chatId, isPrivate: target.kind === "user", threadId });
   }
   getSessionId(chatKey) {
     let sid = this.activeSessions.get(chatKey);
@@ -9922,6 +10055,17 @@ ${line}` : line;
       }
       const cs = this.getChatState(parsed.session);
       cs.lastInboundMessageId = parsed.messageId;
+      this.api?.services.get(DELIVERY_REGISTRY_SERVICE_ID)?.recordActivity({
+        platform: "telegram",
+        target: {
+          kind: "chat",
+          id: String(parsed.session.chatId),
+          threadId: parsed.session.threadId != null ? String(parsed.session.threadId) : undefined
+        },
+        label: parsed.session.scope === "dm" ? `Telegram DM ${parsed.session.chatId}` : `Telegram Chat ${parsed.session.chatId}`,
+        occurredAt: Date.now(),
+        metadata: { sessionId: parsed.session.sessionId }
+      });
       if (parsed.text.startsWith("/")) {
         const handled = await this.handleCommand(parsed.text, cs);
         if (handled)
@@ -10329,7 +10473,7 @@ var createTelegramPlatform = definePlatformFactory({
     pairing: raw.pairing,
     eventBus: context.eventBus
   }),
-  create: (backend, config) => new TelegramPlatform(backend, config)
+  create: (backend, config, context) => new TelegramPlatform(backend, config, context.api)
 });
 var src_default = createTelegramPlatform;
 export {

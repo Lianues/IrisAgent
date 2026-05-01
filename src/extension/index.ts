@@ -29,6 +29,7 @@ export { PluginEventBus } from './event-bus';
 export { patchMethod, patchPrototype } from './patch';
 export { ServiceRegistry } from './service-registry';
 export { ConfigContributionRegistry } from './config-contribution-registry';
+export { DeliveryRegistry } from './delivery-registry';
 
 // ── 宿主内部类型 ─────────────────────────────────────────────
 

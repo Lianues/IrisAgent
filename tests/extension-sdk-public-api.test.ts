@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createPluginLogger,
+  DELIVERY_REGISTRY_SERVICE_ID,
   definePlatformFactory,
   definePlugin,
+  ENVIRONMENT_CONTEXT_SERVICE_ID,
+  SCHEDULER_SERVICE_ID,
+  WEATHER_SERVICE_ID,
   type IrisBackendLike,
 } from '../packages/extension-sdk/src';
 
@@ -68,5 +72,18 @@ describe('extension sdk public api', () => {
     expect(typeof logger.warn).toBe('function');
     expect(typeof logger.error).toBe('function');
     expect(typeof logger.debug).toBe('function');
+  });
+
+  it('应导出 delivery registry service id', () => {
+    expect(DELIVERY_REGISTRY_SERVICE_ID).toBe('delivery.registry');
+  });
+
+  it('应导出 scheduler service id', () => {
+    expect(SCHEDULER_SERVICE_ID).toBe('scheduler.tasks');
+  });
+
+  it('应导出 environment/weather service id', () => {
+    expect(ENVIRONMENT_CONTEXT_SERVICE_ID).toBe('environment.context');
+    expect(WEATHER_SERVICE_ID).toBe('environment.weather');
   });
 });

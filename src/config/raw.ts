@@ -22,6 +22,8 @@ export const CONFIG_SECTION_KEYS = [
   'sub_agents',
   'summary',
   'plugins',
+  'delivery',
+  'virtual_lover',
   'net',
 ] as const;
 

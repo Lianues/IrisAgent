@@ -9,13 +9,28 @@
  */
 
 import { PairingGuard, PairingStore } from 'irises-extension-sdk/pairing';
-import { PlatformAdapter, autoApproveHandle, createExtensionLogger, definePlatformFactory, type DocumentInput, type ImageInput, type IrisBackendLike, type ToolAttachment } from 'irises-extension-sdk';
+import {
+  DELIVERY_REGISTRY_SERVICE_ID,
+  PlatformAdapter,
+  autoApproveHandle,
+  createExtensionLogger,
+  definePlatformFactory,
+  type DeliveryRegistryService,
+  type DeliveryTarget,
+  type Disposable,
+  type DocumentInput,
+  type ImageInput,
+  type IrisAPI,
+  type IrisBackendLike,
+  type PlatformDeliveryProvider,
+  type ToolAttachment,
+} from 'irises-extension-sdk';
 import { TelegramClient } from './client';
 import { TelegramCommandRouter } from './commands';
 import { TelegramMediaService } from './media';
 import { TelegramMessageBuilder, formatTelegramToolLine } from './message-builder';
 import { TelegramMessageHandler } from './message-handler';
-import { ParsedTelegramMessage, TelegramConfig, TelegramPendingMessage, TelegramSessionTarget, buildTelegramSessionTarget } from './types';
+import { ParsedTelegramMessage, TelegramConfig, TelegramPendingMessage, TelegramSessionTarget, buildTelegramSessionTarget, parseTelegramSessionTarget } from './types';
 
 const logger = createExtensionLogger('TelegramExtension', 'Telegram');
 
@@ -75,6 +90,7 @@ export class TelegramPlatform extends PlatformAdapter {
   private readonly showToolStatus: boolean;
   private readonly pairingStore: PairingStore | null;
   private readonly pairingGuard: PairingGuard | null;
+  private deliveryProviderDisposable?: Disposable;
 
   private readonly chatStates = new Map<string, TelegramChatState>();
   /** chatKey → sessionId 映射，/new 时更新 */
@@ -84,7 +100,7 @@ export class TelegramPlatform extends PlatformAdapter {
   /** Phase 7：去重集合上次清理时间 */
   private lastDedupCleanup = Date.now();
 
-  constructor(private readonly backend: IrisBackendLike, private readonly config: TelegramConfig) {
+  constructor(private readonly backend: IrisBackendLike, private readonly config: TelegramConfig, private readonly api?: IrisAPI) {
     super();
     this.client = new TelegramClient(config);
     this.messageHandler = new TelegramMessageHandler(config);
@@ -108,6 +124,7 @@ export class TelegramPlatform extends PlatformAdapter {
     this.client.onMessage((ctx) => this.handleMessage(ctx));
     this.client.onCallbackQuery((ctx) => this.handleCallbackQuery(ctx));
     await this.client.start();
+    this.registerDeliveryProvider();
     logger.info('Telegram 平台已启动');
 
     // ── 轻量级任务结果广播：通用的 task:result 通道 ──
@@ -159,6 +176,8 @@ export class TelegramPlatform extends PlatformAdapter {
   }
 
   async stop(): Promise<void> {
+    this.deliveryProviderDisposable?.dispose();
+    this.deliveryProviderDisposable = undefined;
     // 清理所有节流定时器
     for (const cs of this.chatStates.values()) {
       if (cs.stream?.throttleTimer) clearTimeout(cs.stream.throttleTimer);
@@ -167,6 +186,74 @@ export class TelegramPlatform extends PlatformAdapter {
     this.messageDedup.clear();
     await this.client.stop();
     logger.info('Telegram 平台已停止');
+  }
+
+  private registerDeliveryProvider(): void {
+    if (this.deliveryProviderDisposable) return;
+    const registry = this.api?.services.get<DeliveryRegistryService>(DELIVERY_REGISTRY_SERVICE_ID);
+    if (!registry) {
+      logger.warn('delivery.registry service 不可用，Telegram 主动投递能力未注册');
+      return;
+    }
+
+    const provider: PlatformDeliveryProvider = {
+      platform: 'telegram',
+      capabilities: {
+        text: true,
+        image: true,
+        audio: true,
+        file: true,
+      },
+      sendText: async ({ target, text, sessionId }) => {
+        const telegramTarget = this.resolveDeliveryTarget(target, sessionId);
+        await this.client.sendText(telegramTarget, text);
+        return {
+          ok: true,
+          platform: 'telegram',
+          raw: { target: telegramTarget },
+        };
+      },
+      sendAttachment: async ({ target, attachment, caption, sessionId }) => {
+        const telegramTarget = this.resolveDeliveryTarget(target, sessionId);
+        const fileName = attachment.fileName ?? attachment.filename;
+        const finalCaption = caption ?? attachment.caption;
+        let messageId: number;
+        const attachmentType = String(attachment.type ?? '').toLowerCase();
+        const mimeType = String(attachment.mimeType ?? '').toLowerCase();
+        if (attachmentType === 'image' || mimeType.startsWith('image/')) {
+          messageId = await this.client.sendPhoto(telegramTarget, attachment.data, finalCaption);
+        } else if (attachmentType === 'voice' || mimeType.includes('ogg')) {
+          messageId = await this.client.sendVoice(telegramTarget, attachment.data, fileName, finalCaption);
+        } else if (attachmentType === 'audio' || mimeType.startsWith('audio/')) {
+          messageId = await this.client.sendAudio(telegramTarget, attachment.data, fileName, finalCaption);
+        } else {
+          messageId = await this.client.sendDocument(telegramTarget, attachment.data, fileName, finalCaption);
+        }
+        return { ok: true, platform: 'telegram', messageId: String(messageId), raw: { target: telegramTarget } };
+      },
+    };
+
+    this.deliveryProviderDisposable = registry.registerProvider(provider);
+    logger.info('Telegram delivery provider 已注册（text/image/audio/file）');
+  }
+
+  private resolveDeliveryTarget(target: DeliveryTarget, sessionId?: string): TelegramSessionTarget {
+    if (sessionId) {
+      try {
+        return parseTelegramSessionTarget(sessionId);
+      } catch {
+        // sessionId 不可解析时继续使用显式 target。
+      }
+    }
+    const chatId = Number(target.id);
+    if (!Number.isFinite(chatId)) {
+      throw new Error(`Telegram delivery target.id 不是有效 chatId: ${target.id}`);
+    }
+    const threadId = typeof target.threadId === 'string' && target.threadId.trim() ? Number(target.threadId) : undefined;
+    if (threadId !== undefined && !Number.isFinite(threadId)) {
+      throw new Error(`Telegram delivery target.threadId 无效: ${target.threadId}`);
+    }
+    return buildTelegramSessionTarget({ chatId, isPrivate: target.kind === 'user', threadId });
   }
 
   // ---- Session 管理 ----
@@ -531,6 +618,22 @@ export class TelegramPlatform extends PlatformAdapter {
 
       const cs = this.getChatState(parsed.session);
       cs.lastInboundMessageId = parsed.messageId;
+
+      this.api?.services.get<DeliveryRegistryService>(DELIVERY_REGISTRY_SERVICE_ID)?.recordActivity({
+        platform: 'telegram',
+        target: {
+          // Telegram 的 delivery target 约定使用 kind=chat/room + chatId。
+          // 私聊同样使用 chatId 作为投递目标，保持与 delivery binding 的默认写法一致。
+          kind: 'chat',
+          id: String(parsed.session.chatId),
+          threadId: parsed.session.threadId != null ? String(parsed.session.threadId) : undefined,
+        },
+        label: parsed.session.scope === 'dm'
+          ? `Telegram DM ${parsed.session.chatId}`
+          : `Telegram Chat ${parsed.session.chatId}`,
+        occurredAt: Date.now(),
+        metadata: { sessionId: parsed.session.sessionId },
+      });
 
       // 命令处理（任何时候都能用，不受 busy 影响）
       if (parsed.text.startsWith('/')) {
@@ -1013,7 +1116,7 @@ export const createTelegramPlatform = definePlatformFactory<TelegramConfig, Tele
     // cron 通知已改走 backend agent:notification 事件，不再依赖 eventBus。
     eventBus: (context as any).eventBus,
   }),
-  create: (backend, config) => new TelegramPlatform(backend, config),
+  create: (backend, config, context) => new TelegramPlatform(backend, config, context.api as IrisAPI | undefined),
 });
 
 export default createTelegramPlatform;

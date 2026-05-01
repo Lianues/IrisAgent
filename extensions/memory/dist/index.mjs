@@ -221,173 +221,6 @@ var init_session_memory = __esm(() => {
   lastExtractTokens = new Map;
 });
 
-// src/prompts/extract.ts
-function buildExtractionPrompt(recentMessages, existingManifest, messageCount) {
-  return `You are the memory extraction agent. Analyze the conversation below and extract durable information worth remembering across future conversations.
-
-## Existing memories
-
-${existingManifest || "(no memories yet)"}
-
-Check this list before saving — update an existing memory (via memory_update) rather than creating a duplicate.
-
-## Instructions
-
-1. Analyze the last ~${messageCount} messages for information worth persisting
-2. Save memories using the memory_add or memory_update tools
-3. Each memory must have: name, description, type, and content
-4. Types: user (profile/preferences), feedback (behavioral guidance), project (context/decisions), reference (external pointers)
-
-## What to extract
-
-- User preferences, role, expertise level
-- Behavioral guidance ("do this", "don't do that") — including confirmations of successful approaches
-- Project decisions, deadlines, constraints with motivation
-- External resource pointers (URLs, project trackers, channels)
-- For feedback/project types, include **Why:** and **How to apply:** lines in content
-
-## What NOT to extract
-
-- Code patterns, architecture, file paths — derivable from reading code
-- Git history, recent changes — use git log
-- Debugging solutions — the fix is in the code
-- Ephemeral task details, current conversation state
-- Information already captured in existing memories (update instead)
-
-## Recent conversation
-
-${recentMessages}
-
-Now extract any durable memories from this conversation. If nothing is worth saving, respond with "No new memories to extract." and do not call any tools.`;
-}
-
-// src/extract.ts
-var exports_extract = {};
-__export(exports_extract, {
-  runMemoryExtraction: () => runMemoryExtraction
-});
-async function runMemoryExtraction(ctx) {
-  const { api, provider, sessionId, modelName, logger } = ctx;
-  const history = await api.storage.getHistory(sessionId);
-  if (!history || history.length < 2)
-    return 0;
-  const recentCount = Math.min(history.length, 20);
-  const recentMessages = history.slice(-recentCount);
-  const conversationText = recentMessages.map((msg) => {
-    const role = msg.role === "user" ? "User" : "Assistant";
-    const text = extractTextFromParts(msg.parts);
-    if (!text)
-      return "";
-    const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
-    return `${role}: ${truncated}`;
-  }).filter(Boolean).join(`
-
-`);
-  if (!conversationText.trim())
-    return 0;
-  const manifest = await provider.buildManifest();
-  const manifestText = formatManifestCompact(manifest);
-  const extractionPrompt = buildExtractionPrompt(conversationText, manifestText, recentCount);
-  const toolDeclarations = [
-    {
-      name: "memory_add",
-      description: "Save a new memory",
-      parameters: {
-        type: "object",
-        properties: {
-          content: { type: "string", description: "Memory content" },
-          name: { type: "string", description: "Short identifier" },
-          description: { type: "string", description: "One-line description" },
-          type: { type: "string", enum: ["user", "feedback", "project", "reference"] }
-        },
-        required: ["content", "name", "type"]
-      }
-    },
-    {
-      name: "memory_update",
-      description: "Update an existing memory",
-      parameters: {
-        type: "object",
-        properties: {
-          id: { type: "number", description: "Memory ID to update" },
-          content: { type: "string" },
-          name: { type: "string" },
-          description: { type: "string" },
-          type: { type: "string", enum: ["user", "feedback", "project", "reference"] }
-        },
-        required: ["id"]
-      }
-    }
-  ];
-  try {
-    const response = await api.router.chat({
-      contents: [
-        { role: "user", parts: [{ text: extractionPrompt }] }
-      ],
-      tools: [{ functionDeclarations: toolDeclarations }],
-      systemInstruction: {
-        parts: [{ text: "You are a memory extraction agent. Analyze conversations and extract durable memories using the provided tools. Be selective — only save information that will be useful in future conversations." }]
-      }
-    }, modelName);
-    const responseContent = response.content ?? response;
-    const parts = responseContent.parts ?? [];
-    let savedCount = 0;
-    for (const part of parts) {
-      if (!part.functionCall)
-        continue;
-      const { name: toolName, args } = part.functionCall;
-      if (!args)
-        continue;
-      try {
-        if (toolName === "memory_add") {
-          const content = args.content;
-          if (typeof content !== "string" || !content.trim())
-            continue;
-          await provider.add({
-            content,
-            name: args.name || "",
-            description: args.description || "",
-            type: parseMemoryType(args.type) ?? "reference"
-          });
-          savedCount++;
-        } else if (toolName === "memory_update") {
-          const rawId = args.id;
-          const id = typeof rawId === "number" ? rawId : typeof rawId === "string" ? Number(rawId) : NaN;
-          if (!Number.isFinite(id))
-            continue;
-          const ok = await provider.update({
-            id,
-            content: args.content,
-            name: args.name,
-            description: args.description,
-            type: parseMemoryType(args.type)
-          });
-          if (ok)
-            savedCount++;
-        }
-      } catch (err) {
-        logger.warn(`提取记忆工具调用失败 (${toolName}):`, err);
-      }
-    }
-    if (savedCount > 0) {
-      logger.info(`自动提取完成: ${savedCount} 条记忆已保存/更新 (session=${sessionId})`);
-    }
-    return savedCount;
-  } catch (err) {
-    logger.warn("自动提取 LLM 调用失败:", err);
-    return 0;
-  }
-}
-function extractTextFromParts(parts) {
-  if (!parts)
-    return "";
-  return parts.filter((p) => p.text).map((p) => p.text).join(`
-`);
-}
-var init_extract = __esm(() => {
-  init_types();
-});
-
 // src/prompts/consolidation.ts
 function buildConsolidationPrompt(manifestText, memoryDetails) {
   return `You are the memory consolidation agent. Your job is to review all existing memories and improve their organization.
@@ -618,8 +451,175 @@ var init_consolidation = __esm(() => {
   init_types();
 });
 
+// src/prompts/extract.ts
+function buildExtractionPrompt(recentMessages, existingManifest, messageCount) {
+  return `You are the memory extraction agent. Analyze the conversation below and extract durable information worth remembering across future conversations.
+
+## Existing memories
+
+${existingManifest || "(no memories yet)"}
+
+Check this list before saving — update an existing memory (via memory_update) rather than creating a duplicate.
+
+## Instructions
+
+1. Analyze the last ~${messageCount} messages for information worth persisting
+2. Save memories using the memory_add or memory_update tools
+3. Each memory must have: name, description, type, and content
+4. Types: user (profile/preferences), feedback (behavioral guidance), project (context/decisions), reference (external pointers)
+
+## What to extract
+
+- User preferences, role, expertise level
+- Behavioral guidance ("do this", "don't do that") — including confirmations of successful approaches
+- Project decisions, deadlines, constraints with motivation
+- External resource pointers (URLs, project trackers, channels)
+- For feedback/project types, include **Why:** and **How to apply:** lines in content
+
+## What NOT to extract
+
+- Code patterns, architecture, file paths — derivable from reading code
+- Git history, recent changes — use git log
+- Debugging solutions — the fix is in the code
+- Ephemeral task details, current conversation state
+- Information already captured in existing memories (update instead)
+
+## Recent conversation
+
+${recentMessages}
+
+Now extract any durable memories from this conversation. If nothing is worth saving, respond with "No new memories to extract." and do not call any tools.`;
+}
+
+// src/extract.ts
+var exports_extract = {};
+__export(exports_extract, {
+  runMemoryExtraction: () => runMemoryExtraction
+});
+async function runMemoryExtraction(ctx) {
+  const { api, provider, sessionId, modelName, logger } = ctx;
+  const history = await api.storage.getHistory(sessionId);
+  if (!history || history.length < 2)
+    return 0;
+  const recentCount = Math.min(history.length, 20);
+  const recentMessages = history.slice(-recentCount);
+  const conversationText = recentMessages.map((msg) => {
+    const role = msg.role === "user" ? "User" : "Assistant";
+    const text = extractTextFromParts(msg.parts);
+    if (!text)
+      return "";
+    const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
+    return `${role}: ${truncated}`;
+  }).filter(Boolean).join(`
+
+`);
+  if (!conversationText.trim())
+    return 0;
+  const manifest = await provider.buildManifest();
+  const manifestText = formatManifestCompact(manifest);
+  const extractionPrompt = buildExtractionPrompt(conversationText, manifestText, recentCount);
+  const toolDeclarations = [
+    {
+      name: "memory_add",
+      description: "Save a new memory",
+      parameters: {
+        type: "object",
+        properties: {
+          content: { type: "string", description: "Memory content" },
+          name: { type: "string", description: "Short identifier" },
+          description: { type: "string", description: "One-line description" },
+          type: { type: "string", enum: ["user", "feedback", "project", "reference"] }
+        },
+        required: ["content", "name", "type"]
+      }
+    },
+    {
+      name: "memory_update",
+      description: "Update an existing memory",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Memory ID to update" },
+          content: { type: "string" },
+          name: { type: "string" },
+          description: { type: "string" },
+          type: { type: "string", enum: ["user", "feedback", "project", "reference"] }
+        },
+        required: ["id"]
+      }
+    }
+  ];
+  try {
+    const response = await api.router.chat({
+      contents: [
+        { role: "user", parts: [{ text: extractionPrompt }] }
+      ],
+      tools: [{ functionDeclarations: toolDeclarations }],
+      systemInstruction: {
+        parts: [{ text: "You are a memory extraction agent. Analyze conversations and extract durable memories using the provided tools. Be selective — only save information that will be useful in future conversations." }]
+      }
+    }, modelName);
+    const responseContent = response.content ?? response;
+    const parts = responseContent.parts ?? [];
+    let savedCount = 0;
+    for (const part of parts) {
+      if (!part.functionCall)
+        continue;
+      const { name: toolName, args } = part.functionCall;
+      if (!args)
+        continue;
+      try {
+        if (toolName === "memory_add") {
+          const content = args.content;
+          if (typeof content !== "string" || !content.trim())
+            continue;
+          await provider.add({
+            content,
+            name: args.name || "",
+            description: args.description || "",
+            type: parseMemoryType(args.type) ?? "reference"
+          });
+          savedCount++;
+        } else if (toolName === "memory_update") {
+          const rawId = args.id;
+          const id = typeof rawId === "number" ? rawId : typeof rawId === "string" ? Number(rawId) : NaN;
+          if (!Number.isFinite(id))
+            continue;
+          const ok = await provider.update({
+            id,
+            content: args.content,
+            name: args.name,
+            description: args.description,
+            type: parseMemoryType(args.type)
+          });
+          if (ok)
+            savedCount++;
+        }
+      } catch (err) {
+        logger.warn(`提取记忆工具调用失败 (${toolName}):`, err);
+      }
+    }
+    if (savedCount > 0) {
+      logger.info(`自动提取完成: ${savedCount} 条记忆已保存/更新 (session=${sessionId})`);
+    }
+    return savedCount;
+  } catch (err) {
+    logger.warn("自动提取 LLM 调用失败:", err);
+    return 0;
+  }
+}
+function extractTextFromParts(parts) {
+  if (!parts)
+    return "";
+  return parts.filter((p) => p.text).map((p) => p.text).join(`
+`);
+}
+var init_extract = __esm(() => {
+  init_types();
+});
+
 // src/index.ts
-import * as path2 from "path";
+import * as path3 from "path";
 // ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
@@ -1045,17 +1045,18 @@ var DEFAULT_CONFIG_TEMPLATE = `# 记忆插件配置
 # 启用后，LLM 可通过 memory_search / memory_add / memory_update / memory_delete 工具
 # 读写长期记忆，实现跨会话的信息持久化。
 #
-# 存储后端：SQLite + FTS5 全文检索
-# 数据库文件默认存放在数据目录下的 memory.db
+# 当前存储实现使用文件型 MemoryStore（保留 memory.db 文件名以兼容旧配置）。
+# 默认主记忆文件存放在 memory extension 数据目录下的 memory.db。
 
-# 是否启用记忆
+# 是否启用主记忆
+# 注意：即使主记忆 disabled，memory.spaces service 仍可为其他 extension 提供独立记忆空间。
 enabled: false
 
 # 指定记忆系统内部调用使用的模型（如提取、归纳、检索）。
 # 不填则默认使用当前活动模型。
 # model: gpt-4o-mini
 
-# 数据库路径（相对于数据目录，或绝对路径）
+# 主记忆数据库路径（相对于 memory extension 数据目录，或绝对路径）
 # dbPath: ./memory.db
 
 # ── 自动提取（对话结束后自动从对话中提取值得记住的信息）──
@@ -1065,9 +1066,9 @@ extractInterval: 1
 
 # ── 智能检索（每轮对话前自动注入相关记忆到上下文）──
 autoRecall: true
-# 每轮注入记忆的最大大小（KB）
+# 每轮注入记忆的最大大小（bytes）
 maxContextBytes: 20480
-# 会话级记忆注入总上限（KB）
+# 会话级记忆注入总上限（bytes）
 sessionBudgetBytes: 61440
 
 # ── 跨会话归纳（定期整理合并冗余记忆）──
@@ -1077,9 +1078,37 @@ consolidation:
   minHours: 24
   # 触发归纳的最少新会话数
   minSessions: 3
+
+# ── 命名记忆空间 ─────────────────────────────────────
+# 用于需要独立记忆域的 extension，例如 virtual-lover。
+# 每个 space 使用独立存储文件，与主记忆互不污染；dream/consolidation 也可单独执行。
+spaces:
+  virtual-lover:
+    enabled: true
+    dbPath: spaces/virtual-lover/memory.db
+    # 不填则继承顶层 model
+    model: ''
+    maxContextBytes: 20480
+    smallSetThreshold: 15
+    consolidation:
+      enabled: true
+      minHours: 24
+      minSessions: 3
 `;
 
 // src/config.ts
+var DEFAULT_CONSOLIDATION_CONFIG = {
+  enabled: true,
+  minHours: 24,
+  minSessions: 3
+};
+var DEFAULT_SPACE_CONFIG = {
+  enabled: true,
+  model: undefined,
+  maxContextBytes: 20480,
+  smallSetThreshold: 15,
+  consolidation: DEFAULT_CONSOLIDATION_CONFIG
+};
 var DEFAULT_CONFIG = {
   enabled: false,
   model: undefined,
@@ -1089,31 +1118,60 @@ var DEFAULT_CONFIG = {
   maxContextBytes: 20480,
   sessionBudgetBytes: 61440,
   smallSetThreshold: 15,
-  consolidation: {
-    enabled: true,
-    minHours: 24,
-    minSessions: 3
-  }
+  consolidation: DEFAULT_CONSOLIDATION_CONFIG,
+  spaces: {}
 };
 function resolveConfig(rawSection, pluginConfig) {
   const source = rawSection ?? pluginConfig ?? {};
-  const consolidationRaw = source.consolidation ?? {};
-  return {
+  const consolidation = resolveConsolidationConfig(source.consolidation, DEFAULT_CONFIG.consolidation);
+  const baseConfig = {
     enabled: toBool(source.enabled, DEFAULT_CONFIG.enabled),
-    dbPath: source.dbPath,
-    model: source.model || DEFAULT_CONFIG.model,
+    dbPath: toOptionalString(source.dbPath),
+    model: toOptionalString(source.model) || DEFAULT_CONFIG.model,
     autoExtract: toBool(source.autoExtract, DEFAULT_CONFIG.autoExtract),
     extractInterval: toNum(source.extractInterval, DEFAULT_CONFIG.extractInterval),
     autoRecall: toBool(source.autoRecall, DEFAULT_CONFIG.autoRecall),
     maxContextBytes: toNum(source.maxContextBytes, DEFAULT_CONFIG.maxContextBytes),
     sessionBudgetBytes: toNum(source.sessionBudgetBytes, DEFAULT_CONFIG.sessionBudgetBytes),
     smallSetThreshold: toNum(source.smallSetThreshold, DEFAULT_CONFIG.smallSetThreshold),
-    consolidation: {
-      enabled: toBool(consolidationRaw.enabled, DEFAULT_CONFIG.consolidation.enabled),
-      minHours: toNum(consolidationRaw.minHours, DEFAULT_CONFIG.consolidation.minHours),
-      minSessions: toNum(consolidationRaw.minSessions, DEFAULT_CONFIG.consolidation.minSessions)
-    }
+    consolidation,
+    spaces: {}
   };
+  baseConfig.spaces = resolveSpacesConfig(source.spaces, baseConfig);
+  return baseConfig;
+}
+function resolveSpaceConfig(raw, base = DEFAULT_CONFIG) {
+  const source = isRecord(raw) ? raw : {};
+  return {
+    enabled: toBool(source.enabled, DEFAULT_SPACE_CONFIG.enabled),
+    dbPath: toOptionalString(source.dbPath),
+    model: toOptionalString(source.model) || base.model || DEFAULT_SPACE_CONFIG.model,
+    maxContextBytes: toNum(source.maxContextBytes, base.maxContextBytes ?? DEFAULT_SPACE_CONFIG.maxContextBytes),
+    smallSetThreshold: toNum(source.smallSetThreshold, base.smallSetThreshold ?? DEFAULT_SPACE_CONFIG.smallSetThreshold),
+    consolidation: resolveConsolidationConfig(source.consolidation, base.consolidation ?? DEFAULT_SPACE_CONFIG.consolidation)
+  };
+}
+function resolveSpacesConfig(raw, base) {
+  if (!isRecord(raw))
+    return {};
+  const spaces = {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (!id.trim())
+      continue;
+    spaces[id] = resolveSpaceConfig(value, base);
+  }
+  return spaces;
+}
+function resolveConsolidationConfig(raw, fallback) {
+  const source = isRecord(raw) ? raw : {};
+  return {
+    enabled: toBool(source.enabled, fallback.enabled),
+    minHours: toNum(source.minHours, fallback.minHours),
+    minSessions: toNum(source.minSessions, fallback.minSessions)
+  };
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function toBool(val, def) {
   if (typeof val === "boolean")
@@ -1123,7 +1181,13 @@ function toBool(val, def) {
 function toNum(val, def) {
   if (typeof val === "number" && !isNaN(val))
     return val;
+  const parsed = typeof val === "string" ? Number(val) : NaN;
+  if (Number.isFinite(parsed))
+    return parsed;
   return def;
+}
+function toOptionalString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 // src/prompts/system-rules.ts
@@ -1399,6 +1463,215 @@ function formatRelevantMemories(memories, maxBytes) {
 
 // src/index.ts
 init_session_memory();
+
+// src/service.ts
+import * as path2 from "path";
+init_consolidation();
+init_extract();
+var MEMORY_SPACES_SERVICE_ID = "memory.spaces";
+function createMemorySpacesService(options) {
+  return new MemorySpacesServiceImpl(options);
+}
+
+class MemorySpacesServiceImpl {
+  options;
+  config;
+  spaces = new Map;
+  constructor(options) {
+    this.options = options;
+    this.config = options.config;
+  }
+  updateConfig(config) {
+    this.config = config;
+    for (const [id, handle] of this.spaces) {
+      const spaceConfig = this.resolveConfigForSpace(id);
+      handle.updateConfig(spaceConfig, this.config, resolveSpaceDbPath(this.options.dataDir, id, spaceConfig));
+    }
+  }
+  getSpace(id) {
+    const safeId = sanitizeSpaceId(id);
+    const configured = this.config.spaces[safeId];
+    if (!configured || configured.enabled === false)
+      return;
+    return this.getOrCreateSpace(safeId);
+  }
+  getOrCreateSpace(id) {
+    const safeId = sanitizeSpaceId(id);
+    const existing = this.spaces.get(safeId);
+    if (existing)
+      return existing;
+    const config = this.resolveConfigForSpace(safeId);
+    const dbPath = resolveSpaceDbPath(this.options.dataDir, safeId, config);
+    const handle = new MemorySpaceHandleImpl({
+      id: safeId,
+      dbPath,
+      api: this.options.api,
+      config,
+      baseConfig: this.config,
+      logger: this.options.logger
+    });
+    this.spaces.set(safeId, handle);
+    return handle;
+  }
+  listSpaces() {
+    const ids = new Set([
+      ...Object.keys(this.config.spaces),
+      ...this.spaces.keys()
+    ]);
+    return Array.from(ids).sort().map((id) => {
+      const config = this.resolveConfigForSpace(id);
+      return {
+        id,
+        enabled: config.enabled,
+        dbPath: resolveSpaceDbPath(this.options.dataDir, id, config)
+      };
+    });
+  }
+  resolveConfigForSpace(id) {
+    return this.config.spaces[id] ?? resolveSpaceConfig(undefined, this.config);
+  }
+}
+
+class MemorySpaceHandleImpl {
+  options;
+  provider;
+  config;
+  baseConfig;
+  constructor(options) {
+    this.options = options;
+    this.config = options.config;
+    this.baseConfig = options.baseConfig;
+  }
+  get id() {
+    return this.options.id;
+  }
+  get dbPath() {
+    return this.options.dbPath;
+  }
+  updateConfig(config, baseConfig, dbPath) {
+    this.config = config;
+    this.baseConfig = baseConfig;
+    if (this.options.dbPath !== dbPath) {
+      this.options.dbPath = dbPath;
+      this.provider = undefined;
+    }
+  }
+  async search(query, options = {}) {
+    this.assertEnabled();
+    const results = await this.getProvider().search(query, options.limit ?? 10);
+    return options.type ? results.filter((item) => item.type === options.type) : results;
+  }
+  async add(input) {
+    this.assertEnabled();
+    return await this.getProvider().add(input);
+  }
+  async update(input) {
+    this.assertEnabled();
+    return await this.getProvider().update(input);
+  }
+  async delete(id) {
+    this.assertEnabled();
+    return await this.getProvider().delete(id);
+  }
+  async list(type, limit) {
+    this.assertEnabled();
+    return await this.getProvider().list(type, limit);
+  }
+  async count() {
+    this.assertEnabled();
+    return await this.getProvider().count();
+  }
+  async buildContext(input) {
+    this.assertEnabled();
+    const userText = input.userText.trim();
+    if (!userText)
+      return;
+    const result = await findAndFormatRelevantMemories({
+      router: this.options.api.router,
+      provider: this.getProvider(),
+      userText,
+      maxBytes: input.maxBytes ?? this.config.maxContextBytes,
+      modelName: input.modelName ?? this.config.model ?? this.baseConfig.model,
+      surfaced: new Set,
+      smallSetThreshold: this.config.smallSetThreshold,
+      logger: this.options.logger
+    });
+    if (!result)
+      return;
+    return {
+      text: result.text,
+      bytes: result.bytes,
+      ids: result.ids,
+      userIds: result.userIds
+    };
+  }
+  async extractFromSession(input) {
+    this.assertEnabled();
+    const sessionId = input.sessionId.trim();
+    if (!sessionId)
+      return { ok: false, savedCount: 0, message: "sessionId 不能为空" };
+    const savedCount = await runMemoryExtraction({
+      api: this.options.api,
+      provider: this.getProvider(),
+      sessionId,
+      modelName: input.modelName ?? this.config.model ?? this.baseConfig.model,
+      logger: this.options.logger
+    });
+    return {
+      ok: true,
+      savedCount,
+      message: savedCount > 0 ? `已从会话 ${sessionId} 提取 ${savedCount} 条记忆。` : `会话 ${sessionId} 没有提取到新的持久记忆。`
+    };
+  }
+  async dream() {
+    this.assertEnabled();
+    return await forceRunConsolidation({
+      api: this.options.api,
+      provider: this.getProvider(),
+      config: this.toPluginConfig(),
+      logger: this.options.logger
+    });
+  }
+  getProvider() {
+    if (!this.provider) {
+      this.provider = new MemoryStore(this.options.dbPath, {
+        info: (...args) => this.options.logger.info(`[space:${this.id}]`, ...args),
+        warn: (...args) => this.options.logger.warn(`[space:${this.id}]`, ...args)
+      });
+    }
+    return this.provider;
+  }
+  assertEnabled() {
+    if (!this.config.enabled) {
+      throw new Error(`记忆空间 "${this.id}" 未启用`);
+    }
+  }
+  toPluginConfig() {
+    return {
+      ...this.baseConfig,
+      model: this.config.model ?? this.baseConfig.model,
+      maxContextBytes: this.config.maxContextBytes,
+      smallSetThreshold: this.config.smallSetThreshold,
+      consolidation: this.config.consolidation
+    };
+  }
+}
+function resolveSpaceDbPath(dataDir, id, config) {
+  const configured = config.dbPath?.trim();
+  if (configured) {
+    return path2.isAbsolute(configured) ? configured : path2.resolve(dataDir, configured);
+  }
+  return path2.join(dataDir, "spaces", id, "memory.db");
+}
+function sanitizeSpaceId(id) {
+  const normalized = id.trim();
+  if (!/^[a-zA-Z0-9_-]+$/.test(normalized)) {
+    throw new Error(`无效 memory space id: ${id}`);
+  }
+  return normalized;
+}
+
+// src/index.ts
 var logger = createPluginLogger("memory");
 var agentStateMap = new Map;
 function getSessionState(state, sessionId) {
@@ -1422,7 +1695,7 @@ async function enableMemorySystem(state, ctx) {
   if (!state.cachedApi || state.activeProvider)
     return;
   const effectiveDataDir = ctx.getDataDir();
-  const dataPath = state.currentConfig.dbPath ? path2.resolve(effectiveDataDir, state.currentConfig.dbPath) : path2.join(effectiveDataDir, "memory.db");
+  const dataPath = state.currentConfig.dbPath ? path3.resolve(effectiveDataDir, state.currentConfig.dbPath) : path3.join(effectiveDataDir, "memory.db");
   state.activeProvider = new MemoryStore(dataPath, logger);
   const tools = createMemoryTools(state.activeProvider);
   state.cachedApi.tools.registerAll(tools);
@@ -1495,6 +1768,7 @@ function registerSettingsTab(state, api, ctx) {
   registerTab({
     id: "memory",
     label: "记忆",
+    icon: "05",
     fields: [
       {
         key: "enabled",
@@ -1617,11 +1891,23 @@ var src_default = definePlugin({
       autoRecallEnabled: true,
       systemRulesPart: undefined,
       fallbackSessionId: undefined,
-      sessionStates: new Map
+      sessionStates: new Map,
+      memorySpacesService: undefined,
+      memorySpacesDisposable: undefined
     };
     agentStateMap.set(instanceKey, state);
     ctx.onReady(async (api) => {
       state.cachedApi = api;
+      state.memorySpacesService = createMemorySpacesService({
+        api,
+        dataDir: ctx.getDataDir(),
+        config: state.currentConfig,
+        logger
+      });
+      state.memorySpacesDisposable = api.services.register(MEMORY_SPACES_SERVICE_ID, state.memorySpacesService, {
+        description: "Named memory spaces with isolated stores and per-space dream/consolidation",
+        version: "1.0.0"
+      });
       registerSettingsTab(state, api, ctx);
       if (state.currentConfig.enabled) {
         await enableMemorySystem(state, ctx);
@@ -1655,7 +1941,7 @@ var src_default = definePlugin({
         const s = getSessionState(state, sid);
         if (s.memoryInjectedThisRound)
           return;
-        if (round > 0)
+        if (round > 1)
           return;
         s.memoryInjectedThisRound = true;
         const sysInst = request.systemInstruction;
@@ -1797,6 +2083,7 @@ var src_default = definePlugin({
         const newConfig = resolveConfig(newRaw, undefined);
         const wasEnabled = state.currentConfig.enabled;
         state.currentConfig = newConfig;
+        state.memorySpacesService?.updateConfig(newConfig);
         if (!newConfig.enabled) {
           if (wasEnabled)
             disableMemorySystem(state, ctx);
@@ -1814,6 +2101,8 @@ var src_default = definePlugin({
       state.cachedApi = undefined;
       state.fallbackSessionId = undefined;
       state.systemRulesPart = undefined;
+      state.memorySpacesDisposable?.dispose();
+      state.memorySpacesDisposable = undefined;
       state.sessionStates.clear();
     }
     agentStateMap.clear();

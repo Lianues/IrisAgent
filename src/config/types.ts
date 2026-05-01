@@ -290,6 +290,11 @@ export interface SummaryConfig {
   userPrompt: string;
 }
 
+export interface DeliveryConfig {
+  bindings: import('irises-extension-sdk').DeliveryBinding[];
+  policies: import('irises-extension-sdk').DeliveryPolicy[];
+}
+
 /**
  * 全局配置（进程级，IrisHost 持有）。
  *
@@ -328,6 +333,8 @@ export interface AppConfig {
   plugins?: Array<{ name: string; type?: 'local' | 'npm' | 'inline'; enabled?: boolean; priority?: number; config?: Record<string, unknown> }>;
   /** 上下文压缩配置（对应 summary.yaml） */
   summary: SummaryConfig;
+  /** 主动投递配置（对应 delivery.yaml，全局独占配置） */
+  delivery?: DeliveryConfig;
 }
 
 /** 子代理类型定义（配置文件格式） */

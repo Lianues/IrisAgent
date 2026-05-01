@@ -1699,6 +1699,7 @@ var COMMANDS = [
   { name: "/redo", description: "恢复上一次撤销" },
   { name: "/model", description: "查看或切换当前模型" },
   { name: "/settings", description: "打开设置中心（LLM / System / Tools / MCP）" },
+  { name: "/lover", description: "打开 Virtual Lover 配置" },
   { name: "/mcp", description: "直接打开 MCP 管理区" },
   { name: "/sh", description: "执行命令（如 cd、dir、git 等）" },
   { name: "/reset-config", description: "重置配置为默认值" },
@@ -7026,8 +7027,15 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
     const pluginSections = (pluginTabs ?? []).map((tab, i) => ({
       id: tab.id,
       label: tab.label,
-      icon: tab.icon ?? String(BUILTIN_SECTIONS.length + i + 1).padStart(2, "0")
-    }));
+      icon: tab.icon ?? String(BUILTIN_SECTIONS.length + i + 1).padStart(2, "0"),
+      originalIndex: i
+    })).sort((a, b) => {
+      const aNum = /^\d+$/.test(a.icon) ? Number(a.icon) : Number.POSITIVE_INFINITY;
+      const bNum = /^\d+$/.test(b.icon) ? Number(b.icon) : Number.POSITIVE_INFINITY;
+      if (aNum !== bNum)
+        return aNum - bNum;
+      return a.originalIndex - b.originalIndex;
+    }).map(({ originalIndex: _originalIndex, ...section }) => section);
     return [...BUILTIN_SECTIONS, ...pluginSections];
   }, [pluginTabs]);
   const setStatus = useCallback4((text, kind = "info") => {
@@ -7074,6 +7082,8 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
         let displayValue;
         if (field.type === "toggle") {
           displayValue = rawValue ? "开启" : "关闭";
+        } else if (field.type === "action") {
+          displayValue = "Enter";
         } else if (field.type === "select") {
           const opt = field.options?.find((o) => o.value === String(rawValue));
           displayValue = opt?.label ?? String(rawValue ?? "");
@@ -7082,7 +7092,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
         }
         builtinRows.push({
           id: `plugin-${tab.id}-${field.key}`,
-          kind: "field",
+          kind: field.type === "action" ? "action" : "field",
           section: tab.id,
           label: field.label,
           value: displayValue,
@@ -7447,6 +7457,33 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       setSaving(false);
     }
   }, [draft, onSave, saving, setStatus, pluginTabs, pluginDraft]);
+  const executePluginAction = useCallback4(async (tabId, fieldKey) => {
+    const tab = pluginTabs?.find((item) => item.id === tabId);
+    if (!tab?.onAction) {
+      setStatus(`插件 ${tabId} 未提供 action 处理器`, "warning");
+      return;
+    }
+    setStatus(`正在执行：${tab.label} / ${fieldKey} ...`, "info");
+    try {
+      const result = await tab.onAction(fieldKey, pluginDraft[tabId] ?? {});
+      if (result.success) {
+        if (result.patch && typeof result.patch === "object") {
+          setPluginDraft((prev) => {
+            const next = structuredClone(prev);
+            next[tabId] = { ...next[tabId] ?? {}, ...result.patch };
+            return next;
+          });
+        }
+        const suffix = result.data !== undefined ? `
+${JSON.stringify(result.data, null, 2)}` : "";
+        setStatus(result.message ? `${result.message}${suffix}` : `操作完成：${fieldKey}${suffix}`, "success");
+      } else {
+        setStatus(`操作失败：${result.error ?? result.message ?? "未知错误"}`, "error");
+      }
+    } catch (error) {
+      setStatus(`操作失败：${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+  }, [pluginDraft, pluginTabs, setStatus]);
   const handleDeleteCurrentModel = useCallback4(() => {
     if (!selectedRow?.target || !draft) {
       setStatus("请先选中某个模型字段后再删除", "warning");
@@ -7635,6 +7672,8 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
               return next;
             });
           }
+        } else if (fieldType === "action") {
+          executePluginAction(tabId, fieldKey);
         }
         return;
       }
@@ -7841,7 +7880,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
                 ]
               }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV37("text", {
                 fg: "#888",
-                children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`
+                children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this)
@@ -9203,6 +9242,11 @@ function useCommandDispatch({
         }
       });
       setConfirmChoice("confirm");
+      return;
+    }
+    if (text === "/lover") {
+      setSettingsInitialSection("virtual-lover");
+      setViewMode("settings");
       return;
     }
     if (text === "/settings" || text === "/mcp") {

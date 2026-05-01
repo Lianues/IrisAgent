@@ -169,6 +169,45 @@ export class TelegramClient {
     return msg.message_id;
   }
 
+  async sendDocument(target: TelegramSessionTarget, file: Buffer, fileName?: string, caption?: string): Promise<number> {
+    const extra: Record<string, unknown> = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new InputFile(file, fileName) : new InputFile(file);
+    const msg = await this.bot.api.sendDocument(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+
+  async sendAudio(target: TelegramSessionTarget, audio: Buffer, fileName?: string, caption?: string): Promise<number> {
+    const extra: Record<string, unknown> = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new InputFile(audio, fileName) : new InputFile(audio);
+    const msg = await this.bot.api.sendAudio(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+
+  async sendVoice(target: TelegramSessionTarget, voice: Buffer, fileName?: string, caption?: string): Promise<number> {
+    const extra: Record<string, unknown> = {};
+    if (target.threadId != null) {
+      extra.message_thread_id = target.threadId;
+    }
+    if (caption) {
+      extra.caption = caption;
+    }
+    const inputFile = fileName ? new InputFile(voice, fileName) : new InputFile(voice);
+    const msg = await this.bot.api.sendVoice(target.chatId, inputFile, extra);
+    return msg.message_id;
+  }
+
   async getFile(fileId: string) {
     return this.bot.api.getFile(fileId);
   }

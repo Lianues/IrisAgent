@@ -187,6 +187,40 @@ consolidation:
   minSessions: 3
 `,
 
+  'delivery.yaml': `# 主动投递配置
+#
+# bindings 用于把“业务插件要发给谁”和“具体平台目标”解耦。
+# 例如 virtual-lover 可以只引用 binding: lover-main，而不关心 Telegram chat_id。
+
+bindings:
+  # lover-main:
+  #   label: Lover Telegram
+  #   platform: telegram
+  #   target:
+  #     kind: chat
+  #     id: "123456789"
+  #     # Telegram 话题/Forum topic 可填写 threadId
+  #     # threadId: "1"
+  #   # policy: lover-default
+  #   enabled: true
+
+policies:
+  # lover-default:
+  #   label: Lover proactive default policy
+  #   enabled: true
+  #   cooldownMinutes: 180
+  #   maxPerDay: 3
+  #   quietHours:
+  #     enabled: true
+  #     allowUrgent: false
+  #     windows:
+  #       - start: "23:30"
+  #         end: "07:30"
+  #   skipIfRecentActivity:
+  #     enabled: true
+  #     withinMinutes: 10
+`,
+
   'sub_agents.yaml': `# 子代理配置
 enabled: true
 stream: true

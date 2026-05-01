@@ -48,7 +48,7 @@ import { createInvokeSkillTool } from '../tools/internal/invoke_skill';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { Backend } from './backend';
 import type { StorageProvider } from '../storage/base';
-import { PluginManager, discoverLocalExtensions, discoverLocalPluginEntries, mergePluginEntries } from '../extension';
+import { DeliveryRegistry, PluginManager, discoverLocalExtensions, discoverLocalPluginEntries, mergePluginEntries } from '../extension';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PlatformRegistry } from './platform-registry';
 import { PluginEventBus } from '../extension/event-bus';
@@ -56,7 +56,7 @@ import { patchMethod, patchPrototype } from '../extension/patch';
 import { registerExtensionPlatforms } from '../extension';
 import { ensureDevSourceSdkShims } from '../extension';
 import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from 'irises-extension-sdk';
-import { BackendHandle } from 'irises-extension-sdk';
+import { BackendHandle, DELIVERY_REGISTRY_SERVICE_ID } from 'irises-extension-sdk';
 import { readEditableConfig, updateEditableConfig, LayeredConfigManager } from '../config/manage';
 import { applyRuntimeConfigReload, type RuntimeConfigReloadContext } from '../config/runtime';
 import { DEFAULTS, parseLLMConfig } from '../config/llm';
@@ -402,6 +402,7 @@ export class IrisCore {
 
     // 将插件钩子注入 Backend
     const eventBus = new PluginEventBus();
+    const serviceRegistry = pluginManager.getServiceRegistry();
 
     // 路由延迟注册（平台无关）
     const registerRoute = (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => {
@@ -430,6 +431,7 @@ export class IrisCore {
     registerConsoleSettingsTab({
       id: 'net',
       label: '多端互联',
+      icon: '04',
       fields: [
         { key: 'enabled', label: '启用 Net 服务', type: 'toggle', defaultValue: false,
           description: '启用后其他设备可通过 WebSocket 连接控制此 Iris 实例' },
@@ -484,7 +486,7 @@ export class IrisCore {
           }
           const merged = updateEditableConfig(configDir, { net: netUpdate });
           const ctx: RuntimeConfigReloadContext = {
-            backend, pluginManager,  extensions,
+            backend, pluginManager,  extensions, deliveryRegistry: serviceRegistry.get(DELIVERY_REGISTRY_SERVICE_ID) as DeliveryRegistry | undefined,
           };
           await applyRuntimeConfigReload(ctx, merged.mergedRaw);
           return { success: true };
@@ -498,25 +500,26 @@ export class IrisCore {
     const stopConfigWatcher = (() => {
       let debounceTimer: ReturnType<typeof setTimeout> | undefined;
       let lastMtimes: Map<string, number> = new Map();
+      const watchDirs = Array.from(new Set([globalDir, configDir]));
 
       const getConfigMtimes = (): Map<string, number> => {
         const mtimes = new Map<string, number>();
-        try {
-          const files = fs.readdirSync(configDir);
-          for (const f of files) {
-            if (!f.endsWith('.yaml')) continue;
-            try {
-              const stat = fs.statSync(path.join(configDir, f));
-              mtimes.set(f, stat.mtimeMs);
-            } catch { /* ignore */ }
-          }
-        } catch { /* ignore */ }
+        for (const dir of watchDirs) {
+          try {
+            const files = fs.readdirSync(dir);
+            for (const f of files) {
+              if (!f.endsWith('.yaml')) continue;
+              try {
+                const stat = fs.statSync(path.join(dir, f));
+                mtimes.set(`${dir}:${f}`, stat.mtimeMs);
+              } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+        }
         return mtimes;
       };
 
-      lastMtimes = getConfigMtimes();
-
-      const watcher = fs.watch(configDir, { persistent: false }, () => {
+      const handleConfigChange = () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
           const newMtimes = getConfigMtimes();
@@ -532,6 +535,7 @@ export class IrisCore {
             const ctx: RuntimeConfigReloadContext = {
               backend, pluginManager,  extensions,
               dataDir: effectiveDataDir,
+              deliveryRegistry: serviceRegistry.get(DELIVERY_REGISTRY_SERVICE_ID) as DeliveryRegistry | undefined,
             };
             await applyRuntimeConfigReload(ctx, merged);
             console.log('[ConfigWatcher] 配置文件变更，已自动热重载');
@@ -539,17 +543,34 @@ export class IrisCore {
             console.warn('[ConfigWatcher] 热重载失败:', err);
           }
         }, 300);
-      });
+      };
 
-      watcher.on('error', (err) => {
-        console.warn('[ConfigWatcher] 文件监听错误:', err);
+      lastMtimes = getConfigMtimes();
+
+      const watchers = watchDirs.map((dir) => {
+        const watcher = fs.watch(dir, { persistent: false }, handleConfigChange);
+        watcher.on('error', (err) => {
+          console.warn(`[ConfigWatcher] 文件监听错误 (${dir}):`, err);
+        });
+        return watcher;
       });
 
       return () => {
         clearTimeout(debounceTimer);
-        watcher.close();
+        for (const watcher of watchers) watcher.close();
       };
     })();
+
+    if (!serviceRegistry.has(DELIVERY_REGISTRY_SERVICE_ID)) {
+      const deliveryRegistry = new DeliveryRegistry();
+      deliveryRegistry.replaceBindings(config.delivery?.bindings ?? []);
+      deliveryRegistry.replacePolicies(config.delivery?.policies ?? []);
+      serviceRegistry.register(DELIVERY_REGISTRY_SERVICE_ID, deliveryRegistry, {
+        description: 'Generic platform delivery registry for proactive text/attachment sending',
+        version: '1.0.0',
+      });
+    }
+
     const irisAPI = {
       backend,
       media: undefined,
@@ -571,7 +592,7 @@ export class IrisCore {
           applyRuntimeConfigReload: async (mergedConfig: Record<string, unknown>) => {
             try {
               const ctx: RuntimeConfigReloadContext = {
-                backend, pluginManager,  extensions,
+                backend, pluginManager,  extensions, deliveryRegistry: serviceRegistry.get(DELIVERY_REGISTRY_SERVICE_ID) as DeliveryRegistry | undefined,
               };
               await applyRuntimeConfigReload(ctx, mergedConfig);
               return { success: true };
@@ -611,7 +632,7 @@ export class IrisCore {
       getLogLevel: () => getGlobalLogLevel() as number,
       pluginManager,
       eventBus,
-      services: pluginManager.getServiceRegistry(),
+      services: serviceRegistry,
       configContributions: pluginManager.getConfigContributionRegistry(),
       globalStore: pluginManager.getGlobalStore(),
       taskBoard,
@@ -630,8 +651,12 @@ export class IrisCore {
         };
         return new ToolLoop(loopOptions.tools as ToolRegistry, loopPrompt, loopConfig);
       },
+      // 公开 SDK 名称：供解耦 extension 通过 IrisAPI 注册 Web 路由/面板。
+      // 保留 registerRoute/registerPanel 作为旧内部别名，避免破坏现有调用方。
       registerRoute,
       registerPanel,
+      registerWebRoute: registerRoute,
+      registerWebPanel: registerPanel,
       agentNetwork: options.agentNetwork,
       registerConsoleSettingsTab,
       getConsoleSettingsTabs: () => consoleSettingsTabs,

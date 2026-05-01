@@ -1,3 +1,5 @@
+// ../../packages/extension-sdk/dist/scheduler.js
+var SCHEDULER_SERVICE_ID = "scheduler.tasks";
 // ../../packages/extension-sdk/dist/logger.js
 var LogLevel;
 (function(LogLevel2) {
@@ -2120,9 +2122,93 @@ skipIfRecentActivity:
 `;
 }
 
+// src/service.ts
+function toSchedulerJob(job) {
+  return {
+    id: job.id,
+    name: job.name,
+    schedule: job.schedule,
+    sessionId: job.sessionId,
+    instruction: job.instruction,
+    delivery: job.delivery,
+    silent: job.silent,
+    urgent: job.urgent,
+    condition: job.condition,
+    allowedTools: job.allowedTools,
+    excludeTools: job.excludeTools,
+    enabled: job.enabled,
+    createdAt: job.createdAt,
+    createdInSession: job.createdInSession,
+    lastRunAt: job.lastRunAt,
+    lastRunStatus: job.lastRunStatus,
+    lastRunError: job.lastRunError
+  };
+}
+function resolveSessionId(api, input) {
+  return input.sessionId ?? input.delivery?.sessionId ?? api.agentManager?.getActiveSessionId?.() ?? "scheduler-service";
+}
+function applyFilter(jobs, filter) {
+  if (!filter)
+    return jobs;
+  return jobs.filter((job) => {
+    if (filter.enabled !== undefined && job.enabled !== filter.enabled)
+      return false;
+    if (filter.nameIncludes && !job.name.includes(filter.nameIncludes))
+      return false;
+    return true;
+  });
+}
+function createCronSchedulerService(scheduler2, api) {
+  return {
+    createJob(input) {
+      const sessionId = resolveSessionId(api, input);
+      const job = scheduler2.createJob({
+        name: input.name,
+        schedule: input.schedule,
+        sessionId,
+        instruction: input.instruction,
+        delivery: {
+          fallback: input.delivery?.fallback ?? "last-active",
+          sessionId: input.delivery?.sessionId ?? sessionId
+        },
+        silent: input.silent,
+        urgent: input.urgent,
+        condition: input.condition,
+        allowedTools: input.allowedTools,
+        excludeTools: input.excludeTools,
+        createdInSession: input.createdInSession ?? sessionId
+      });
+      return toSchedulerJob(job);
+    },
+    updateJob(id, input) {
+      const job = scheduler2.updateJob(id, input);
+      return job ? toSchedulerJob(job) : undefined;
+    },
+    deleteJob(id) {
+      return scheduler2.deleteJob(id);
+    },
+    enableJob(id) {
+      const job = scheduler2.enableJob(id);
+      return job ? toSchedulerJob(job) : undefined;
+    },
+    disableJob(id) {
+      const job = scheduler2.disableJob(id);
+      return job ? toSchedulerJob(job) : undefined;
+    },
+    getJob(id) {
+      const job = scheduler2.getJob(id);
+      return job ? toSchedulerJob(job) : undefined;
+    },
+    listJobs(filter) {
+      return applyFilter(scheduler2.listJobs().map(toSchedulerJob), filter);
+    }
+  };
+}
+
 // src/index.ts
 var logger4 = createPluginLogger("cron");
 var schedulerInstance = null;
+var schedulerServiceDisposable;
 var src_default = definePlugin({
   name: "cron",
   version: "0.1.0",
@@ -2153,6 +2239,12 @@ var src_default = definePlugin({
       const agentName = api.agentName ?? "master";
       schedulerInstance = new CronScheduler(api, config, taskBoard, agentName, bgConfig, cronDataDir);
       injectScheduler(schedulerInstance);
+      schedulerServiceDisposable?.dispose();
+      schedulerServiceDisposable = api.services.register(SCHEDULER_SERVICE_ID, createCronSchedulerService(schedulerInstance, api), {
+        description: "Generic scheduler service backed by the cron extension",
+        version: "1.0.0"
+      });
+      logger4.info(`Scheduler service 已注册: ${SCHEDULER_SERVICE_ID}`);
       api.backend.on("done", (sessionId) => {
         schedulerInstance?.recordActivity(sessionId);
       });
@@ -2163,6 +2255,8 @@ var src_default = definePlugin({
     });
   },
   async deactivate() {
+    schedulerServiceDisposable?.dispose();
+    schedulerServiceDisposable = undefined;
     if (schedulerInstance) {
       schedulerInstance.stop();
       schedulerInstance = null;
@@ -2242,7 +2336,7 @@ function registerSettingsTab(api, ctx) {
   registerTab({
     id: "cron",
     label: "定时任务",
-    icon: "⏰",
+    icon: "06",
     fields: [
       {
         key: "enabled",

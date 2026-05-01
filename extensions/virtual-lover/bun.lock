@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 0,
+  "workspaces": {
+    "": {
+      "name": "@iris-extension/virtual-lover",
+      "dependencies": {
+        "irises-extension-sdk": "file:../../packages/extension-sdk"
+      }
+    }
+  },
+  "packages": {
+    "irises-extension-sdk": ["irises-extension-sdk@file:../../packages/extension-sdk", {}]
+  }
+}

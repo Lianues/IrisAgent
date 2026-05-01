@@ -35,6 +35,7 @@ import { parseSubAgentsConfig } from './sub_agents';
 import { loadRawConfigDir } from './raw';
 import { parsePluginsConfig } from './plugins';
 import { parseSummaryConfig } from './summary';
+import { parseDeliveryConfig } from './delivery';
 
 export type {
   AppConfig,
@@ -137,6 +138,7 @@ export function loadConfig(customConfigDir?: string, agentPaths?: AgentPaths): A
     subAgents: parseSubAgentsConfig(data.sub_agents),
     plugins: parsePluginsConfig(data.plugins),
     summary: parseSummaryConfig(data.summary),
+    delivery: parseDeliveryConfig(data.delivery),
   };
 }
 
@@ -277,6 +279,12 @@ export function loadAgentConfig(
   // platform: 从全局 raw 读取（不进入 Agent 分层体系）
   const platform = parsePlatformConfig(globalRaw.platform);
 
+  const mergedDeliveryRaw = (globalRaw.delivery || agentRaw.delivery) ? {
+    ...fieldOverride(globalRaw.delivery ?? {}, agentRaw.delivery ?? {}),
+    bindings: entryMerge(globalRaw.delivery?.bindings, agentRaw.delivery?.bindings),
+    policies: entryMerge(globalRaw.delivery?.policies, agentRaw.delivery?.policies),
+  } : undefined;
+
   return {
     llm,
     ocr,
@@ -292,6 +300,7 @@ export function loadAgentConfig(
     // 注意 plugin 是 extension 的一种贡献角色，不是独立系统——详见 src/config/plugins.ts。
     plugins: parsePluginsConfig(globalRaw.plugins),
     summary: parseSummaryConfig(mergedSummaryRaw),
+    delivery: parseDeliveryConfig(mergedDeliveryRaw),
   };
 }
 

@@ -8,8 +8,8 @@
  * 配置来源：用户配置目录的 cron.yaml（由 config-template.ts 模板首次释放）
  */
 
-import { definePlugin, createPluginLogger } from 'irises-extension-sdk';
-import type { PluginContext, IrisAPI } from 'irises-extension-sdk';
+import { definePlugin, createPluginLogger, SCHEDULER_SERVICE_ID } from 'irises-extension-sdk';
+import type { Disposable, PluginContext, IrisAPI } from 'irises-extension-sdk';
 import { CronScheduler } from './scheduler.js';
 import {
   manageScheduledTasksTool,
@@ -19,6 +19,7 @@ import {
 import type { SchedulerConfig, CronBackgroundConfig } from './types.js';
 import { DEFAULT_SCHEDULER_CONFIG, DEFAULT_BACKGROUND_CONFIG } from './types.js';
 import { buildDefaultConfigTemplate } from './config-template.js';
+import { createCronSchedulerService } from './service.js';
 
 
 const logger = createPluginLogger('cron');
@@ -27,6 +28,7 @@ const logger = createPluginLogger('cron');
 
 /** 调度器实例，供 deactivate 和 Web 路由 / Settings Tab 使用 */
 let schedulerInstance: CronScheduler | null = null;
+let schedulerServiceDisposable: Disposable | undefined;
 
 // ============ 插件定义 ============
 
@@ -80,6 +82,13 @@ export default definePlugin({
       // 将调度器实例注入给工具模块
       injectScheduler(schedulerInstance);
 
+      schedulerServiceDisposable?.dispose();
+      schedulerServiceDisposable = api.services.register(SCHEDULER_SERVICE_ID, createCronSchedulerService(schedulerInstance, api), {
+        description: 'Generic scheduler service backed by the cron extension',
+        version: '1.0.0',
+      });
+      logger.info(`Scheduler service 已注册: ${SCHEDULER_SERVICE_ID}`);
+
       // 监听 backend 的 done 事件，记录会话活跃时间
       // 供投递门控的 skipIfRecentActivity 使用
       api.backend.on('done', (sessionId: string) => {
@@ -100,6 +109,8 @@ export default definePlugin({
   },
 
   async deactivate() {
+    schedulerServiceDisposable?.dispose();
+    schedulerServiceDisposable = undefined;
     if (schedulerInstance) {
       schedulerInstance.stop();
       schedulerInstance = null;
@@ -243,7 +254,7 @@ function registerSettingsTab(api: IrisAPI, ctx: PluginContext): void {
   registerTab({
     id: 'cron',
     label: '定时任务',
-    icon: '⏰',
+    icon: '06',
     fields: [
       // ── 基础 ──
       {

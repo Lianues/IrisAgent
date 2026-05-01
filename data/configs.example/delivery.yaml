@@ -1,0 +1,33 @@
+# 主动投递配置
+#
+# bindings 用于把“业务插件要发给谁”和“具体平台目标”解耦。
+# 例如 virtual-lover 可以只引用 binding: lover-main，而不关心 Telegram chat_id。
+
+bindings:
+  # lover-main:
+  #   label: Lover Telegram
+  #   platform: telegram
+  #   target:
+  #     kind: chat
+  #     id: "123456789"
+  #     # Telegram 话题/Forum topic 可填写 threadId
+  #     # threadId: "1"
+  #   # 可选：绑定投递策略，用于 cooldown / quiet hours / daily limit。
+  #   # policy: lover-default
+  #   enabled: true
+
+policies:
+  # lover-default:
+  #   label: Lover proactive default policy
+  #   enabled: true
+  #   cooldownMinutes: 180
+  #   maxPerDay: 3
+  #   quietHours:
+  #     enabled: true
+  #     allowUrgent: false
+  #     windows:
+  #       - start: "23:30"
+  #         end: "07:30"
+  #   skipIfRecentActivity:
+  #     enabled: true
+  #     withinMinutes: 10

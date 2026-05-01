@@ -19,7 +19,7 @@
 
 import * as path from 'path';
 import { definePlugin, createPluginLogger } from 'irises-extension-sdk';
-import type { PluginContext, IrisAPI, Part } from 'irises-extension-sdk';
+import type { Disposable, PluginContext, IrisAPI, Part } from 'irises-extension-sdk';
 import { SqliteMemory } from './sqlite/index.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './tools.js';
 import { DEFAULT_CONFIG_TEMPLATE } from './config-template.js';
@@ -27,6 +27,7 @@ import { resolveConfig, type MemoryPluginConfig } from './config.js';
 import { buildMemorySystemRules } from './prompts/system-rules.js';
 import { findAndFormatRelevantMemories } from './retrieval.js';
 import { shouldExtractSessionMemory, extractSessionNotes, updateTokenTracking, clearSessionTracking } from './session-memory.js';
+import { createMemorySpacesService, MEMORY_SPACES_SERVICE_ID, type MemorySpacesService } from './service.js';
 
 const logger = createPluginLogger('memory');
 
@@ -63,6 +64,10 @@ interface AgentMemoryState {
   fallbackSessionId?: string;
   /** Per-session 状态 */
   sessionStates: Map<string, SessionState>;
+  /** 命名记忆空间服务 */
+  memorySpacesService?: MemorySpacesService;
+  /** memory.spaces service 注销句柄 */
+  memorySpacesDisposable?: Disposable;
 }
 
 /**
@@ -195,6 +200,7 @@ function registerSettingsTab(state: AgentMemoryState, api: IrisAPI, ctx: PluginC
   registerTab({
     id: 'memory',
     label: '记忆',
+    icon: '05',
     fields: [
       { key: 'enabled', label: '启用记忆系统', type: 'toggle', defaultValue: false,
         description: '启用后 LLM 可通过工具读写跨会话长期记忆' },
@@ -287,6 +293,8 @@ export default definePlugin({
       systemRulesPart: undefined,
       fallbackSessionId: undefined,
       sessionStates: new Map(),
+      memorySpacesService: undefined,
+      memorySpacesDisposable: undefined,
     };
     agentStateMap.set(instanceKey, state);
 
@@ -294,6 +302,21 @@ export default definePlugin({
     //    注意：即使 enabled=false 也注册 Settings Tab，让用户能通过 TUI 开启。
     ctx.onReady(async (api) => {
       state.cachedApi = api;
+
+      // 命名记忆空间服务：即使主记忆 disabled，也允许其他 extension
+      // 使用独立 memory space（例如 virtual-lover）。这是 memory extension
+      // 的通用公开能力，不要求调用方导入 memory 内部实现。
+      state.memorySpacesService = createMemorySpacesService({
+        api,
+        dataDir: ctx.getDataDir(),
+        config: state.currentConfig,
+        logger,
+      });
+      state.memorySpacesDisposable = api.services.register(MEMORY_SPACES_SERVICE_ID, state.memorySpacesService, {
+        description: 'Named memory spaces with isolated stores and per-space dream/consolidation',
+        version: '1.0.0',
+      });
+
       registerSettingsTab(state, api, ctx);
 
       if (state.currentConfig.enabled) {
@@ -332,7 +355,9 @@ export default definePlugin({
         if (!sid) return undefined;
         const s = getSessionState(state, sid);
         if (s.memoryInjectedThisRound) return undefined;
-        if (round > 0) return undefined;
+        // ToolLoop 的 round 从 1 开始计数。这里应只跳过工具循环后的后续轮次，
+        // 否则首轮 round=1 时会直接跳过，导致 autoRecall 永远不生效。
+        if (round > 1) return undefined;
 
         s.memoryInjectedThisRound = true;
 
@@ -496,6 +521,7 @@ export default definePlugin({
         const newConfig = resolveConfig(newRaw, undefined);
         const wasEnabled = state.currentConfig.enabled;
         state.currentConfig = newConfig;
+        state.memorySpacesService?.updateConfig(newConfig);
 
         if (!newConfig.enabled) {
           if (wasEnabled) disableMemorySystem(state, ctx);
@@ -516,6 +542,8 @@ export default definePlugin({
       state.cachedApi = undefined;
       state.fallbackSessionId = undefined;
       state.systemRulesPart = undefined;
+      state.memorySpacesDisposable?.dispose();
+      state.memorySpacesDisposable = undefined;
       state.sessionStates.clear();
     }
     agentStateMap.clear();

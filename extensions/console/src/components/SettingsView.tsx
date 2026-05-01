@@ -49,7 +49,7 @@ type RowTarget =
   | { kind: 'toolGlobalToggle'; field: 'autoApproveAll' | 'autoApproveConfirmation' | 'autoApproveDiff' }
   | { kind: 'mcpField'; serverIndex: number; field: 'name' | 'enabled' | 'transport' | 'command' | 'args' | 'cwd' | 'url' | 'authHeader' | 'timeout' }
   | { kind: 'action'; action: 'addModel' | 'addMcp' }
-  | { kind: 'pluginField'; tabId: string; fieldKey: string; fieldType: 'toggle' | 'number' | 'text' | 'select' | 'readonly' };
+  | { kind: 'pluginField'; tabId: string; fieldKey: string; fieldType: 'toggle' | 'number' | 'text' | 'select' | 'readonly' | 'action' };
 
 function getToolPolicyMode(configured: boolean, autoApprove: boolean): ToolPolicyMode {
   if (!configured) return 'disabled';
@@ -338,7 +338,13 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       id: tab.id,
       label: tab.label,
       icon: tab.icon ?? String(BUILTIN_SECTIONS.length + i + 1).padStart(2, '0'),
-    }));
+      originalIndex: i,
+    })).sort((a, b) => {
+      const aNum = /^\d+$/.test(a.icon) ? Number(a.icon) : Number.POSITIVE_INFINITY;
+      const bNum = /^\d+$/.test(b.icon) ? Number(b.icon) : Number.POSITIVE_INFINITY;
+      if (aNum !== bNum) return aNum - bNum;
+      return a.originalIndex - b.originalIndex;
+    }).map(({ originalIndex: _originalIndex, ...section }) => section);
     return [...BUILTIN_SECTIONS, ...pluginSections];
   }, [pluginTabs]);
 
@@ -393,6 +399,8 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         let displayValue: string;
         if (field.type === 'toggle') {
           displayValue = rawValue ? '开启' : '关闭';
+        } else if (field.type === 'action') {
+          displayValue = 'Enter';
         } else if (field.type === 'select') {
           const opt = field.options?.find(o => o.value === String(rawValue));
           displayValue = opt?.label ?? String(rawValue ?? '');
@@ -401,7 +409,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         }
         builtinRows.push({
           id: `plugin-${tab.id}-${field.key}`,
-          kind: 'field',
+          kind: field.type === 'action' ? 'action' : 'field',
           section: tab.id,
           label: field.label,
           value: displayValue,
@@ -744,6 +752,34 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
     }
   }, [draft, onSave, saving, setStatus, pluginTabs, pluginDraft]);
 
+  const executePluginAction = useCallback(async (tabId: string, fieldKey: string) => {
+    const tab = pluginTabs?.find((item) => item.id === tabId);
+    if (!tab?.onAction) {
+      setStatus(`插件 ${tabId} 未提供 action 处理器`, 'warning');
+      return;
+    }
+
+    setStatus(`正在执行：${tab.label} / ${fieldKey} ...`, 'info');
+    try {
+      const result = await tab.onAction(fieldKey, pluginDraft[tabId] ?? {});
+      if (result.success) {
+        if (result.patch && typeof result.patch === 'object') {
+          setPluginDraft(prev => {
+            const next = structuredClone(prev);
+            next[tabId] = { ...(next[tabId] ?? {}), ...result.patch };
+            return next;
+          });
+        }
+        const suffix = result.data !== undefined ? `\n${JSON.stringify(result.data, null, 2)}` : '';
+        setStatus(result.message ? `${result.message}${suffix}` : `操作完成：${fieldKey}${suffix}`, 'success');
+      } else {
+        setStatus(`操作失败：${result.error ?? result.message ?? '未知错误'}`, 'error');
+      }
+    } catch (error) {
+      setStatus(`操作失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }, [pluginDraft, pluginTabs, setStatus]);
+
   const handleDeleteCurrentModel = useCallback(() => {
     if (!selectedRow?.target || !draft) { setStatus('请先选中某个模型字段后再删除', 'warning'); return; }
     if (selectedRow.target.kind !== 'modelField' && selectedRow.target.kind !== 'modelProvider' && selectedRow.target.kind !== 'modelDefault') { setStatus('请先选中某个模型字段后再删除', 'warning'); return; }
@@ -916,6 +952,8 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
               return next;
             });
           }
+        } else if (fieldType === 'action') {
+          void executePluginAction(tabId, fieldKey);
         }
         return;
       }
@@ -1056,7 +1094,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
               <text fg="#888">{`Enter 保存 ${ICONS.separator} Esc 取消`}</text>
             </box>
           ) : (
-            <text fg="#888">{`${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
+            <text fg="#888">{`${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
           )}
         </box>
       </box>

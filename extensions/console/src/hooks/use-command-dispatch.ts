@@ -250,6 +250,12 @@ export function useCommandDispatch({
       return;
     }
 
+    if (text === '/lover') {
+      setSettingsInitialSection('virtual-lover');
+      setViewMode('settings');
+      return;
+    }
+
     if (text === '/settings' || text === '/mcp') {
       setSettingsInitialSection(text === '/mcp' ? 'mcp' : 'general');
       setViewMode('settings');

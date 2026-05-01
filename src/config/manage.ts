@@ -185,6 +185,8 @@ interface EditableConfigShape {
   sub_agents?: Record<string, unknown>;
   plugins?: unknown[];
   summary?: Record<string, unknown>;
+  delivery?: Record<string, unknown>;
+  virtual_lover?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
