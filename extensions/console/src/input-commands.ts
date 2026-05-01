@@ -19,7 +19,6 @@ export const COMMANDS: Command[] = [
   { name: '/redo',     description: '恢复上一次撤销' },
   { name: '/model',    description: '查看或切换当前模型' },
   { name: '/settings', description: '打开设置中心（LLM / System / Tools / MCP）' },
-  { name: '/lover',    description: '打开 Virtual Lover 配置' },
   { name: '/mcp',      description: '直接打开 MCP 管理区' },
   { name: '/sh',       description: '执行命令（如 cd、dir、git 等）' },
   { name: '/reset-config', description: '重置配置为默认值' },

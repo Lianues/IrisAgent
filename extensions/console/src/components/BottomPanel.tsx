@@ -8,6 +8,7 @@ import { ApprovalBar } from './ApprovalBar';
 import { ConfirmBar } from './ConfirmBar';
 import { HintBar } from './HintBar';
 import { InputBar, type PendingFile } from './InputBar';
+import type { Command } from '../input-commands';
 import { StatusBar } from './StatusBar';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { C } from '../theme';
@@ -50,6 +51,7 @@ interface BottomPanelProps {
   pendingFiles: PendingFile[];
   /** 移除指定索引的待发送文件 */
   onRemoveFile: (index: number) => void;
+  dynamicCommands?: Command[];
 }
 
 export function BottomPanel({
@@ -80,6 +82,7 @@ export function BottomPanel({
   isRemote,
   pendingFiles,
   onRemoveFile,
+  dynamicCommands,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -116,6 +119,7 @@ export function BottomPanel({
             pendingFiles={pendingFiles}
             onRemoveFile={onRemoveFile}
             isRemote={isRemote}
+            dynamicCommands={dynamicCommands}
           />
           <StatusBar
             agentName={agentName}

@@ -115,6 +115,7 @@ interface UseAppKeyboardOptions {
   setExtensionList: SetState<any[]>;
   onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
   onListExtensions?: () => Promise<any[]>;
+  onRefreshPluginSettingsTabs?: () => Promise<void> | void;
   setExtensionTogglingName: SetState<string | null>;
   setExtensionStatusMessage: SetState<string | null>;
   setExtensionStatusIsError: SetState<boolean>;
@@ -210,6 +211,7 @@ export function useAppKeyboard({
   setExtensionList,
   onToggleExtension,
   onListExtensions,
+  onRefreshPluginSettingsTabs,
   setExtensionTogglingName,
   setExtensionStatusMessage,
   setExtensionStatusIsError,
@@ -362,25 +364,65 @@ export function useAppKeyboard({
         setSelectedIndex((prev) => Math.max(0, prev - 1));
       } else if (key.name === 'down') {
         setSelectedIndex((prev) => Math.min(extensionList.length - 1, prev + 1));
-      } else if (key.name === 'return') {
+      } else if (key.name === 'return' || key.name === 'enter') {
         const item = extensionList[selectedIndex];
-        if (!item || item.status === 'platform' || !onToggleExtension) return;
-        setExtensionTogglingName(item.name);
-        setExtensionStatusMessage(null);
-        void onToggleExtension(item.name).then(async ({ ok, message }) => {
+        if (!item) return;
+        if (item.status === 'platform') {
+          setExtensionStatusMessage('Platform 请在 platform.yaml 配置');
+          setExtensionStatusIsError(false);
+          return;
+        }
+        const originalStatus = item.originalStatus ?? item.status;
+        const nextStatus = item.status === 'active'
+          ? (originalStatus === 'available' ? 'available' : 'disabled')
+          : 'active';
+        setExtensionList((prev) => prev.map((entry, index) => index === selectedIndex
+          ? { ...entry, status: nextStatus, originalStatus }
+          : entry));
+        setExtensionStatusMessage(`草稿：${item.name} -> ${nextStatus === 'active' ? '启用' : '禁用'}，S 保存`);
+        setExtensionStatusIsError(false);
+      } else if (key.name === 's') {
+        if (!onToggleExtension) {
+          setExtensionStatusMessage('扩展管理不可用');
+          setExtensionStatusIsError(true);
+          return;
+        }
+        const changed = extensionList.filter((item) => item.status !== 'platform' && (item.originalStatus ?? item.status) !== item.status);
+        if (changed.length === 0) {
+          setExtensionStatusMessage('无未保存修改');
+          setExtensionStatusIsError(false);
+          return;
+        }
+        setExtensionStatusMessage(`保存中：${changed.length} 项...`);
+        setExtensionStatusIsError(false);
+        void (async () => {
+          for (const item of changed) {
+            setExtensionTogglingName(item.name);
+            const result = await onToggleExtension(item.name);
+            if (!result.ok) {
+              setExtensionTogglingName(null);
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+          }
           setExtensionTogglingName(null);
-          setExtensionStatusMessage(message);
-          setExtensionStatusIsError(!ok);
-          // 刷新列表
-          if (ok && onListExtensions) {
+          if (onListExtensions) {
             try {
               const list = await onListExtensions();
               setExtensionList(list);
-            } catch { /* ignore */ }
+            } catch {
+              setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
+            }
+          } else {
+            setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
           }
-        }).catch((err) => {
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(`已保存并热重载：${changed.length} 项`);
+          setExtensionStatusIsError(false);
+        })().catch((err) => {
           setExtensionTogglingName(null);
-          setExtensionStatusMessage(`操作失败: ${err}`);
+          setExtensionStatusMessage(`保存失败：${err}`);
           setExtensionStatusIsError(true);
         });
       }

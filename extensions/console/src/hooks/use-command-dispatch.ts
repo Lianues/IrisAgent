@@ -54,6 +54,7 @@ interface UseCommandDispatchOptions {
   setMemoryPendingDeleteId: Dispatch<SetStateAction<number | null>>;
   onListExtensions?: () => Promise<any[]>;
   setExtensionList: Dispatch<SetStateAction<any[]>>;
+  canOpenLoverSettings?: boolean;
   onRemoteConnect?: (name?: string) => void;
   onRemoteDisconnect?: () => void;
   isRemote?: boolean;
@@ -106,6 +107,7 @@ export function useCommandDispatch({
   setMemoryPendingDeleteId,
   onListExtensions,
   setExtensionList,
+  canOpenLoverSettings,
   onRemoteConnect,
   onRemoteDisconnect,
   isRemote,
@@ -251,6 +253,10 @@ export function useCommandDispatch({
     }
 
     if (text === '/lover') {
+      if (!canOpenLoverSettings) {
+        appendCommandMessage(setMessages, 'Virtual Lover 扩展未启用。', { isError: true });
+        return;
+      }
       setSettingsInitialSection('virtual-lover');
       setViewMode('settings');
       return;

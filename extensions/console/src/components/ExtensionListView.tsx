@@ -9,6 +9,8 @@ export interface ExtensionItem {
   version: string;
   description: string;
   status: 'active' | 'disabled' | 'available' | 'platform';
+  /** 进入 /extension 时的真实状态；status 是当前草稿状态。 */
+  originalStatus?: 'active' | 'disabled' | 'available' | 'platform';
   hasPlugin: boolean;
   source: string;
 }
@@ -38,14 +40,16 @@ export function ExtensionListView({
   statusIsError,
 }: ExtensionListViewProps) {
   const total = extensions.length;
+  const pluginCount = extensions.filter((item) => item.hasPlugin).length;
+  const platformCount = total - pluginCount;
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box padding={1}>
         <text fg={C.primary}>{`${ICONS.bullet} `}</text>
         <text fg={C.primary}>{'Extension '}</text>
-        <text fg={C.dim}>{`(${total} extensions)`}</text>
-        <text fg={C.dim}>{`  ${ICONS.arrowUp}${ICONS.arrowDown} select  Enter toggle  Esc back`}</text>
+        <text fg={C.dim}>{`(${pluginCount} plugins, ${platformCount} platforms)`}</text>
+        <text fg={C.dim}>{`  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 标记  S 保存  Esc 返回`}</text>
       </box>
       {statusMessage && (
         <box paddingLeft={2} paddingBottom={1}>
@@ -62,20 +66,25 @@ export function ExtensionListView({
           const isSelected = index === selectedIndex;
           const statusInfo = STATUS_LABELS[item.status] ?? STATUS_LABELS.platform;
           const isToggling = item.name === togglingName;
+          const isDirty = item.originalStatus != null && item.originalStatus !== item.status;
+          const showHeader = index === 0 || extensions[index - 1]?.hasPlugin !== item.hasPlugin;
 
           return (
-            <box key={item.name} paddingLeft={1}>
+            <box key={item.name} flexDirection="column">
+              {showHeader && <text fg={C.primary}>{item.hasPlugin ? 'Plugins' : 'Platforms'}</text>}
+              <box paddingLeft={1}>
               <text>
                 <span fg={isSelected ? C.accent : C.dim}>
                   {isSelected ? `${ICONS.selectorArrow} ` : '  '}
                 </span>
-                <span fg={statusInfo.color}>{`[${isToggling ? '...' : statusInfo.label}] `}</span>
+                <span fg={statusInfo.color}>{`[${isToggling ? '...' : `${statusInfo.label}${isDirty ? '*' : ''}`}] `}</span>
                 {isSelected
                   ? <strong><span fg={C.text}>{item.name}</span></strong>
                   : <span fg={C.textSec}>{item.name}</span>}
                 <span fg={C.dim}>{` v${item.version}`}</span>
                 <span fg={C.dim}>{` ${ICONS.emDash} ${item.description || '(no description)'}`}</span>
               </text>
+              </box>
             </box>
           );
         })}

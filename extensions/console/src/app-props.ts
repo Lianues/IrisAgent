@@ -57,6 +57,8 @@ export interface AppProps {
   onDeleteMemory?: (id: number) => Promise<boolean>;
   onListExtensions?: () => Promise<ExtensionItem[]>;
   onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  /** 重新读取插件注册的 Settings Tab，用于 extension 热启用后刷新 /settings 与动态命令。 */
+  onListPluginSettingsTabs?: () => ConsoleSettingsTabDefinition[];
   onRemoteConnect?: (name?: string) => void;
   onRemoteDisconnect?: () => void;
   /** 远程连接的主机地址（非空时 StatusBar 显示远程标识） */

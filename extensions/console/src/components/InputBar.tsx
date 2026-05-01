@@ -47,17 +47,22 @@ interface InputBarProps {
   onRemoveFile: (index: number) => void;
   /** 当前是否处于远程连接状态 */
   isRemote?: boolean;
+  dynamicCommands?: Command[];
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [] }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
   const { width: termWidth } = useTerminalDimensions();
 
   const visibleCommands = useMemo(
-    () => COMMANDS.filter((cmd) => !cmd.remoteOnly || isRemote),
-    [isRemote],
+    () => {
+      const commands = [...COMMANDS, ...dynamicCommands];
+      const seen = new Set<string>();
+      return commands.filter((cmd) => (!cmd.remoteOnly || isRemote) && !seen.has(cmd.name) && seen.add(cmd.name));
+    },
+    [isRemote, dynamicCommands],
   );
 
   // ── 粘贴保护 ──────────────────────────────────────────────

@@ -680,6 +680,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onDeleteMemory: (id: number) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name: string) => this.handleToggleExtension(name),
+        onListPluginSettingsTabs: () => this.api?.getConsoleSettingsTabs?.() ?? [],
         onRemoteConnect: (name?: string) => this.handleRemoteConnect(name),
         onRemoteDisconnect: () => this.handleRemoteDisconnect(),
         remoteHost: this._remoteHost || undefined,
@@ -1538,7 +1539,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       const packages: Array<{ manifest: { name: string; version: string; description?: string; plugin?: any }; source: string }> = ext.discover();
       // 2. plugins.yaml 配置
       const raw = configManager.readEditableConfig() as Record<string, any>;
-      const pluginEntries: Array<{ name: string; enabled?: boolean }> = raw?.plugins ?? [];
+      const pluginEntries = this.readPluginEntries(raw);
       const pluginMap = new Map(pluginEntries.map(p => [p.name, p]));
       // 3. 运行时状态
       const active = (this.api as any)?.pluginManager?.listPlugins?.() ?? [];
@@ -1567,14 +1568,36 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
           version: pkg.manifest.version,
           description: pkg.manifest.description || '',
           status,
+          originalStatus: status,
           hasPlugin,
           source: pkg.source,
         };
+      }).sort((a, b) => {
+        const groupA = a.hasPlugin ? 0 : 1;
+        const groupB = b.hasPlugin ? 0 : 1;
+        return groupA === groupB ? a.name.localeCompare(b.name) : groupA - groupB;
       });
     } catch (err) {
       console.error('[ConsolePlatform] handleListExtensions failed:', err);
       return [];
     }
+  }
+
+  private readPluginEntries(raw: Record<string, any> | undefined): Array<{ name: string; enabled?: boolean; [key: string]: any }> {
+    const section = raw?.plugins;
+    if (Array.isArray(section)) return section.filter((item) => item && typeof item.name === 'string');
+    if (section && typeof section === 'object' && Array.isArray(section.plugins)) {
+      return section.plugins.filter((item: any) => item && typeof item.name === 'string');
+    }
+    return [];
+  }
+
+  private buildPluginsConfigUpdate(raw: Record<string, any> | undefined, pluginEntries: Array<{ name: string; enabled?: boolean; [key: string]: any }>): Record<string, unknown> {
+    const section = raw?.plugins;
+    if (Array.isArray(section)) return { plugins: pluginEntries };
+    const nextSection = section && typeof section === 'object' ? { ...section } : {};
+    nextSection.plugins = pluginEntries;
+    return { plugins: nextSection };
   }
 
   private async handleToggleExtension(name: string): Promise<{ ok: boolean; message: string }> {
@@ -1587,7 +1610,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     try {
       // 读取当前 plugins.yaml
       const raw = configManager.readEditableConfig() as Record<string, any>;
-      const pluginEntries: Array<{ name: string; enabled?: boolean; [k: string]: any }> = [...(raw?.plugins ?? [])];
+      const pluginEntries: Array<{ name: string; enabled?: boolean; [k: string]: any }> = [...this.readPluginEntries(raw)];
       const existing = pluginEntries.find(p => p.name === name);
 
       // 判断运行时状态
@@ -1602,7 +1625,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         } else {
           pluginEntries.push({ name, enabled: false });
         }
-        configManager.updateEditableConfig({ plugins: pluginEntries } as any);
+        configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries) as any);
         return { ok: true, message: `已禁用 "${name}"` };
       } else {
         // 启用：先激活插件，成功后再更新 yaml（防止 activate 失败导致状态不一致）
@@ -1612,7 +1635,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         } else {
           pluginEntries.push({ name, enabled: true });
         }
-        configManager.updateEditableConfig({ plugins: pluginEntries } as any);
+        configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries) as any);
         return { ok: true, message: `已启用 "${name}"` };
       }
     } catch (err) {

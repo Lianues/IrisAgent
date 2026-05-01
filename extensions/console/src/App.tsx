@@ -6,7 +6,7 @@
  * 全屏布局：Logo + scrollbox 消息区 + 状态栏 + 输入栏。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRenderer } from '@opentui/react';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta } from 'irises-extension-sdk';
 import type { AgentDefinitionLike } from 'irises-extension-sdk';
@@ -27,6 +27,7 @@ import { ExtensionListView, type ExtensionItem } from './components/ExtensionLis
 import { SettingsView } from './components/SettingsView';
 import { type ConfirmChoice, type PendingConfirm, type SettingsInitialSection, type ThinkingEffortLevel, type ViewMode } from './app-types';
 import type { AppProps } from './app-props';
+import type { Command } from './input-commands';
 import { useAppHandle, type AppHandle } from './hooks/use-app-handle';
 import { useAppKeyboard } from './hooks/use-app-keyboard';
 import { useApproval } from './hooks/use-approval';
@@ -87,6 +88,7 @@ export function App({
   onDeleteMemory,
   onListExtensions,
   onToggleExtension,
+  onListPluginSettingsTabs,
   onRemoteConnect,
   onRemoteDisconnect,
   remoteHost,
@@ -127,9 +129,38 @@ export function App({
   // 待发送文件附件状态
   const [pendingFiles, setPendingFiles] = useState<import('./components/InputBar').PendingFile[]>([]);
 
+  const [runtimePluginSettingsTabs, setRuntimePluginSettingsTabs] = useState(pluginSettingsTabs ?? []);
+  useEffect(() => {
+    setRuntimePluginSettingsTabs(pluginSettingsTabs ?? []);
+  }, [pluginSettingsTabs]);
+
   // 文件浏览器状态
   const [fileBrowserPath, setFileBrowserPath] = useState('');
   const [fileBrowserEntries, setFileBrowserEntries] = useState<import('./components/FileBrowserView').FileBrowserEntry[]>([]);
+
+  const disabledExtensionNames = useMemo(() => new Set(
+    extensionList
+      .filter((item) => (item.originalStatus ?? item.status) === 'disabled')
+      .map((item) => item.name),
+  ), [extensionList]);
+
+  const activePluginSettingsTabs = useMemo(
+    () => runtimePluginSettingsTabs.filter((tab) => !disabledExtensionNames.has(tab.id)),
+    [runtimePluginSettingsTabs, disabledExtensionNames],
+  );
+
+  const dynamicCommands = useMemo<Command[]>(() => {
+    return activePluginSettingsTabs.some((tab) => tab.id === 'virtual-lover')
+      ? [{ name: '/lover', description: '打开 Virtual Lover 配置' }]
+      : [];
+  }, [activePluginSettingsTabs]);
+
+  const canOpenLoverSettings = dynamicCommands.some((command) => command.name === '/lover');
+
+  const refreshPluginSettingsTabs = useCallback(() => {
+    setRuntimePluginSettingsTabs(onListPluginSettingsTabs?.() ?? pluginSettingsTabs ?? []);
+  }, [onListPluginSettingsTabs, pluginSettingsTabs]);
+
   const [fileBrowserShowHidden, setFileBrowserShowHidden] = useState(false);
 
   // 队列编辑状态（复用 useTextInput 获得完整光标和编辑能力）
@@ -252,6 +283,7 @@ export function App({
     setMemoryPendingDeleteId,
     onListExtensions,
     setExtensionList,
+    canOpenLoverSettings,
     onRemoteConnect,
     onRemoteDisconnect,
     isRemote: !!remoteHost,
@@ -391,6 +423,7 @@ export function App({
     setExtensionList,
     onToggleExtension,
     onListExtensions,
+    onRefreshPluginSettingsTabs: refreshPluginSettingsTabs,
     setExtensionTogglingName,
     setExtensionStatusMessage,
     setExtensionStatusIsError,
@@ -413,7 +446,7 @@ export function App({
         onBack={() => setViewMode('chat')}
         onLoad={onLoadSettings}
         onSave={onSaveSettings}
-        pluginTabs={pluginSettingsTabs}
+        pluginTabs={activePluginSettingsTabs}
       />
     );
   }
@@ -573,6 +606,7 @@ export function App({
         isRemote={!!remoteHost}
         pendingFiles={pendingFiles}
         onRemoveFile={handleRemoveFile}
+        dynamicCommands={dynamicCommands}
       />
     </box>
   );

@@ -73,6 +73,13 @@ interface SettingsRow {
   indent?: number;
 }
 
+
+function isInlineCycleTarget(target: RowTarget): boolean {
+  return target.kind === 'modelProvider'
+    || target.kind === 'toolPolicy'
+    || (target.kind === 'mcpField' && target.field === 'transport');
+}
+
 interface EditorState {
   target: Extract<RowTarget, { kind: 'modelField' | 'systemField' | 'mcpField' }> | Extract<RowTarget, { kind: 'pluginField' }>;
   label: string;
@@ -321,6 +328,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
   const [draft, setDraft] = useState<ConsoleSettingsSnapshot | null>(null);
   const [baseline, setBaseline] = useState<ConsoleSettingsSnapshot | null>(null);
   const [selectedRowId, setSelectedRowId] = useState('');
+  const [navFocused, setNavFocused] = useState(true);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorValue, setEditorValue] = useState('');
   const [statusText, setStatusText] = useState('');
@@ -444,6 +452,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         setBaseline(cloneConsoleSettingsSnapshot(snapshot));
         setStatus('已加载当前配置', 'success');
         setPendingLeaveConfirm(false);
+        setNavFocused(true);
 
         // 并行加载所有插件 tab 的配置数据
         if (pluginTabs && pluginTabs.length > 0) {
@@ -501,6 +510,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       setStatus(`重新加载失败：${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setLoading(false);
+      setNavFocused(true);
     }
   }, [onLoad, setStatus]);
 
@@ -803,6 +813,21 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
     setStatus(`已删除 MCP 草稿：${server.name || `server_${index + 1}`}（未保存）`, 'warning');
   }, [draft, selectedRow, setStatus, updateDraft]);
 
+  const switchSection = useCallback((direction: 1 | -1) => {
+    if (sections.length === 0) return;
+    const currentSectionIndex = Math.max(0, sections.findIndex((section) => section.id === currentSection));
+    for (let step = 1; step <= sections.length; step++) {
+      const nextIndex = (currentSectionIndex + direction * step + sections.length) % sections.length;
+      const targetSection = sections[nextIndex];
+      const firstInSection = selectableRows.find((row: SettingsRow) => row.section === targetSection.id);
+      if (firstInSection) {
+        setSelectedRowId(firstInSection.id);
+        setPendingLeaveConfirm(false);
+        return;
+      }
+    }
+  }, [currentSection, sections, selectableRows]);
+
   useKeyboard((key) => {
     // 编辑器活动时：仅处理 Esc 取消和 Enter 提交
     if (editor) {
@@ -831,32 +856,42 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
     const currentIndex = selectedSectionIndex >= 0 ? selectedSectionIndex : 0;
 
     if (key.name === 'up') {
+      if (navFocused) {
+        switchSection(-1);
+        return;
+      }
       const prev = sectionSelectableRows[Math.max(0, currentIndex - 1)];
       if (prev) setSelectedRowId(prev.id);
       setPendingLeaveConfirm(false);
       return;
     }
     if (key.name === 'down') {
+      if (navFocused) {
+        switchSection(1);
+        return;
+      }
       const next = sectionSelectableRows[Math.min(sectionSelectableRows.length - 1, currentIndex + 1)];
       if (next) setSelectedRowId(next.id);
       setPendingLeaveConfirm(false);
       return;
     }
-    if (selectedRow?.target && key.name === 'left') {
-      if (selectedRow.target.kind === 'modelProvider' || selectedRow.target.kind === 'toolPolicy' || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'transport')) {
-        applyCycle(selectedRow.target, -1);
-      }
+    if (key.name === 'left') {
+      setNavFocused(true);
       setPendingLeaveConfirm(false);
       return;
     }
-    if (selectedRow?.target && key.name === 'right') {
-      if (selectedRow.target.kind === 'modelProvider' || selectedRow.target.kind === 'toolPolicy' || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'transport')) {
+    if (key.name === 'right') {
+      if (navFocused) {
+        setNavFocused(false);
+        setPendingLeaveConfirm(false);
+      } else if (selectedRow?.target && isInlineCycleTarget(selectedRow.target)) {
         applyCycle(selectedRow.target, 1);
+        setPendingLeaveConfirm(false);
       }
-      setPendingLeaveConfirm(false);
       return;
     }
     if (key.name === 'escape') {
+      if (navFocused) { setNavFocused(false); setPendingLeaveConfirm(false); return; }
       if (isDirty && !pendingLeaveConfirm) {
         setPendingLeaveConfirm(true);
         setStatus('当前有未保存修改，再按一次 Esc 将直接返回', 'warning');
@@ -874,7 +909,13 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
       if (targetSection) {
         const firstInSection = selectableRows.find((r: SettingsRow) => r.section === targetSection.id);
         if (firstInSection) setSelectedRowId(firstInSection.id);
+        setNavFocused(true);
       }
+      setPendingLeaveConfirm(false);
+      return;
+    }
+    if (navFocused && (key.name === 'enter' || key.name === 'return' || key.name === 'space')) {
+      setNavFocused(false);
       setPendingLeaveConfirm(false);
       return;
     }
@@ -918,7 +959,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
         applyToggle(selectedRow.target);
         return;
       }
-      if (selectedRow.target.kind === 'modelProvider' || selectedRow.target.kind === 'toolPolicy' || (selectedRow.target.kind === 'mcpField' && selectedRow.target.field === 'transport')) {
+      if (isInlineCycleTarget(selectedRow.target)) {
         applyCycle(selectedRow.target, 1);
         return;
       }
@@ -994,8 +1035,11 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
           <text fg={C.primary}><strong>IRIS</strong></text>
           <box marginTop={1} flexDirection="column">
             {sections.map((sec) => (
-              <text key={sec.id} fg={currentSection === sec.id ? C.accent : '#555'}>
-                {currentSection === sec.id ? ICONS.dotFilled : ICONS.dotEmpty} {sec.icon} {sec.label}
+              <text key={sec.id} fg={currentSection === sec.id ? (navFocused ? '#00ffff' : C.accent) : '#555'}>
+                {currentSection === sec.id
+                  ? (navFocused ? '\u276F' : ICONS.dotFilled)
+                  : ICONS.dotEmpty
+                } {sec.icon} {sec.label}
               </text>
             ))}
           </box>
@@ -1052,7 +1096,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
           <scrollbox flexGrow={1}>
             {windowStart > 0 && <text fg="#888">{ICONS.ellipsis}</text>}
             {visibleRows.map((row: SettingsRow) => {
-              const isSelected = row.id === selectedRowId && !!row.target;
+              const isSelected = !navFocused && row.id === selectedRowId && !!row.target;
               const prefix = row.kind === 'action'
                   ? (isSelected ? '\u276F' : '\u2022')
                   : row.kind === 'field'
@@ -1094,7 +1138,7 @@ export function SettingsView({ initialSection = 'general', onBack, onLoad, onSav
               <text fg="#888">{`Enter 保存 ${ICONS.separator} Esc 取消`}</text>
             </box>
           ) : (
-            <text fg="#888">{`${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
+            <text fg="#888">{`${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 开关  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`}</text>
           )}
         </box>
       </box>

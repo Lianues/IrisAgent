@@ -285,6 +285,27 @@ export function loadAgentConfig(
     policies: entryMerge(globalRaw.delivery?.policies, agentRaw.delivery?.policies),
   } : undefined;
 
+  // plugins 既可在全局配置中声明，也可由 Console /extension 写入当前 Agent 覆盖层。
+  // 合并时按插件名覆盖，确保：
+  // - agent 层保存的 enabled 状态重启后生效；
+  // - global 层已有 priority/config 不会因为 agent 只保存了某个开关而丢失。
+  const globalPlugins = parsePluginsConfig(globalRaw.plugins) ?? [];
+  const agentPlugins = parsePluginsConfig(agentRaw.plugins) ?? [];
+  const effectivePlugins = (() => {
+    const map = new Map(globalPlugins.map((entry) => [entry.name, entry]));
+    for (const entry of agentPlugins) {
+      const previous = map.get(entry.name);
+      map.set(entry.name, {
+        ...(previous ?? {}),
+        ...entry,
+        type: entry.type === 'npm' ? 'npm' : previous?.type ?? entry.type,
+        priority: entry.priority ?? previous?.priority,
+        config: entry.config ?? previous?.config,
+      });
+    }
+    return Array.from(map.values());
+  })();
+
   return {
     llm,
     ocr,
@@ -295,10 +316,7 @@ export function loadAgentConfig(
     // mcp: handled by mcp extension via readConfigSection,
     modes: parseModeConfig(mergedModesRaw),
     subAgents: parseSubAgentsConfig(mergedSubAgentsRaw),
-    // plugins 是全局独占配置，只从全局 raw 读取，agent 层不覆盖。
-    // 原因：PluginManager 在进程级运行，所有 agent 共享同一组已激活插件（cron、memory 等）。
-    // 注意 plugin 是 extension 的一种贡献角色，不是独立系统——详见 src/config/plugins.ts。
-    plugins: parsePluginsConfig(globalRaw.plugins),
+    plugins: effectivePlugins.length > 0 ? effectivePlugins : undefined,
     summary: parseSummaryConfig(mergedSummaryRaw),
     delivery: parseDeliveryConfig(mergedDeliveryRaw),
   };

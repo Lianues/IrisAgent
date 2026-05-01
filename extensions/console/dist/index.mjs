@@ -1374,7 +1374,7 @@ function getCharacterCount(text) {
 }
 
 // src/App.tsx
-import { useCallback as useCallback11, useEffect as useEffect11, useRef as useRef9, useState as useState14 } from "react";
+import { useCallback as useCallback11, useEffect as useEffect11, useMemo as useMemo6, useRef as useRef9, useState as useState14 } from "react";
 import { useRenderer } from "@opentui/react";
 
 // src/theme.ts
@@ -1699,7 +1699,6 @@ var COMMANDS = [
   { name: "/redo", description: "恢复上一次撤销" },
   { name: "/model", description: "查看或切换当前模型" },
   { name: "/settings", description: "打开设置中心（LLM / System / Tools / MCP）" },
-  { name: "/lover", description: "打开 Virtual Lover 配置" },
   { name: "/mcp", description: "直接打开 MCP 管理区" },
   { name: "/sh", description: "执行命令（如 cd、dir、git 等）" },
   { name: "/reset-config", description: "重置配置为默认值" },
@@ -1960,12 +1959,16 @@ var FILE_TYPE_ICONS = {
   audio: "\uD83C\uDFB5",
   video: "\uD83C\uDFAC"
 };
-function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote }) {
+function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [] }) {
   const [inputState, inputActions] = useTextInput("");
   const [selectedIndex, setSelectedIndex] = useState3(0);
   const cursorVisible = useCursorBlink();
   const { width: termWidth } = useTerminalDimensions();
-  const visibleCommands = useMemo(() => COMMANDS.filter((cmd) => !cmd.remoteOnly || isRemote), [isRemote]);
+  const visibleCommands = useMemo(() => {
+    const commands = [...COMMANDS, ...dynamicCommands];
+    const seen = new Set;
+    return commands.filter((cmd) => (!cmd.remoteOnly || isRemote) && !seen.has(cmd.name) && seen.add(cmd.name));
+  }, [isRemote, dynamicCommands]);
   const pasteGuardRef = useRef2(false);
   const lastKeyTimeRef = useRef2(0);
   const rapidKeyCountRef = useRef2(0);
@@ -2490,7 +2493,8 @@ function BottomPanel({
   remoteHost,
   isRemote,
   pendingFiles,
-  onRemoveFile
+  onRemoveFile,
+  dynamicCommands
 }) {
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
   return /* @__PURE__ */ jsxDEV8("box", {
@@ -2531,7 +2535,8 @@ function BottomPanel({
             onCycleThinkingEffort,
             pendingFiles,
             onRemoveFile,
-            isRemote
+            isRemote,
+            dynamicCommands
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV8(StatusBar, {
             agentName,
@@ -6349,6 +6354,8 @@ function ExtensionListView({
   statusIsError
 }) {
   const total = extensions.length;
+  const pluginCount = extensions.filter((item) => item.hasPlugin).length;
+  const platformCount = total - pluginCount;
   return /* @__PURE__ */ jsxDEV36("box", {
     flexDirection: "column",
     width: "100%",
@@ -6367,11 +6374,11 @@ function ExtensionListView({
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
-            children: `(${total} extensions)`
+            children: `(${pluginCount} plugins, ${platformCount} platforms)`
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
-            children: `  ${ICONS.arrowUp}${ICONS.arrowDown} select  Enter toggle  Esc back`
+            children: `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 标记  S 保存  Esc 返回`
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
@@ -6395,38 +6402,49 @@ function ExtensionListView({
             const isSelected = index === selectedIndex;
             const statusInfo = STATUS_LABELS[item.status] ?? STATUS_LABELS.platform;
             const isToggling = item.name === togglingName;
+            const isDirty = item.originalStatus != null && item.originalStatus !== item.status;
+            const showHeader = index === 0 || extensions[index - 1]?.hasPlugin !== item.hasPlugin;
             return /* @__PURE__ */ jsxDEV36("box", {
-              paddingLeft: 1,
-              children: /* @__PURE__ */ jsxDEV36("text", {
-                children: [
-                  /* @__PURE__ */ jsxDEV36("span", {
-                    fg: isSelected ? C.accent : C.dim,
-                    children: isSelected ? `${ICONS.selectorArrow} ` : "  "
-                  }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("span", {
-                    fg: statusInfo.color,
-                    children: `[${isToggling ? "..." : statusInfo.label}] `
-                  }, undefined, false, undefined, this),
-                  isSelected ? /* @__PURE__ */ jsxDEV36("strong", {
-                    children: /* @__PURE__ */ jsxDEV36("span", {
-                      fg: C.text,
-                      children: item.name
-                    }, undefined, false, undefined, this)
-                  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV36("span", {
-                    fg: C.textSec,
-                    children: item.name
-                  }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("span", {
-                    fg: C.dim,
-                    children: ` v${item.version}`
-                  }, undefined, false, undefined, this),
-                  /* @__PURE__ */ jsxDEV36("span", {
-                    fg: C.dim,
-                    children: ` ${ICONS.emDash} ${item.description || "(no description)"}`
-                  }, undefined, false, undefined, this)
-                ]
-              }, undefined, true, undefined, this)
-            }, item.name, false, undefined, this);
+              flexDirection: "column",
+              children: [
+                showHeader && /* @__PURE__ */ jsxDEV36("text", {
+                  fg: C.primary,
+                  children: item.hasPlugin ? "Plugins" : "Platforms"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ jsxDEV36("box", {
+                  paddingLeft: 1,
+                  children: /* @__PURE__ */ jsxDEV36("text", {
+                    children: [
+                      /* @__PURE__ */ jsxDEV36("span", {
+                        fg: isSelected ? C.accent : C.dim,
+                        children: isSelected ? `${ICONS.selectorArrow} ` : "  "
+                      }, undefined, false, undefined, this),
+                      /* @__PURE__ */ jsxDEV36("span", {
+                        fg: statusInfo.color,
+                        children: `[${isToggling ? "..." : `${statusInfo.label}${isDirty ? "*" : ""}`}] `
+                      }, undefined, false, undefined, this),
+                      isSelected ? /* @__PURE__ */ jsxDEV36("strong", {
+                        children: /* @__PURE__ */ jsxDEV36("span", {
+                          fg: C.text,
+                          children: item.name
+                        }, undefined, false, undefined, this)
+                      }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV36("span", {
+                        fg: C.textSec,
+                        children: item.name
+                      }, undefined, false, undefined, this),
+                      /* @__PURE__ */ jsxDEV36("span", {
+                        fg: C.dim,
+                        children: ` v${item.version}`
+                      }, undefined, false, undefined, this),
+                      /* @__PURE__ */ jsxDEV36("span", {
+                        fg: C.dim,
+                        children: ` ${ICONS.emDash} ${item.description || "(no description)"}`
+                      }, undefined, false, undefined, this)
+                    ]
+                  }, undefined, true, undefined, this)
+                }, undefined, false, undefined, this)
+              ]
+            }, item.name, true, undefined, this);
           })
         ]
       }, undefined, true, undefined, this)
@@ -6833,6 +6851,9 @@ function formatToolPolicyMode(mode) {
     return "手动确认";
   return "不允许";
 }
+function isInlineCycleTarget(target) {
+  return target.kind === "modelProvider" || target.kind === "toolPolicy" || target.kind === "mcpField" && target.field === "transport";
+}
 function getStatusColor(kind) {
   switch (kind) {
     case "success":
@@ -7016,6 +7037,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
   const [draft, setDraft] = useState8(null);
   const [baseline, setBaseline] = useState8(null);
   const [selectedRowId, setSelectedRowId] = useState8("");
+  const [navFocused, setNavFocused] = useState8(true);
   const [editor, setEditor] = useState8(null);
   const [editorValue, setEditorValue] = useState8("");
   const [statusText, setStatusText] = useState8("");
@@ -7124,6 +7146,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
         setBaseline(cloneConsoleSettingsSnapshot(snapshot));
         setStatus("已加载当前配置", "success");
         setPendingLeaveConfirm(false);
+        setNavFocused(true);
         if (pluginTabs && pluginTabs.length > 0) {
           const entries = await Promise.all(pluginTabs.map(async (tab) => {
             try {
@@ -7184,6 +7207,7 @@ function SettingsView({ initialSection = "general", onBack, onLoad, onSave, plug
       setStatus(`重新加载失败：${err instanceof Error ? err.message : String(err)}`, "error");
     } finally {
       setLoading(false);
+      setNavFocused(true);
     }
   }, [onLoad, setStatus]);
   const handleAddModel = useCallback4(() => {
@@ -7522,6 +7546,21 @@ ${JSON.stringify(result.data, null, 2)}` : "";
     });
     setStatus(`已删除 MCP 草稿：${server.name || `server_${index + 1}`}（未保存）`, "warning");
   }, [draft, selectedRow, setStatus, updateDraft]);
+  const switchSection = useCallback4((direction) => {
+    if (sections.length === 0)
+      return;
+    const currentSectionIndex = Math.max(0, sections.findIndex((section) => section.id === currentSection));
+    for (let step = 1;step <= sections.length; step++) {
+      const nextIndex = (currentSectionIndex + direction * step + sections.length) % sections.length;
+      const targetSection = sections[nextIndex];
+      const firstInSection = selectableRows.find((row) => row.section === targetSection.id);
+      if (firstInSection) {
+        setSelectedRowId(firstInSection.id);
+        setPendingLeaveConfirm(false);
+        return;
+      }
+    }
+  }, [currentSection, sections, selectableRows]);
   useKeyboard3((key) => {
     if (editor) {
       if (key.name === "escape") {
@@ -7543,6 +7582,10 @@ ${JSON.stringify(result.data, null, 2)}` : "";
     }
     const currentIndex = selectedSectionIndex >= 0 ? selectedSectionIndex : 0;
     if (key.name === "up") {
+      if (navFocused) {
+        switchSection(-1);
+        return;
+      }
       const prev = sectionSelectableRows[Math.max(0, currentIndex - 1)];
       if (prev)
         setSelectedRowId(prev.id);
@@ -7550,27 +7593,37 @@ ${JSON.stringify(result.data, null, 2)}` : "";
       return;
     }
     if (key.name === "down") {
+      if (navFocused) {
+        switchSection(1);
+        return;
+      }
       const next = sectionSelectableRows[Math.min(sectionSelectableRows.length - 1, currentIndex + 1)];
       if (next)
         setSelectedRowId(next.id);
       setPendingLeaveConfirm(false);
       return;
     }
-    if (selectedRow?.target && key.name === "left") {
-      if (selectedRow.target.kind === "modelProvider" || selectedRow.target.kind === "toolPolicy" || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "transport") {
-        applyCycle(selectedRow.target, -1);
-      }
+    if (key.name === "left") {
+      setNavFocused(true);
       setPendingLeaveConfirm(false);
       return;
     }
-    if (selectedRow?.target && key.name === "right") {
-      if (selectedRow.target.kind === "modelProvider" || selectedRow.target.kind === "toolPolicy" || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "transport") {
+    if (key.name === "right") {
+      if (navFocused) {
+        setNavFocused(false);
+        setPendingLeaveConfirm(false);
+      } else if (selectedRow?.target && isInlineCycleTarget(selectedRow.target)) {
         applyCycle(selectedRow.target, 1);
+        setPendingLeaveConfirm(false);
       }
-      setPendingLeaveConfirm(false);
       return;
     }
     if (key.name === "escape") {
+      if (navFocused) {
+        setNavFocused(false);
+        setPendingLeaveConfirm(false);
+        return;
+      }
       if (isDirty && !pendingLeaveConfirm) {
         setPendingLeaveConfirm(true);
         setStatus("当前有未保存修改，再按一次 Esc 将直接返回", "warning");
@@ -7590,7 +7643,13 @@ ${JSON.stringify(result.data, null, 2)}` : "";
         const firstInSection = selectableRows.find((r) => r.section === targetSection.id);
         if (firstInSection)
           setSelectedRowId(firstInSection.id);
+        setNavFocused(true);
       }
+      setPendingLeaveConfirm(false);
+      return;
+    }
+    if (navFocused && (key.name === "enter" || key.name === "return" || key.name === "space")) {
+      setNavFocused(false);
       setPendingLeaveConfirm(false);
       return;
     }
@@ -7639,7 +7698,7 @@ ${JSON.stringify(result.data, null, 2)}` : "";
         applyToggle(selectedRow.target);
         return;
       }
-      if (selectedRow.target.kind === "modelProvider" || selectedRow.target.kind === "toolPolicy" || selectedRow.target.kind === "mcpField" && selectedRow.target.field === "transport") {
+      if (isInlineCycleTarget(selectedRow.target)) {
         applyCycle(selectedRow.target, 1);
         return;
       }
@@ -7729,9 +7788,9 @@ ${JSON.stringify(result.data, null, 2)}` : "";
                 marginTop: 1,
                 flexDirection: "column",
                 children: sections.map((sec) => /* @__PURE__ */ jsxDEV37("text", {
-                  fg: currentSection === sec.id ? C.accent : "#555",
+                  fg: currentSection === sec.id ? navFocused ? "#00ffff" : C.accent : "#555",
                   children: [
-                    currentSection === sec.id ? ICONS.dotFilled : ICONS.dotEmpty,
+                    currentSection === sec.id ? navFocused ? "❯" : ICONS.dotFilled : ICONS.dotEmpty,
                     " ",
                     sec.icon,
                     " ",
@@ -7783,7 +7842,7 @@ ${JSON.stringify(result.data, null, 2)}` : "";
                     children: ICONS.ellipsis
                   }, undefined, false, undefined, this),
                   visibleRows.map((row) => {
-                    const isSelected = row.id === selectedRowId && !!row.target;
+                    const isSelected = !navFocused && row.id === selectedRowId && !!row.target;
                     const prefix = row.kind === "action" ? isSelected ? "❯" : "•" : row.kind === "field" ? isSelected ? "❯" : " " : " ";
                     return /* @__PURE__ */ jsxDEV37("box", {
                       paddingLeft: row.indent ?? 0,
@@ -7880,7 +7939,7 @@ ${JSON.stringify(result.data, null, 2)}` : "";
                 ]
               }, undefined, true, undefined, this) : /* @__PURE__ */ jsxDEV37("text", {
                 fg: "#888",
-                children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 布尔  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`
+                children: `${ICONS.arrowUp}${ICONS.arrowDown} 选择  ${ICONS.arrowLeft}${ICONS.arrowRight} 切换  1~${sections.length} 分栏  Space 开关  Enter 编辑/执行  A 新增  D 删除  S 保存  R 重载  Esc 返回`
               }, undefined, false, undefined, this)
             ]
           }, undefined, true, undefined, this)
@@ -8454,6 +8513,7 @@ function useAppKeyboard({
   setExtensionList,
   onToggleExtension,
   onListExtensions,
+  onRefreshPluginSettingsTabs,
   setExtensionTogglingName,
   setExtensionStatusMessage,
   setExtensionStatusIsError,
@@ -8589,25 +8649,62 @@ function useAppKeyboard({
         setSelectedIndex((prev) => Math.max(0, prev - 1));
       } else if (key.name === "down") {
         setSelectedIndex((prev) => Math.min(extensionList.length - 1, prev + 1));
-      } else if (key.name === "return") {
+      } else if (key.name === "return" || key.name === "enter") {
         const item = extensionList[selectedIndex];
-        if (!item || item.status === "platform" || !onToggleExtension)
+        if (!item)
           return;
-        setExtensionTogglingName(item.name);
-        setExtensionStatusMessage(null);
-        onToggleExtension(item.name).then(async ({ ok, message }) => {
+        if (item.status === "platform") {
+          setExtensionStatusMessage("Platform 请在 platform.yaml 配置");
+          setExtensionStatusIsError(false);
+          return;
+        }
+        const originalStatus = item.originalStatus ?? item.status;
+        const nextStatus = item.status === "active" ? originalStatus === "available" ? "available" : "disabled" : "active";
+        setExtensionList((prev) => prev.map((entry, index) => index === selectedIndex ? { ...entry, status: nextStatus, originalStatus } : entry));
+        setExtensionStatusMessage(`草稿：${item.name} -> ${nextStatus === "active" ? "启用" : "禁用"}，S 保存`);
+        setExtensionStatusIsError(false);
+      } else if (key.name === "s") {
+        if (!onToggleExtension) {
+          setExtensionStatusMessage("扩展管理不可用");
+          setExtensionStatusIsError(true);
+          return;
+        }
+        const changed = extensionList.filter((item) => item.status !== "platform" && (item.originalStatus ?? item.status) !== item.status);
+        if (changed.length === 0) {
+          setExtensionStatusMessage("无未保存修改");
+          setExtensionStatusIsError(false);
+          return;
+        }
+        setExtensionStatusMessage(`保存中：${changed.length} 项...`);
+        setExtensionStatusIsError(false);
+        (async () => {
+          for (const item of changed) {
+            setExtensionTogglingName(item.name);
+            const result = await onToggleExtension(item.name);
+            if (!result.ok) {
+              setExtensionTogglingName(null);
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+          }
           setExtensionTogglingName(null);
-          setExtensionStatusMessage(message);
-          setExtensionStatusIsError(!ok);
-          if (ok && onListExtensions) {
+          if (onListExtensions) {
             try {
               const list = await onListExtensions();
               setExtensionList(list);
-            } catch {}
+            } catch {
+              setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
+            }
+          } else {
+            setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
           }
-        }).catch((err) => {
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(`已保存并热重载：${changed.length} 项`);
+          setExtensionStatusIsError(false);
+        })().catch((err) => {
           setExtensionTogglingName(null);
-          setExtensionStatusMessage(`操作失败: ${err}`);
+          setExtensionStatusMessage(`保存失败：${err}`);
           setExtensionStatusIsError(true);
         });
       }
@@ -9109,6 +9206,7 @@ function useCommandDispatch({
   setMemoryPendingDeleteId,
   onListExtensions,
   setExtensionList,
+  canOpenLoverSettings,
   onRemoteConnect,
   onRemoteDisconnect,
   isRemote,
@@ -9245,6 +9343,10 @@ function useCommandDispatch({
       return;
     }
     if (text === "/lover") {
+      if (!canOpenLoverSettings) {
+        appendCommandMessage(setMessages, "Virtual Lover 扩展未启用。", { isError: true });
+        return;
+      }
       setSettingsInitialSection("virtual-lover");
       setViewMode("settings");
       return;
@@ -9620,6 +9722,7 @@ function App({
   onDeleteMemory,
   onListExtensions,
   onToggleExtension,
+  onListPluginSettingsTabs,
   onRemoteConnect,
   onRemoteDisconnect,
   remoteHost,
@@ -9651,8 +9754,21 @@ function App({
   const [extensionStatusMessage, setExtensionStatusMessage] = useState14(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState14(false);
   const [pendingFiles, setPendingFiles] = useState14([]);
+  const [runtimePluginSettingsTabs, setRuntimePluginSettingsTabs] = useState14(pluginSettingsTabs ?? []);
+  useEffect11(() => {
+    setRuntimePluginSettingsTabs(pluginSettingsTabs ?? []);
+  }, [pluginSettingsTabs]);
   const [fileBrowserPath, setFileBrowserPath] = useState14("");
   const [fileBrowserEntries, setFileBrowserEntries] = useState14([]);
+  const disabledExtensionNames = useMemo6(() => new Set(extensionList.filter((item) => (item.originalStatus ?? item.status) === "disabled").map((item) => item.name)), [extensionList]);
+  const activePluginSettingsTabs = useMemo6(() => runtimePluginSettingsTabs.filter((tab) => !disabledExtensionNames.has(tab.id)), [runtimePluginSettingsTabs, disabledExtensionNames]);
+  const dynamicCommands = useMemo6(() => {
+    return activePluginSettingsTabs.some((tab) => tab.id === "virtual-lover") ? [{ name: "/lover", description: "打开 Virtual Lover 配置" }] : [];
+  }, [activePluginSettingsTabs]);
+  const canOpenLoverSettings = dynamicCommands.some((command) => command.name === "/lover");
+  const refreshPluginSettingsTabs = useCallback11(() => {
+    setRuntimePluginSettingsTabs(onListPluginSettingsTabs?.() ?? pluginSettingsTabs ?? []);
+  }, [onListPluginSettingsTabs, pluginSettingsTabs]);
   const [fileBrowserShowHidden, setFileBrowserShowHidden] = useState14(false);
   const [queueEditingId, setQueueEditingId] = useState14(null);
   const [queueEditState, queueEditActions] = useTextInput("");
@@ -9746,6 +9862,7 @@ function App({
     setMemoryPendingDeleteId,
     onListExtensions,
     setExtensionList,
+    canOpenLoverSettings,
     onRemoteConnect,
     onRemoteDisconnect,
     isRemote: !!remoteHost,
@@ -9878,6 +9995,7 @@ function App({
     setExtensionList,
     onToggleExtension,
     onListExtensions,
+    onRefreshPluginSettingsTabs: refreshPluginSettingsTabs,
     setExtensionTogglingName,
     setExtensionStatusMessage,
     setExtensionStatusIsError,
@@ -9897,7 +10015,7 @@ function App({
       onBack: () => setViewMode("chat"),
       onLoad: onLoadSettings,
       onSave: onSaveSettings,
-      pluginTabs: pluginSettingsTabs
+      pluginTabs: activePluginSettingsTabs
     }, undefined, false, undefined, this);
   }
   if (viewMode === "session-list") {
@@ -10044,7 +10162,8 @@ function App({
         remoteHost,
         isRemote: !!remoteHost,
         pendingFiles,
-        onRemoveFile: handleRemoveFile
+        onRemoveFile: handleRemoveFile,
+        dynamicCommands
       }, undefined, false, undefined, this)
     ]
   }, undefined, true, undefined, this);
@@ -10800,6 +10919,7 @@ ${summaryText}`;
         onDeleteMemory: (id) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name) => this.handleToggleExtension(name),
+        onListPluginSettingsTabs: () => this.api?.getConsoleSettingsTabs?.() ?? [],
         onRemoteConnect: (name) => this.handleRemoteConnect(name),
         onRemoteDisconnect: () => this.handleRemoteDisconnect(),
         remoteHost: this._remoteHost || undefined,
@@ -11473,7 +11593,7 @@ ${summaryText}`;
     try {
       const packages = ext.discover();
       const raw = configManager.readEditableConfig();
-      const pluginEntries = raw?.plugins ?? [];
+      const pluginEntries = this.readPluginEntries(raw);
       const pluginMap = new Map(pluginEntries.map((p) => [p.name, p]));
       const active = this.api?.pluginManager?.listPlugins?.() ?? [];
       const activeNames = new Set(active.map((p) => p.name));
@@ -11498,14 +11618,36 @@ ${summaryText}`;
           version: pkg.manifest.version,
           description: pkg.manifest.description || "",
           status,
+          originalStatus: status,
           hasPlugin,
           source: pkg.source
         };
+      }).sort((a, b) => {
+        const groupA = a.hasPlugin ? 0 : 1;
+        const groupB = b.hasPlugin ? 0 : 1;
+        return groupA === groupB ? a.name.localeCompare(b.name) : groupA - groupB;
       });
     } catch (err) {
       console.error("[ConsolePlatform] handleListExtensions failed:", err);
       return [];
     }
+  }
+  readPluginEntries(raw) {
+    const section = raw?.plugins;
+    if (Array.isArray(section))
+      return section.filter((item) => item && typeof item.name === "string");
+    if (section && typeof section === "object" && Array.isArray(section.plugins)) {
+      return section.plugins.filter((item) => item && typeof item.name === "string");
+    }
+    return [];
+  }
+  buildPluginsConfigUpdate(raw, pluginEntries) {
+    const section = raw?.plugins;
+    if (Array.isArray(section))
+      return { plugins: pluginEntries };
+    const nextSection = section && typeof section === "object" ? { ...section } : {};
+    nextSection.plugins = pluginEntries;
+    return { plugins: nextSection };
   }
   async handleToggleExtension(name) {
     const ext = this.api?.extensions;
@@ -11515,7 +11657,7 @@ ${summaryText}`;
     }
     try {
       const raw = configManager.readEditableConfig();
-      const pluginEntries = [...raw?.plugins ?? []];
+      const pluginEntries = [...this.readPluginEntries(raw)];
       const existing = pluginEntries.find((p) => p.name === name);
       const active = this.api?.pluginManager?.listPlugins?.() ?? [];
       const isActive = active.some((p) => p.name === name);
@@ -11526,7 +11668,7 @@ ${summaryText}`;
         } else {
           pluginEntries.push({ name, enabled: false });
         }
-        configManager.updateEditableConfig({ plugins: pluginEntries });
+        configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries));
         return { ok: true, message: `已禁用 "${name}"` };
       } else {
         await ext.activate(name);
@@ -11535,7 +11677,7 @@ ${summaryText}`;
         } else {
           pluginEntries.push({ name, enabled: true });
         }
-        configManager.updateEditableConfig({ plugins: pluginEntries });
+        configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries));
         return { ok: true, message: `已启用 "${name}"` };
       }
     } catch (err) {
