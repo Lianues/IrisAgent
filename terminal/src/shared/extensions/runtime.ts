@@ -263,8 +263,8 @@ function resolveInstalledState(
     if (!hasPlatforms && pluginEnabled === false) {
       return {
         enabled: false,
-        stateLabel: "已关闭",
-        statusDetail: "该 extension 只包含插件入口，已在 plugins.yaml 中显式关闭。",
+        stateLabel: "未启用",
+        statusDetail: "该 extension 只包含插件入口，尚未启用。",
       }
     }
   }
@@ -545,6 +545,10 @@ export async function installRemoteExtension(requestedPath: string): Promise<Ext
     const targetDir = path.join(installedRootDir, installedManifest.name!)
     fs.rmSync(targetDir, { recursive: true, force: true })
     fs.renameSync(tempDir, targetDir)
+
+    if (hasPluginContribution(installedManifest)) {
+      upsertLocalPluginEnabled(installedManifest.name!, false)
+    }
 
     const state = resolveInstalledState(installedManifest, targetDir)
     return buildSummary(requested, installedManifest, {

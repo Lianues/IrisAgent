@@ -337,6 +337,21 @@ export interface AppConfig {
   delivery?: DeliveryConfig;
 }
 
+/**
+ * @deprecated MCP 已迁移为独立 extension。
+ *
+ * 该兼容类型仅用于遗留测试/工具函数对比配置结构，核心运行时不再直接消费 MCP 配置。
+ */
+export interface MCPConfig {
+  servers: Record<string, {
+    transport?: string;
+    command?: string;
+    args?: string[];
+    url?: string;
+    [key: string]: unknown;
+  }>;
+}
+
 /** 子代理类型定义（配置文件格式） */
 export interface SubAgentTypeDef {
   /** 类型标识（从 YAML 键名解析） */

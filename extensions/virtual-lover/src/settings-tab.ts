@@ -3,6 +3,7 @@ import {
   type DeliveryBinding,
   type DeliveryRegistryService,
   type DeliveryRecentTarget,
+  type Disposable,
   type IrisAPI,
   type PluginContext,
 } from 'irises-extension-sdk';
@@ -516,11 +517,11 @@ async function handleVirtualLoverAction(ctx: PluginContext, api: IrisAPI, action
   }
 }
 
-export function registerVirtualLoverSettingsTab(ctx: PluginContext, api: IrisAPI): void {
+export function registerVirtualLoverSettingsTab(ctx: PluginContext, api: IrisAPI): Disposable | undefined {
   const registerTab = api.registerConsoleSettingsTab;
-  if (!registerTab) return;
+  if (!registerTab) return undefined;
 
-  registerTab({
+  return registerTab({
     id: 'virtual-lover',
     label: 'Virtual Lover',
     icon: '07',

@@ -1,5 +1,6 @@
 import type { Content } from './message.js';
 import type { ToolExecutionHandleLike } from './tool.js';
+import type { Disposable } from './plugin/service.js';
 
 export type ImageInput = {
   mimeType: string;
@@ -428,7 +429,7 @@ export function isForegroundPlatform(
  */
 export interface RoutableHttpPlatform {
   /** 注册外部路由到此平台的 HTTP 服务器 */
-  registerRoute(method: string, path: string, handler: (...args: unknown[]) => Promise<void>): void;
+  registerRoute(method: string, path: string, handler: (...args: unknown[]) => Promise<void>): Disposable;
 }
 
 /** 检测平台是否实现了 RoutableHttpPlatform 接口 */

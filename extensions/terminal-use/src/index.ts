@@ -116,7 +116,14 @@ export default definePlugin({
     for (const disposable of contributionDisposables.splice(0, contributionDisposables.length)) {
       try { disposable.dispose(); } catch { /* ignore */ }
     }
+    if (cachedApi) unregisterTools(cachedApi);
     await destroyEnvironment();
+    activeConfig = undefined;
+    activeToolsConfig = { ...DEFAULT_TERMINAL_USE_TOOLS_CONFIG };
+    cachedApi = undefined;
+    lastConfigSnapshot = '';
+    pendingReload = null;
+    reloading = false;
   },
 });
 

@@ -11791,6 +11791,14 @@ function ensureHostEventListeners() {
   hostEvents.on("agent-stopping", onAgentStopping);
   hostEvents.on("host-shutdown", onHostShutdown);
 }
+function cleanupHostEventListenersIfUnused() {
+  if (!hostEventListenersRegistered || contextsByAgent.size > 0)
+    return;
+  hostEventListenersRegistered = false;
+  hostEvents.off("ipc-ready", onIpcReady);
+  hostEvents.off("agent-stopping", onAgentStopping);
+  hostEvents.off("host-shutdown", onHostShutdown);
+}
 function disposeInteropServices(ctx) {
   const registryKey = ctx.getServiceRegistry();
   serviceDisposersByRegistry.get(registryKey)?.forEach((d) => d.dispose());
@@ -11818,6 +11826,7 @@ var src_default = definePlugin({
       onAgentStopping({ agentName });
       agentNamesByContext.delete(ctx);
     }
+    cleanupHostEventListenersIfUnused();
   }
 });
 export {

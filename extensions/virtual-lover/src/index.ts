@@ -31,6 +31,7 @@ const logger = createPluginLogger('virtual-lover');
 interface RuntimeState {
   memoryToolsRegistered: boolean;
   serviceListenerDisposable?: Disposable;
+  disposables: Disposable[];
   proactiveToolRegistered: boolean;
   scheduleToolRegistered: boolean;
   followupToolRegistered: boolean;
@@ -59,6 +60,7 @@ export default definePlugin({
     const runtimeKey = ctx.getConfigDir();
     const runtimeState: RuntimeState = {
       memoryToolsRegistered: false,
+      disposables: [],
       proactiveToolRegistered: false,
       scheduleToolRegistered: false,
       followupToolRegistered: false,
@@ -115,8 +117,9 @@ export default definePlugin({
     });
 
     ctx.onReady(async (api) => {
-      registerVirtualLoverRoutes(ctx, api, { logger });
-      registerVirtualLoverSettingsTab(ctx, api);
+      runtimeState.disposables.push(...registerVirtualLoverRoutes(ctx, api, { logger }));
+      const settingsDisposable = registerVirtualLoverSettingsTab(ctx, api);
+      if (settingsDisposable) runtimeState.disposables.push(settingsDisposable);
 
       if (!runtimeState.proactiveToolRegistered) {
         ctx.registerTool(createVirtualLoverProactiveTool(ctx, api));
@@ -213,6 +216,9 @@ export default definePlugin({
     const runtimeKey = ctx.getConfigDir();
     const runtimeState = runtimeStates.get(runtimeKey);
     runtimeState?.serviceListenerDisposable?.dispose();
+    for (const disposable of runtimeState?.disposables.splice(0).reverse() ?? []) {
+      try { disposable.dispose(); } catch { /* ignore */ }
+    }
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_PROACTIVE_TOOL_NAME);
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_SCHEDULE_PROACTIVE_TOOL_NAME);
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_SCHEDULE_FOLLOWUP_TOOL_NAME);

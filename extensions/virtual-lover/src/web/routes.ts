@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { IrisAPI, PluginContext, PluginLogger } from 'irises-extension-sdk';
+import type { Disposable, IrisAPI, PluginContext, PluginLogger } from 'irises-extension-sdk';
 import { parseVirtualLoverConfig } from '../config.js';
 import { buildVirtualLoverPrompt } from '../prompt/builder.js';
 import { sendProactiveMessage } from '../proactive.js';
@@ -26,31 +26,39 @@ export function registerVirtualLoverRoutes(
   ctx: PluginContext,
   api: IrisAPI,
   options: RegisterVirtualLoverRoutesOptions,
-): void {
+): Disposable[] {
   const logger = options.logger;
   const config = readCurrentConfig(ctx);
 
   if (!config.web.enabled) {
     logger.info('Virtual Lover Web 面板已禁用（web.enabled: false）');
-    return;
+    return [];
   }
 
-  const registerRoute = api.registerWebRoute;
-  if (!registerRoute) {
+  const registerWebRoute = api.registerWebRoute;
+  if (!registerWebRoute) {
     logger.warn('宿主未提供 registerWebRoute，Virtual Lover Web 面板不可用');
-    return;
+    return [];
   }
+
+  const disposables: Disposable[] = [];
+  const track = (disposable: Disposable | undefined) => {
+    if (disposable) disposables.push(disposable);
+  };
+  const registerRoute = (method: string, routePath: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => {
+    track(registerWebRoute(method, routePath, handler));
+  };
 
   const basePath = config.web.basePath;
   const dataDir = ctx.getDataDir();
   const extensionRootDir = ctx.getExtensionRootDir();
 
-  api.registerWebPanel?.({
+  track(api.registerWebPanel?.({
     id: 'virtual-lover',
     title: 'Virtual Lover',
     icon: 'favorite',
     contentPath: `${basePath}/panel`,
-  });
+  }));
 
   registerRoute('GET', `${basePath}/health`, async (_req: any, res: any) => {
     const currentConfig = readCurrentConfig(ctx);
@@ -200,6 +208,7 @@ export function registerVirtualLoverRoutes(
   });
 
   logger.info(`Virtual Lover Web 面板已注册: ${basePath}/panel`);
+  return disposables;
 }
 
 function readCurrentConfig(ctx: PluginContext) {

@@ -88,9 +88,15 @@ export default definePlugin({
     });
   },
 
-  async deactivate() {
+  async deactivate(ctx?: PluginContext) {
     serviceDisposer?.dispose();
     serviceDisposer = null;
+    if (ctx) {
+      const reg = ctx.getToolRegistry();
+      for (const name of reg.listTools?.() ?? []) {
+        if (name.startsWith('mcp__')) reg.unregister?.(name);
+      }
+    }
     if (manager) {
       await manager.disconnectAll();
       manager = null;

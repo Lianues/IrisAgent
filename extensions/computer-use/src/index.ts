@@ -6,7 +6,7 @@
  * 在 deactivate 时销毁环境。
  */
 
-import { definePlugin, createPluginLogger, type PluginContext, type IrisAPI } from 'irises-extension-sdk';
+import { definePlugin, createPluginLogger, type Disposable, type PluginContext, type IrisAPI } from 'irises-extension-sdk';
 import type { LLMRequest, Content, FunctionResponsePart } from 'irises-extension-sdk';
 import { parseComputerUseConfig } from './config.js';
 import { DEFAULT_CONFIG_TEMPLATE } from './config-template.js';
@@ -37,6 +37,18 @@ let pendingReload: { rawConfig: any; api: IrisAPI } | null = null;
 let cachedApi: IrisAPI | undefined;
 /** 扩展根目录（用于自动安装依赖） */
 let cachedExtDir: string | undefined;
+/** Web route / panel 注册句柄 */
+let lifecycleDisposables: Disposable[] = [];
+
+function trackDisposable(disposable: Disposable | undefined): void {
+  if (disposable) lifecycleDisposables.push(disposable);
+}
+
+function disposeLifecycleDisposables(): void {
+  for (const disposable of lifecycleDisposables.splice(0, lifecycleDisposables.length).reverse()) {
+    try { disposable.dispose(); } catch { /* ignore */ }
+  }
+}
 
 export default definePlugin({
   name: 'computer-use',
@@ -61,21 +73,21 @@ export default definePlugin({
       cachedApi = api;
 
       // 注册扩展面板（Web UI 侧边栏会动态显示）
-      api.registerWebPanel?.({
+      trackDisposable(api.registerWebPanel?.({
         id: 'computer-use',
         title: 'Computer Use',
         icon: 'mouse',
         contentPath: '/api/ext/computer-use/panel',
-      });
+      }));
 
       // 面板内容路由：返回完整配置 UI
-      api.registerWebRoute?.('GET', '/api/ext/computer-use/panel', async (_req: any, res: any) => {
+      trackDisposable(api.registerWebRoute?.('GET', '/api/ext/computer-use/panel', async (_req: any, res: any) => {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(buildPanelHTML());
-      });
+      }));
 
       // 配置读取路由
-      api.registerWebRoute?.('GET', '/api/ext/computer-use/config', async (_req: any, res: any) => {
+      trackDisposable(api.registerWebRoute?.('GET', '/api/ext/computer-use/config', async (_req: any, res: any) => {
         try {
           const data = ctx.readConfigSection('computer_use') ?? {};
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -84,10 +96,10 @@ export default definePlugin({
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err?.message || '读取配置失败' }));
         }
-      });
+      }));
 
       // 配置写入路由
-      api.registerWebRoute?.('PUT', '/api/ext/computer-use/config', async (req: any, res: any) => {
+      trackDisposable(api.registerWebRoute?.('PUT', '/api/ext/computer-use/config', async (req: any, res: any) => {
         try {
           const chunks: Buffer[] = [];
           for await (const chunk of req) chunks.push(chunk);
@@ -108,7 +120,7 @@ export default definePlugin({
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err?.message || '写入配置失败' }));
         }
-      });
+      }));
 
       const pluginConfig = ctx.getPluginConfig<Record<string, unknown>>();
       // 配置来源：
@@ -182,7 +194,14 @@ export default definePlugin({
   },
 
   async deactivate() {
+    disposeLifecycleDisposables();
+    if (cachedApi) unregisterComputerUseTools(cachedApi);
     await destroyEnvironment();
+    cachedApi = undefined;
+    cachedExtDir = undefined;
+    lastConfigSnapshot = '';
+    pendingReload = null;
+    reloading = false;
   },
 });
 
@@ -298,14 +317,7 @@ async function doReload(rawConfig: any, api: IrisAPI): Promise<void> {
   lastConfigSnapshot = newSnapshot;
 
   // 注销旧工具
-  const toolNames = api.tools as any;
-  if (typeof toolNames.listTools === 'function') {
-    for (const name of toolNames.listTools()) {
-      if (COMPUTER_USE_FUNCTION_NAMES.has(name)) {
-        toolNames.unregister(name);
-      }
-    }
-  }
+  unregisterComputerUseTools(api);
 
   // 销毁旧环境
   await destroyEnvironment();
@@ -316,5 +328,16 @@ async function doReload(rawConfig: any, api: IrisAPI): Promise<void> {
     await initEnvironment(cuConfig, api);
   } else {
     logger.info('Computer Use 已禁用');
+  }
+}
+
+
+function unregisterComputerUseTools(api: IrisAPI): void {
+  const toolNames = api.tools as any;
+  if (typeof toolNames.listTools !== 'function') return;
+  for (const name of toolNames.listTools()) {
+    if (COMPUTER_USE_FUNCTION_NAMES.has(name)) {
+      toolNames.unregister?.(name);
+    }
   }
 }

@@ -52,6 +52,8 @@ interface SessionState {
 interface AgentMemoryState {
   /** 当前活跃的 Provider 实例 */
   activeProvider?: SqliteMemory;
+  /** 当前插件上下文（用于自动/手动释放工具和 prompt part） */
+  ctx: PluginContext;
   /** 缓存的 API 引用 */
   cachedApi?: IrisAPI;
   /** 当前配置 */
@@ -68,6 +70,8 @@ interface AgentMemoryState {
   memorySpacesService?: MemorySpacesService;
   /** memory.spaces service 注销句柄 */
   memorySpacesDisposable?: Disposable;
+  /** Console settings tab 注销句柄 */
+  settingsTabDisposable?: Disposable;
 }
 
 /**
@@ -111,7 +115,7 @@ async function enableMemorySystem(state: AgentMemoryState, ctx: PluginContext): 
   state.activeProvider = new SqliteMemory(dataPath, logger);
 
   const tools = createMemoryTools(state.activeProvider);
-  state.cachedApi.tools.registerAll(tools);
+  ctx.registerTools(tools);
 
   // 挂载 provider + dream 方法到 api.memory，供 console 直接调用
   (state.cachedApi as any).memory = Object.assign(state.activeProvider, {
@@ -194,10 +198,11 @@ async function runForcedConsolidation(state: AgentMemoryState): Promise<{ ok: bo
 // ============ Console Settings Tab ============
 
 function registerSettingsTab(state: AgentMemoryState, api: IrisAPI, ctx: PluginContext): void {
-  const registerTab = (api as any).registerConsoleSettingsTab;
+  const registerTab = (api as any).registerConsoleSettingsTab as ((tab: any) => Disposable) | undefined;
   if (!registerTab) return;
 
-  registerTab({
+  state.settingsTabDisposable?.dispose();
+  state.settingsTabDisposable = registerTab({
     id: 'memory',
     label: '记忆',
     icon: '05',
@@ -287,6 +292,7 @@ export default definePlugin({
     const instanceKey = ctx.getConfigDir();
     const state: AgentMemoryState = {
       activeProvider: undefined,
+      ctx,
       cachedApi: undefined,
       currentConfig: initialConfig,
       autoRecallEnabled: true,
@@ -538,10 +544,11 @@ export default definePlugin({
   async deactivate() {
     // 清理所有 Agent 实例的状态
     for (const state of agentStateMap.values()) {
-      state.activeProvider = undefined;
+      if (state.activeProvider) disableMemorySystem(state, state.ctx);
+      state.settingsTabDisposable?.dispose();
+      state.settingsTabDisposable = undefined;
       state.cachedApi = undefined;
       state.fallbackSessionId = undefined;
-      state.systemRulesPart = undefined;
       state.memorySpacesDisposable?.dispose();
       state.memorySpacesDisposable = undefined;
       state.sessionStates.clear();

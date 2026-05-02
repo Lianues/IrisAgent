@@ -110,6 +110,10 @@ export function injectScheduler(s: CronScheduler): void {
   scheduler = s;
 }
 
+export function clearScheduler(): void {
+  scheduler = null;
+}
+
 /**
  * 设置当前 turn 的 sessionId
  * 由插件入口通过 onBeforeChat 钩子在每次 chat 前调用。

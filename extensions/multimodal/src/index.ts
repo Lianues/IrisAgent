@@ -106,6 +106,7 @@ interface MultimodalConfig {
 
 let ocrService: OCRService | undefined;
 let cachedApi: IrisAPI | undefined;
+let registeredMediaService: NonNullable<IrisAPI['media']> | undefined;
 
 // ── 插件定义 ──
 
@@ -259,7 +260,7 @@ export default definePlugin({
 
       // 注册 media 服务到 irisAPI（供其他插件使用）
       if (api.media === undefined) {
-        (api as any).media = {
+        registeredMediaService = {
           resizeImage,
           formatDimensionNote,
           extractDocument,
@@ -267,9 +268,20 @@ export default definePlugin({
           convertToPDF,
           isConversionAvailable,
         };
+        (api as any).media = registeredMediaService;
       }
 
       logger.info('多模态处理扩展已就绪');
     });
+  },
+
+  deactivate() {
+    if (cachedApi && registeredMediaService && cachedApi.media === registeredMediaService) {
+      (cachedApi as any).media = undefined;
+    }
+    registeredMediaService = undefined;
+    ocrService = undefined;
+    cachedApi = undefined;
+    logger.info('多模态处理扩展已卸载');
   },
 });

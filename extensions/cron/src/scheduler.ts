@@ -207,8 +207,8 @@ export class CronScheduler {
     this.agentName = agentName ?? 'master';
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
 
-    // 数据存放在 extension-data/cron/ 下
-    const dir = dataDir ?? resolveDefaultDataDir();
+    // 数据存放在 extension-data/cron/ 下；测试或宿主可通过 api.dataDir / dataDir 覆盖。
+    const dir = dataDir ?? (api as unknown as { dataDir?: string }).dataDir ?? resolveDefaultDataDir();
     this.filePath = path.join(dir, 'cron-jobs.json');
     this.runsDir = path.join(dir, 'cron-runs');
   }

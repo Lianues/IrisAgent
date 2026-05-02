@@ -16,7 +16,7 @@ import type {
 } from './registry.js';
 import type { StorageLike } from './storage.js';
 import type { ToolPreviewUtilsLike } from './tool-preview.js';
-import type { ServiceRegistryLike } from './service.js';
+import type { Disposable, ServiceRegistryLike } from './service.js';
 import type { ConfigContributionRegistryLike } from './config-contribution.js';
 import type { GlobalStoreLike } from './global-store.js';
 
@@ -219,9 +219,9 @@ export interface IrisAPI {
   globalStore: GlobalStoreLike;
   patchMethod: PatchMethod;
   patchPrototype: PatchPrototype;
-  registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => void;
+  registerWebRoute?: (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => Disposable;
   /** 向 Web 平台注册扩展面板页面。宿主侧边栏会动态展示已注册的面板。 */
-  registerWebPanel?: (panel: WebPanelDefinition) => void;
+  registerWebPanel?: (panel: WebPanelDefinition) => Disposable;
   configManager?: ConfigManagerLike;
   toolPreviewUtils?: ToolPreviewUtilsLike;
   /** @deprecated 未实现，预留接口 */
@@ -244,7 +244,7 @@ export interface IrisAPI {
   /** 检查 MIME 类型是否为文档类型（PDF / DOCX / PPTX / XLSX） */
   isDocumentMimeType?(mimeType: string): boolean;
   /** 向 Console 平台 Settings 界面注册插件 Tab 页（声明式表单 schema） */
-  registerConsoleSettingsTab?: (tab: ConsoleSettingsTabDefinition) => void;
+  registerConsoleSettingsTab?: (tab: ConsoleSettingsTabDefinition) => Disposable;
   /** 获取所有已注册的 Console Settings 插件 Tab */
   getConsoleSettingsTabs?: () => ConsoleSettingsTabDefinition[];
 

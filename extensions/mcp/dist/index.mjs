@@ -1,31 +1,38 @@
 import { createRequire } from "node:module";
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
-
-// node_modules/irises-extension-sdk/src/logger.ts
-var _logLevel = 1 /* INFO */;
+// ../../packages/extension-sdk/dist/logger.js
+var LogLevel;
+(function(LogLevel2) {
+  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
+})(LogLevel || (LogLevel = {}));
+var _logLevel = LogLevel.INFO;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= 0 /* DEBUG */)
+      if (_logLevel <= LogLevel.DEBUG)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= 1 /* INFO */)
+      if (_logLevel <= LogLevel.INFO)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= 2 /* WARN */)
+      if (_logLevel <= LogLevel.WARN)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= 3 /* ERROR */)
+      if (_logLevel <= LogLevel.ERROR)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
 
-// node_modules/irises-extension-sdk/src/plugin/context.ts
+// ../../packages/extension-sdk/dist/plugin/context.js
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -33,7 +40,7 @@ function createPluginLogger(pluginName, tag) {
 function definePlugin(plugin) {
   return plugin;
 }
-// extensions/mcp/src/client.ts
+// src/client.ts
 var logger = createPluginLogger("mcp", "client");
 
 class MCPClient {
@@ -195,7 +202,7 @@ class MCPClient {
   }
 }
 
-// extensions/mcp/src/manager.ts
+// src/manager.ts
 import derefModule from "dereference-json-schema";
 var { dereferenceSync } = derefModule;
 var logger2 = createPluginLogger("mcp", "manager");
@@ -288,7 +295,7 @@ function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-// extensions/mcp/src/config.ts
+// src/config.ts
 var logger3 = createPluginLogger("mcp", "config");
 function normalizeTransport(value) {
   if (value === "http")
@@ -335,7 +342,7 @@ function parseMCPConfig(raw) {
   return { servers };
 }
 
-// extensions/mcp/src/config-template.ts
+// src/config-template.ts
 var DEFAULT_MCP_CONFIG_TEMPLATE = `# MCP 服务器配置
 # 连接外部 MCP 服务器，自动将其工具注入 LLM 工具列表
 # 启动时后台异步连接，不阻塞启动
@@ -379,7 +386,7 @@ var DEFAULT_MCP_CONFIG_TEMPLATE = `# MCP 服务器配置
 #     url: "https://qyapi.weixin.qq.com/mcp/robot-doc?apikey=your-mcp-apikey"
 `;
 
-// extensions/mcp/src/index.ts
+// src/index.ts
 var logger4 = createPluginLogger("mcp");
 var SERVICE_ID = "mcp.manager";
 var manager = null;
@@ -432,9 +439,16 @@ var src_default = definePlugin({
       logger4.info("MCP 扩展初始化完成");
     });
   },
-  async deactivate() {
+  async deactivate(ctx) {
     serviceDisposer?.dispose();
     serviceDisposer = null;
+    if (ctx) {
+      const reg = ctx.getToolRegistry();
+      for (const name of reg.listTools?.() ?? []) {
+        if (name.startsWith("mcp__"))
+          reg.unregister?.(name);
+      }
+    }
     if (manager) {
       await manager.disconnectAll();
       manager = null;

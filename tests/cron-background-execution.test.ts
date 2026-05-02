@@ -194,7 +194,7 @@ describe('Cron 后台执行机制 - 类型定义', () => {
     expect(EXPECTED_BACKGROUND_DEFAULTS.maxConcurrent).toBe(3);
     expect(EXPECTED_BACKGROUND_DEFAULTS.retentionDays).toBe(30);
     expect(EXPECTED_BACKGROUND_DEFAULTS.retentionCount).toBe(100);
-    expect(EXPECTED_BACKGROUND_DEFAULTS.maxToolRounds).toBe(15);
+    expect(EXPECTED_BACKGROUND_DEFAULTS.maxToolRounds).toBe(50);
   });
 });
 

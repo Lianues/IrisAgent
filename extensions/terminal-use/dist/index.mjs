@@ -1164,7 +1164,15 @@ var src_default = definePlugin({
         disposable.dispose();
       } catch {}
     }
+    if (cachedApi)
+      unregisterTools(cachedApi);
     await destroyEnvironment();
+    activeConfig = undefined;
+    activeToolsConfig = { ...DEFAULT_TERMINAL_USE_TOOLS_CONFIG };
+    cachedApi = undefined;
+    lastConfigSnapshot = "";
+    pendingReload = null;
+    reloading = false;
   }
 });
 function resolveRawConfigs(ctx, api) {

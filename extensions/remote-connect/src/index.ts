@@ -141,6 +141,14 @@ function ensureHostEventListeners(): void {
   hostEvents.on('host-shutdown', onHostShutdown);
 }
 
+function cleanupHostEventListenersIfUnused(): void {
+  if (!hostEventListenersRegistered || contextsByAgent.size > 0) return;
+  hostEventListenersRegistered = false;
+  hostEvents.off('ipc-ready', onIpcReady);
+  hostEvents.off('agent-stopping', onAgentStopping);
+  hostEvents.off('host-shutdown', onHostShutdown);
+}
+
 function disposeInteropServices(ctx: PluginContext): void {
   const registryKey = ctx.getServiceRegistry() as unknown as object;
   serviceDisposersByRegistry.get(registryKey)?.forEach(d => d.dispose());
@@ -181,6 +189,7 @@ export default definePlugin({
       onAgentStopping({ agentName });
       agentNamesByContext.delete(ctx as unknown as object);
     }
+    cleanupHostEventListenersIfUnused();
   },
 });
 

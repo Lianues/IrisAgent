@@ -7035,8 +7035,8 @@ class BackendHandle {
     };
     return this.on(event, wrapper);
   }
-  chat(sessionId, text, images, documents, platform) {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+  chat(sessionId, text, images, documents, platform, audio, video) {
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
   isStreamEnabled() {
     return this._backend.isStreamEnabled();
@@ -7189,30 +7189,38 @@ import { fileURLToPath } from "url";
 // src/router.ts
 class Router {
   routes = [];
-  add(method, path, handler) {
+  add(method, routePath, handler) {
     const paramNames = [];
-    const regexStr = path.replace(/:([a-zA-Z_]+)/g, (_match, name) => {
+    const regexStr = routePath.replace(/:([a-zA-Z_]+)/g, (_match, name) => {
       paramNames.push(name);
       return "([^/]+)";
     });
-    this.routes.push({
+    const route = {
       method: method.toUpperCase(),
       pattern: new RegExp(`^${regexStr}$`),
       paramNames,
       handler
-    });
+    };
+    this.routes.push(route);
+    return {
+      dispose: () => {
+        const index = this.routes.indexOf(route);
+        if (index >= 0)
+          this.routes.splice(index, 1);
+      }
+    };
   }
   get(path, handler) {
-    this.add("GET", path, handler);
+    return this.add("GET", path, handler);
   }
   post(path, handler) {
-    this.add("POST", path, handler);
+    return this.add("POST", path, handler);
   }
   put(path, handler) {
-    this.add("PUT", path, handler);
+    return this.add("PUT", path, handler);
   }
   delete(path, handler) {
-    this.add("DELETE", path, handler);
+    return this.add("DELETE", path, handler);
   }
   async handle(req, res) {
     const method = req.method?.toUpperCase() ?? "GET";
@@ -10779,7 +10787,7 @@ class WebPlatform extends PlatformAdapter {
     }
   }
   registerRoute(method, path13, handler) {
-    this.router.add(method.toUpperCase(), path13, handler);
+    return this.router.add(method.toUpperCase(), path13, handler);
   }
   setupRoutes() {
     const { configPath } = this.config;

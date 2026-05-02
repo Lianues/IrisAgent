@@ -55,7 +55,7 @@ import { PluginEventBus } from '../extension/event-bus';
 import { patchMethod, patchPrototype } from '../extension/patch';
 import { registerExtensionPlatforms } from '../extension';
 import { ensureDevSourceSdkShims } from '../extension';
-import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition } from 'irises-extension-sdk';
+import type { IrisAPI, InlinePluginEntry, WebPanelDefinition, ConsoleSettingsTabDefinition, Disposable } from 'irises-extension-sdk';
 import { BackendHandle, DELIVERY_REGISTRY_SERVICE_ID } from 'irises-extension-sdk';
 import { readEditableConfig, updateEditableConfig, LayeredConfigManager } from '../config/manage';
 import { applyRuntimeConfigReload, type RuntimeConfigReloadContext } from '../config/runtime';
@@ -113,6 +113,15 @@ export interface IrisCoreOptions {
   agentNetwork?: AgentNetworkProvider;
 }
 
+
+interface PendingRouteRecord {
+  method: string;
+  path: string;
+  handler: (req: any, res: any, params: Record<string, string>) => Promise<void>;
+  disposed: boolean;
+  platformDisposable?: Disposable;
+}
+
 // ── IrisCore ──
 
 export class IrisCore {
@@ -138,13 +147,17 @@ export class IrisCore {
   irisAPI?: Record<string, unknown>;
 
   // ---- 路由延迟注册（平台无关） ----
-  private pendingRoutes: Array<{ method: string; path: string; handler: (req: any, res: any, params: Record<string, string>) => Promise<void> }> = [];
-  private routeRegistrar: ((method: string, path: string, handler: any) => void) | undefined;
+  private pendingRoutes: PendingRouteRecord[] = [];
+  private routeRegistrar: ((method: string, path: string, handler: any) => Disposable | void) | undefined;
 
   /** 绑定路由注册器（由实现了 RoutableHttpPlatform 的平台提供） */
-  bindRouteRegistrar(register: (method: string, path: string, handler: any) => void): void {
+  bindRouteRegistrar(register: (method: string, path: string, handler: any) => Disposable | void): void {
     this.routeRegistrar = register;
-    for (const route of this.pendingRoutes) register(route.method, route.path, route.handler);
+    for (const route of this.pendingRoutes) {
+      if (route.disposed) continue;
+      try { route.platformDisposable?.dispose(); } catch { /* ignore */ }
+      route.platformDisposable = register(route.method, route.path, route.handler) ?? undefined;
+    }
   }
 
   // ---- 内部资源（shutdown 时清理） ----
@@ -405,16 +418,38 @@ export class IrisCore {
     const serviceRegistry = pluginManager.getServiceRegistry();
 
     // 路由延迟注册（平台无关）
-    const registerRoute = (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>) => {
-      const record = { method: method.toUpperCase(), path, handler };
+    const registerRoute = (method: string, path: string, handler: (req: any, res: any, params: Record<string, string>) => Promise<void>): Disposable => {
+      const record: PendingRouteRecord = { method: method.toUpperCase(), path, handler, disposed: false };
       this.pendingRoutes.push(record);
-      this.routeRegistrar?.(record.method, record.path, record.handler);
+      record.platformDisposable = this.routeRegistrar?.(record.method, record.path, record.handler) ?? undefined;
+      return {
+        dispose: () => {
+          if (record.disposed) return;
+          record.disposed = true;
+          const index = this.pendingRoutes.indexOf(record);
+          if (index >= 0) this.pendingRoutes.splice(index, 1);
+          try { record.platformDisposable?.dispose(); } catch { /* ignore */ }
+          record.platformDisposable = undefined;
+        },
+      };
     };
 
     // 面板注册表
     const panelDefinitions: WebPanelDefinition[] = [];
-    const registerPanel = (panel: WebPanelDefinition) => {
-      if (!panelDefinitions.some(p => p.id === panel.id)) panelDefinitions.push(panel);
+    const registerPanel = (panel: WebPanelDefinition): Disposable => {
+      let inserted = false;
+      if (!panelDefinitions.some(p => p.id === panel.id)) {
+        panelDefinitions.push(panel);
+        inserted = true;
+      }
+      return {
+        dispose: () => {
+          if (!inserted) return;
+          const index = panelDefinitions.indexOf(panel);
+          if (index >= 0) panelDefinitions.splice(index, 1);
+          inserted = false;
+        },
+      };
     };
     registerRoute('GET', '/api/panels', async (_req: any, res: any) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -423,8 +458,20 @@ export class IrisCore {
 
     // Console Settings Tab 注册表
     const consoleSettingsTabs: ConsoleSettingsTabDefinition[] = [];
-    const registerConsoleSettingsTab = (tab: ConsoleSettingsTabDefinition) => {
-      if (!consoleSettingsTabs.some(t => t.id === tab.id)) consoleSettingsTabs.push(tab);
+    const registerConsoleSettingsTab = (tab: ConsoleSettingsTabDefinition): Disposable => {
+      let inserted = false;
+      if (!consoleSettingsTabs.some(t => t.id === tab.id)) {
+        consoleSettingsTabs.push(tab);
+        inserted = true;
+      }
+      return {
+        dispose: () => {
+          if (!inserted) return;
+          const index = consoleSettingsTabs.indexOf(tab);
+          if (index >= 0) consoleSettingsTabs.splice(index, 1);
+          inserted = false;
+        },
+      };
     };
 
     // 内置 Net 设置标签页

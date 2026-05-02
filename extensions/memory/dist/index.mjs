@@ -1698,7 +1698,7 @@ async function enableMemorySystem(state, ctx) {
   const dataPath = state.currentConfig.dbPath ? path3.resolve(effectiveDataDir, state.currentConfig.dbPath) : path3.join(effectiveDataDir, "memory.db");
   state.activeProvider = new MemoryStore(dataPath, logger);
   const tools = createMemoryTools(state.activeProvider);
-  state.cachedApi.tools.registerAll(tools);
+  ctx.registerTools(tools);
   state.cachedApi.memory = Object.assign(state.activeProvider, {
     dream: () => runForcedConsolidation(state)
   });
@@ -1765,7 +1765,8 @@ function registerSettingsTab(state, api, ctx) {
   const registerTab = api.registerConsoleSettingsTab;
   if (!registerTab)
     return;
-  registerTab({
+  state.settingsTabDisposable?.dispose();
+  state.settingsTabDisposable = registerTab({
     id: "memory",
     label: "记忆",
     icon: "05",
@@ -1886,6 +1887,7 @@ var src_default = definePlugin({
     const instanceKey = ctx.getConfigDir();
     const state = {
       activeProvider: undefined,
+      ctx,
       cachedApi: undefined,
       currentConfig: initialConfig,
       autoRecallEnabled: true,
@@ -2097,10 +2099,12 @@ var src_default = definePlugin({
   },
   async deactivate() {
     for (const state of agentStateMap.values()) {
-      state.activeProvider = undefined;
+      if (state.activeProvider)
+        disableMemorySystem(state, state.ctx);
+      state.settingsTabDisposable?.dispose();
+      state.settingsTabDisposable = undefined;
       state.cachedApi = undefined;
       state.fallbackSessionId = undefined;
-      state.systemRulesPart = undefined;
       state.memorySpacesDisposable?.dispose();
       state.memorySpacesDisposable = undefined;
       state.sessionStates.clear();

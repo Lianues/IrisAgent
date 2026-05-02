@@ -751,6 +751,7 @@ var DEFAULT_CONFIG_TEMPLATE = `# 多模态处理配置
 `;
 var ocrService;
 var cachedApi;
+var registeredMediaService;
 var src_default = definePlugin({
   name: "multimodal",
   version: "0.1.0",
@@ -868,7 +869,7 @@ var src_default = definePlugin({
         logger.info(`OCR 服务已启用${ocrConfig.model ? ` (model: ${ocrConfig.model})` : ""}`);
       }
       if (api.media === undefined) {
-        api.media = {
+        registeredMediaService = {
           resizeImage,
           formatDimensionNote,
           extractDocument,
@@ -876,9 +877,19 @@ var src_default = definePlugin({
           convertToPDF,
           isConversionAvailable
         };
+        api.media = registeredMediaService;
       }
       logger.info("多模态处理扩展已就绪");
     });
+  },
+  deactivate() {
+    if (cachedApi && registeredMediaService && cachedApi.media === registeredMediaService) {
+      cachedApi.media = undefined;
+    }
+    registeredMediaService = undefined;
+    ocrService = undefined;
+    cachedApi = undefined;
+    logger.info("多模态处理扩展已卸载");
   }
 });
 export {

@@ -8542,6 +8542,18 @@ var reloading = false;
 var pendingReload = null;
 var cachedApi;
 var cachedExtDir;
+var lifecycleDisposables = [];
+function trackDisposable(disposable) {
+  if (disposable)
+    lifecycleDisposables.push(disposable);
+}
+function disposeLifecycleDisposables() {
+  for (const disposable of lifecycleDisposables.splice(0, lifecycleDisposables.length).reverse()) {
+    try {
+      disposable.dispose();
+    } catch {}
+  }
+}
 var src_default = definePlugin({
   name: "computer-use",
   version: "0.1.0",
@@ -8557,17 +8569,17 @@ var src_default = definePlugin({
     }
     ctx.onReady(async (api) => {
       cachedApi = api;
-      api.registerWebPanel?.({
+      trackDisposable(api.registerWebPanel?.({
         id: "computer-use",
         title: "Computer Use",
         icon: "mouse",
         contentPath: "/api/ext/computer-use/panel"
-      });
-      api.registerWebRoute?.("GET", "/api/ext/computer-use/panel", async (_req, res) => {
+      }));
+      trackDisposable(api.registerWebRoute?.("GET", "/api/ext/computer-use/panel", async (_req, res) => {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(buildPanelHTML());
-      });
-      api.registerWebRoute?.("GET", "/api/ext/computer-use/config", async (_req, res) => {
+      }));
+      trackDisposable(api.registerWebRoute?.("GET", "/api/ext/computer-use/config", async (_req, res) => {
         try {
           const data = ctx.readConfigSection("computer_use") ?? {};
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -8576,8 +8588,8 @@ var src_default = definePlugin({
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: err?.message || "读取配置失败" }));
         }
-      });
-      api.registerWebRoute?.("PUT", "/api/ext/computer-use/config", async (req, res) => {
+      }));
+      trackDisposable(api.registerWebRoute?.("PUT", "/api/ext/computer-use/config", async (req, res) => {
         try {
           const chunks = [];
           for await (const chunk of req)
@@ -8595,7 +8607,7 @@ var src_default = definePlugin({
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: err?.message || "写入配置失败" }));
         }
-      });
+      }));
       const pluginConfig = ctx.getPluginConfig();
       const rawConfig = ctx.readConfigSection("computer_use") ?? pluginConfig ?? api.config.computer_use ?? api.config.computerUse;
       const cuConfig = parseComputerUseConfig(rawConfig);
@@ -8647,7 +8659,15 @@ var src_default = definePlugin({
     });
   },
   async deactivate() {
+    disposeLifecycleDisposables();
+    if (cachedApi)
+      unregisterComputerUseTools(cachedApi);
     await destroyEnvironment();
+    cachedApi = undefined;
+    cachedExtDir = undefined;
+    lastConfigSnapshot = "";
+    pendingReload = null;
+    reloading = false;
   }
 });
 async function initEnvironment(cuConfig, api) {
@@ -8745,20 +8765,23 @@ async function doReload(rawConfig, api) {
   if (newSnapshot === lastConfigSnapshot)
     return;
   lastConfigSnapshot = newSnapshot;
-  const toolNames = api.tools;
-  if (typeof toolNames.listTools === "function") {
-    for (const name of toolNames.listTools()) {
-      if (COMPUTER_USE_FUNCTION_NAMES.has(name)) {
-        toolNames.unregister(name);
-      }
-    }
-  }
+  unregisterComputerUseTools(api);
   await destroyEnvironment();
   const cuConfig = parseComputerUseConfig(rawConfig);
   if (cuConfig?.enabled) {
     await initEnvironment(cuConfig, api);
   } else {
     logger3.info("Computer Use 已禁用");
+  }
+}
+function unregisterComputerUseTools(api) {
+  const toolNames = api.tools;
+  if (typeof toolNames.listTools !== "function")
+    return;
+  for (const name of toolNames.listTools()) {
+    if (COMPUTER_USE_FUNCTION_NAMES.has(name)) {
+      toolNames.unregister?.(name);
+    }
   }
 }
 export {

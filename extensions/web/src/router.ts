@@ -16,29 +16,40 @@ interface Route {
   handler: RouteHandler;
 }
 
+export interface Disposable {
+  dispose(): void;
+}
+
 export class Router {
   private routes: Route[] = [];
 
   /** 注册路由 */
-  add(method: string, path: string, handler: RouteHandler): void {
+  add(method: string, routePath: string, handler: RouteHandler): Disposable {
     const paramNames: string[] = [];
     // 将 :param 转换为命名捕获组
-    const regexStr = path.replace(/:([a-zA-Z_]+)/g, (_match, name) => {
+    const regexStr = routePath.replace(/:([a-zA-Z_]+)/g, (_match, name) => {
       paramNames.push(name);
       return '([^/]+)';
     });
-    this.routes.push({
+    const route: Route = {
       method: method.toUpperCase(),
       pattern: new RegExp(`^${regexStr}$`),
       paramNames,
       handler,
-    });
+    };
+    this.routes.push(route);
+    return {
+      dispose: () => {
+        const index = this.routes.indexOf(route);
+        if (index >= 0) this.routes.splice(index, 1);
+      },
+    };
   }
 
-  get(path: string, handler: RouteHandler): void { this.add('GET', path, handler); }
-  post(path: string, handler: RouteHandler): void { this.add('POST', path, handler); }
-  put(path: string, handler: RouteHandler): void { this.add('PUT', path, handler); }
-  delete(path: string, handler: RouteHandler): void { this.add('DELETE', path, handler); }
+  get(path: string, handler: RouteHandler): Disposable { return this.add('GET', path, handler); }
+  post(path: string, handler: RouteHandler): Disposable { return this.add('POST', path, handler); }
+  put(path: string, handler: RouteHandler): Disposable { return this.add('PUT', path, handler); }
+  delete(path: string, handler: RouteHandler): Disposable { return this.add('DELETE', path, handler); }
 
   /** 匹配并执行路由，返回是否匹配到 */
   async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {

@@ -14,6 +14,7 @@ import { CronScheduler } from './scheduler.js';
 import {
   manageScheduledTasksTool,
   injectScheduler,
+  clearScheduler,
   setCurrentSessionId,
 } from './tool.js';
 import type { SchedulerConfig, CronBackgroundConfig } from './types.js';
@@ -29,6 +30,29 @@ const logger = createPluginLogger('cron');
 /** 调度器实例，供 deactivate 和 Web 路由 / Settings Tab 使用 */
 let schedulerInstance: CronScheduler | null = null;
 let schedulerServiceDisposable: Disposable | undefined;
+let lifecycleDisposables: Disposable[] = [];
+let backendWithDoneListener: { off?: (event: string, listener: (...args: any[]) => void) => void; removeListener?: (event: string, listener: (...args: any[]) => void) => void } | undefined;
+let backendDoneListener: ((sessionId: string) => void) | undefined;
+
+function trackDisposable(disposable: Disposable | undefined): void {
+  if (disposable) lifecycleDisposables.push(disposable);
+}
+
+function disposeLifecycleDisposables(): void {
+  for (const disposable of lifecycleDisposables.splice(0, lifecycleDisposables.length).reverse()) {
+    try { disposable.dispose(); } catch { /* ignore */ }
+  }
+}
+
+function disposeBackendDoneListener(): void {
+  if (!backendWithDoneListener || !backendDoneListener) return;
+  try {
+    backendWithDoneListener.off?.('done', backendDoneListener);
+    backendWithDoneListener.removeListener?.('done', backendDoneListener);
+  } catch { /* ignore */ }
+  backendWithDoneListener = undefined;
+  backendDoneListener = undefined;
+}
 
 // ============ 插件定义 ============
 
@@ -91,30 +115,36 @@ export default definePlugin({
 
       // 监听 backend 的 done 事件，记录会话活跃时间
       // 供投递门控的 skipIfRecentActivity 使用
-      api.backend.on('done', (sessionId: string) => {
+      disposeBackendDoneListener();
+      backendDoneListener = (sessionId: string) => {
         schedulerInstance?.recordActivity(sessionId);
-      });
+      };
+      backendWithDoneListener = api.backend as any;
+      api.backend.on('done', backendDoneListener);
 
       // 启动调度器（从文件恢复任务 + 设置定时器 + 启动文件监听）
       await schedulerInstance.start();
 
       // 注册 Web API 端点
-      registerWebRoutes(api);
+      for (const disposable of registerWebRoutes(api)) trackDisposable(disposable);
 
       // 注册 Console Settings Tab
-      registerSettingsTab(api, ctx);
+      trackDisposable(registerSettingsTab(api, ctx));
 
       logger.info('调度器插件初始化完成');
     });
   },
 
   async deactivate() {
+    disposeLifecycleDisposables();
+    disposeBackendDoneListener();
     schedulerServiceDisposable?.dispose();
     schedulerServiceDisposable = undefined;
     if (schedulerInstance) {
       schedulerInstance.stop();
       schedulerInstance = null;
     }
+    clearScheduler();
     logger.info('调度器插件已卸载');
   },
 });
@@ -129,107 +159,120 @@ export default definePlugin({
  * - GET    /api/plugins/cron/runs         列出所有执行记录
  * - GET    /api/plugins/cron/runs/:runId  查看单条执行记录
  */
-function registerWebRoutes(api: IrisAPI): void {
+function registerWebRoutes(api: IrisAPI): Disposable[] {
   if (!api.registerWebRoute) {
     logger.info('Web 路由注册不可用（非 Web 平台），跳过');
-    return;
+    return [];
   }
 
+  const disposables: Disposable[] = [];
+
   // GET — 列出所有任务
-  api.registerWebRoute(
-    'GET',
-    '/api/plugins/cron/jobs',
-    async (_req, res) => {
-      const jobs = schedulerInstance?.listJobs() ?? [];
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, jobs }));
-    },
+  disposables.push(
+    api.registerWebRoute(
+      'GET',
+      '/api/plugins/cron/jobs',
+      async (_req, res) => {
+        const jobs = schedulerInstance?.listJobs() ?? [];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, jobs }));
+      },
+    ),
   );
 
   // POST — 切换任务的启用/禁用状态
-  api.registerWebRoute(
-    'POST',
-    '/api/plugins/cron/jobs/:id/toggle',
-    async (_req, res, params) => {
-      if (!schedulerInstance) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '调度器未初始化' }));
-        return;
-      }
+  disposables.push(
+    api.registerWebRoute(
+      'POST',
+      '/api/plugins/cron/jobs/:id/toggle',
+      async (_req, res, params) => {
+        if (!schedulerInstance) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '调度器未初始化' }));
+          return;
+        }
 
-      const job = schedulerInstance.getJob(params.id);
-      if (!job) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '任务不存在' }));
-        return;
-      }
+        const job = schedulerInstance.getJob(params.id);
+        if (!job) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '任务不存在' }));
+          return;
+        }
 
-      // 切换 enabled 状态
-      const result = job.enabled
-        ? schedulerInstance.disableJob(params.id)
-        : schedulerInstance.enableJob(params.id);
+        // 切换 enabled 状态
+        const result = job.enabled
+          ? schedulerInstance.disableJob(params.id)
+          : schedulerInstance.enableJob(params.id);
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, job: result }));
-    },
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, job: result }));
+      },
+    ),
   );
 
   // DELETE — 删除任务
-  api.registerWebRoute(
-    'DELETE',
-    '/api/plugins/cron/jobs/:id',
-    async (_req, res, params) => {
-      if (!schedulerInstance) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '调度器未初始化' }));
-        return;
-      }
+  disposables.push(
+    api.registerWebRoute(
+      'DELETE',
+      '/api/plugins/cron/jobs/:id',
+      async (_req, res, params) => {
+        if (!schedulerInstance) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '调度器未初始化' }));
+          return;
+        }
 
-      const deleted = schedulerInstance.deleteJob(params.id);
-      if (!deleted) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '任务不存在' }));
-        return;
-      }
+        const deleted = schedulerInstance.deleteJob(params.id);
+        if (!deleted) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '任务不存在' }));
+          return;
+        }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true }));
-    },
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      },
+    ),
   );
 
   // GET — 列出执行记录（按时间倒序，默认最多 50 条）
-  api.registerWebRoute(
-    'GET',
-    '/api/plugins/cron/runs',
-    async (_req, res) => {
-      const runs = schedulerInstance?.listRuns() ?? [];
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, runs }));
-    },
+  disposables.push(
+    api.registerWebRoute(
+      'GET',
+      '/api/plugins/cron/runs',
+      async (_req, res) => {
+        const runs = schedulerInstance?.listRuns() ?? [];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, runs }));
+      },
+    ),
   );
 
   // GET — 查看单条执行记录
-  api.registerWebRoute(
-    'GET',
-    '/api/plugins/cron/runs/:runId',
-    async (_req, res, params) => {
-      if (!schedulerInstance) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '调度器未初始化' }));
-        return;
-      }
-      const record = schedulerInstance.getRunRecord(params.runId);
-      if (!record) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '执行记录不存在' }));
-        return;
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, record }));
-    },
+  disposables.push(
+    api.registerWebRoute(
+      'GET',
+      '/api/plugins/cron/runs/:runId',
+      async (_req, res, params) => {
+        if (!schedulerInstance) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '调度器未初始化' }));
+          return;
+        }
+        const record = schedulerInstance.getRunRecord(params.runId);
+        if (!record) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '执行记录不存在' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, record }));
+      },
+    ),
   );
 
   logger.info('Web API 路由已注册（5 个端点）');
+  return disposables;
 }
 
 // ============ Console Settings Tab 注册 ============
@@ -243,15 +286,15 @@ function registerWebRoutes(api: IrisAPI): void {
  * - 跳过近期活跃：skipRecentEnabled, skipRecentMinutes
  * - 当前任务：jobsSummary（只读）
  */
-function registerSettingsTab(api: IrisAPI, ctx: PluginContext): void {
+function registerSettingsTab(api: IrisAPI, ctx: PluginContext): Disposable | undefined {
   // registerConsoleSettingsTab 是可选方法，先检查是否存在
-  const registerTab = (api as Record<string, any>).registerConsoleSettingsTab as ((tab: any) => void) | undefined;
+  const registerTab = (api as Record<string, any>).registerConsoleSettingsTab as ((tab: any) => Disposable) | undefined;
   if (!registerTab) {
     logger.info('Console Settings Tab 注册不可用，跳过');
-    return;
+    return undefined;
   }
 
-  registerTab({
+  const disposable = registerTab({
     id: 'cron',
     label: '定时任务',
     icon: '06',
@@ -388,6 +431,7 @@ function registerSettingsTab(api: IrisAPI, ctx: PluginContext): void {
   });
 
   logger.info('Console Settings Tab 已注册');
+  return disposable;
 }
 
 // ============ 内部辅助函数 ============

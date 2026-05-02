@@ -15,7 +15,7 @@ import { parse as parseYAML } from 'yaml';
 import type { ModeRegistry } from '../modes/registry';
 import type { PromptAssembler } from '../prompt/assembler';
 import type { LLMRouter } from '../llm/router';
-import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI, PluginEventBusLike, PluginManagerLike, ServiceRegistryLike, ConfigContributionRegistryLike, GlobalStoreLike } from 'irises-extension-sdk';
+import type { PluginContext, PluginHook, PluginLogger, ToolWrapper, IrisAPI, PluginEventBusLike, PluginManagerLike, ServiceRegistryLike, ConfigContributionRegistryLike, GlobalStoreLike, Disposable } from 'irises-extension-sdk';
 import { createLogger } from '../logger';
 import type { PlatformAdapter } from 'irises-extension-sdk';
 
@@ -23,6 +23,10 @@ export class PluginContextImpl {
   private hooks: PluginHook[] = [];
   private readyCallbacks: Array<(api: IrisAPI) => void | Promise<void>> = [];
   private _platformReadyCallbacks: Array<(platforms: ReadonlyMap<string, PlatformAdapter>, api: IrisAPI) => void | Promise<void>> = [];
+  private registeredToolNames = new Set<string>();
+  private systemPromptParts: Part[] = [];
+  private disposables: Disposable[] = [];
+  private disposed = false;
 
   constructor(
     private pluginName: string,
@@ -43,10 +47,11 @@ export class PluginContextImpl {
 
   registerTool(tool: ToolDefinition): void {
     this.toolRegistry.register(tool);
+    this.registeredToolNames.add(tool.declaration.name);
   }
 
   registerTools(tools: ToolDefinition[]): void {
-    this.toolRegistry.registerAll(tools);
+    for (const tool of tools) this.registerTool(tool);
   }
 
   // ---- 模式扩展 ----
@@ -83,17 +88,35 @@ export class PluginContextImpl {
       throw new Error(`wrapTool: 工具 "${toolName}" 未注册`);
     }
     const originalHandler = tool.handler;
-    tool.handler = (args) => wrapper(originalHandler, args, toolName);
+    const wrappedHandler = (args: Record<string, unknown>, context?: unknown) => wrapper(originalHandler, args, toolName);
+    tool.handler = wrappedHandler as typeof tool.handler;
+    this.disposables.push({
+      dispose: () => {
+        if (tool.handler === wrappedHandler) tool.handler = originalHandler;
+      },
+    });
   }
 
   // ---- 提示词操作 ----
 
   addSystemPromptPart(part: Part): void {
     this.promptAssembler.addSystemPart(part);
+    this.systemPromptParts.push(part);
   }
 
   removeSystemPromptPart(part: Part): void {
     this.promptAssembler.removeSystemPart(part);
+    const index = this.systemPromptParts.indexOf(part);
+    if (index >= 0) this.systemPromptParts.splice(index, 1);
+  }
+
+  trackDisposable(disposable: Disposable | undefined | null): void {
+    if (!disposable) return;
+    if (this.disposed) {
+      try { disposable.dispose(); } catch { /* ignore */ }
+      return;
+    }
+    this.disposables.push(disposable);
   }
 
   // ---- 延迟初始化 ----
@@ -219,5 +242,30 @@ export class PluginContextImpl {
   /** 获取插件注册的 onPlatformsReady 回调 */
   getPlatformReadyCallbacks(): Array<(platforms: ReadonlyMap<string, PlatformAdapter>, api: IrisAPI) => void | Promise<void>> {
     return this._platformReadyCallbacks;
+  }
+
+  /** 自动释放通过 PluginContext 注册的资源。由 PluginManager 在插件 deactivate 后调用。 */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    for (let i = this.disposables.length - 1; i >= 0; i--) {
+      try { this.disposables[i]?.dispose(); } catch { /* ignore */ }
+    }
+    this.disposables = [];
+
+    for (let i = this.systemPromptParts.length - 1; i >= 0; i--) {
+      try { this.promptAssembler.removeSystemPart(this.systemPromptParts[i]); } catch { /* ignore */ }
+    }
+    this.systemPromptParts = [];
+
+    for (const name of this.registeredToolNames) {
+      try { this.toolRegistry.unregister(name); } catch { /* ignore */ }
+    }
+    this.registeredToolNames.clear();
+
+    this.hooks = [];
+    this.readyCallbacks = [];
+    this._platformReadyCallbacks = [];
   }
 }

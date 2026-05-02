@@ -998,7 +998,7 @@ class CronScheduler {
     this.taskBoard = taskBoard ?? null;
     this.agentName = agentName ?? "master";
     this.backgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG, ...backgroundConfig };
-    const dir = dataDir ?? resolveDefaultDataDir();
+    const dir = dataDir ?? api.dataDir ?? resolveDefaultDataDir();
     this.filePath = path2.join(dir, "cron-jobs.json");
     this.runsDir = path2.join(dir, "cron-runs");
   }
@@ -1747,6 +1747,9 @@ var currentSessionId = "default";
 function injectScheduler(s2) {
   scheduler = s2;
 }
+function clearScheduler() {
+  scheduler = null;
+}
 function setCurrentSessionId(sid) {
   currentSessionId = sid;
 }
@@ -2209,6 +2212,30 @@ function createCronSchedulerService(scheduler2, api) {
 var logger4 = createPluginLogger("cron");
 var schedulerInstance = null;
 var schedulerServiceDisposable;
+var lifecycleDisposables = [];
+var backendWithDoneListener;
+var backendDoneListener;
+function trackDisposable(disposable) {
+  if (disposable)
+    lifecycleDisposables.push(disposable);
+}
+function disposeLifecycleDisposables() {
+  for (const disposable of lifecycleDisposables.splice(0, lifecycleDisposables.length).reverse()) {
+    try {
+      disposable.dispose();
+    } catch {}
+  }
+}
+function disposeBackendDoneListener() {
+  if (!backendWithDoneListener || !backendDoneListener)
+    return;
+  try {
+    backendWithDoneListener.off?.("done", backendDoneListener);
+    backendWithDoneListener.removeListener?.("done", backendDoneListener);
+  } catch {}
+  backendWithDoneListener = undefined;
+  backendDoneListener = undefined;
+}
 var src_default = definePlugin({
   name: "cron",
   version: "0.1.0",
@@ -2245,36 +2272,44 @@ var src_default = definePlugin({
         version: "1.0.0"
       });
       logger4.info(`Scheduler service 已注册: ${SCHEDULER_SERVICE_ID}`);
-      api.backend.on("done", (sessionId) => {
+      disposeBackendDoneListener();
+      backendDoneListener = (sessionId) => {
         schedulerInstance?.recordActivity(sessionId);
-      });
+      };
+      backendWithDoneListener = api.backend;
+      api.backend.on("done", backendDoneListener);
       await schedulerInstance.start();
-      registerWebRoutes(api);
-      registerSettingsTab(api, ctx);
+      for (const disposable of registerWebRoutes(api))
+        trackDisposable(disposable);
+      trackDisposable(registerSettingsTab(api, ctx));
       logger4.info("调度器插件初始化完成");
     });
   },
   async deactivate() {
+    disposeLifecycleDisposables();
+    disposeBackendDoneListener();
     schedulerServiceDisposable?.dispose();
     schedulerServiceDisposable = undefined;
     if (schedulerInstance) {
       schedulerInstance.stop();
       schedulerInstance = null;
     }
+    clearScheduler();
     logger4.info("调度器插件已卸载");
   }
 });
 function registerWebRoutes(api) {
   if (!api.registerWebRoute) {
     logger4.info("Web 路由注册不可用（非 Web 平台），跳过");
-    return;
+    return [];
   }
-  api.registerWebRoute("GET", "/api/plugins/cron/jobs", async (_req, res) => {
+  const disposables = [];
+  disposables.push(api.registerWebRoute("GET", "/api/plugins/cron/jobs", async (_req, res) => {
     const jobs = schedulerInstance?.listJobs() ?? [];
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, jobs }));
-  });
-  api.registerWebRoute("POST", "/api/plugins/cron/jobs/:id/toggle", async (_req, res, params) => {
+  }));
+  disposables.push(api.registerWebRoute("POST", "/api/plugins/cron/jobs/:id/toggle", async (_req, res, params) => {
     if (!schedulerInstance) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "调度器未初始化" }));
@@ -2289,8 +2324,8 @@ function registerWebRoutes(api) {
     const result = job.enabled ? schedulerInstance.disableJob(params.id) : schedulerInstance.enableJob(params.id);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, job: result }));
-  });
-  api.registerWebRoute("DELETE", "/api/plugins/cron/jobs/:id", async (_req, res, params) => {
+  }));
+  disposables.push(api.registerWebRoute("DELETE", "/api/plugins/cron/jobs/:id", async (_req, res, params) => {
     if (!schedulerInstance) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "调度器未初始化" }));
@@ -2304,13 +2339,13 @@ function registerWebRoutes(api) {
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true }));
-  });
-  api.registerWebRoute("GET", "/api/plugins/cron/runs", async (_req, res) => {
+  }));
+  disposables.push(api.registerWebRoute("GET", "/api/plugins/cron/runs", async (_req, res) => {
     const runs = schedulerInstance?.listRuns() ?? [];
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, runs }));
-  });
-  api.registerWebRoute("GET", "/api/plugins/cron/runs/:runId", async (_req, res, params) => {
+  }));
+  disposables.push(api.registerWebRoute("GET", "/api/plugins/cron/runs/:runId", async (_req, res, params) => {
     if (!schedulerInstance) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "调度器未初始化" }));
@@ -2324,8 +2359,9 @@ function registerWebRoutes(api) {
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, record }));
-  });
+  }));
   logger4.info("Web API 路由已注册（5 个端点）");
+  return disposables;
 }
 function registerSettingsTab(api, ctx) {
   const registerTab = api.registerConsoleSettingsTab;
@@ -2333,7 +2369,7 @@ function registerSettingsTab(api, ctx) {
     logger4.info("Console Settings Tab 注册不可用，跳过");
     return;
   }
-  registerTab({
+  const disposable = registerTab({
     id: "cron",
     label: "定时任务",
     icon: "06",
@@ -2446,6 +2482,7 @@ function registerSettingsTab(api, ctx) {
     }
   });
   logger4.info("Console Settings Tab 已注册");
+  return disposable;
 }
 function resolveConfig(raw) {
   const quietHours = raw?.quietHours;

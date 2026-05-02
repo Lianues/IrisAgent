@@ -2010,22 +2010,30 @@ function registerVirtualLoverRoutes(ctx, api, options) {
   const config = readCurrentConfig(ctx);
   if (!config.web.enabled) {
     logger.info("Virtual Lover Web 面板已禁用（web.enabled: false）");
-    return;
+    return [];
   }
-  const registerRoute = api.registerWebRoute;
-  if (!registerRoute) {
+  const registerWebRoute = api.registerWebRoute;
+  if (!registerWebRoute) {
     logger.warn("宿主未提供 registerWebRoute，Virtual Lover Web 面板不可用");
-    return;
+    return [];
   }
+  const disposables = [];
+  const track = (disposable) => {
+    if (disposable)
+      disposables.push(disposable);
+  };
+  const registerRoute = (method, routePath, handler) => {
+    track(registerWebRoute(method, routePath, handler));
+  };
   const basePath = config.web.basePath;
   const dataDir = ctx.getDataDir();
   const extensionRootDir = ctx.getExtensionRootDir();
-  api.registerWebPanel?.({
+  track(api.registerWebPanel?.({
     id: "virtual-lover",
     title: "Virtual Lover",
     icon: "favorite",
     contentPath: `${basePath}/panel`
-  });
+  }));
   registerRoute("GET", `${basePath}/health`, async (_req, res) => {
     const currentConfig = readCurrentConfig(ctx);
     sendJson(res, 200, {
@@ -2161,6 +2169,7 @@ function registerVirtualLoverRoutes(ctx, api, options) {
     }
   });
   logger.info(`Virtual Lover Web 面板已注册: ${basePath}/panel`);
+  return disposables;
 }
 function readCurrentConfig(ctx) {
   return parseVirtualLoverConfig(ctx.readConfigSection("virtual_lover"));
@@ -2837,7 +2846,7 @@ function registerVirtualLoverSettingsTab(ctx, api) {
   const registerTab = api.registerConsoleSettingsTab;
   if (!registerTab)
     return;
-  registerTab({
+  return registerTab({
     id: "virtual-lover",
     label: "Virtual Lover",
     icon: "07",
@@ -3158,6 +3167,7 @@ var src_default = definePlugin({
     const runtimeKey = ctx.getConfigDir();
     const runtimeState = {
       memoryToolsRegistered: false,
+      disposables: [],
       proactiveToolRegistered: false,
       scheduleToolRegistered: false,
       followupToolRegistered: false,
@@ -3211,8 +3221,10 @@ var src_default = definePlugin({
       }
     });
     ctx.onReady(async (api) => {
-      registerVirtualLoverRoutes(ctx, api, { logger });
-      registerVirtualLoverSettingsTab(ctx, api);
+      runtimeState.disposables.push(...registerVirtualLoverRoutes(ctx, api, { logger }));
+      const settingsDisposable = registerVirtualLoverSettingsTab(ctx, api);
+      if (settingsDisposable)
+        runtimeState.disposables.push(settingsDisposable);
       if (!runtimeState.proactiveToolRegistered) {
         ctx.registerTool(createVirtualLoverProactiveTool(ctx, api));
         runtimeState.proactiveToolRegistered = true;
@@ -3302,6 +3314,11 @@ var src_default = definePlugin({
     const runtimeKey = ctx.getConfigDir();
     const runtimeState = runtimeStates.get(runtimeKey);
     runtimeState?.serviceListenerDisposable?.dispose();
+    for (const disposable of runtimeState?.disposables.splice(0).reverse() ?? []) {
+      try {
+        disposable.dispose();
+      } catch {}
+    }
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_PROACTIVE_TOOL_NAME);
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_SCHEDULE_PROACTIVE_TOOL_NAME);
     ctx.getToolRegistry().unregister?.(VIRTUAL_LOVER_SCHEDULE_FOLLOWUP_TOOL_NAME);
