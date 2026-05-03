@@ -72,6 +72,8 @@ export function App({
   onSaveSettings,
   onResetConfig,
   onExit,
+  onEnterHeadless,
+  supportsHeadlessTransition,
   onSummarize,
   onListAgents,
   onSelectAgent,
@@ -273,6 +275,7 @@ export function App({
     onSwitchModel,
     onResetConfig,
     onExit,
+    onEnterHeadless: supportsHeadlessTransition ? onEnterHeadless : undefined,
     onListAgents,
     setAgentList,
     onDream,
@@ -607,6 +610,7 @@ export function App({
         pendingFiles={pendingFiles}
         onRemoveFile={handleRemoveFile}
         dynamicCommands={dynamicCommands}
+        supportsHeadlessTransition={supportsHeadlessTransition}
       />
     </box>
   );

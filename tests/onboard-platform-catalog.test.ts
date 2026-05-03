@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('onboard platform catalog', () => {
-  it('除 console 与 web 外，应从 extension manifest 读取平台名称、描述和 panel 字段', () => {
+  it('除内置平台外，应从 extension manifest 读取平台名称、描述和 panel 字段', () => {
     const installDir = createTempDir('iris-onboard-install-');
     const runtimeDataDir = createTempDir('iris-onboard-runtime-');
     process.env.IRIS_DATA_DIR = runtimeDataDir;
@@ -76,6 +76,7 @@ describe('onboard platform catalog', () => {
     expect(platforms.map((item) => item.value)).toEqual([
       'console',
       'web',
+      'headless',
       'custom-chat',
       'telegram',
     ]);

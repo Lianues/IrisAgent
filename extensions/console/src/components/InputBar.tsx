@@ -48,9 +48,10 @@ interface InputBarProps {
   /** 当前是否处于远程连接状态 */
   isRemote?: boolean;
   dynamicCommands?: Command[];
+  supportsHeadlessTransition?: boolean;
 }
 
-export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [] }: InputBarProps) {
+export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [], supportsHeadlessTransition }: InputBarProps) {
   const [inputState, inputActions] = useTextInput('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cursorVisible = useCursorBlink();
@@ -60,9 +61,14 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     () => {
       const commands = [...COMMANDS, ...dynamicCommands];
       const seen = new Set<string>();
-      return commands.filter((cmd) => (!cmd.remoteOnly || isRemote) && !seen.has(cmd.name) && seen.add(cmd.name));
+      return commands.filter((cmd) => (
+        (!cmd.remoteOnly || isRemote)
+        && (!cmd.requiresHeadlessSupport || supportsHeadlessTransition)
+        && !seen.has(cmd.name)
+        && seen.add(cmd.name)
+      ));
     },
-    [isRemote, dynamicCommands],
+    [isRemote, supportsHeadlessTransition, dynamicCommands],
   );
 
   // ── 粘贴保护 ──────────────────────────────────────────────

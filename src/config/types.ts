@@ -98,7 +98,7 @@ export interface WebPlatformConfig {
 }
 
 export interface PlatformConfig {
-  /** 启动的平台类型列表（兼容单字符串和数组写法；支持插件平台注册的自定义平台） */
+  /** 启动的平台类型列表（兼容单字符串和数组写法；支持插件平台注册的自定义平台；headless/core/none/daemon 解析为空数组） */
   types: string[];
   /** 全局对码配置 */
   pairing?: PairingConfig;

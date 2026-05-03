@@ -86,7 +86,7 @@ function normalizePanelValues(
 export function PlatformsPanel({
   availablePlatforms,
   title = "平台配置",
-  description = "选择要启用的平台。除 console 与 web 外，其他平台均来自当前可用 extension。",
+  description = "选择要启用的平台。console / web / headless 为内置选项，其他平台来自当前可用 extension。",
   configTitle = "平台参数配置",
   onSelect,
   onSkip,

@@ -5,6 +5,7 @@
  * - bun run dev / bun run start：优先使用 Bun 运行时
  * - npm run dev / npm run start：默认使用 Node.js + tsx
  * - 若当前配置包含 console 平台，则自动切换到 Bun 运行时
+ * - 传入 --headless/--core/--daemon 时临时覆盖为 Core-only 模式
  */
 
 import { spawn } from 'node:child_process'
@@ -13,6 +14,12 @@ import { existsSync } from 'node:fs'
 import { loadConfig } from '../src/config'
 
 type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn' | 'unknown'
+
+const HEADLESS_FLAGS = new Set(['--headless', '--core', '--daemon'])
+
+function enableHeadlessMode() {
+  process.env.IRIS_PLATFORM = 'headless'
+}
 
 function detectPackageManager(): PackageManager {
   const userAgent = process.env.npm_config_user_agent ?? ''
@@ -80,10 +87,13 @@ function runCommand(command: string, args: string[]): Promise<number> {
 
 async function main() {
   const forwardedArgs = process.argv.slice(2)
+  if (forwardedArgs.some(arg => HEADLESS_FLAGS.has(arg))) {
+    enableHeadlessMode()
+  }
+
   const config = loadConfig()
   const packageManager = detectPackageManager()
   const hasConsolePlatform = config.platform.types.includes('console')
-
   // 只有在配置了 console 平台时才必须使用 Bun 运行时（OpenTUI 依赖 Bun 的终端 API）。
   const preferBunRuntime = hasConsolePlatform
 

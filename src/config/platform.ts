@@ -4,8 +4,9 @@
  * 支持两种写法：
  *   type: console           # 单平台（兼容旧格式）
  *   type: [console, web]    # 多平台同时启动
+ *   type: headless          # 零平台，仅启动 Core / IPC
  *
- * 同时支持插件注册的自定义平台类型。
+ * 同时支持插件注册的自定义平台类型；headless/core/none/daemon 为零平台别名。
  */
 
 import * as fs from 'fs';
@@ -13,27 +14,45 @@ import * as path from 'path';
 import { parseDocument } from 'yaml';
 import { PlatformConfig } from './types';
 
+const HEADLESS_PLATFORM_ALIASES = new Set(['headless', 'core', 'none', 'daemon']);
+
+function normalizeTypeValue(value: unknown): string {
+  return String(value).trim().toLowerCase();
+}
+
+function normalizeTypeList(values: unknown[], fallback: string[]): string[] {
+  const parsed = values
+    .map(normalizeTypeValue)
+    .filter(Boolean);
+
+  if (parsed.length === 0) return fallback;
+
+  const explicitHeadless = parsed.some(v => HEADLESS_PLATFORM_ALIASES.has(v));
+  const platformTypes = parsed.filter(v => !HEADLESS_PLATFORM_ALIASES.has(v));
+
+  if (platformTypes.length === 0 && explicitHeadless) return [];
+  return [...new Set(platformTypes)];
+}
+
 function parseTypes(raw: unknown): string[] {
   // 环境变量覆盖（用于嵌入式终端等场景，避免端口冲突）
+  // 支持 IRIS_PLATFORM=headless|core|none|daemon 表示只启动 Core/IPC，不创建任何平台。
   const envOverride = process.env.IRIS_PLATFORM;
   if (envOverride) {
-    const types = envOverride.split(',')
-      .map(v => v.trim().toLowerCase())
-      .filter(Boolean);
-    if (types.length > 0) return [...new Set(types)];
+    const envValues = envOverride.split(',').map(normalizeTypeValue).filter(Boolean);
+    if (envValues.length > 0) return normalizeTypeList(envValues, ['console']);
   }
 
   // 数组写法
   if (Array.isArray(raw)) {
-    const result = raw
-      .map(v => String(v).trim().toLowerCase())
-      .filter(Boolean);
-    return result.length > 0 ? [...new Set(result)] : ['console'];
+    // 显式空数组表示无平台；如需默认 TUI，请省略 type 或写 type: console。
+    return normalizeTypeList(raw, []);
   }
 
   // 单字符串写法（兼容旧格式）
   if (typeof raw === 'string') {
-    const v = raw.trim().toLowerCase();
+    const v = normalizeTypeValue(raw);
+    if (HEADLESS_PLATFORM_ALIASES.has(v)) return [];
     return v ? [v] : ['console'];
   }
 

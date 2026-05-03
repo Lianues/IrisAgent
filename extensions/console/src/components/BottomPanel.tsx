@@ -52,6 +52,7 @@ interface BottomPanelProps {
   /** 移除指定索引的待发送文件 */
   onRemoveFile: (index: number) => void;
   dynamicCommands?: Command[];
+  supportsHeadlessTransition?: boolean;
 }
 
 export function BottomPanel({
@@ -83,6 +84,7 @@ export function BottomPanel({
   pendingFiles,
   onRemoveFile,
   dynamicCommands,
+  supportsHeadlessTransition,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
@@ -120,6 +122,7 @@ export function BottomPanel({
             onRemoveFile={onRemoveFile}
             isRemote={isRemote}
             dynamicCommands={dynamicCommands}
+            supportsHeadlessTransition={supportsHeadlessTransition}
           />
           <StatusBar
             agentName={agentName}

@@ -216,6 +216,161 @@ export interface ConsolePlatformOptions {
   isCompiledBinary?: boolean;
   /** Console 平台配置 */
   consoleConfig: ConsoleConfig;
+  /** 是否允许 TUI 内 /headless 切换为宿主 Core-only 模式。 */
+  supportsHeadlessTransition?: boolean;
+}
+
+type ConsoleExitAction = 'exit' | 'switch-agent' | 'headless';
+
+interface ConsoleStopOptions {
+  /** Windows 下从 TUI 切到前台 headless 时，不退出交替屏幕，只清屏显示后台状态，避免触发终端关闭。 */
+  headlessTransition?: boolean;
+  /** Windows 下是否在进程退出时恢复主屏幕。重建 TUI 的内部 stop 不应注册该 handler。 */
+  restoreOnProcessExit?: boolean;
+}
+
+function restoreWindowsAlternateScreen(): void {
+  const { spawnSync } = require('child_process');
+  const { writeSync } = require('fs');
+  const seq = '\x1b[?1049l\x1b[?25h';
+
+  try {
+    // 优先尝试 node（项目环境通常有）。用子进程写入可绕过 bun 直接写退出交替屏幕时的 Windows 崩溃问题。
+    const r1 = spawnSync('node', ['-e', `process.stdout.write(${JSON.stringify(seq)})`],
+      { stdio: 'inherit', timeout: 2000, windowsHide: true });
+    if (r1.status === 0) return;
+  } catch { /* ignore */ }
+
+  try {
+    // 回退到 PowerShell（Windows 10 自带）。
+    const psCmd = `[Console]::Write([char]27 + '[?1049l' + [char]27 + '[?25h')`;
+    const r2 = spawnSync('powershell', ['-NoProfile', '-Command', psCmd],
+      { stdio: 'inherit', timeout: 2000, windowsHide: true });
+    if (r2.status === 0) return;
+  } catch { /* ignore */ }
+
+  // 最终回退：直接清屏（会丢失之前的终端记录，但至少不残留 TUI）。
+  try { writeSync(1, '\x1b[2J\x1b[H\x1b[?25h'); } catch { /* ignore */ }
+}
+
+function cleanupWindowsRendererWithoutDestroy(renderer: CliRenderer): void {
+  const r = renderer as any;
+
+  // Windows 下不能直接调用 renderer.destroy()，但 /headless 后进程会继续运行，
+  // 所以仍要尽量停止 render loop 并移除进程级监听器，避免旧 TUI 在后台残留。
+  try { r.stop?.(); } catch { /* ignore */ }
+  try { r.disableMouse?.(); } catch { /* ignore */ }
+  try { r.disableKittyKeyboard?.(); } catch { /* ignore */ }
+  try { r.lib?.disableMouse?.(r.rendererPtr); } catch { /* ignore */ }
+  try { r.lib?.disableKittyKeyboard?.(r.rendererPtr); } catch { /* ignore */ }
+  // OpenTUI 的 native restoreTerminalModes 会恢复一批终端输入模式；不依赖它退出 alternate screen。
+  try { r.lib?.restoreTerminalModes?.(r.rendererPtr); } catch { /* ignore */ }
+  try {
+    r._isRunning = false;
+    r.immediateRerenderRequested = false;
+    r._controlState = 'explicit_stopped';
+  } catch { /* ignore */ }
+  try {
+    if (r.renderTimeout) {
+      r.clock?.clearTimeout?.(r.renderTimeout);
+      r.renderTimeout = null;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (r.resizeTimeoutId !== null && r.resizeTimeoutId !== undefined) {
+      r.clock?.clearTimeout?.(r.resizeTimeoutId);
+      r.resizeTimeoutId = null;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (r.capabilityTimeoutId !== null && r.capabilityTimeoutId !== undefined) {
+      r.clock?.clearTimeout?.(r.capabilityTimeoutId);
+      r.capabilityTimeoutId = null;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (r.memorySnapshotTimer) {
+      r.clock?.clearInterval?.(r.memorySnapshotTimer);
+      r.memorySnapshotTimer = null;
+    }
+  } catch { /* ignore */ }
+  // 如果 stop() 发生在一帧渲染中，后续 renderNative 可能把最后一帧 TUI 又刷回来；直接置空避免覆盖清屏。
+  try { r.renderNative = () => {}; } catch { /* ignore */ }
+  try { r.removeExitListeners?.(); } catch { /* ignore */ }
+  try {
+    if (r.sigwinchHandler) (process as any).removeListener?.('SIGWINCH', r.sigwinchHandler);
+  } catch { /* ignore */ }
+  try {
+    if (r.handleError) {
+      (process as any).removeListener?.('uncaughtException', r.handleError);
+      (process as any).removeListener?.('unhandledRejection', r.handleError);
+    }
+  } catch { /* ignore */ }
+  try {
+    if (r.warningHandler) (process as any).removeListener?.('warning', r.warningHandler);
+  } catch { /* ignore */ }
+  try {
+    if (r.exitHandler) (process as any).removeListener?.('beforeExit', r.exitHandler);
+  } catch { /* ignore */ }
+  try {
+    if (r.captureCallback) {
+      const mod = require('@opentui/core') as any;
+      mod.capture?.removeListener?.('write', r.captureCallback);
+    }
+  } catch { /* ignore */ }
+  try { r.stdin?.removeListener?.('data', r.stdinListener); } catch { /* ignore */ }
+  // 不调用 stdinParser.destroy()：OpenTUI 中可能仍有 capability timeout / pending frame 会调用
+  // updateStdinParserProtocolContext()；如果 parser 已 destroy 但引用仍在，会抛出
+  // "StdinParser has been destroyed" 并导致 bun run dev 退出。
+  try { r.updateStdinParserProtocolContext = () => {}; } catch { /* ignore */ }
+  try { r.drainStdinParser = () => {}; } catch { /* ignore */ }
+  try { r.stdinParser = null; } catch { /* ignore */ }
+  try { r.oscSubscribers?.clear?.(); } catch { /* ignore */ }
+  try { r.disableStdoutInterception?.(); } catch { /* ignore */ }
+}
+
+function windowsInputModeResetSequence(): string {
+  return ''
+    + '\x1b[?9l'     // X10 mouse tracking off
+    + '\x1b[?1000l'  // mouse button tracking off
+    + '\x1b[?1001l'  // highlight mouse tracking off
+    + '\x1b[?1002l'  // mouse drag tracking off
+    + '\x1b[?1003l'  // any-event mouse tracking off
+    + '\x1b[?1004l'  // focus event tracking off
+    + '\x1b[?1005l'  // UTF-8 mouse mode off
+    + '\x1b[?1006l'  // SGR mouse mode off
+    + '\x1b[?1007l'  // alternate scroll mode off
+    + '\x1b[?1015l'  // urxvt mouse mode off
+    + '\x1b[?1016l'  // SGR pixel mouse mode off
+    + '\x1b[?2004l'  // bracketed paste off
+    + '\x1b[?2026l'  // synchronized output off
+    + '\x1b[?2027l'  // unicode width/terminal extension mode off (best effort)
+    + '\x1b[?2031l'  // terminal extension mode off (best effort)
+    + '\x1b[>4;0m'   // xterm modifyOtherKeys off (OpenTUI enables >4;1m)
+    + '\x1b[<u';     // kitty keyboard protocol pop/disable (best effort)
+}
+
+function clearWindowsScreenForHeadless(): void {
+  const { writeSync } = require('fs');
+  try {
+    writeSync(1,
+      windowsInputModeResetSequence()
+      + '\x1b[?25h'   // 恢复光标
+      + '\x1b[0m'   // 重置颜色
+      + '\x1b[2J\x1b[H' // 清空当前（可能是 alternate）屏幕并回到左上角
+    );
+  } catch { /* ignore */ }
+}
+
+function printHeadlessTransitionMessage(): void {
+  const { writeSync } = require('fs');
+  try {
+    writeSync(1,
+      '[Iris] Console TUI 已关闭，正在切换为 Core-only 后台模式...\n'
+      + '[Iris] Core / IPC 仍在运行，可通过 iris attach 重新连接。\n'
+      + '[Iris] 按 Ctrl+C 可关闭后台 Core。\n'
+    );
+  } catch { /* ignore */ }
 }
 
 export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatform {
@@ -232,7 +387,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private initWarningsIcon?: string;
 
   /** waitForExit() 的 resolve 函数 */
-  private exitResolve?: (action: 'exit' | 'switch-agent') => void;
+  private exitResolve?: (action: ConsoleExitAction) => void;
 
   private renderer?: CliRenderer;
   private appHandle?: AppHandle;
@@ -243,6 +398,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   private _activeHandles: Map<string, any> = new Map();
   private isCompiledBinary: boolean;
   private consoleConfig: ConsoleConfig;
+  private supportsHeadlessTransition: boolean;
 
   /** 当前响应周期内的工具调用 ID 集合 */
   private currentToolIds = new Set<string>();
@@ -294,6 +450,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     this.api = options.api;
     this.isCompiledBinary = options.isCompiledBinary ?? false;
     this.consoleConfig = options.consoleConfig;
+    this.supportsHeadlessTransition = options.supportsHeadlessTransition === true;
     this.settingsController = new ConsoleSettingsController({
       backend,
       configManager: options.api?.configManager,
@@ -668,10 +825,16 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onSaveSettings: (snapshot: ConsoleSettingsSnapshot) => this.handleSaveSettings(snapshot),
         onResetConfig: () => this.handleResetConfig(),
         onExit: () => {
-          void this.stop().then(() => {
+          void this.stop({ restoreOnProcessExit: true }).then(() => {
             this.exitResolve?.('exit');
           });
         },
+        onEnterHeadless: this.supportsHeadlessTransition ? () => {
+          void this.stop({ headlessTransition: true }).then(() => {
+            this.exitResolve?.('headless');
+          });
+        } : undefined,
+        supportsHeadlessTransition: this.supportsHeadlessTransition,
         onSummarize: () => this.handleSummarize(),
         onListAgents: () => this.handleListAgents(),
         onSelectAgent: (name: string) => this.handleSelectAgent(name),
@@ -703,7 +866,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     });
   }
 
-  async stop(): Promise<void> {
+  async stop(options: ConsoleStopOptions = {}): Promise<void> {
     this.disposeBackendListeners();
 
     // 幂等保护：onExit 和 shutdown() 都会调用 stop()，
@@ -720,9 +883,10 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     }
 
     if (process.platform === 'win32') {
+      const shouldClearForHeadless = options.headlessTransition;
       // Windows workaround: bun 在 destroy() 中写入 \x1b[?1049l（退出交替屏幕）
-      // 会导致 cmd.exe / 终端窗口崩溃关闭。
-      // 跳过 renderer.destroy()，只手动恢复 raw mode。
+      // 会导致 cmd.exe / 终端窗口崩溃关闭。跳过 renderer.destroy()，但仍清理可安全清理的监听器。
+      cleanupWindowsRendererWithoutDestroy(r);
       try {
         if (process.stdin.isTTY) process.stdin.setRawMode(false);
       } catch { /* ignore */ }
@@ -731,10 +895,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       const { writeSync } = require('fs');
       try {
         writeSync(1,
-          '\x1b[?1000l'   // 关闭鼠标
-          + '\x1b[?1002l'
-          + '\x1b[?1006l'
-          + '\x1b[?2004l'  // 关闭 bracketed paste
+          windowsInputModeResetSequence()
           + '\x1b[0m'      // 重置颜色
         );
       } catch { /* ignore */ }
@@ -742,39 +903,31 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       // bun 直接写 \x1b[?1049l 会导致 cmd.exe 崩溃，
       // 所以用 spawnSync 让子进程（node/powershell）来写，绕过 bun 的 bug。
       // 如果子进程也失败则回退到 \x1b[2J 清屏。
-      process.on('exit', () => {
-        const { spawnSync } = require('child_process');
-        const seq = '\x1b[?1049l\x1b[?25h';
-        try {
-          // 优先尝试 node（项目环境通常有）
-          const r1 = spawnSync('node', ['-e', `process.stdout.write(${JSON.stringify(seq)})`],
-            { stdio: 'inherit', timeout: 2000, windowsHide: true });
-          if (r1.status === 0) return;
-        } catch { /* ignore */ }
-        try {
-          // 回退到 PowerShell（Windows 10 自带）
-          const psCmd = `[Console]::Write([char]27 + '[?1049l' + [char]27 + '[?25h')`;
-          const r2 = spawnSync('powershell', ['-NoProfile', '-Command', psCmd],
-            { stdio: 'inherit', timeout: 2000, windowsHide: true });
-          if (r2.status === 0) return;
-        } catch { /* ignore */ }
-        // 最终回退：直接清屏（会丢失之前的终端记录，但至少不残留 TUI）
-        try { writeSync(1, '\x1b[2J\x1b[H\x1b[?25h'); } catch { /* ignore */ }
-      });
+      // /headless 后进程会继续运行，此时立即写 \x1b[?1049l 在部分 Windows 终端中会直接关闭窗口；
+      // 因此只清空当前屏幕并让 index.ts 打印 Core-only 状态，而不切回主屏。
+      if (!shouldClearForHeadless && options.restoreOnProcessExit !== false) {
+        process.on('exit', restoreWindowsAlternateScreen);
+      }
     } else {
       r.destroy();
     }
 
     // 等待终端 I/O flush
     await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (process.platform === 'win32' && options.headlessTransition) {
+      clearWindowsScreenForHeadless();
+      printHeadlessTransitionMessage();
+    }
   }
 
   /**
    * ForegroundPlatform 接口实现。
-   * 返回的 Promise 在用户选择退出或切换 Agent 时 resolve。
+   * 返回的 Promise 在用户选择退出、切换 Agent 或切换 Headless 时 resolve。
    */
-  waitForExit(): Promise<'exit' | 'switch-agent'> {
-    return new Promise<'exit' | 'switch-agent'>((resolve) => {
+  // 返回 Promise<any> 兼容已安装在 extension/node_modules 中的旧版 SDK 类型声明。
+  waitForExit(): Promise<any> {
+    return new Promise<ConsoleExitAction>((resolve) => {
       this.exitResolve = resolve;
     });
   }
@@ -805,7 +958,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     if (targetName === network.selfName) return;
 
     // 销毁当前 TUI，准备用新 backend 重建
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
 
     const targetHandle = network.getPeerBackendHandle?.(targetName);
     if (targetHandle) {
@@ -980,7 +1133,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
    * @param quickName 快捷连接名称（/remote <name>），不传则显示向导。
    */
   private async handleRemoteConnect(quickName?: string): Promise<void> {
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
 
     // 迁移旧的 lastRemote
     this.migrateLastRemote();
@@ -1080,7 +1233,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     if (!this._isRemote || !this.originalBackend) return;
 
     // 停止 TUI
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
 
     this.disposeCurrentRemoteBackend();
 
@@ -2003,6 +2156,7 @@ interface ConsoleFactoryContext {
   extensions?: Pick<BootstrapExtensionRegistryLike, 'llmProviders' | 'ocrProviders'>;
   api?: IrisAPI;
   isCompiledBinary?: boolean;
+  supportsHeadlessTransition?: boolean;
   [key: string]: unknown;
 }
 
@@ -2037,5 +2191,6 @@ export default async function consoleFactory(rawContext: Record<string, unknown>
     api: context.api,
     isCompiledBinary: context.isCompiledBinary ?? false,
     consoleConfig,
+    supportsHeadlessTransition: context.supportsHeadlessTransition === true,
   });
 }

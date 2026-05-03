@@ -406,12 +406,12 @@ export abstract class PlatformAdapter {
 /**
  * 前台交互式平台。
  *
- * 实现此接口的平台（如 Console TUI）会阻塞主流程直到用户退出或切换 Agent。
+ * 实现此接口的平台（如 Console TUI）会阻塞主流程直到用户退出、切换 Agent 或请求切换到 headless。
  * 核心层通过 `isForegroundPlatform()` 类型守卫检测，不通过平台名称硬编码。
  */
 export interface ForegroundPlatform {
   /** 等待用户退出。返回退出意图。 */
-  waitForExit(): Promise<'exit' | 'switch-agent'>;
+  waitForExit(): Promise<'exit' | 'switch-agent' | 'headless'>;
 }
 
 /** 检测平台是否实现了 ForegroundPlatform 接口 */

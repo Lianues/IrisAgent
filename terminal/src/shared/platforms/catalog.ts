@@ -87,6 +87,13 @@ const BUILTIN_PLATFORMS: PlatformOption[] = [
       },
     ],
   },
+  {
+    value: "headless",
+    label: "Headless (Core / IPC)",
+    desc: "仅启动核心、插件和 IPC，不打开 TUI / Web GUI，适合后台 daemon 或配合 iris attach 使用。",
+    source: "builtin",
+    panelFields: [],
+  },
 ]
 
 function normalizeText(value: unknown): string | undefined { return normalizeTextShared(value) }

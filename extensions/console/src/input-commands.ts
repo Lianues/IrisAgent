@@ -7,6 +7,8 @@ export interface Command {
   description: string;
   /** 仅在远程连接时显示 */
   remoteOnly?: boolean;
+  /** 仅在宿主支持保留 Core / IPC 的 TUI headless 切换时显示 */
+  requiresHeadlessSupport?: boolean;
   /** 自定义颜色（十六进制） */
   color?: string;
 }
@@ -32,6 +34,8 @@ export const COMMANDS: Command[] = [
   { name: '/dream',    description: '整理长期记忆（合并冗余、清理过时）' },
   { name: '/queue',    description: '查看/管理排队消息' },
   { name: '/file',     description: '附加文件（图片/文档/音频/视频）  clear 清空' },
+  { name: '/headless', description: '关闭 TUI 并保留 Core / IPC 后台运行', requiresHeadlessSupport: true },
+  { name: '/detach',   description: '同 /headless，分离当前 TUI', requiresHeadlessSupport: true },
   { name: '/exit',     description: '退出应用' },
 ];
 

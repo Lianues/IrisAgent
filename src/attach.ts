@@ -62,7 +62,7 @@ export async function runAttach(argv: string[]): Promise<void> {
   if (!lockInfo) {
     console.error(
       `未找到运行中的 Iris 实例 (agent=${args.agentName})。\n` +
-      `请先在另一个终端执行: bun run dev`
+      `请先在另一个终端执行: iris daemon（或 npm run dev -- --headless / bun run dev -- --headless）`
     );
     process.exit(1);
   }

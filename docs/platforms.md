@@ -36,7 +36,7 @@ extensions/
 └── weixin/              # 微信平台 extension（可选安装）
 ```
 
-> CLI headless 模式（`src/cli.ts`）不是平台适配器，直接调用 Backend。
+> CLI 一次性 headless 模式（`src/cli.ts`）不是平台适配器，直接调用 Backend；Core-only 后台模式（`type: headless` / `iris daemon`）则启动 `IrisHost`、插件和 IPC，但不创建任何平台适配器。
 
 ---
 
@@ -102,6 +102,21 @@ documents: Array<{ fileName: string; mimeType: string; data: string }>
 | 指令 | `/new`、`/load`、`/sh <命令>`、`/undo`、`/redo`、`/agent`、`/exit` 等 |
 | 图片输入 | 当前未实现终端内图片上传 |
 | 撤销/重做 | 调用 Backend `undo('last-visible-message')` 与 `redo()` |
+
+### Headless / Core-only
+
+`headless` 不是一个真实平台，而是平台配置中的零平台模式：
+
+```yaml
+type: headless
+```
+
+启动后 Iris 只创建 `IrisHost` / `IrisCore` / Backend / 插件 / IPC，不打开 Console TUI、Web GUI 或 Bot 平台。常用命令：
+
+- `iris daemon` 或 `iris start --headless`：启动后台 Core-only 服务；
+- `iris attach`：在另一个终端通过 IPC 连接后台实例，退出 attach TUI 不会关闭后台 Core；
+- Console TUI 内输入 `/headless` 或 `/detach`：关闭当前 TUI 和已启动的平台适配器，保留 Core / IPC 继续运行；此时当前终端可在 `[Iris headless] >` 提示符下输入 `tui` / `attach` / `reconnect` 重新打开 TUI，或输入 `exit` / `shutdown` 关闭 Core；
+- 如果是 `type: console` 的一体式 TUI，`/exit` 仍然会关闭整个进程。
 
 ### Weixin（微信）
 

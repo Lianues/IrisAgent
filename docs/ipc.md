@@ -2,7 +2,7 @@
 
 ## 概述
 
-IPC 层允许外部进程（如 `iris attach`）通过 JSON-RPC 2.0 over TCP 连接到已运行的 IrisCore，与 Backend 进行完整交互。
+IPC 层允许外部进程（如 `iris attach`）通过 JSON-RPC 2.0 over TCP 连接到已运行的 IrisCore，与 Backend 进行完整交互。`iris daemon` / `iris start --headless` 会以无平台的 Core-only 模式启动后台实例，主要入口就是 IPC。
 
 **设计原则**：同进程不走 IPC。同进程平台（Console / Web / Telegram 等）仍使用 `BackendHandle` 直接引用，IPC 是可选的远程访问通道。
 
@@ -105,7 +105,7 @@ src/attach.ts                 iris attach 入口
 
 ### 1. 主进程启动 IPC 服务
 
-`IrisHost.start()` → 为每个 Agent 创建 `IPCServer` → 绑定 `127.0.0.1:0`（OS 自动分配端口）→ 写入 Lock 文件。
+`IrisHost.start()` → 为每个 Agent 创建 `IPCServer` → 绑定 `127.0.0.1:0`（OS 自动分配端口）→ 写入 Lock 文件。无论是否启动平台，IPC 都会随 Core 初始化。
 
 ### 2. Lock 文件
 
@@ -135,6 +135,7 @@ iris attach
   → 初始化缓存（initCaches）
   → 订阅所有事件（subscribe '*'）
   → 启动 Console 平台
+  → 退出 attach TUI 时只断开客户端，不关闭后台 Core
 ```
 
 ### 4. Handshake 响应

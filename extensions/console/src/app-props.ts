@@ -47,6 +47,10 @@ export interface AppProps {
   onSaveSettings: (snapshot: ConsoleSettingsSnapshot) => Promise<ConsoleSettingsSaveResult>;
   onResetConfig: () => Promise<{ success: boolean; message: string }>;
   onExit: () => void;
+  /** 关闭当前 TUI，但请求宿主保留 Core / IPC 后台运行。 */
+  onEnterHeadless?: () => void;
+  /** 当前宿主是否支持 TUI 内 /headless 切换。attach 客户端不支持远程关闭宿主平台。 */
+  supportsHeadlessTransition?: boolean;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   /** 获取可切换的 Agent 列表（/agent 命令触发） */
   onListAgents?: () => AgentDefinitionLike[];

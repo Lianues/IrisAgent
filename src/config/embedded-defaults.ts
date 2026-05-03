@@ -49,8 +49,10 @@ models:
 `,
 
   'platform.yaml': `# 平台配置
-# 类型: console | discord | telegram | web | weixin | wxwork | lark | qq
+# 类型: console | web | telegram | discord | weixin | wxwork | lark | qq | headless
 # 注意：console / web / telegram / cron 由随包附带的 extensions 注册；lark / discord / qq / wxwork / weixin 为可选 extension，使用前需先安装。
+# headless 表示仅启动 Core / IPC，不启动 TUI / GUI / Bot 平台。
+# headless 的别名：core / none / daemon。也可通过环境变量临时覆盖：IRIS_PLATFORM=headless
 type: console
 
 pairing:

@@ -42,6 +42,7 @@ interface UseCommandDispatchOptions {
   onSwitchModel: (modelName: string) => SwitchModelResult;
   onResetConfig: () => Promise<{ success: boolean; message: string }>;
   onExit: () => void;
+  onEnterHeadless?: () => void;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   /** 获取可切换的 Agent 列表，返回后由 /agent 命令切换到 agent-list 视图 */
   onListAgents?: () => AgentDefinitionLike[];
@@ -96,6 +97,7 @@ export function useCommandDispatch({
   onSwitchModel,
   onResetConfig,
   onExit,
+  onEnterHeadless,
   onListAgents,
   setAgentList,
 
@@ -131,6 +133,15 @@ export function useCommandDispatch({
   return useCallback((text: string) => {
     if (text === '/exit') {
       onExit();
+      return;
+    }
+
+    if (text === '/headless' || text === '/detach') {
+      if (onEnterHeadless) {
+        onEnterHeadless();
+      } else {
+        appendCommandMessage(setMessages, '当前运行环境不支持切换到无头后台模式。');
+      }
       return;
     }
 
@@ -416,6 +427,7 @@ export function useCommandDispatch({
     modelState,
     onClearRedoStack,
     onExit,
+    onEnterHeadless,
     onListModels,
     onListSessions,
     onNewSession,

@@ -12,7 +12,7 @@ export const CONFIG_FILE_META: ConfigFileMeta[] = [
   { filename: "system.yaml", label: "系统配置", description: "系统提示词、工具轮次、流式输出、重试策略等核心参数" },
   { filename: "llm.yaml", label: "模型配置", description: "默认模型、模型池定义、提供商参数" },
   { filename: "tools.yaml", label: "工具配置", description: "工具防御参数、审批策略、Shell 白名单/黑名单" },
-  { filename: "platform.yaml", label: "平台配置", description: "运行平台类型及各平台参数（console / web / telegram 等）" },
+  { filename: "platform.yaml", label: "平台配置", description: "运行平台类型及各平台参数（console / web / telegram / headless 等）" },
   { filename: "storage.yaml", label: "存储配置", description: "会话存储类型和数据路径" },
   { filename: "mcp.yaml", label: "MCP 服务器", description: "外部 MCP 服务器连接配置" },
   { filename: "modes.yaml", label: "模式配置", description: "自定义模式的提示词和工具策略" },

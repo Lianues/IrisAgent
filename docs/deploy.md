@@ -95,6 +95,14 @@ web:
 
 > **安全提示**：`host` 必须设为 `127.0.0.1`，不要用 `0.0.0.0`。否则应用会直接暴露在公网 8192 端口，绕过 Nginx 的 HTTPS 和认证保护。
 
+如果只想把 Iris 作为后台 Core / IPC 服务运行，不开放 TUI 或 Web GUI，可改用：
+
+```yaml
+type: headless
+```
+
+然后通过 `iris attach` 从另一个终端连接；退出 attach TUI 不会关闭后台 Core。
+
 ## 4. 配置 systemd 服务
 
 ```bash

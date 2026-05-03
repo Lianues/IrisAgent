@@ -1712,6 +1712,8 @@ var COMMANDS = [
   { name: "/dream", description: "整理长期记忆（合并冗余、清理过时）" },
   { name: "/queue", description: "查看/管理排队消息" },
   { name: "/file", description: "附加文件（图片/文档/音频/视频）  clear 清空" },
+  { name: "/headless", description: "关闭 TUI 并保留 Core / IPC 后台运行", requiresHeadlessSupport: true },
+  { name: "/detach", description: "同 /headless，分离当前 TUI", requiresHeadlessSupport: true },
   { name: "/exit", description: "退出应用" }
 ];
 function getCommandInput(cmd) {
@@ -1959,7 +1961,7 @@ var FILE_TYPE_ICONS = {
   audio: "\uD83C\uDFB5",
   video: "\uD83C\uDFAC"
 };
-function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [] }) {
+function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmit, onCycleThinkingEffort, pendingFiles, onRemoveFile, isRemote, dynamicCommands = [], supportsHeadlessTransition }) {
   const [inputState, inputActions] = useTextInput("");
   const [selectedIndex, setSelectedIndex] = useState3(0);
   const cursorVisible = useCursorBlink();
@@ -1967,8 +1969,8 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
   const visibleCommands = useMemo(() => {
     const commands = [...COMMANDS, ...dynamicCommands];
     const seen = new Set;
-    return commands.filter((cmd) => (!cmd.remoteOnly || isRemote) && !seen.has(cmd.name) && seen.add(cmd.name));
-  }, [isRemote, dynamicCommands]);
+    return commands.filter((cmd) => (!cmd.remoteOnly || isRemote) && (!cmd.requiresHeadlessSupport || supportsHeadlessTransition) && !seen.has(cmd.name) && seen.add(cmd.name));
+  }, [isRemote, supportsHeadlessTransition, dynamicCommands]);
   const pasteGuardRef = useRef2(false);
   const lastKeyTimeRef = useRef2(0);
   const rapidKeyCountRef = useRef2(0);
@@ -2494,7 +2496,8 @@ function BottomPanel({
   isRemote,
   pendingFiles,
   onRemoveFile,
-  dynamicCommands
+  dynamicCommands,
+  supportsHeadlessTransition
 }) {
   const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
   return /* @__PURE__ */ jsxDEV8("box", {
@@ -2536,7 +2539,8 @@ function BottomPanel({
             pendingFiles,
             onRemoveFile,
             isRemote,
-            dynamicCommands
+            dynamicCommands,
+            supportsHeadlessTransition
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV8(StatusBar, {
             agentName,
@@ -9196,6 +9200,7 @@ function useCommandDispatch({
   onSwitchModel,
   onResetConfig,
   onExit,
+  onEnterHeadless,
   onListAgents,
   setAgentList,
   onDream,
@@ -9230,6 +9235,14 @@ function useCommandDispatch({
   return useCallback7((text) => {
     if (text === "/exit") {
       onExit();
+      return;
+    }
+    if (text === "/headless" || text === "/detach") {
+      if (onEnterHeadless) {
+        onEnterHeadless();
+      } else {
+        appendCommandMessage(setMessages, "当前运行环境不支持切换到无头后台模式。");
+      }
       return;
     }
     if (text === "/agent") {
@@ -9488,6 +9501,7 @@ function useCommandDispatch({
     modelState,
     onClearRedoStack,
     onExit,
+    onEnterHeadless,
     onListModels,
     onListSessions,
     onNewSession,
@@ -9706,6 +9720,8 @@ function App({
   onSaveSettings,
   onResetConfig,
   onExit,
+  onEnterHeadless,
+  supportsHeadlessTransition,
   onSummarize,
   onListAgents,
   onSelectAgent,
@@ -9852,6 +9868,7 @@ function App({
     onSwitchModel,
     onResetConfig,
     onExit,
+    onEnterHeadless: supportsHeadlessTransition ? onEnterHeadless : undefined,
     onListAgents,
     setAgentList,
     onDream,
@@ -10163,7 +10180,8 @@ function App({
         isRemote: !!remoteHost,
         pendingFiles,
         onRemoveFile: handleRemoveFile,
-        dynamicCommands
+        dynamicCommands,
+        supportsHeadlessTransition
       }, undefined, false, undefined, this)
     ]
   }, undefined, true, undefined, this);
@@ -10536,6 +10554,141 @@ function generateSessionId() {
   const rand = Math.random().toString(36).slice(2, 6);
   return `${ts2}_${rand}`;
 }
+function restoreWindowsAlternateScreen() {
+  const { spawnSync } = __require("child_process");
+  const { writeSync } = __require("fs");
+  const seq = "\x1B[?1049l\x1B[?25h";
+  try {
+    const r1 = spawnSync("node", ["-e", `process.stdout.write(${JSON.stringify(seq)})`], { stdio: "inherit", timeout: 2000, windowsHide: true });
+    if (r1.status === 0)
+      return;
+  } catch {}
+  try {
+    const psCmd = `[Console]::Write([char]27 + '[?1049l' + [char]27 + '[?25h')`;
+    const r2 = spawnSync("powershell", ["-NoProfile", "-Command", psCmd], { stdio: "inherit", timeout: 2000, windowsHide: true });
+    if (r2.status === 0)
+      return;
+  } catch {}
+  try {
+    writeSync(1, "\x1B[2J\x1B[H\x1B[?25h");
+  } catch {}
+}
+function cleanupWindowsRendererWithoutDestroy(renderer) {
+  const r = renderer;
+  try {
+    r.stop?.();
+  } catch {}
+  try {
+    r.disableMouse?.();
+  } catch {}
+  try {
+    r.disableKittyKeyboard?.();
+  } catch {}
+  try {
+    r.lib?.disableMouse?.(r.rendererPtr);
+  } catch {}
+  try {
+    r.lib?.disableKittyKeyboard?.(r.rendererPtr);
+  } catch {}
+  try {
+    r.lib?.restoreTerminalModes?.(r.rendererPtr);
+  } catch {}
+  try {
+    r._isRunning = false;
+    r.immediateRerenderRequested = false;
+    r._controlState = "explicit_stopped";
+  } catch {}
+  try {
+    if (r.renderTimeout) {
+      r.clock?.clearTimeout?.(r.renderTimeout);
+      r.renderTimeout = null;
+    }
+  } catch {}
+  try {
+    if (r.resizeTimeoutId !== null && r.resizeTimeoutId !== undefined) {
+      r.clock?.clearTimeout?.(r.resizeTimeoutId);
+      r.resizeTimeoutId = null;
+    }
+  } catch {}
+  try {
+    if (r.capabilityTimeoutId !== null && r.capabilityTimeoutId !== undefined) {
+      r.clock?.clearTimeout?.(r.capabilityTimeoutId);
+      r.capabilityTimeoutId = null;
+    }
+  } catch {}
+  try {
+    if (r.memorySnapshotTimer) {
+      r.clock?.clearInterval?.(r.memorySnapshotTimer);
+      r.memorySnapshotTimer = null;
+    }
+  } catch {}
+  try {
+    r.renderNative = () => {};
+  } catch {}
+  try {
+    r.removeExitListeners?.();
+  } catch {}
+  try {
+    if (r.sigwinchHandler)
+      process.removeListener?.("SIGWINCH", r.sigwinchHandler);
+  } catch {}
+  try {
+    if (r.handleError) {
+      process.removeListener?.("uncaughtException", r.handleError);
+      process.removeListener?.("unhandledRejection", r.handleError);
+    }
+  } catch {}
+  try {
+    if (r.warningHandler)
+      process.removeListener?.("warning", r.warningHandler);
+  } catch {}
+  try {
+    if (r.exitHandler)
+      process.removeListener?.("beforeExit", r.exitHandler);
+  } catch {}
+  try {
+    if (r.captureCallback) {
+      const mod = __require("@opentui/core");
+      mod.capture?.removeListener?.("write", r.captureCallback);
+    }
+  } catch {}
+  try {
+    r.stdin?.removeListener?.("data", r.stdinListener);
+  } catch {}
+  try {
+    r.updateStdinParserProtocolContext = () => {};
+  } catch {}
+  try {
+    r.drainStdinParser = () => {};
+  } catch {}
+  try {
+    r.stdinParser = null;
+  } catch {}
+  try {
+    r.oscSubscribers?.clear?.();
+  } catch {}
+  try {
+    r.disableStdoutInterception?.();
+  } catch {}
+}
+function windowsInputModeResetSequence() {
+  return "" + "\x1B[?9l" + "\x1B[?1000l" + "\x1B[?1001l" + "\x1B[?1002l" + "\x1B[?1003l" + "\x1B[?1004l" + "\x1B[?1005l" + "\x1B[?1006l" + "\x1B[?1007l" + "\x1B[?1015l" + "\x1B[?1016l" + "\x1B[?2004l" + "\x1B[?2026l" + "\x1B[?2027l" + "\x1B[?2031l" + "\x1B[>4;0m" + "\x1B[<u";
+}
+function clearWindowsScreenForHeadless() {
+  const { writeSync } = __require("fs");
+  try {
+    writeSync(1, windowsInputModeResetSequence() + "\x1B[?25h" + "\x1B[0m" + "\x1B[2J\x1B[H");
+  } catch {}
+}
+function printHeadlessTransitionMessage() {
+  const { writeSync } = __require("fs");
+  try {
+    writeSync(1, `[Iris] Console TUI 已关闭，正在切换为 Core-only 后台模式...
+` + `[Iris] Core / IPC 仍在运行，可通过 iris attach 重新连接。
+` + `[Iris] 按 Ctrl+C 可关闭后台 Core。
+`);
+  } catch {}
+}
 
 class ConsolePlatform extends PlatformAdapter {
   sessionId;
@@ -10558,6 +10711,7 @@ class ConsolePlatform extends PlatformAdapter {
   _activeHandles = new Map;
   isCompiledBinary;
   consoleConfig;
+  supportsHeadlessTransition;
   currentToolIds = new Set;
   currentThinkingEffort = "none";
   _toolDetailStack = [];
@@ -10588,6 +10742,7 @@ class ConsolePlatform extends PlatformAdapter {
     this.api = options.api;
     this.isCompiledBinary = options.isCompiledBinary ?? false;
     this.consoleConfig = options.consoleConfig;
+    this.supportsHeadlessTransition = options.supportsHeadlessTransition === true;
     this.settingsController = new ConsoleSettingsController({
       backend,
       configManager: options.api?.configManager,
@@ -10907,10 +11062,16 @@ ${summaryText}`;
         onSaveSettings: (snapshot) => this.handleSaveSettings(snapshot),
         onResetConfig: () => this.handleResetConfig(),
         onExit: () => {
-          this.stop().then(() => {
+          this.stop({ restoreOnProcessExit: true }).then(() => {
             this.exitResolve?.("exit");
           });
         },
+        onEnterHeadless: this.supportsHeadlessTransition ? () => {
+          this.stop({ headlessTransition: true }).then(() => {
+            this.exitResolve?.("headless");
+          });
+        } : undefined,
+        supportsHeadlessTransition: this.supportsHeadlessTransition,
         onSummarize: () => this.handleSummarize(),
         onListAgents: () => this.handleListAgents(),
         onSelectAgent: (name) => this.handleSelectAgent(name),
@@ -10937,7 +11098,7 @@ ${summaryText}`;
       createRoot(this.renderer).render(element);
     });
   }
-  async stop() {
+  async stop(options = {}) {
     this.disposeBackendListeners();
     if (!this.renderer)
       return;
@@ -10949,6 +11110,8 @@ ${summaryText}`;
       this._sigcontHandler = undefined;
     }
     if (process.platform === "win32") {
+      const shouldClearForHeadless = options.headlessTransition;
+      cleanupWindowsRendererWithoutDestroy(r);
       try {
         if (process.stdin.isTTY)
           process.stdin.setRawMode(false);
@@ -10958,30 +11121,19 @@ ${summaryText}`;
       } catch {}
       const { writeSync } = __require("fs");
       try {
-        writeSync(1, "\x1B[?1000l" + "\x1B[?1002l" + "\x1B[?1006l" + "\x1B[?2004l" + "\x1B[0m");
+        writeSync(1, windowsInputModeResetSequence() + "\x1B[0m");
       } catch {}
-      process.on("exit", () => {
-        const { spawnSync } = __require("child_process");
-        const seq = "\x1B[?1049l\x1B[?25h";
-        try {
-          const r1 = spawnSync("node", ["-e", `process.stdout.write(${JSON.stringify(seq)})`], { stdio: "inherit", timeout: 2000, windowsHide: true });
-          if (r1.status === 0)
-            return;
-        } catch {}
-        try {
-          const psCmd = `[Console]::Write([char]27 + '[?1049l' + [char]27 + '[?25h')`;
-          const r2 = spawnSync("powershell", ["-NoProfile", "-Command", psCmd], { stdio: "inherit", timeout: 2000, windowsHide: true });
-          if (r2.status === 0)
-            return;
-        } catch {}
-        try {
-          writeSync(1, "\x1B[2J\x1B[H\x1B[?25h");
-        } catch {}
-      });
+      if (!shouldClearForHeadless && options.restoreOnProcessExit !== false) {
+        process.on("exit", restoreWindowsAlternateScreen);
+      }
     } else {
       r.destroy();
     }
     await new Promise((resolve3) => setTimeout(resolve3, 100));
+    if (process.platform === "win32" && options.headlessTransition) {
+      clearWindowsScreenForHeadless();
+      printHeadlessTransitionMessage();
+    }
   }
   waitForExit() {
     return new Promise((resolve3) => {
@@ -10997,7 +11149,7 @@ ${summaryText}`;
       return;
     if (targetName === network.selfName)
       return;
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
     const targetHandle = network.getPeerBackendHandle?.(targetName);
     if (targetHandle) {
       if (typeof targetHandle.initCaches === "function")
@@ -11139,7 +11291,7 @@ ${summaryText}`;
     } catch {}
   }
   async handleRemoteConnect(quickName) {
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
     this.migrateLastRemote();
     const remotes = this.readSavedRemotes();
     if (quickName) {
@@ -11213,7 +11365,7 @@ ${summaryText}`;
   async handleRemoteDisconnect() {
     if (!this._isRemote || !this.originalBackend)
       return;
-    await this.stop();
+    await this.stop({ restoreOnProcessExit: false });
     this.disposeCurrentRemoteBackend();
     if (this.remoteClient) {
       this.remoteClient.disconnect();
@@ -12005,7 +12157,8 @@ async function consoleFactory(rawContext) {
     extensions: context.extensions,
     api: context.api,
     isCompiledBinary: context.isCompiledBinary ?? false,
-    consoleConfig
+    consoleConfig,
+    supportsHeadlessTransition: context.supportsHeadlessTransition === true
   });
 }
 export {

@@ -8,6 +8,8 @@
  *   iris start | serve                 → 启动平台服务
  *   iris chat <prompt>                 → CLI 提示词模式
  *   iris onboard                       → 交互式配置引导
+ *   iris daemon                        → 仅启动 Core / IPC 后台服务（不启动 TUI / GUI）
+ *   iris start --headless              → 等价于 iris daemon
  *   iris platforms                     → 平台配置界面
  *   iris models                        → 模型配置界面
  *   iris settings                      → 配置文件查看与编辑
@@ -24,6 +26,12 @@ import { createRequire } from 'module';
 const args = process.argv.slice(2);
 const command = args[0];
 
+const HEADLESS_FLAGS = new Set(['--headless', '--core', '--daemon']);
+
+function enableHeadlessMode() {
+  process.env.IRIS_PLATFORM = 'headless';
+}
+
 // ── 全局标志（无子命令时） ──
 
 const HELP_TEXT = `
@@ -32,6 +40,8 @@ Iris - AI Agent
 命令:
   iris start              启动平台服务（Web / Telegram 等）
   iris attach             连接已运行的 Iris 实例（跨进程 / 跨设备）
+  iris daemon             仅启动 Core / IPC 后台服务（无 TUI / GUI）
+  iris start --headless   以 Core-only 后台模式启动
   iris chat <prompt>      执行 AI 提示词（CLI 模式）
   iris onboard            交互式配置引导
   iris models             模型配置界面
@@ -42,6 +52,7 @@ Iris - AI Agent
 全局参数:
   -h, --help              显示帮助
   -v, --version           显示版本
+  --headless              无子命令时以 Core-only 后台模式启动
 
 使用 iris chat --help 查看 CLI 模式详细帮助。
 `.trim();
@@ -98,10 +109,23 @@ if (command && TERMINAL_COMMANDS.has(command)) {
   // 跨进程 / 跨设备连接已运行的 Iris 实例
   const { runAttach } = await import('./attach');
   await runAttach(args.slice(1));
+} else if (command === 'daemon' || command === 'headless' || command === 'core') {
+  // 仅启动 Core / IPC，不创建任何平台
+  process.argv.splice(2, 1);
+  enableHeadlessMode();
+  await import('./index');
+} else if (command && HEADLESS_FLAGS.has(command)) {
+  // iris --headless：无子命令时的 Core-only 快捷方式
+  process.argv.splice(2, 1);
+  enableHeadlessMode();
+  await import('./index');
 } else if (!command || command === 'serve' || command === 'start') {
   // 平台服务（默认命令）
   if (command) {
     process.argv.splice(2, 1);
+  }
+  if (args.slice(command ? 1 : 0).some(arg => HEADLESS_FLAGS.has(arg))) {
+    enableHeadlessMode();
   }
   await import('./index');
 } else {
