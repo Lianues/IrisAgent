@@ -15,12 +15,21 @@ export {
 } from './registry';
 
 export {
+  deleteInstalledExtension,
+  inspectGitExtensionUpdate,
   getRemoteExtensionIndexUrl,
   installExtension,
+  installGitExtension,
   installLocalExtension,
+  updateGitExtension,
 } from './installer';
 
-export type { ExtensionInstallOptions } from './installer';
+export type {
+  ExtensionInstallOptions,
+  GitExtensionInstallOptions,
+  GitExtensionUpdateOptions,
+  GitExtensionUpdatePreviewResult,
+} from './installer';
 
 // ── 插件系统实现 ───────────────────────────────────────────
 

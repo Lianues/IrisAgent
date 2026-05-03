@@ -1,4 +1,5 @@
 import { useKeyboard } from '@opentui/react';
+import { usePaste } from './use-paste';
 import type { AgentDefinitionLike } from 'irises-extension-sdk';
 import type { IrisModelInfoLike as LLMModelInfo, IrisSessionMetaLike as SessionMeta, ToolInvocation } from 'irises-extension-sdk';
 import type { TextInputState, TextInputActions } from './use-text-input';
@@ -10,6 +11,7 @@ import type { UseModelStateReturn } from './use-model-state';
 import { appendCommandMessage } from '../message-utils';
 import type { QueuedMessage } from './use-message-queue';
 import { filterMemories, nextFilter, type MemoryItem, type MemoryFilter } from '../components/MemoryListView';
+import { normalizePastedSingleLine, readClipboardText } from '../terminal-compat';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
@@ -114,11 +116,25 @@ interface UseAppKeyboardOptions {
   extensionList: any[];
   setExtensionList: SetState<any[]>;
   onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onInstallGitExtension?: (target: string) => Promise<{ ok: boolean; message: string }>;
+  onDeleteExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onPreviewUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
   onListExtensions?: () => Promise<any[]>;
   onRefreshPluginSettingsTabs?: () => Promise<void> | void;
   setExtensionTogglingName: SetState<string | null>;
   setExtensionStatusMessage: SetState<string | null>;
   setExtensionStatusIsError: SetState<boolean>;
+  extensionGitInputMode: boolean;
+  setExtensionGitInputMode: SetState<boolean>;
+  extensionGitInputState: TextInputState;
+  extensionGitInputActions: TextInputActions;
+  extensionPendingDeleteName: string | null;
+  setExtensionPendingDeleteName: SetState<string | null>;
+  extensionPendingUpdateName: string | null;
+  setExtensionPendingUpdateName: SetState<string | null>;
+  extensionBusy: boolean;
+  setExtensionBusy: SetState<boolean>;
   /** file-browser 视图用 */
   fileBrowserPath: string;
   fileBrowserEntries: import('../components/FileBrowserView').FileBrowserEntry[];
@@ -210,11 +226,25 @@ export function useAppKeyboard({
   extensionList,
   setExtensionList,
   onToggleExtension,
+  onInstallGitExtension,
+  onDeleteExtension,
+  onPreviewUpdateExtension,
+  onUpdateExtension,
   onListExtensions,
   onRefreshPluginSettingsTabs,
   setExtensionTogglingName,
   setExtensionStatusMessage,
   setExtensionStatusIsError,
+  extensionGitInputMode,
+  setExtensionGitInputMode,
+  extensionGitInputState,
+  extensionGitInputActions,
+  extensionPendingDeleteName,
+  setExtensionPendingDeleteName,
+  extensionPendingUpdateName,
+  setExtensionPendingUpdateName,
+  extensionBusy,
+  setExtensionBusy,
   fileBrowserPath,
   fileBrowserEntries,
   fileBrowserShowHidden,
@@ -244,6 +274,8 @@ export function useAppKeyboard({
       : -1;
     const currentIndex = models.findIndex((model) => model.current);
     const nextIndex = preferredIndex >= 0 ? preferredIndex : (currentIndex >= 0 ? currentIndex : 0);
+
+
     setSelectedIndex(Math.max(0, nextIndex));
 
     const currentModel = currentIndex >= 0 ? models[currentIndex] : undefined;
@@ -259,6 +291,14 @@ export function useAppKeyboard({
 
     return { models, defaultModelName: nextDefaultModelName };
   };
+
+
+  usePaste((text) => {
+    if (viewMode !== 'extension-list' || !extensionGitInputMode || extensionBusy) return;
+    const normalized = normalizePastedSingleLine(text);
+    if (!normalized) return;
+    extensionGitInputActions.insert(normalized);
+  });
 
   useKeyboard((key) => {
     if (key.ctrl && key.name === 'c') {
@@ -357,12 +397,101 @@ export function useAppKeyboard({
 
     // ── extension-list 视图 ──
     if (viewMode === 'extension-list') {
+      const refreshExtensionList = async () => {
+        if (!onListExtensions) return;
+        const list = await onListExtensions();
+        setExtensionList(list);
+        setSelectedIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, list.length - 1)));
+      };
+
+      const hasExtensionDraftChanges = () => extensionList.some((item) => (
+        item.status !== 'platform' && (item.originalStatus ?? item.status) !== item.status
+      ));
+
+      const blockIfDirty = (actionLabel: string) => {
+        if (!hasExtensionDraftChanges()) return false;
+        setExtensionStatusMessage(`当前有未保存的启用/禁用修改。请先按 S 保存，再执行${actionLabel}；或按 Esc 返回后重新进入以放弃草稿。`);
+        setExtensionStatusIsError(true);
+        return true;
+      };
+
+      if (extensionBusy) {
+        return;
+      }
+
+      if (extensionGitInputMode) {
+        if (key.ctrl && key.name === 'v') {
+          const pasted = readClipboardText();
+          const normalized = pasted ? normalizePastedSingleLine(pasted) : '';
+          if (normalized) {
+            extensionGitInputActions.insert(normalized);
+          } else {
+            setExtensionStatusMessage('无法读取剪贴板。可尝试 Ctrl+Shift+V / Shift+Insert 粘贴。');
+            setExtensionStatusIsError(true);
+          }
+          return;
+        }
+
+        if (key.name === 'escape') {
+          setExtensionGitInputMode(false);
+          extensionGitInputActions.setValue('');
+          setExtensionStatusMessage(null);
+          setExtensionStatusIsError(false);
+          return;
+        }
+
+        if (key.name === 'return' || key.name === 'enter') {
+          const target = extensionGitInputState.value.trim();
+          if (!target) {
+            setExtensionStatusMessage('请输入 Git 地址');
+            setExtensionStatusIsError(true);
+            return;
+          }
+          if (!onInstallGitExtension) {
+            setExtensionStatusMessage('Git 拉取安装不可用');
+            setExtensionStatusIsError(true);
+            return;
+          }
+          setExtensionStatusMessage(`拉取 Git 扩展中：${target}`);
+          setExtensionStatusIsError(false);
+          setExtensionBusy(true);
+          void onInstallGitExtension(target).then(async (result) => {
+            if (!result.ok) {
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+            setExtensionGitInputMode(false);
+            extensionGitInputActions.setValue('');
+            await refreshExtensionList();
+            await onRefreshPluginSettingsTabs?.();
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(false);
+          }).catch((err) => {
+            setExtensionStatusMessage(`Git 拉取失败：${err instanceof Error ? err.message : String(err)}`);
+            setExtensionStatusIsError(true);
+          }).finally(() => {
+            setExtensionBusy(false);
+          });
+          return;
+        }
+
+        extensionGitInputActions.handleKey(key);
+        return;
+      }
+
       if (key.name === 'escape') {
         setExtensionStatusMessage(null);
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setViewMode('chat');
       } else if (key.name === 'up') {
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setSelectedIndex((prev) => Math.max(0, prev - 1));
       } else if (key.name === 'down') {
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setSelectedIndex((prev) => Math.min(extensionList.length - 1, prev + 1));
       } else if (key.name === 'return' || key.name === 'enter') {
         const item = extensionList[selectedIndex];
@@ -381,6 +510,8 @@ export function useAppKeyboard({
           : entry));
         setExtensionStatusMessage(`草稿：${item.name} -> ${nextStatus === 'active' ? '启用' : '禁用'}，S 保存`);
         setExtensionStatusIsError(false);
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
       } else if (key.name === 's') {
         if (!onToggleExtension) {
           setExtensionStatusMessage('扩展管理不可用');
@@ -395,6 +526,7 @@ export function useAppKeyboard({
         }
         setExtensionStatusMessage(`保存中：${changed.length} 项...`);
         setExtensionStatusIsError(false);
+        setExtensionBusy(true);
         void (async () => {
           for (const item of changed) {
             setExtensionTogglingName(item.name);
@@ -409,8 +541,7 @@ export function useAppKeyboard({
           setExtensionTogglingName(null);
           if (onListExtensions) {
             try {
-              const list = await onListExtensions();
-              setExtensionList(list);
+              await refreshExtensionList();
             } catch {
               setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
             }
@@ -424,6 +555,127 @@ export function useAppKeyboard({
           setExtensionTogglingName(null);
           setExtensionStatusMessage(`保存失败：${err}`);
           setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
+        });
+      } else if (key.name === 'g') {
+        if (blockIfDirty('Git 拉取')) return;
+        setExtensionGitInputMode(true);
+        extensionGitInputActions.setValue('');
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
+        setExtensionStatusMessage('输入 Git 地址后按 Enter 拉取安装');
+        setExtensionStatusIsError(false);
+      } else if (key.name === 'd') {
+        if (blockIfDirty('删除')) return;
+        const item = extensionList[selectedIndex];
+        if (!item) return;
+        if (!onDeleteExtension) {
+          setExtensionStatusMessage('删除扩展不可用');
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (extensionPendingDeleteName !== item.name) {
+          setExtensionPendingDeleteName(item.name);
+          setExtensionPendingUpdateName(null);
+          setExtensionStatusMessage(`危险操作：再次按 D 将永久删除 "${item.name}" 的本地 extension 目录；按 Esc 或切换选择取消。`);
+          setExtensionStatusIsError(true);
+          return;
+        }
+
+        setExtensionTogglingName(item.name);
+        setExtensionStatusMessage(`删除中：${item.name}`);
+        setExtensionStatusIsError(false);
+        setExtensionBusy(true);
+        void onDeleteExtension(item.name).then(async (result) => {
+          setExtensionTogglingName(null);
+          setExtensionPendingDeleteName(null);
+          if (!result.ok) {
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(true);
+            return;
+          }
+          await refreshExtensionList();
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(result.message);
+          setExtensionStatusIsError(false);
+        }).catch((err) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+          setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
+        });
+      } else if (key.name === 'u') {
+        if (blockIfDirty('升级')) return;
+        const item = extensionList[selectedIndex];
+        if (!item) return;
+        if (!(item.installSource === 'git' || item.gitUrl)) {
+          setExtensionStatusMessage('只有通过 Git 安装的 extension 才能在此升级');
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (!onUpdateExtension) {
+          setExtensionStatusMessage('升级扩展不可用');
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (extensionPendingUpdateName !== item.name) {
+          if (!onPreviewUpdateExtension) {
+            setExtensionPendingUpdateName(item.name);
+            setExtensionPendingDeleteName(null);
+            setExtensionStatusMessage(`升级预览不可用。再次按 U 将直接按 Git 来源升级 "${item.name}"。`);
+            setExtensionStatusIsError(true);
+            return;
+          }
+
+          setExtensionTogglingName(item.name);
+          setExtensionStatusMessage(`检查 Git 更新中：${item.name}`);
+          setExtensionStatusIsError(false);
+          setExtensionBusy(true);
+          void onPreviewUpdateExtension(item.name).then((result) => {
+            setExtensionTogglingName(null);
+            if (!result.ok) {
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+            setExtensionPendingUpdateName(item.name);
+            setExtensionPendingDeleteName(null);
+            setExtensionStatusMessage(`${result.message}；再次按 U 确认升级，按 Esc 或切换选择取消。`);
+            setExtensionStatusIsError(false);
+          }).catch((err) => {
+            setExtensionTogglingName(null);
+            setExtensionStatusMessage(`检查更新失败：${err instanceof Error ? err.message : String(err)}`);
+            setExtensionStatusIsError(true);
+          }).finally(() => {
+            setExtensionBusy(false);
+          });
+          return;
+        }
+
+        setExtensionTogglingName(item.name);
+        setExtensionStatusMessage(`升级中：${item.name}`);
+        setExtensionStatusIsError(false);
+        setExtensionBusy(true);
+        void onUpdateExtension(item.name).then(async (result) => {
+          setExtensionTogglingName(null);
+          setExtensionPendingUpdateName(null);
+          if (!result.ok) {
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(true);
+            return;
+          }
+          await refreshExtensionList();
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(result.message);
+          setExtensionStatusIsError(false);
+        }).catch((err) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(`升级失败：${err instanceof Error ? err.message : String(err)}`);
+          setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
         });
       }
       return;

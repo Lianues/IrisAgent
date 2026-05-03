@@ -6,10 +6,15 @@ import {
   deleteInstalledExtension,
   disableInstalledExtension,
   enableInstalledExtension,
+  inspectGitExtension,
+  inspectGitExtensionUpdate,
+  installGitExtension,
   installRemoteExtension,
   listRemoteExtensions,
   loadInstalledExtensions,
+  updateGitInstalledExtension,
 } from '../terminal/src/shared/extensions/runtime.js';
+import type { GitCommandRunner } from 'irises-extension-sdk/utils';
 
 const createdDirs: string[] = [];
 const originalIrisDataDir = process.env.IRIS_DATA_DIR;
@@ -44,6 +49,24 @@ function mockFetchWithMap(map: Record<string, Response>) {
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+function createMockGitRunner(writer: (cloneDir: string) => void): GitCommandRunner {
+  return vi.fn(async (_command: string, args: string[]) => {
+    const action = args[0];
+    if (action === 'clone') {
+      const cloneDir = args[args.length - 1];
+      writer(cloneDir);
+      return { stdout: '' };
+    }
+    if (action === 'fetch' || action === 'checkout') {
+      return { stdout: '' };
+    }
+    if (action === 'rev-parse') {
+      return { stdout: 'feedface1234\n' };
+    }
+    throw new Error(`unexpected git args: ${args.join(' ')}`);
+  });
 }
 
 afterEach(() => {
@@ -204,5 +227,103 @@ describe('terminal extension runtime', () => {
     expect(loadInstalledExtensions()).toEqual([]);
     expect(fs.existsSync(path.join(runtimeExtensionsDir, 'demo-extension'))).toBe(false);
     expect(fs.readFileSync(path.join(runtimeConfigDir, 'plugins.yaml'), 'utf8')).not.toContain('demo-extension');
+  });
+
+  it('应支持从 Git 仓库预检、安装、开启与删除 extension', async () => {
+    const runtimeDataDir = createTempDir('iris-terminal-extension-git-runtime-');
+    const runtimeExtensionsDir = path.join(runtimeDataDir, 'extensions');
+    const runtimeConfigDir = path.join(runtimeDataDir, 'configs');
+    process.env.IRIS_DATA_DIR = runtimeDataDir;
+
+    const commandRunner = createMockGitRunner((cloneDir) => {
+      const extensionDir = path.join(cloneDir, 'extensions', 'demo-git');
+      fs.mkdirSync(path.join(extensionDir, 'dist'), { recursive: true });
+      fs.mkdirSync(path.join(extensionDir, '.git'), { recursive: true });
+      fs.mkdirSync(path.join(extensionDir, 'node_modules', 'left-pad'), { recursive: true });
+      fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify({
+        name: 'demo-git-extension',
+        version: '2.0.0',
+        description: 'Demo Git extension',
+        plugin: { entry: 'dist/index.mjs' },
+      }, null, 2), 'utf8');
+      fs.writeFileSync(path.join(extensionDir, 'dist', 'index.mjs'), 'export default {};\n', 'utf8');
+      fs.writeFileSync(path.join(extensionDir, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf8');
+      fs.writeFileSync(path.join(extensionDir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = {};\n', 'utf8');
+    });
+
+    const input = {
+      url: 'https://github.com/acme/demo-git-extension.git',
+      ref: 'main',
+      subdir: 'extensions/demo-git',
+    };
+
+    const preview = await inspectGitExtension(input, { commandRunner });
+    expect(preview.summary.name).toBe('demo-git-extension');
+    expect(preview.summary.distributionMode).toBe('bundled');
+    expect(preview.commit).toBe('feedface1234');
+
+    const installed = await installGitExtension(input, { commandRunner });
+    expect(installed.name).toBe('demo-git-extension');
+    expect(installed.gitUrl).toBe(input.url);
+    expect(installed.gitRef).toBe('main');
+    expect(installed.gitSubdir).toBe('extensions/demo-git');
+    expect(installed.gitCommit).toBe('feedface1234');
+    expect(installed.stateLabel).toBe('未启用');
+    expect(fs.existsSync(path.join(runtimeExtensionsDir, 'demo-git-extension', 'dist', 'index.mjs'))).toBe(true);
+    expect(fs.existsSync(path.join(runtimeExtensionsDir, 'demo-git-extension', '.git'))).toBe(false);
+    expect(fs.existsSync(path.join(runtimeExtensionsDir, 'demo-git-extension', 'node_modules'))).toBe(false);
+
+    const metadata = JSON.parse(fs.readFileSync(path.join(runtimeExtensionsDir, 'demo-git-extension', '.iris-extension-install.json'), 'utf8'));
+    expect(metadata).toMatchObject({
+      source: 'git',
+      url: input.url,
+      ref: 'main',
+      commit: 'feedface1234',
+      subdir: 'extensions/demo-git',
+    });
+
+    enableInstalledExtension(installed);
+    const loaded = loadInstalledExtensions();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].enabled).toBe(true);
+    expect(loaded[0].installSource).toBe('git');
+    expect(loaded[0].gitCommit).toBe('feedface1234');
+    expect(fs.readFileSync(path.join(runtimeConfigDir, 'plugins.yaml'), 'utf8')).toContain('enabled: true');
+
+    const updateRunner: GitCommandRunner = vi.fn(async (_command: string, args: string[]) => {
+      const action = args[0];
+      if (action === 'clone') {
+        const cloneDir = args[args.length - 1];
+        const extensionDir = path.join(cloneDir, 'extensions', 'demo-git');
+        fs.mkdirSync(path.join(extensionDir, 'dist'), { recursive: true });
+        fs.writeFileSync(path.join(extensionDir, 'manifest.json'), JSON.stringify({
+          name: 'demo-git-extension',
+          version: '2.1.0',
+          description: 'Updated Demo Git extension',
+          plugin: { entry: 'dist/index.mjs' },
+        }, null, 2), 'utf8');
+        fs.writeFileSync(path.join(extensionDir, 'dist', 'index.mjs'), 'export default { version: "2.1.0" };\n', 'utf8');
+        return { stdout: '' };
+      }
+      if (action === 'fetch' || action === 'checkout') return { stdout: '' };
+      if (action === 'rev-parse') return { stdout: 'cafebabe9999\n' };
+      throw new Error(`unexpected git args: ${args.join(' ')}`);
+    });
+
+    const updatePreview = await inspectGitExtensionUpdate(loaded[0], { commandRunner: updateRunner });
+    expect(updatePreview.summary.version).toBe('2.1.0');
+    expect(updatePreview.previousCommit).toBe('feedface1234');
+    expect(updatePreview.commit).toBe('cafebabe9999');
+    expect(updatePreview.sameCommit).toBe(false);
+
+    const upgraded = await updateGitInstalledExtension(loaded[0], { commandRunner: updateRunner });
+    expect(upgraded.version).toBe('2.1.0');
+    expect(upgraded.enabled).toBe(true);
+    expect(upgraded.gitCommit).toBe('cafebabe9999');
+    expect(fs.readFileSync(path.join(runtimeExtensionsDir, 'demo-git-extension', 'dist', 'index.mjs'), 'utf8')).toContain('2.1.0');
+
+    deleteInstalledExtension(upgraded);
+    expect(loadInstalledExtensions()).toEqual([]);
+    expect(fs.existsSync(path.join(runtimeExtensionsDir, 'demo-git-extension'))).toBe(false);
   });
 });

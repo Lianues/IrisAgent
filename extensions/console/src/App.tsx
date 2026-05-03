@@ -90,6 +90,10 @@ export function App({
   onDeleteMemory,
   onListExtensions,
   onToggleExtension,
+  onInstallGitExtension,
+  onDeleteExtension,
+  onPreviewUpdateExtension,
+  onUpdateExtension,
   onListPluginSettingsTabs,
   onRemoteConnect,
   onRemoteDisconnect,
@@ -127,6 +131,10 @@ export function App({
   const [extensionTogglingName, setExtensionTogglingName] = useState<string | null>(null);
   const [extensionStatusMessage, setExtensionStatusMessage] = useState<string | null>(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState(false);
+  const [extensionGitInputMode, setExtensionGitInputMode] = useState(false);
+  const [extensionPendingDeleteName, setExtensionPendingDeleteName] = useState<string | null>(null);
+  const [extensionPendingUpdateName, setExtensionPendingUpdateName] = useState<string | null>(null);
+  const [extensionBusy, setExtensionBusy] = useState(false);
 
   // 待发送文件附件状态
   const [pendingFiles, setPendingFiles] = useState<import('./components/InputBar').PendingFile[]>([]);
@@ -169,6 +177,7 @@ export function App({
   const [queueEditingId, setQueueEditingId] = useState<string | null>(null);
   const [queueEditState, queueEditActions] = useTextInput('');
   const [modelEditState, modelEditActions] = useTextInput('');
+  const [extensionGitInputState, extensionGitInputActions] = useTextInput('');
 
   const renderer = useRenderer();
   const undoRedoRef = useRef<UndoRedoStack>(createUndoRedoStack());
@@ -425,11 +434,25 @@ export function App({
     extensionList,
     setExtensionList,
     onToggleExtension,
+    onInstallGitExtension,
+    onDeleteExtension,
+    onPreviewUpdateExtension,
+    onUpdateExtension,
     onListExtensions,
     onRefreshPluginSettingsTabs: refreshPluginSettingsTabs,
     setExtensionTogglingName,
     setExtensionStatusMessage,
     setExtensionStatusIsError,
+    extensionGitInputMode,
+    setExtensionGitInputMode,
+    extensionGitInputState,
+    extensionGitInputActions,
+    extensionPendingDeleteName,
+    setExtensionPendingDeleteName,
+    extensionPendingUpdateName,
+    setExtensionPendingUpdateName,
+    extensionBusy,
+    setExtensionBusy,
     fileBrowserPath,
     fileBrowserEntries,
     fileBrowserShowHidden,
@@ -495,6 +518,13 @@ export function App({
         togglingName={extensionTogglingName}
         statusMessage={extensionStatusMessage}
         statusIsError={extensionStatusIsError}
+        busy={extensionBusy}
+        gitInputMode={extensionGitInputMode}
+        gitInputValue={extensionGitInputState.value}
+        gitInputCursor={extensionGitInputState.cursor}
+        gitInputCursorVisible={true}
+        pendingDeleteName={extensionPendingDeleteName}
+        pendingUpdateName={extensionPendingUpdateName}
       />
     );
   }

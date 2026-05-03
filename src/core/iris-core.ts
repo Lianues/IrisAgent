@@ -48,7 +48,17 @@ import { createInvokeSkillTool } from '../tools/internal/invoke_skill';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { Backend } from './backend';
 import type { StorageProvider } from '../storage/base';
-import { DeliveryRegistry, PluginManager, discoverLocalExtensions, discoverLocalPluginEntries, mergePluginEntries } from '../extension';
+import {
+  DeliveryRegistry,
+  PluginManager,
+  deleteInstalledExtension,
+  discoverLocalExtensions,
+  discoverLocalPluginEntries,
+  inspectGitExtensionUpdate,
+  installGitExtension,
+  mergePluginEntries,
+  updateGitExtension,
+} from '../extension';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PlatformRegistry } from './platform-registry';
 import { PluginEventBus } from '../extension/event-bus';
@@ -747,6 +757,15 @@ export class IrisCore {
         discover: () => discoverLocalExtensions(),
         activate: (name: string) => pluginManager.activatePlugin(name),
         deactivate: (name: string) => pluginManager.deactivatePlugin(name),
+        installGit: (target: string, options?: { ref?: string; subdir?: string }) => installGitExtension(target, options),
+        previewUpdateGit: (name: string, options?: { ref?: string; subdir?: string }) => inspectGitExtensionUpdate(name, options),
+        updateGit: (name: string, options?: { ref?: string; subdir?: string }) => updateGitExtension(name, options),
+        remove: async (name: string) => {
+          if (pluginManager.getPlugin(name)) {
+            await pluginManager.deactivatePlugin(name);
+          }
+          return deleteInstalledExtension(name);
+        },
       };
     }
 

@@ -73,6 +73,30 @@ export {
   fetchRemoteManifest,
 } from './remote.js';
 
+// ---- git ----
+export type {
+  GitCloneRepositoryOptions,
+  GitCloneRepositoryResult,
+  GitCommandResult,
+  GitCommandRunner,
+  GitExtensionTarget,
+  GitExtensionTargetOptions,
+  GitInstallMetadata,
+} from './git.js';
+export {
+  GIT_INSTALL_METADATA_FILE,
+  cloneGitRepository,
+  formatGitExtensionTarget,
+  isGitExtensionUrlLike,
+  normalizeGitRef,
+  normalizeGitSubdir,
+  normalizeGitUrl,
+  parseGitExtensionTarget,
+  readGitInstallMetadata,
+  resolveGitExtensionTarget,
+  writeGitInstallMetadata,
+} from './git.js';
+
 // ---- runtime-analysis ----
 export type {
   RuntimeEntryGroup,

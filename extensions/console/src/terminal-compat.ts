@@ -1,3 +1,5 @@
+import { execFileSync } from 'child_process';
+
 /**
  * 终端兼容性模块。
  *
@@ -19,9 +21,12 @@ const KNOWN_MODERN_TERMS = new Set([
 ]);
 
 function detectTier(): TerminalTier {
+  if ((process.env.TERM ?? '').toLowerCase() === 'dumb') return 'basic';
   if (process.env.WT_SESSION) return 'full';
   const tp = process.env.TERM_PROGRAM ?? '';
   if (KNOWN_MODERN_TERMS.has(tp)) return 'full';
+  if (process.env.ConEmuANSI === 'ON') return 'standard';
+  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'standard';
   if (process.platform === 'win32') return 'basic';
   return 'standard';
 }
@@ -31,6 +36,61 @@ export const terminalTier: TerminalTier = detectTier();
 /** 当前终端是否支持 Emoji (SMP) 渲染 */
 export function supportsEmoji(): boolean {
   return terminalTier !== 'basic';
+}
+
+export function supportsBoxDrawing(): boolean {
+  return terminalTier !== 'basic';
+}
+
+export const BORDER_CHARS = supportsBoxDrawing()
+  ? {
+      topLeft: '┌',
+      topRight: '┐',
+      bottomLeft: '└',
+      bottomRight: '┘',
+      horizontal: '─',
+      vertical: '│',
+    }
+  : {
+      topLeft: '+',
+      topRight: '+',
+      bottomLeft: '+',
+      bottomRight: '+',
+      horizontal: '-',
+      vertical: '|',
+    };
+
+export function readClipboardText(): string | undefined {
+  const timeout = 1500;
+  const read = (command: string, args: string[]): string | undefined => {
+    try {
+      const output = execFileSync(command, args, {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout,
+      });
+      return typeof output === 'string' && output.trim().length > 0 ? output : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  if (process.platform === 'win32') {
+    return read('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'])
+      ?? read('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']);
+  }
+
+  if (process.platform === 'darwin') {
+    return read('pbpaste', []);
+  }
+
+  return read('wl-paste', ['-n'])
+    ?? read('xclip', ['-selection', 'clipboard', '-out'])
+    ?? read('xsel', ['--clipboard', '--output']);
+}
+
+export function normalizePastedSingleLine(text: string): string {
+  return text.replace(/[\r\n]/g, '').trim();
 }
 
 // ── 工具函数 ─────────────────────────────────────────────

@@ -61,6 +61,10 @@ export interface AppProps {
   onDeleteMemory?: (id: number) => Promise<boolean>;
   onListExtensions?: () => Promise<ExtensionItem[]>;
   onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onInstallGitExtension?: (target: string) => Promise<{ ok: boolean; message: string }>;
+  onPreviewUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onDeleteExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
+  onUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
   /** 重新读取插件注册的 Settings Tab，用于 extension 热启用后刷新 /settings 与动态命令。 */
   onListPluginSettingsTabs?: () => ConsoleSettingsTabDefinition[];
   onRemoteConnect?: (name?: string) => void;

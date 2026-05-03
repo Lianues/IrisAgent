@@ -3,7 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseExtensionCommandArgs } from '../src/extension/command.js';
-import { installExtension, installLocalExtension } from '../src/extension/installer.js';
+import { installExtension, installGitExtension, installLocalExtension, updateGitExtension } from '../src/extension/installer.js';
+import type { GitCommandRunner } from 'irises-extension-sdk/utils';
 
 const createdDirs: string[] = [];
 
@@ -41,6 +42,24 @@ function mockFetchWithMap(map: Record<string, Response>) {
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+function createMockGitRunner(writer: (cloneDir: string) => void): GitCommandRunner {
+  return vi.fn(async (_command: string, args: string[]) => {
+    const action = args[0];
+    if (action === 'clone') {
+      const cloneDir = args[args.length - 1];
+      writer(cloneDir);
+      return { stdout: '' };
+    }
+    if (action === 'fetch' || action === 'checkout') {
+      return { stdout: '' };
+    }
+    if (action === 'rev-parse') {
+      return { stdout: 'abc123def456\n' };
+    }
+    throw new Error(`unexpected git args: ${args.join(' ')}`);
+  });
 }
 
 afterEach(() => {
@@ -221,6 +240,94 @@ describe('extension installer', () => {
     })).rejects.toThrow('远程 extension 仓库不可用');
     expect(fs.existsSync(path.join(installedExtensionsDir, 'fallback-demo', 'manifest.json'))).toBe(false);
   });
+
+  it('install-git 支持按 Git URL/ref/subdir 安装发行包并写入来源元数据', async () => {
+    const installedExtensionsDir = createTempDir('iris-ext-installed-');
+    const commandRunner = createMockGitRunner((cloneDir) => {
+      const extensionDir = path.join(cloneDir, 'extensions', 'demo');
+      writeJson(path.join(extensionDir, 'manifest.json'), {
+        name: 'git-demo-extension',
+        version: '1.0.0',
+        plugin: { entry: 'dist/index.mjs' },
+      });
+      writeText(path.join(extensionDir, 'dist', 'index.mjs'), 'export default {};\n');
+      writeText(path.join(extensionDir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+      writeText(path.join(extensionDir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = {};\n');
+    });
+
+    const result = await installGitExtension('https://github.com/acme/iris-demo.git#v1.0.0:extensions/demo', {
+      installedExtensionsDir,
+      commandRunner,
+    });
+
+    expect(result.source).toBe('git');
+    expect(result.name).toBe('git-demo-extension');
+    expect(result.gitUrl).toBe('https://github.com/acme/iris-demo.git');
+    expect(result.gitRef).toBe('v1.0.0');
+    expect(result.gitSubdir).toBe('extensions/demo');
+    expect(result.gitCommit).toBe('abc123def456');
+    expect(fs.existsSync(path.join(result.targetDir, 'dist', 'index.mjs'))).toBe(true);
+    expect(fs.existsSync(path.join(result.targetDir, '.git'))).toBe(false);
+    expect(fs.existsSync(path.join(result.targetDir, 'node_modules'))).toBe(false);
+
+    const metadata = JSON.parse(fs.readFileSync(path.join(result.targetDir, '.iris-extension-install.json'), 'utf-8'));
+    expect(metadata).toMatchObject({
+      source: 'git',
+      url: 'https://github.com/acme/iris-demo.git',
+      ref: 'v1.0.0',
+      commit: 'abc123def456',
+      subdir: 'extensions/demo',
+    });
+  });
+
+  it('update 应按已记录的 Git 来源升级并保留禁用标记', async () => {
+    const installedExtensionsDir = createTempDir('iris-ext-installed-');
+    const makeRunner = (version: string, commit: string): GitCommandRunner => vi.fn(async (_command: string, args: string[]) => {
+      const action = args[0];
+      if (action === 'clone') {
+        const cloneDir = args[args.length - 1];
+        const extensionDir = path.join(cloneDir, 'extensions', 'demo');
+        writeJson(path.join(extensionDir, 'manifest.json'), {
+          name: 'git-demo-extension',
+          version,
+          plugin: { entry: 'dist/index.mjs' },
+        });
+        writeText(path.join(extensionDir, 'dist', 'index.mjs'), `export default { version: ${JSON.stringify(version)} };\n`);
+        return { stdout: '' };
+      }
+      if (action === 'fetch' || action === 'checkout') return { stdout: '' };
+      if (action === 'rev-parse') return { stdout: `${commit}\n` };
+      throw new Error(`unexpected git args: ${args.join(' ')}`);
+    });
+
+    const installed = await installGitExtension('https://github.com/acme/iris-demo.git#main:extensions/demo', {
+      installedExtensionsDir,
+      commandRunner: makeRunner('1.0.0', 'oldcommit'),
+    });
+    fs.writeFileSync(path.join(installed.targetDir, '.disabled'), 'disabled\n', 'utf8');
+    const initialMetadata = JSON.parse(fs.readFileSync(path.join(installed.targetDir, '.iris-extension-install.json'), 'utf-8'));
+
+    const updated = await updateGitExtension('git-demo-extension', {
+      installedExtensionsDir,
+      commandRunner: makeRunner('1.1.0', 'newcommit'),
+    });
+
+    expect(updated.version).toBe('1.1.0');
+    expect(updated.gitCommit).toBe('newcommit');
+    expect(fs.existsSync(path.join(updated.targetDir, '.disabled'))).toBe(true);
+    expect(fs.readFileSync(path.join(updated.targetDir, 'dist', 'index.mjs'), 'utf-8')).toContain('1.1.0');
+
+    const metadata = JSON.parse(fs.readFileSync(path.join(updated.targetDir, '.iris-extension-install.json'), 'utf-8'));
+    expect(metadata).toMatchObject({
+      source: 'git',
+      url: 'https://github.com/acme/iris-demo.git',
+      ref: 'main',
+      commit: 'newcommit',
+      subdir: 'extensions/demo',
+      installedAt: initialMetadata.installedAt,
+    });
+    expect(typeof metadata.updatedAt).toBe('string');
+  });
 });
 
 describe('extension command parser', () => {
@@ -235,6 +342,30 @@ describe('extension command parser', () => {
       namespace: 'extension',
       action: 'install-local',
       target: 'demo-extension',
+    });
+
+    expect(parseExtensionCommandArgs(['ext', 'install-git', 'https://github.com/acme/demo.git', '--ref', 'main', '--subdir', 'extensions/demo'])).toEqual({
+      namespace: 'ext',
+      action: 'install-git',
+      target: 'https://github.com/acme/demo.git',
+      ref: 'main',
+      subdir: 'extensions/demo',
+    });
+
+    expect(parseExtensionCommandArgs(['ext', 'https://github.com/acme/demo.git#v1:extensions/demo'])).toEqual({
+      namespace: 'ext',
+      action: 'install-git',
+      target: 'https://github.com/acme/demo.git#v1:extensions/demo',
+      ref: undefined,
+      subdir: undefined,
+    });
+
+    expect(parseExtensionCommandArgs(['ext', 'update', 'demo-extension'])).toEqual({
+      namespace: 'ext',
+      action: 'update',
+      target: 'demo-extension',
+      ref: undefined,
+      subdir: undefined,
     });
   });
 });

@@ -27,7 +27,16 @@ import {
   getRemoteDistributionFiles,
   buildRemoteExtensionFileUrl,
   getRemoteExtensionIndexUrl as getRemoteExtensionIndexUrlShared,
+  cloneGitRepository,
+  resolveGitExtensionTarget,
+  formatGitExtensionTarget,
+  readGitInstallMetadata,
+  writeGitInstallMetadata,
+  DISABLED_MARKER_FILE,
   type RemoteExtensionOptions,
+  type GitCommandRunner,
+  type GitExtensionTarget,
+  type GitInstallMetadata,
 } from 'irises-extension-sdk/utils';
 
 const logger = createLogger('ExtensionInstaller');
@@ -35,6 +44,29 @@ const logger = createLogger('ExtensionInstaller');
 export interface ExtensionInstallOptions extends RemoteExtensionOptions {
   installedExtensionsDir?: string;
   localExtensionsDir?: string;
+}
+
+export interface GitExtensionInstallOptions {
+  installedExtensionsDir?: string;
+  ref?: string;
+  subdir?: string;
+  commandRunner?: GitCommandRunner;
+}
+
+export interface GitExtensionUpdateOptions extends GitExtensionInstallOptions {}
+
+export interface GitExtensionUpdatePreviewResult {
+  name: string;
+  currentVersion: string;
+  nextVersion: string;
+  currentCommit?: string;
+  nextCommit?: string;
+  gitUrl: string;
+  gitRef?: string;
+  gitSubdir?: string;
+  sameCommit: boolean;
+  distributionMode: ExtensionDistributionMode;
+  runnableEntries: string[];
 }
 
 interface LocalExtensionSource {
@@ -54,7 +86,7 @@ class RemoteInstallError extends Error {
   }
 }
 
-function getInstalledExtensionsDir(options?: ExtensionInstallOptions): string {
+function getInstalledExtensionsDir(options?: { installedExtensionsDir?: string }): string {
   return path.resolve(options?.installedExtensionsDir || defaultInstalledExtensionsDir);
 }
 
@@ -70,13 +102,17 @@ function finalizeInstall(
   tempDir: string,
   manifest: ExtensionManifest,
   requested: string,
-  source: 'remote' | 'local',
+  source: 'remote' | 'local' | 'git',
   extras: {
     distributionMode?: ExtensionDistributionMode;
     remotePath?: string;
     sourceDir?: string;
     fallbackReason?: ExtensionInstallFallbackReason;
     fallbackDetail?: string;
+    gitUrl?: string;
+    gitRef?: string;
+    gitCommit?: string;
+    gitSubdir?: string;
   },
   installedRootDir: string,
 ): InstalledExtensionResult {
@@ -95,6 +131,10 @@ function finalizeInstall(
     sourceDir: extras.sourceDir,
     fallbackReason: extras.fallbackReason,
     fallbackDetail: extras.fallbackDetail,
+    gitUrl: extras.gitUrl,
+    gitRef: extras.gitRef,
+    gitCommit: extras.gitCommit,
+    gitSubdir: extras.gitSubdir,
   };
 }
 
@@ -223,6 +263,227 @@ export async function installLocalExtension(
     cleanupTempInstallDir(tempDir);
     throw err;
   }
+}
+
+function copyGitExtensionDirectory(sourceDir: string, targetDir: string): void {
+  fs.cpSync(sourceDir, targetDir, {
+    recursive: true,
+    filter: (sourcePath) => {
+      const basename = path.basename(sourcePath);
+      return basename !== '.git' && basename !== 'node_modules';
+    },
+  });
+}
+
+interface GitInstallTargetContext {
+  expectedName?: string;
+  existingMetadata?: GitInstallMetadata;
+  preserveDisabledMarker?: boolean;
+}
+
+function findInstalledExtensionByName(
+  name: string,
+  installedRootDir: string,
+): LocalExtensionSource | undefined {
+  const requested = normalizeRequestedExtensionPath(name, 'extension 名称');
+
+  try {
+    const candidateDir = resolveSafeRelativePath(installedRootDir, requested);
+    if (isDirectory(candidateDir)) {
+      const manifest = readManifestFromDir(candidateDir);
+      if (manifest) return { manifest, rootDir: candidateDir };
+    }
+  } catch {
+    // ignore and continue scanning
+  }
+
+  if (!isDirectory(installedRootDir)) return undefined;
+  for (const entry of fs.readdirSync(installedRootDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const rootDir = path.join(installedRootDir, entry.name);
+    const manifest = readManifestFromDir(rootDir);
+    if (!manifest) continue;
+    if (entry.name === requested || manifest.name === requested) {
+      return { manifest, rootDir };
+    }
+  }
+
+  return undefined;
+}
+
+async function installGitTarget(
+  target: GitExtensionTarget,
+  options?: GitExtensionInstallOptions,
+  context: GitInstallTargetContext = {},
+): Promise<InstalledExtensionResult> {
+  const installedRootDir = getInstalledExtensionsDir(options);
+  const tempRootDir = createTempInstallDir(installedRootDir);
+  const cloneDir = path.join(tempRootDir, 'repo');
+  const packageDir = path.join(tempRootDir, 'package');
+
+  try {
+    const cloned = await cloneGitRepository(target, cloneDir, {
+      commandRunner: options?.commandRunner,
+    });
+    const sourceDir = target.subdir
+      ? resolveSafeRelativePath(cloneDir, target.subdir)
+      : cloneDir;
+
+    if (!isDirectory(sourceDir)) {
+      throw new Error(`Git 仓库中未找到 extension 目录: ${target.subdir ?? '.'}`);
+    }
+
+    copyGitExtensionDirectory(sourceDir, packageDir);
+    const manifest = readManifestFromDir(packageDir);
+    if (!manifest) {
+      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`);
+    }
+    if (context.expectedName && manifest.name !== context.expectedName) {
+      throw new Error(`Git extension manifest.name 不匹配：期望 ${context.expectedName}，实际 ${manifest.name}`);
+    }
+
+    const validated = assertInstallableExtensionPackage(packageDir, manifest);
+    writeGitInstallMetadata(packageDir, target, cloned.commit, {
+      installedAt: context.existingMetadata?.installedAt,
+      updatedAt: context.existingMetadata ? new Date().toISOString() : undefined,
+    });
+
+    const targetDir = path.join(installedRootDir, manifest.name);
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.renameSync(packageDir, targetDir);
+    if (context.preserveDisabledMarker) {
+      fs.writeFileSync(path.join(targetDir, DISABLED_MARKER_FILE), 'disabled\n', 'utf8');
+    }
+
+    return {
+      source: 'git',
+      requested: formatGitExtensionTarget(target),
+      name: manifest.name,
+      version: manifest.version,
+      targetDir,
+      distributionMode: validated.distributionMode,
+      gitUrl: target.url,
+      gitRef: target.ref,
+      gitCommit: cloned.commit,
+      gitSubdir: target.subdir,
+    };
+  } finally {
+    cleanupTempInstallDir(tempRootDir);
+  }
+}
+
+export async function installGitExtension(
+  gitTargetInput: string,
+  options?: GitExtensionInstallOptions,
+): Promise<InstalledExtensionResult> {
+  const target = resolveGitExtensionTarget(gitTargetInput, {
+    ref: options?.ref,
+    subdir: options?.subdir,
+  });
+  return installGitTarget(target, options);
+}
+
+export async function updateGitExtension(
+  installedName: string,
+  options?: GitExtensionUpdateOptions,
+): Promise<InstalledExtensionResult> {
+  const installedRootDir = getInstalledExtensionsDir(options);
+  const installed = findInstalledExtensionByName(installedName, installedRootDir);
+  if (!installed) {
+    throw new Error(`未找到已安装 extension: ${installedName}`);
+  }
+
+  const metadata = readGitInstallMetadata(installed.rootDir);
+  if (!metadata) {
+    throw new Error(`extension "${installed.manifest.name}" 不是通过 Git 安装的，无法按 Git 来源升级`);
+  }
+
+  const target = resolveGitExtensionTarget(metadata.url, {
+    ref: options?.ref ?? metadata.ref,
+    subdir: options?.subdir ?? metadata.subdir,
+  });
+  const preserveDisabledMarker = fs.existsSync(path.join(installed.rootDir, DISABLED_MARKER_FILE));
+  return installGitTarget(target, options, {
+    expectedName: installed.manifest.name,
+    existingMetadata: metadata,
+    preserveDisabledMarker,
+  });
+}
+
+export async function inspectGitExtensionUpdate(
+  installedName: string,
+  options?: GitExtensionUpdateOptions,
+): Promise<GitExtensionUpdatePreviewResult> {
+  const installedRootDir = getInstalledExtensionsDir(options);
+  const installed = findInstalledExtensionByName(installedName, installedRootDir);
+  if (!installed) {
+    throw new Error(`未找到已安装 extension: ${installedName}`);
+  }
+
+  const metadata = readGitInstallMetadata(installed.rootDir);
+  if (!metadata) {
+    throw new Error(`extension "${installed.manifest.name}" 不是通过 Git 安装的，无法按 Git 来源检查升级`);
+  }
+
+  const target = resolveGitExtensionTarget(metadata.url, {
+    ref: options?.ref ?? metadata.ref,
+    subdir: options?.subdir ?? metadata.subdir,
+  });
+  const tempRootDir = createTempInstallDir(installedRootDir);
+  const cloneDir = path.join(tempRootDir, 'repo');
+  const packageDir = path.join(tempRootDir, 'package');
+
+  try {
+    const cloned = await cloneGitRepository(target, cloneDir, {
+      commandRunner: options?.commandRunner,
+    });
+    const sourceDir = target.subdir
+      ? resolveSafeRelativePath(cloneDir, target.subdir)
+      : cloneDir;
+    if (!isDirectory(sourceDir)) {
+      throw new Error(`Git 仓库中未找到 extension 目录: ${target.subdir ?? '.'}`);
+    }
+
+    copyGitExtensionDirectory(sourceDir, packageDir);
+    const manifest = readManifestFromDir(packageDir);
+    if (!manifest) {
+      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`);
+    }
+    if (manifest.name !== installed.manifest.name) {
+      throw new Error(`Git extension manifest.name 不匹配：期望 ${installed.manifest.name}，实际 ${manifest.name}`);
+    }
+
+    const validated = assertInstallableExtensionPackage(packageDir, manifest);
+    return {
+      name: manifest.name,
+      currentVersion: installed.manifest.version,
+      nextVersion: manifest.version,
+      currentCommit: metadata.commit,
+      nextCommit: cloned.commit,
+      gitUrl: target.url,
+      gitRef: target.ref,
+      gitSubdir: target.subdir,
+      sameCommit: !!metadata.commit && metadata.commit === cloned.commit,
+      distributionMode: validated.distributionMode,
+      runnableEntries: validated.runnableEntries,
+    };
+  } finally {
+    cleanupTempInstallDir(tempRootDir);
+  }
+}
+
+export function deleteInstalledExtension(
+  installedName: string,
+  options?: { installedExtensionsDir?: string },
+): { name: string; targetDir: string } {
+  const installedRootDir = getInstalledExtensionsDir(options);
+  const installed = findInstalledExtensionByName(installedName, installedRootDir);
+  if (!installed) {
+    throw new Error(`未找到已安装 extension: ${installedName}`);
+  }
+
+  fs.rmSync(installed.rootDir, { recursive: true, force: true });
+  return { name: installed.manifest.name, targetDir: installed.rootDir };
 }
 
 export async function installExtension(

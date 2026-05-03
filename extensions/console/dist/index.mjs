@@ -51,20 +51,55 @@ var init_logger = __esm(() => {
 });
 
 // src/terminal-compat.ts
+import { execFileSync } from "child_process";
 function detectTier() {
+  if ((process.env.TERM ?? "").toLowerCase() === "dumb")
+    return "basic";
   if (process.env.WT_SESSION)
     return "full";
   const tp = process.env.TERM_PROGRAM ?? "";
   if (KNOWN_MODERN_TERMS.has(tp))
     return "full";
+  if (process.env.ConEmuANSI === "ON")
+    return "standard";
+  if (process.env.TERM_PROGRAM === "Apple_Terminal")
+    return "standard";
   if (process.platform === "win32")
     return "basic";
   return "standard";
 }
+function supportsBoxDrawing() {
+  return terminalTier !== "basic";
+}
+function readClipboardText() {
+  const timeout = 1500;
+  const read = (command, args) => {
+    try {
+      const output = execFileSync(command, args, {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout
+      });
+      return typeof output === "string" && output.trim().length > 0 ? output : undefined;
+    } catch {
+      return;
+    }
+  };
+  if (process.platform === "win32") {
+    return read("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]) ?? read("powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]);
+  }
+  if (process.platform === "darwin") {
+    return read("pbpaste", []);
+  }
+  return read("wl-paste", ["-n"]) ?? read("xclip", ["-selection", "clipboard", "-out"]) ?? read("xsel", ["--clipboard", "--output"]);
+}
+function normalizePastedSingleLine(text) {
+  return text.replace(/[\r\n]/g, "").trim();
+}
 function pick(modern, basic) {
   return terminalTier === "basic" ? basic : modern;
 }
-var KNOWN_MODERN_TERMS, terminalTier, ICONS, SPINNER_FRAMES;
+var KNOWN_MODERN_TERMS, terminalTier, BORDER_CHARS, ICONS, SPINNER_FRAMES;
 var init_terminal_compat = __esm(() => {
   KNOWN_MODERN_TERMS = new Set([
     "iTerm.app",
@@ -78,6 +113,21 @@ var init_terminal_compat = __esm(() => {
     "ghostty"
   ]);
   terminalTier = detectTier();
+  BORDER_CHARS = supportsBoxDrawing() ? {
+    topLeft: "┌",
+    topRight: "┐",
+    bottomLeft: "└",
+    bottomRight: "┘",
+    horizontal: "─",
+    vertical: "│"
+  } : {
+    topLeft: "+",
+    topRight: "+",
+    bottomLeft: "+",
+    bottomRight: "+",
+    horizontal: "-",
+    vertical: "|"
+  };
   ICONS = {
     thinkingFilled: pick("￭", "="),
     thinkingDim: pick("￮", "-"),
@@ -128,7 +178,7 @@ __export(exports_remote_wizard, {
   showConnectError: () => showConnectError
 });
 function showSelectionPhase(options) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const stdin = process.stdin;
     const stdout = process.stdout;
     const wasRaw = stdin.isRaw;
@@ -237,7 +287,7 @@ function showSelectionPhase(options) {
       const key = buf.toString("utf-8");
       if (key === "\x1B" || key === "\x03") {
         cleanup();
-        resolve3(null);
+        resolve4(null);
         return;
       }
       if (key === "\x1B[A") {
@@ -283,11 +333,11 @@ function showSelectionPhase(options) {
           return;
         cleanup();
         if (item.type === "saved") {
-          resolve3({ action: "connect-saved", name: item.name, url: item.url, hasToken: item.hasToken });
+          resolve4({ action: "connect-saved", name: item.name, url: item.url, hasToken: item.hasToken });
         } else if (item.type === "discovered") {
-          resolve3({ action: "connect-discovered", host: item.host, port: item.port, name: item.name });
+          resolve4({ action: "connect-discovered", host: item.host, port: item.port, name: item.name });
         } else {
-          resolve3({ action: "manual" });
+          resolve4({ action: "manual" });
         }
         return;
       }
@@ -297,7 +347,7 @@ function showSelectionPhase(options) {
   });
 }
 function showInputPhase(opts = {}) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const stdin = process.stdin;
     const stdout = process.stdout;
     let url = opts.prefillUrl || "ws://";
@@ -366,7 +416,7 @@ function showInputPhase(opts = {}) {
       const key = buf.toString("utf-8");
       if (key === "\x1B" || key === "\x03") {
         cleanup();
-        resolve3(null);
+        resolve4(null);
         return;
       }
       if (key === "\t") {
@@ -395,7 +445,7 @@ function showInputPhase(opts = {}) {
             return;
           }
           cleanup();
-          resolve3({ url: url.trim(), token: token.trim() });
+          resolve4({ url: url.trim(), token: token.trim() });
           return;
         }
         nextField();
@@ -436,7 +486,7 @@ function showInputPhase(opts = {}) {
   });
 }
 function showSavePrompt() {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const stdin = process.stdin;
     const stdout = process.stdout;
     let name = "";
@@ -472,7 +522,7 @@ function showSavePrompt() {
       const key = buf.toString("utf-8");
       if (key === "\x1B" || key === "\x03") {
         cleanup();
-        resolve3(null);
+        resolve4(null);
         return;
       }
       if (key === "\r" || key === `
@@ -489,7 +539,7 @@ function showSavePrompt() {
           return;
         }
         cleanup();
-        resolve3(trimmed);
+        resolve4(trimmed);
         return;
       }
       if (key === "" || key === "\b") {
@@ -1310,7 +1360,88 @@ class PlatformAdapter {
 
 // ../../packages/extension-sdk/dist/index.js
 init_logger();
+// ../../packages/extension-sdk/dist/utils/git.js
+import * as fs from "node:fs";
+import * as path from "node:path";
 
+// ../../packages/extension-sdk/dist/utils/paths.js
+function normalizeText(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+function normalizeRelativeFilePath(input, label = "文件路径") {
+  const normalized = input.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!normalized) {
+    throw new Error(`${label}不能为空`);
+  }
+  const parts = normalized.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) {
+    throw new Error(`${label}无效: ${input}`);
+  }
+  return parts.join("/");
+}
+
+// ../../packages/extension-sdk/dist/utils/git.js
+var GIT_INSTALL_METADATA_FILE = ".iris-extension-install.json";
+function stripGitPlusProtocol(url) {
+  return url.startsWith("git+") ? url.slice("git+".length) : url;
+}
+function isGitExtensionUrlLike(value) {
+  const text = normalizeText(value);
+  if (!text)
+    return false;
+  const url = stripGitPlusProtocol(text);
+  return /^(https|ssh):\/\//i.test(url) || /^git@[^:]+:.+/i.test(url);
+}
+function normalizeGitUrl(input) {
+  const trimmed = normalizeText(input);
+  if (!trimmed) {
+    throw new Error("Git 地址不能为空");
+  }
+  const normalized = stripGitPlusProtocol(trimmed);
+  if (!isGitExtensionUrlLike(normalized)) {
+    throw new Error(`不支持的 Git 地址: ${input}。仅支持 https://、ssh:// 或 git@host:repo.git 格式。`);
+  }
+  return normalized;
+}
+function normalizeGitRef(input) {
+  const ref = normalizeText(input);
+  if (!ref)
+    return;
+  if (/[\r\n\0]/.test(ref)) {
+    throw new Error(`Git ref 无效: ${input}`);
+  }
+  return ref;
+}
+function normalizeGitSubdir(input) {
+  const text = normalizeText(input);
+  if (!text)
+    return;
+  return normalizeRelativeFilePath(text.replace(/^\.\//, ""), "Git extension 子目录");
+}
+function readGitInstallMetadata(rootDir) {
+  const metadataPath = path.join(rootDir, GIT_INSTALL_METADATA_FILE);
+  if (!fs.existsSync(metadataPath))
+    return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    if (raw.source !== "git")
+      return;
+    const url = normalizeText(raw.url);
+    if (!url)
+      return;
+    return {
+      source: "git",
+      url: normalizeGitUrl(url),
+      ref: normalizeGitRef(normalizeText(raw.ref)),
+      commit: normalizeText(raw.commit),
+      subdir: normalizeGitSubdir(normalizeText(raw.subdir)),
+      installedAt: normalizeText(raw.installedAt),
+      updatedAt: normalizeText(raw.updatedAt)
+    };
+  } catch {
+    return;
+  }
+}
 // node_modules/tokenx/dist/index.mjs
 var PATTERNS = {
   whitespace: /^\s+$/,
@@ -1708,7 +1839,7 @@ var COMMANDS = [
   { name: "/disconnect", description: "断开远程连接", remoteOnly: true, color: "#fdcb6e" },
   { name: "/agent", description: "切换 Agent（多 Agent 模式）" },
   { name: "/memory", description: "查看长期记忆" },
-  { name: "/extension", description: "管理扩展插件（查看/启用/禁用）" },
+  { name: "/extension", description: "管理扩展插件（查看/启用/禁用/Git拉取/升级/删除）" },
   { name: "/dream", description: "整理长期记忆（合并冗余、清理过时）" },
   { name: "/queue", description: "查看/管理排队消息" },
   { name: "/file", description: "附加文件（图片/文档/音频/视频）  clear 清空" },
@@ -4020,12 +4151,12 @@ function ChatMessageList({
 
 // src/components/DiffApprovalView.tsx
 import { useMemo as useMemo4 } from "react";
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 
 // ../../packages/extension-sdk/dist/tool-utils.js
-import * as fs from "node:fs";
-import * as path from "node:path";
+import * as fs2 from "node:fs";
+import * as path2 from "node:path";
 function normalizeLineEndings(text) {
   return text.replace(/\r\n/g, `
 `).replace(/\r/g, `
@@ -4140,7 +4271,7 @@ var DEFAULT_IGNORED_DIRS = new Set([
 ]);
 var BINARY_DETECT_BYTES = 8 * 1024;
 function toPosix(p) {
-  return p.split(path.sep).join("/");
+  return p.split(path2.sep).join("/");
 }
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -4252,8 +4383,8 @@ function buildSearchRegex(query, isRegex) {
 function walkFiles(rootAbs, onFile, shouldStop, relPosixDir = "") {
   if (shouldStop())
     return;
-  const dirAbs = relPosixDir ? path.join(rootAbs, relPosixDir) : rootAbs;
-  const entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+  const dirAbs = relPosixDir ? path2.join(rootAbs, relPosixDir) : rootAbs;
+  const entries = fs2.readdirSync(dirAbs, { withFileTypes: true });
   for (const ent of entries) {
     if (shouldStop())
       return;
@@ -4269,7 +4400,7 @@ function walkFiles(rootAbs, onFile, shouldStop, relPosixDir = "") {
     if (ent.isFile()) {
       if (shouldIgnoreByPath(relPosix))
         continue;
-      onFile(path.join(dirAbs, ent.name), relPosix);
+      onFile(path2.join(dirAbs, ent.name), relPosix);
     }
   }
 }
@@ -4295,8 +4426,8 @@ function normalizeObjectArrayArg(args, options) {
 }
 function resolveProjectPath(inputPath, baseCwd) {
   const cwd = baseCwd ?? process.cwd();
-  const resolved = path.resolve(cwd, inputPath);
-  if (resolved !== cwd && !resolved.startsWith(cwd + path.sep)) {
+  const resolved = path2.resolve(cwd, inputPath);
+  if (resolved !== cwd && !resolved.startsWith(cwd + path2.sep)) {
     throw new Error(`路径超出项目目录: ${inputPath}`);
   }
   return resolved;
@@ -4506,8 +4637,8 @@ function buildWriteFilePreview(inv) {
     try {
       const resolved = resolveProjectPath(entry.path);
       let existed = false, before = "";
-      if (fs2.existsSync(resolved)) {
-        before = fs2.readFileSync(resolved, "utf-8");
+      if (fs3.existsSync(resolved)) {
+        before = fs3.readFileSync(resolved, "utf-8");
         existed = true;
       }
       if (existed && before === entry.content) {
@@ -4548,7 +4679,7 @@ function buildInsertCodePreview(inv) {
   fileList.forEach((entry, i) => {
     try {
       const resolved = resolveProjectPath(entry.path);
-      const before = fs2.readFileSync(resolved, "utf-8");
+      const before = fs3.readFileSync(resolved, "utf-8");
       const lines = before.split(`
 `);
       const insertLines = entry.content.split(`
@@ -4586,7 +4717,7 @@ function buildDeleteCodePreview(inv) {
   fileList.forEach((entry, i) => {
     try {
       const resolved = resolveProjectPath(entry.path);
-      const before = fs2.readFileSync(resolved, "utf-8");
+      const before = fs3.readFileSync(resolved, "utf-8");
       const lines = before.split(`
 `);
       const after = [...lines.slice(0, entry.start_line - 1), ...lines.slice(entry.end_line)].join(`
@@ -4626,7 +4757,7 @@ function buildSearchReplacePreview(inv) {
   try {
     const regex = buildSearchRegex(query, isRegex);
     const rootAbs = resolveProjectPath(inputPath);
-    const stat = fs2.statSync(rootAbs);
+    const stat = fs3.statSync(rootAbs);
     const patternRe = globToRegExp(pattern);
     const items = [];
     let processedFiles = 0, changedFiles = 0, unchangedFiles = 0;
@@ -4639,8 +4770,8 @@ function buildSearchReplacePreview(inv) {
       if (stat.isDirectory() && !patternRe.test(relPosix))
         return;
       processedFiles++;
-      const displayPath = stat.isDirectory() ? toPosix(path2.join(inputPath, relPosix)) : toPosix(inputPath);
-      const buf = fs2.readFileSync(fileAbs);
+      const displayPath = stat.isDirectory() ? toPosix(path3.join(inputPath, relPosix)) : toPosix(inputPath);
+      const buf = fs3.readFileSync(fileAbs);
       if (buf.length > maxFileSizeBytes) {
         skippedTooLarge++;
         return;
@@ -4678,7 +4809,7 @@ function buildSearchReplacePreview(inv) {
       totalReplacements += replacements;
     };
     if (stat.isFile())
-      processFile(rootAbs, toPosix(path2.basename(rootAbs)));
+      processFile(rootAbs, toPosix(path3.basename(rootAbs)));
     else {
       walkFiles(rootAbs, processFile, shouldStop);
       if (processedFiles >= maxFiles)
@@ -5129,8 +5260,8 @@ function childArgsSummary(toolName, args) {
     case "insert_code": {
       if (Array.isArray(args.files) && args.files.length > 0) {
         const first = args.files[0];
-        const path3 = typeof first === "object" && first ? String(first.path || "") : "";
-        return args.files.length > 1 ? `${path3} +${args.files.length - 1}` : path3;
+        const path4 = typeof first === "object" && first ? String(first.path || "") : "";
+        return args.files.length > 1 ? `${path4} +${args.files.length - 1}` : path4;
       }
       return String(args.path || "");
     }
@@ -6002,8 +6133,8 @@ function argsSummary(toolName, args) {
     case "insert_code": {
       if (Array.isArray(args.files) && args.files.length > 0) {
         const first = args.files[0];
-        const path3 = typeof first === "object" && first ? String(first.path || "") : "";
-        return args.files.length > 1 ? `${path3} +${args.files.length - 1}` : path3;
+        const path4 = typeof first === "object" && first ? String(first.path || "") : "";
+        return args.files.length > 1 ? `${path4} +${args.files.length - 1}` : path4;
       }
       return String(args.path || "");
     }
@@ -6342,20 +6473,152 @@ function formatAge(unixSec) {
 }
 
 // src/components/ExtensionListView.tsx
+import { useTerminalDimensions as useTerminalDimensions4 } from "@opentui/react";
 init_terminal_compat();
-import { jsxDEV as jsxDEV36 } from "@opentui/react/jsx-dev-runtime";
+import { jsxDEV as jsxDEV36, Fragment as Fragment6 } from "@opentui/react/jsx-dev-runtime";
 var STATUS_LABELS = {
   active: { label: "active", color: "#2ecc71" },
   disabled: { label: "disabled", color: "#e74c3c" },
   available: { label: "available", color: "#f39c12" },
   platform: { label: "platform", color: "#95a5a6" }
 };
+var GIT_INPUT_PLACEHOLDER = "https://github.com/user/repo.git#main:extensions/demo";
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function splitFixedWidth(value, width) {
+  if (width <= 0)
+    return [""];
+  if (!value)
+    return [""];
+  const result = [];
+  for (let index = 0;index < value.length; index += width) {
+    result.push(value.slice(index, index + width));
+  }
+  return result.length > 0 ? result : [""];
+}
+function renderCursorChar(char, visible) {
+  return visible ? /* @__PURE__ */ jsxDEV36("span", {
+    bg: C.accent,
+    fg: C.cursorFg,
+    children: char || " "
+  }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV36("span", {
+    fg: C.text,
+    children: char || " "
+  }, undefined, false, undefined, this);
+}
+function GitInputFrame({
+  value,
+  cursor,
+  cursorVisible
+}) {
+  const { width: terminalWidth } = useTerminalDimensions4();
+  const safeTerminalWidth = Math.max(20, terminalWidth || 80);
+  const frameWidth = Math.max(12, Math.min(88, safeTerminalWidth - 8));
+  const innerWidth = Math.max(12, frameWidth - 4);
+  const safeCursor = clamp(cursor, 0, value.length);
+  const topBorder = `${BORDER_CHARS.topLeft}${BORDER_CHARS.horizontal.repeat(innerWidth + 2)}${BORDER_CHARS.topRight}`;
+  const bottomBorder = `${BORDER_CHARS.bottomLeft}${BORDER_CHARS.horizontal.repeat(innerWidth + 2)}${BORDER_CHARS.bottomRight}`;
+  const lines = value ? splitFixedWidth(value, innerWidth) : splitFixedWidth(` ${GIT_INPUT_PLACEHOLDER}`, innerWidth - 1);
+  if (value && safeCursor === value.length && value.length > 0 && value.length % innerWidth === 0) {
+    lines.push("");
+  }
+  return /* @__PURE__ */ jsxDEV36("box", {
+    flexDirection: "column",
+    width: frameWidth,
+    height: Math.max(3, lines.length + 2),
+    flexShrink: 0,
+    children: [
+      /* @__PURE__ */ jsxDEV36("text", {
+        wrapMode: "none",
+        fg: C.accent,
+        children: topBorder
+      }, undefined, false, undefined, this),
+      lines.map((line, lineIndex) => {
+        const start = value ? lineIndex * innerWidth : 0;
+        const end = start + line.length;
+        const wrapLine = (node, visualWidth) => /* @__PURE__ */ jsxDEV36("text", {
+          wrapMode: "none",
+          children: [
+            /* @__PURE__ */ jsxDEV36("span", {
+              fg: C.accent,
+              children: `${BORDER_CHARS.vertical} `
+            }, undefined, false, undefined, this),
+            node,
+            /* @__PURE__ */ jsxDEV36("span", {
+              children: " ".repeat(Math.max(0, innerWidth - visualWidth))
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ jsxDEV36("span", {
+              fg: C.accent,
+              children: ` ${BORDER_CHARS.vertical}`
+            }, undefined, false, undefined, this)
+          ]
+        }, `git-input-line-${lineIndex}`, true, undefined, this);
+        if (!value) {
+          const placeholderPart = line;
+          return wrapLine(/* @__PURE__ */ jsxDEV36(Fragment6, {
+            children: [
+              lineIndex === 0 && renderCursorChar(" ", cursorVisible),
+              /* @__PURE__ */ jsxDEV36("span", {
+                fg: C.dim,
+                children: placeholderPart
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this), placeholderPart.length + (lineIndex === 0 ? 1 : 0));
+        }
+        if (safeCursor >= start && safeCursor < end) {
+          const local = safeCursor - start;
+          return wrapLine(/* @__PURE__ */ jsxDEV36(Fragment6, {
+            children: [
+              /* @__PURE__ */ jsxDEV36("span", {
+                fg: C.text,
+                children: line.slice(0, local)
+              }, undefined, false, undefined, this),
+              renderCursorChar(line[local] || " ", cursorVisible),
+              /* @__PURE__ */ jsxDEV36("span", {
+                fg: C.text,
+                children: line.slice(local + 1)
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this), line.length);
+        }
+        if (safeCursor === end && lineIndex === lines.length - 1) {
+          return wrapLine(/* @__PURE__ */ jsxDEV36(Fragment6, {
+            children: [
+              /* @__PURE__ */ jsxDEV36("span", {
+                fg: C.text,
+                children: line
+              }, undefined, false, undefined, this),
+              renderCursorChar(" ", cursorVisible)
+            ]
+          }, undefined, true, undefined, this), line.length + 1);
+        }
+        return wrapLine(/* @__PURE__ */ jsxDEV36("span", {
+          fg: C.text,
+          children: line
+        }, undefined, false, undefined, this), line.length);
+      }),
+      /* @__PURE__ */ jsxDEV36("text", {
+        wrapMode: "none",
+        fg: C.accent,
+        children: bottomBorder
+      }, undefined, false, undefined, this)
+    ]
+  }, undefined, true, undefined, this);
+}
 function ExtensionListView({
   extensions,
   selectedIndex,
   togglingName,
   statusMessage,
-  statusIsError
+  statusIsError,
+  busy = false,
+  gitInputMode = false,
+  gitInputValue = "",
+  gitInputCursor = 0,
+  gitInputCursorVisible = true,
+  pendingDeleteName = null,
+  pendingUpdateName = null
 }) {
   const total = extensions.length;
   const pluginCount = extensions.filter((item) => item.hasPlugin).length;
@@ -6382,7 +6645,28 @@ function ExtensionListView({
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV36("text", {
             fg: C.dim,
-            children: `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 标记  S 保存  Esc 返回`
+            children: busy ? "  处理中，请稍候..." : `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 标记  S 保存  G 拉取 Git  U 升级  D 删除  Esc 返回`
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
+      gitInputMode && /* @__PURE__ */ jsxDEV36("box", {
+        flexDirection: "column",
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingBottom: 1,
+        children: [
+          /* @__PURE__ */ jsxDEV36("text", {
+            fg: C.primary,
+            children: "Git 地址（支持 #ref:subdir）："
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV36(GitInputFrame, {
+            value: gitInputValue,
+            cursor: gitInputCursor,
+            cursorVisible: gitInputCursorVisible
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV36("text", {
+            fg: C.dim,
+            children: "Enter 拉取并安装，Esc 取消。不会执行第三方 install/build 脚本。"
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
@@ -6407,6 +6691,9 @@ function ExtensionListView({
             const statusInfo = STATUS_LABELS[item.status] ?? STATUS_LABELS.platform;
             const isToggling = item.name === togglingName;
             const isDirty = item.originalStatus != null && item.originalStatus !== item.status;
+            const isGit = item.installSource === "git" || !!item.gitUrl;
+            const isPendingDelete = pendingDeleteName === item.name;
+            const isPendingUpdate = pendingUpdateName === item.name;
             const showHeader = index === 0 || extensions[index - 1]?.hasPlugin !== item.hasPlugin;
             return /* @__PURE__ */ jsxDEV36("box", {
               flexDirection: "column",
@@ -6440,9 +6727,21 @@ function ExtensionListView({
                         fg: C.dim,
                         children: ` v${item.version}`
                       }, undefined, false, undefined, this),
+                      isGit && /* @__PURE__ */ jsxDEV36("span", {
+                        fg: "#74b9ff",
+                        children: item.gitCommit ? ` [git:${item.gitCommit.slice(0, 8)}]` : " [git]"
+                      }, undefined, false, undefined, this),
                       /* @__PURE__ */ jsxDEV36("span", {
                         fg: C.dim,
                         children: ` ${ICONS.emDash} ${item.description || "(no description)"}`
+                      }, undefined, false, undefined, this),
+                      isPendingDelete && /* @__PURE__ */ jsxDEV36("span", {
+                        fg: C.error,
+                        children: "  再按 D 确认删除"
+                      }, undefined, false, undefined, this),
+                      isPendingUpdate && /* @__PURE__ */ jsxDEV36("span", {
+                        fg: C.warn,
+                        children: "  再按 U 确认升级"
                       }, undefined, false, undefined, this)
                     ]
                   }, undefined, true, undefined, this)
@@ -6458,7 +6757,7 @@ function ExtensionListView({
 
 // src/components/SettingsView.tsx
 import { useCallback as useCallback4, useEffect as useEffect7, useMemo as useMemo5, useState as useState8 } from "react";
-import { useKeyboard as useKeyboard3, useTerminalDimensions as useTerminalDimensions4 } from "@opentui/react";
+import { useKeyboard as useKeyboard3, useTerminalDimensions as useTerminalDimensions5 } from "@opentui/react";
 init_terminal_compat();
 
 // src/diff-approval.ts
@@ -7035,7 +7334,7 @@ var BUILTIN_SECTIONS = [
   { id: "mcp", label: "MCP 服务", icon: "03" }
 ];
 function SettingsView({ initialSection = "general", onBack, onLoad, onSave, pluginTabs }) {
-  const { width: termWidth, height: termHeight } = useTerminalDimensions4();
+  const { width: termWidth, height: termHeight } = useTerminalDimensions5();
   const [loading, setLoading] = useState8(true);
   const [saving, setSaving] = useState8(false);
   const [draft, setDraft] = useState8(null);
@@ -8396,8 +8695,8 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesR
       setPendingFiles(files) {
         setPendingFilesRef.current?.(files);
       },
-      openFileBrowser(path3, entries) {
-        openFileBrowserRef.current?.(path3, entries);
+      openFileBrowser(path4, entries) {
+        openFileBrowserRef.current?.(path4, entries);
       },
       fileBrowserSelect(dirPath, entry, showHidden) {
         fileBrowserCallbackRef.current?.select(dirPath, entry, showHidden);
@@ -8439,6 +8738,7 @@ function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendingFilesR
 
 // src/hooks/use-app-keyboard.ts
 import { useKeyboard as useKeyboard4 } from "@opentui/react";
+init_terminal_compat();
 function closeConfirm(setPendingConfirm, setConfirmChoice) {
   setPendingConfirm(null);
   setConfirmChoice("confirm");
@@ -8516,11 +8816,25 @@ function useAppKeyboard({
   extensionList,
   setExtensionList,
   onToggleExtension,
+  onInstallGitExtension,
+  onDeleteExtension,
+  onPreviewUpdateExtension,
+  onUpdateExtension,
   onListExtensions,
   onRefreshPluginSettingsTabs,
   setExtensionTogglingName,
   setExtensionStatusMessage,
   setExtensionStatusIsError,
+  extensionGitInputMode,
+  setExtensionGitInputMode,
+  extensionGitInputState,
+  extensionGitInputActions,
+  extensionPendingDeleteName,
+  setExtensionPendingDeleteName,
+  extensionPendingUpdateName,
+  setExtensionPendingUpdateName,
+  extensionBusy,
+  setExtensionBusy,
   fileBrowserPath,
   fileBrowserEntries,
   fileBrowserShowHidden,
@@ -8558,6 +8872,14 @@ function useAppKeyboard({
     }
     return { models, defaultModelName: nextDefaultModelName };
   };
+  usePaste((text) => {
+    if (viewMode !== "extension-list" || !extensionGitInputMode || extensionBusy)
+      return;
+    const normalized = normalizePastedSingleLine(text);
+    if (!normalized)
+      return;
+    extensionGitInputActions.insert(normalized);
+  });
   useKeyboard4((key) => {
     if (key.ctrl && key.name === "c") {
       if (exitConfirm.exitConfirmArmed) {
@@ -8646,12 +8968,93 @@ function useAppKeyboard({
       return;
     }
     if (viewMode === "extension-list") {
+      const refreshExtensionList = async () => {
+        if (!onListExtensions)
+          return;
+        const list = await onListExtensions();
+        setExtensionList(list);
+        setSelectedIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, list.length - 1)));
+      };
+      const hasExtensionDraftChanges = () => extensionList.some((item) => item.status !== "platform" && (item.originalStatus ?? item.status) !== item.status);
+      const blockIfDirty = (actionLabel) => {
+        if (!hasExtensionDraftChanges())
+          return false;
+        setExtensionStatusMessage(`当前有未保存的启用/禁用修改。请先按 S 保存，再执行${actionLabel}；或按 Esc 返回后重新进入以放弃草稿。`);
+        setExtensionStatusIsError(true);
+        return true;
+      };
+      if (extensionBusy) {
+        return;
+      }
+      if (extensionGitInputMode) {
+        if (key.ctrl && key.name === "v") {
+          const pasted = readClipboardText();
+          const normalized = pasted ? normalizePastedSingleLine(pasted) : "";
+          if (normalized) {
+            extensionGitInputActions.insert(normalized);
+          } else {
+            setExtensionStatusMessage("无法读取剪贴板。可尝试 Ctrl+Shift+V / Shift+Insert 粘贴。");
+            setExtensionStatusIsError(true);
+          }
+          return;
+        }
+        if (key.name === "escape") {
+          setExtensionGitInputMode(false);
+          extensionGitInputActions.setValue("");
+          setExtensionStatusMessage(null);
+          setExtensionStatusIsError(false);
+          return;
+        }
+        if (key.name === "return" || key.name === "enter") {
+          const target = extensionGitInputState.value.trim();
+          if (!target) {
+            setExtensionStatusMessage("请输入 Git 地址");
+            setExtensionStatusIsError(true);
+            return;
+          }
+          if (!onInstallGitExtension) {
+            setExtensionStatusMessage("Git 拉取安装不可用");
+            setExtensionStatusIsError(true);
+            return;
+          }
+          setExtensionStatusMessage(`拉取 Git 扩展中：${target}`);
+          setExtensionStatusIsError(false);
+          setExtensionBusy(true);
+          onInstallGitExtension(target).then(async (result) => {
+            if (!result.ok) {
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+            setExtensionGitInputMode(false);
+            extensionGitInputActions.setValue("");
+            await refreshExtensionList();
+            await onRefreshPluginSettingsTabs?.();
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(false);
+          }).catch((err) => {
+            setExtensionStatusMessage(`Git 拉取失败：${err instanceof Error ? err.message : String(err)}`);
+            setExtensionStatusIsError(true);
+          }).finally(() => {
+            setExtensionBusy(false);
+          });
+          return;
+        }
+        extensionGitInputActions.handleKey(key);
+        return;
+      }
       if (key.name === "escape") {
         setExtensionStatusMessage(null);
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setViewMode("chat");
       } else if (key.name === "up") {
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setSelectedIndex((prev) => Math.max(0, prev - 1));
       } else if (key.name === "down") {
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
         setSelectedIndex((prev) => Math.min(extensionList.length - 1, prev + 1));
       } else if (key.name === "return" || key.name === "enter") {
         const item = extensionList[selectedIndex];
@@ -8667,6 +9070,8 @@ function useAppKeyboard({
         setExtensionList((prev) => prev.map((entry, index) => index === selectedIndex ? { ...entry, status: nextStatus, originalStatus } : entry));
         setExtensionStatusMessage(`草稿：${item.name} -> ${nextStatus === "active" ? "启用" : "禁用"}，S 保存`);
         setExtensionStatusIsError(false);
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
       } else if (key.name === "s") {
         if (!onToggleExtension) {
           setExtensionStatusMessage("扩展管理不可用");
@@ -8681,6 +9086,7 @@ function useAppKeyboard({
         }
         setExtensionStatusMessage(`保存中：${changed.length} 项...`);
         setExtensionStatusIsError(false);
+        setExtensionBusy(true);
         (async () => {
           for (const item of changed) {
             setExtensionTogglingName(item.name);
@@ -8695,8 +9101,7 @@ function useAppKeyboard({
           setExtensionTogglingName(null);
           if (onListExtensions) {
             try {
-              const list = await onListExtensions();
-              setExtensionList(list);
+              await refreshExtensionList();
             } catch {
               setExtensionList((prev) => prev.map((item) => ({ ...item, originalStatus: item.status })));
             }
@@ -8710,6 +9115,129 @@ function useAppKeyboard({
           setExtensionTogglingName(null);
           setExtensionStatusMessage(`保存失败：${err}`);
           setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
+        });
+      } else if (key.name === "g") {
+        if (blockIfDirty("Git 拉取"))
+          return;
+        setExtensionGitInputMode(true);
+        extensionGitInputActions.setValue("");
+        setExtensionPendingDeleteName(null);
+        setExtensionPendingUpdateName(null);
+        setExtensionStatusMessage("输入 Git 地址后按 Enter 拉取安装");
+        setExtensionStatusIsError(false);
+      } else if (key.name === "d") {
+        if (blockIfDirty("删除"))
+          return;
+        const item = extensionList[selectedIndex];
+        if (!item)
+          return;
+        if (!onDeleteExtension) {
+          setExtensionStatusMessage("删除扩展不可用");
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (extensionPendingDeleteName !== item.name) {
+          setExtensionPendingDeleteName(item.name);
+          setExtensionPendingUpdateName(null);
+          setExtensionStatusMessage(`危险操作：再次按 D 将永久删除 "${item.name}" 的本地 extension 目录；按 Esc 或切换选择取消。`);
+          setExtensionStatusIsError(true);
+          return;
+        }
+        setExtensionTogglingName(item.name);
+        setExtensionStatusMessage(`删除中：${item.name}`);
+        setExtensionStatusIsError(false);
+        setExtensionBusy(true);
+        onDeleteExtension(item.name).then(async (result) => {
+          setExtensionTogglingName(null);
+          setExtensionPendingDeleteName(null);
+          if (!result.ok) {
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(true);
+            return;
+          }
+          await refreshExtensionList();
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(result.message);
+          setExtensionStatusIsError(false);
+        }).catch((err) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+          setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
+        });
+      } else if (key.name === "u") {
+        if (blockIfDirty("升级"))
+          return;
+        const item = extensionList[selectedIndex];
+        if (!item)
+          return;
+        if (!(item.installSource === "git" || item.gitUrl)) {
+          setExtensionStatusMessage("只有通过 Git 安装的 extension 才能在此升级");
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (!onUpdateExtension) {
+          setExtensionStatusMessage("升级扩展不可用");
+          setExtensionStatusIsError(true);
+          return;
+        }
+        if (extensionPendingUpdateName !== item.name) {
+          if (!onPreviewUpdateExtension) {
+            setExtensionPendingUpdateName(item.name);
+            setExtensionPendingDeleteName(null);
+            setExtensionStatusMessage(`升级预览不可用。再次按 U 将直接按 Git 来源升级 "${item.name}"。`);
+            setExtensionStatusIsError(true);
+            return;
+          }
+          setExtensionTogglingName(item.name);
+          setExtensionStatusMessage(`检查 Git 更新中：${item.name}`);
+          setExtensionStatusIsError(false);
+          setExtensionBusy(true);
+          onPreviewUpdateExtension(item.name).then((result) => {
+            setExtensionTogglingName(null);
+            if (!result.ok) {
+              setExtensionStatusMessage(result.message);
+              setExtensionStatusIsError(true);
+              return;
+            }
+            setExtensionPendingUpdateName(item.name);
+            setExtensionPendingDeleteName(null);
+            setExtensionStatusMessage(`${result.message}；再次按 U 确认升级，按 Esc 或切换选择取消。`);
+            setExtensionStatusIsError(false);
+          }).catch((err) => {
+            setExtensionTogglingName(null);
+            setExtensionStatusMessage(`检查更新失败：${err instanceof Error ? err.message : String(err)}`);
+            setExtensionStatusIsError(true);
+          }).finally(() => {
+            setExtensionBusy(false);
+          });
+          return;
+        }
+        setExtensionTogglingName(item.name);
+        setExtensionStatusMessage(`升级中：${item.name}`);
+        setExtensionStatusIsError(false);
+        setExtensionBusy(true);
+        onUpdateExtension(item.name).then(async (result) => {
+          setExtensionTogglingName(null);
+          setExtensionPendingUpdateName(null);
+          if (!result.ok) {
+            setExtensionStatusMessage(result.message);
+            setExtensionStatusIsError(true);
+            return;
+          }
+          await refreshExtensionList();
+          await onRefreshPluginSettingsTabs?.();
+          setExtensionStatusMessage(result.message);
+          setExtensionStatusIsError(false);
+        }).catch((err) => {
+          setExtensionTogglingName(null);
+          setExtensionStatusMessage(`升级失败：${err instanceof Error ? err.message : String(err)}`);
+          setExtensionStatusIsError(true);
+        }).finally(() => {
+          setExtensionBusy(false);
         });
       }
       return;
@@ -9738,6 +10266,10 @@ function App({
   onDeleteMemory,
   onListExtensions,
   onToggleExtension,
+  onInstallGitExtension,
+  onDeleteExtension,
+  onPreviewUpdateExtension,
+  onUpdateExtension,
   onListPluginSettingsTabs,
   onRemoteConnect,
   onRemoteDisconnect,
@@ -9769,6 +10301,10 @@ function App({
   const [extensionTogglingName, setExtensionTogglingName] = useState14(null);
   const [extensionStatusMessage, setExtensionStatusMessage] = useState14(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState14(false);
+  const [extensionGitInputMode, setExtensionGitInputMode] = useState14(false);
+  const [extensionPendingDeleteName, setExtensionPendingDeleteName] = useState14(null);
+  const [extensionPendingUpdateName, setExtensionPendingUpdateName] = useState14(null);
+  const [extensionBusy, setExtensionBusy] = useState14(false);
   const [pendingFiles, setPendingFiles] = useState14([]);
   const [runtimePluginSettingsTabs, setRuntimePluginSettingsTabs] = useState14(pluginSettingsTabs ?? []);
   useEffect11(() => {
@@ -9789,6 +10325,7 @@ function App({
   const [queueEditingId, setQueueEditingId] = useState14(null);
   const [queueEditState, queueEditActions] = useTextInput("");
   const [modelEditState, modelEditActions] = useTextInput("");
+  const [extensionGitInputState, extensionGitInputActions] = useTextInput("");
   const renderer = useRenderer();
   const undoRedoRef = useRef9(createUndoRedoStack());
   const chatScrollBoxRef = useRef9(null);
@@ -9803,8 +10340,8 @@ function App({
   const setPendingFilesRef = useRef9(null);
   setPendingFilesRef.current = setPendingFiles;
   const openFileBrowserRef = useRef9(null);
-  openFileBrowserRef.current = (path3, entries) => {
-    setFileBrowserPath(path3);
+  openFileBrowserRef.current = (path4, entries) => {
+    setFileBrowserPath(path4);
     setFileBrowserEntries(entries);
     setSelectedIndex(0);
     setViewMode("file-browser");
@@ -10011,11 +10548,25 @@ function App({
     extensionList,
     setExtensionList,
     onToggleExtension,
+    onInstallGitExtension,
+    onDeleteExtension,
+    onPreviewUpdateExtension,
+    onUpdateExtension,
     onListExtensions,
     onRefreshPluginSettingsTabs: refreshPluginSettingsTabs,
     setExtensionTogglingName,
     setExtensionStatusMessage,
     setExtensionStatusIsError,
+    extensionGitInputMode,
+    setExtensionGitInputMode,
+    extensionGitInputState,
+    extensionGitInputActions,
+    extensionPendingDeleteName,
+    setExtensionPendingDeleteName,
+    extensionPendingUpdateName,
+    setExtensionPendingUpdateName,
+    extensionBusy,
+    setExtensionBusy,
     fileBrowserPath,
     fileBrowserEntries,
     fileBrowserShowHidden,
@@ -10075,7 +10626,14 @@ function App({
       selectedIndex,
       togglingName: extensionTogglingName,
       statusMessage: extensionStatusMessage,
-      statusIsError: extensionStatusIsError
+      statusIsError: extensionStatusIsError,
+      busy: extensionBusy,
+      gitInputMode: extensionGitInputMode,
+      gitInputValue: extensionGitInputState.value,
+      gitInputCursor: extensionGitInputState.cursor,
+      gitInputCursorVisible: true,
+      pendingDeleteName: extensionPendingDeleteName,
+      pendingUpdateName: extensionPendingUpdateName
     }, undefined, false, undefined, this);
   }
   if (viewMode === "file-browser") {
@@ -10188,8 +10746,8 @@ function App({
 }
 
 // src/opentui-runtime.ts
-import * as fs3 from "node:fs";
-import * as path3 from "node:path";
+import * as fs4 from "node:fs";
+import * as path4 from "node:path";
 import { addDefaultParsers, clearEnvCache } from "@opentui/core";
 var OPENTUI_RUNTIME_DIR_NAME = "opentui";
 var REQUIRED_ASSET_FILES = [
@@ -10219,36 +10777,36 @@ function resolveBundledRuntimeDir(isCompiledBinary) {
   const searchDirs = [];
   const pkgDir = process.env.__IRIS_PKG_DIR;
   if (pkgDir) {
-    searchDirs.push(path3.join(pkgDir, "bin"));
+    searchDirs.push(path4.join(pkgDir, "bin"));
     try {
-      const nodeModulesDir = path3.join(pkgDir, "node_modules");
-      if (fs3.existsSync(nodeModulesDir)) {
-        for (const entry of fs3.readdirSync(nodeModulesDir)) {
+      const nodeModulesDir = path4.join(pkgDir, "node_modules");
+      if (fs4.existsSync(nodeModulesDir)) {
+        for (const entry of fs4.readdirSync(nodeModulesDir)) {
           if (entry.startsWith("irises-")) {
-            searchDirs.push(path3.join(nodeModulesDir, entry, "bin"));
+            searchDirs.push(path4.join(nodeModulesDir, entry, "bin"));
           }
         }
       }
     } catch {}
   }
   try {
-    const execDir = path3.dirname(fs3.realpathSync(process.execPath));
+    const execDir = path4.dirname(fs4.realpathSync(process.execPath));
     searchDirs.push(execDir);
-    searchDirs.push(path3.resolve(execDir, ".."));
+    searchDirs.push(path4.resolve(execDir, ".."));
   } catch {}
   for (const dir of searchDirs) {
-    const candidate = path3.join(dir, OPENTUI_RUNTIME_DIR_NAME);
-    if (fs3.existsSync(path3.join(candidate, "parser.worker.js"))) {
+    const candidate = path4.join(dir, OPENTUI_RUNTIME_DIR_NAME);
+    if (fs4.existsSync(path4.join(candidate, "parser.worker.js"))) {
       return candidate;
     }
   }
   return null;
 }
 function hasBundledAssets(assetsRoot) {
-  return REQUIRED_ASSET_FILES.every((relativePath) => fs3.existsSync(path3.join(assetsRoot, relativePath)));
+  return REQUIRED_ASSET_FILES.every((relativePath) => fs4.existsSync(path4.join(assetsRoot, relativePath)));
 }
 function createBundledParsers(assetsRoot) {
-  const asset = (...segments) => path3.join(assetsRoot, ...segments);
+  const asset = (...segments) => path4.join(assetsRoot, ...segments);
   return [
     {
       filetype: "javascript",
@@ -10312,7 +10870,7 @@ function configureBundledOpenTuiTreeSitter(isCompiledBinary) {
   if (configured)
     return;
   const runtimeDir = resolveBundledRuntimeDir(isCompiledBinary);
-  const workerPath = process.env.OTUI_TREE_SITTER_WORKER_PATH?.trim() || (runtimeDir ? path3.join(runtimeDir, "parser.worker.js") : "");
+  const workerPath = process.env.OTUI_TREE_SITTER_WORKER_PATH?.trim() || (runtimeDir ? path4.join(runtimeDir, "parser.worker.js") : "");
   if (!workerPath) {
     if (isCompiledBinary) {
       warnRuntimeIssue("未找到 OpenTUI tree-sitter worker，Markdown 标题和加粗高亮可能不可用。");
@@ -10323,7 +10881,7 @@ function configureBundledOpenTuiTreeSitter(isCompiledBinary) {
   process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
   clearEnvCache();
   if (runtimeDir) {
-    const assetsRoot = path3.join(runtimeDir, "assets");
+    const assetsRoot = path4.join(runtimeDir, "assets");
     if (hasBundledAssets(assetsRoot)) {
       addDefaultParsers(createBundledParsers(assetsRoot));
     } else {
@@ -10948,7 +11506,7 @@ ${summaryText}`;
         this.appHandle?.addSummaryMessage(fullText, tokenCount > 0 ? tokenCount : undefined);
       }
     });
-    return new Promise(async (resolve3, reject) => {
+    return new Promise(async (resolve4, reject) => {
       try {
         this.renderer = await createCliRenderer({
           exitOnCtrlC: false,
@@ -10990,7 +11548,7 @@ ${summaryText}`;
       const element = React11.createElement(App, {
         onReady: (handle) => {
           this.appHandle = handle;
-          resolve3();
+          resolve4();
         },
         onSubmit: (text) => this.handleInput(text),
         onFileAttach: (filePath) => this.handleFileAttach(filePath),
@@ -11080,6 +11638,10 @@ ${summaryText}`;
         onDeleteMemory: (id) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name) => this.handleToggleExtension(name),
+        onInstallGitExtension: (target) => this.handleInstallGitExtension(target),
+        onDeleteExtension: (name) => this.handleDeleteExtension(name),
+        onPreviewUpdateExtension: (name) => this.handlePreviewUpdateExtension(name),
+        onUpdateExtension: (name) => this.handleUpdateExtension(name),
         onListPluginSettingsTabs: () => this.api?.getConsoleSettingsTabs?.() ?? [],
         onRemoteConnect: (name) => this.handleRemoteConnect(name),
         onRemoteDisconnect: () => this.handleRemoteDisconnect(),
@@ -11129,15 +11691,15 @@ ${summaryText}`;
     } else {
       r.destroy();
     }
-    await new Promise((resolve3) => setTimeout(resolve3, 100));
+    await new Promise((resolve4) => setTimeout(resolve4, 100));
     if (process.platform === "win32" && options.headlessTransition) {
       clearWindowsScreenForHeadless();
       printHeadlessTransitionMessage();
     }
   }
   waitForExit() {
-    return new Promise((resolve3) => {
-      this.exitResolve = resolve3;
+    return new Promise((resolve4) => {
+      this.exitResolve = resolve4;
     });
   }
   handleListAgents() {
@@ -11751,8 +12313,10 @@ ${summaryText}`;
       const activeNames = new Set(active.map((p) => p.name));
       return packages.map((pkg) => {
         const name = pkg.manifest.name;
-        const hasPlugin = !!pkg.manifest.plugin;
+        const hasPlatforms = Array.isArray(pkg.manifest.platforms) && pkg.manifest.platforms.length > 0;
+        const hasPlugin = !!pkg.manifest.plugin || !!pkg.manifest.entry || !hasPlatforms;
         const inConfig = pluginMap.get(name);
+        const gitMetadata = readGitInstallMetadata(pkg.rootDir);
         let status;
         if (!hasPlugin) {
           status = "platform";
@@ -11772,7 +12336,12 @@ ${summaryText}`;
           status,
           originalStatus: status,
           hasPlugin,
-          source: pkg.source
+          source: pkg.source,
+          installSource: gitMetadata?.source,
+          gitUrl: gitMetadata?.url,
+          gitRef: gitMetadata?.ref,
+          gitCommit: gitMetadata?.commit,
+          gitSubdir: gitMetadata?.subdir
         };
       }).sort((a, b) => {
         const groupA = a.hasPlugin ? 0 : 1;
@@ -11800,6 +12369,32 @@ ${summaryText}`;
     const nextSection = section && typeof section === "object" ? { ...section } : {};
     nextSection.plugins = pluginEntries;
     return { plugins: nextSection };
+  }
+  hasPluginContribution(manifest) {
+    const hasPlatforms = Array.isArray(manifest.platforms) && manifest.platforms.length > 0;
+    return !!manifest.plugin || !!manifest.entry || !hasPlatforms;
+  }
+  setPluginConfigEnabled(name, enabled) {
+    const configManager = this.api?.configManager;
+    if (!configManager)
+      return;
+    const raw = configManager.readEditableConfig();
+    const pluginEntries = [...this.readPluginEntries(raw)];
+    const existing = pluginEntries.find((p) => p.name === name);
+    if (existing) {
+      existing.enabled = enabled;
+    } else {
+      pluginEntries.push({ name, enabled });
+    }
+    configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries));
+  }
+  removePluginConfigEntry(name) {
+    const configManager = this.api?.configManager;
+    if (!configManager)
+      return;
+    const raw = configManager.readEditableConfig();
+    const nextEntries = this.readPluginEntries(raw).filter((entry) => entry.name !== name);
+    configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, nextEntries));
   }
   async handleToggleExtension(name) {
     const ext = this.api?.extensions;
@@ -11834,6 +12429,76 @@ ${summaryText}`;
       }
     } catch (err) {
       return { ok: false, message: `操作失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  async handleInstallGitExtension(target) {
+    const ext = this.api?.extensions;
+    if (!ext?.installGit) {
+      return { ok: false, message: "Git 扩展安装 API 不可用" };
+    }
+    try {
+      const result = await ext.installGit(target);
+      const packages = ext.discover?.() ?? [];
+      const pkg = packages.find((item) => item.manifest.name === result.name);
+      const hasPlugin = pkg ? this.hasPluginContribution(pkg.manifest) : true;
+      if (!hasPlugin) {
+        return { ok: true, message: `已拉取安装 "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
+      }
+      const active = this.api?.pluginManager?.listPlugins?.() ?? [];
+      const alreadyActive = active.some((item) => item.name === result.name);
+      if (alreadyActive) {
+        this.setPluginConfigEnabled(result.name, true);
+        return { ok: true, message: `已覆盖安装 "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
+      }
+      await ext.activate(result.name);
+      this.setPluginConfigEnabled(result.name, true);
+      return { ok: true, message: `已拉取安装并启用 "${result.name}@${result.version}"` };
+    } catch (err) {
+      return { ok: false, message: `Git 拉取失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  async handleDeleteExtension(name) {
+    const ext = this.api?.extensions;
+    if (!ext?.remove) {
+      return { ok: false, message: "扩展删除 API 不可用" };
+    }
+    try {
+      await ext.remove(name);
+      this.removePluginConfigEntry(name);
+      return { ok: true, message: `已删除 "${name}"` };
+    } catch (err) {
+      return { ok: false, message: `删除失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  async handlePreviewUpdateExtension(name) {
+    const ext = this.api?.extensions;
+    if (!ext?.previewUpdateGit) {
+      return { ok: false, message: "Git 扩展升级预览 API 不可用" };
+    }
+    try {
+      const preview = await ext.previewUpdateGit(name);
+      const currentCommit = preview.currentCommit ? String(preview.currentCommit).slice(0, 8) : "未知";
+      const nextCommit = preview.nextCommit ? String(preview.nextCommit).slice(0, 8) : "未知";
+      const versionPart = preview.currentVersion === preview.nextVersion ? `版本 ${preview.currentVersion}` : `版本 ${preview.currentVersion} -> ${preview.nextVersion}`;
+      const commitPart = preview.sameCommit ? `commit ${currentCommit} 未变化` : `commit ${currentCommit} -> ${nextCommit}`;
+      return {
+        ok: true,
+        message: `升级预览：${versionPart}，${commitPart}`
+      };
+    } catch (err) {
+      return { ok: false, message: `检查更新失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  async handleUpdateExtension(name) {
+    const ext = this.api?.extensions;
+    if (!ext?.updateGit) {
+      return { ok: false, message: "Git 扩展升级 API 不可用" };
+    }
+    try {
+      const result = await ext.updateGit(name);
+      return { ok: true, message: `已升级 "${result.name}@${result.version}" 到 ${result.gitCommit ?? "最新 commit"}。当前运行中的插件可能需要重启后完全生效。` };
+    } catch (err) {
+      return { ok: false, message: `升级失败: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
   async handleSummarize() {
@@ -11872,14 +12537,14 @@ ${summaryText}`;
       this.appHandle?.addCommandMessage("已清空所有待发送附件");
       return;
     }
-    const fs4 = __require("fs");
-    const path4 = __require("path");
-    const resolved = path4.resolve(filePath);
-    if (!fs4.existsSync(resolved)) {
+    const fs5 = __require("fs");
+    const path5 = __require("path");
+    const resolved = path5.resolve(filePath);
+    if (!fs5.existsSync(resolved)) {
       this.appHandle?.addCommandMessage(`文件不存在: ${resolved}`);
       return;
     }
-    const stat = fs4.statSync(resolved);
+    const stat = fs5.statSync(resolved);
     if (!stat.isFile()) {
       this.appHandle?.addCommandMessage(`不是一个文件: ${resolved}`);
       return;
@@ -11889,11 +12554,11 @@ ${summaryText}`;
       this.appHandle?.addCommandMessage(`文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，最大支持 20MB`);
       return;
     }
-    const ext = path4.extname(resolved).toLowerCase();
+    const ext = path5.extname(resolved).toLowerCase();
     const mimeType = this.detectMimeType(ext);
     const fileType = this.classifyFileType(mimeType);
-    const data = fs4.readFileSync(resolved).toString("base64");
-    const fileName = path4.basename(resolved);
+    const data = fs5.readFileSync(resolved).toString("base64");
+    const fileName = path5.basename(resolved);
     if (fileType === "image") {
       this._pendingImages.push({ mimeType, data, fileName });
     } else if (fileType === "audio") {
@@ -12018,22 +12683,22 @@ ${summaryText}`;
     this.appHandle?.openFileBrowser(dirPath, entries);
   }
   listDirectory(dirPath, showHidden = false) {
-    const fs4 = __require("fs");
-    const path4 = __require("path");
+    const fs5 = __require("fs");
+    const path5 = __require("path");
     try {
-      const items = fs4.readdirSync(dirPath);
+      const items = fs5.readdirSync(dirPath);
       const entries = [];
       for (const name of items) {
         if (!showHidden && name.startsWith("."))
           continue;
         try {
-          const fullPath = path4.join(dirPath, name);
-          const stat = fs4.statSync(fullPath);
-          const isDirectory = stat.isDirectory();
-          if (isDirectory) {
+          const fullPath = path5.join(dirPath, name);
+          const stat = fs5.statSync(fullPath);
+          const isDirectory2 = stat.isDirectory();
+          if (isDirectory2) {
             entries.push({ name, isDirectory: true });
           } else {
-            const ext = path4.extname(name).toLowerCase();
+            const ext = path5.extname(name).toLowerCase();
             const mimeType = this.detectMimeType(ext);
             const fileType = this.classifyFileType(mimeType);
             entries.push({ name, isDirectory: false, size: stat.size, fileType });
@@ -12052,19 +12717,19 @@ ${summaryText}`;
     }
   }
   handleFileBrowserSelect(dirPath, entry, showHidden) {
-    const path4 = __require("path");
+    const path5 = __require("path");
     if (entry.isDirectory) {
-      const newPath = path4.resolve(dirPath, entry.name);
+      const newPath = path5.resolve(dirPath, entry.name);
       const entries = this.listDirectory(newPath, showHidden);
       this.appHandle?.openFileBrowser(newPath, entries);
     } else {
-      const fullPath = path4.join(dirPath, entry.name);
+      const fullPath = path5.join(dirPath, entry.name);
       this.handleFileAttach(fullPath);
     }
   }
   handleFileBrowserGoUp(dirPath, showHidden) {
-    const path4 = __require("path");
-    const parentPath = path4.dirname(dirPath);
+    const path5 = __require("path");
+    const parentPath = path5.dirname(dirPath);
     if (parentPath === dirPath)
       return;
     const entries = this.listDirectory(parentPath, showHidden);

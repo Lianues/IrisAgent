@@ -107,6 +107,28 @@ extension 目录结构示例：
 - 正式分发给用户安装的 extension，应当已经带有可运行产物，例如 `dist/index.mjs`
 - 用户安装 extension 时不再额外执行依赖安装
 
+### 安装与管理
+
+CLI 支持远程目录、本地目录和 Git 仓库三种安装入口：
+
+```bash
+iris extension install <path>                 # 从官方/配置的远程 extension catalog 安装
+iris extension install-local <name>           # 从当前仓库 ./extensions/ 安装
+iris extension install-git <git-url>          # 从 Git 仓库安装
+iris extension install-git <git-url> --ref main --subdir extensions/demo
+iris extension update <name>                  # 按 Git 来源升级已安装 extension
+```
+
+Git 安装也支持片段写法：
+
+```bash
+iris ext install-git https://github.com/user/repo.git#main:extensions/demo
+```
+
+Git 安装要求仓库根目录或 `--subdir` 目录就是一个可直接运行的 extension 发行包：必须包含 `manifest.json`，并且 manifest 声明的 plugin/platform 入口文件已经存在（例如 `dist/index.mjs`）。安装时默认不会执行第三方 `install` / `build` 脚本，只会复制文件到 `~/.iris/extensions/<manifest.name>/`，并过滤 `.git/` 与 `node_modules/`。
+
+安装后的 Git 来源会记录到 extension 目录中的 `.iris-extension-install.json`。TUI 的 `iris extension` 界面可以从 Git 地址拉取安装，也可以对已安装 extension 执行开启、关闭、删除；如果 extension 是 Git 安装的，还会显示“升级”操作，按记录的 Git URL / ref / subdir 重新拉取并覆盖本地版本。
+
 ---
 
 ## 配置

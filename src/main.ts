@@ -16,6 +16,8 @@
  *   iris extension                     → 插件安装与管理界面
  *   iris extension install <path>      → 安装 extension
  *   iris ext install-local <name>      → 本地安装 extension
+ *   iris ext install-git <url>         → 从 Git 仓库安装 extension
+ *   iris ext update <name>             → 升级 Git 安装的 extension
  *   iris --help                        → 显示帮助
  *   iris --version                     → 显示版本
  */
@@ -47,7 +49,7 @@ Iris - AI Agent
   iris models             模型配置界面
   iris platforms          平台配置界面
   iris settings           配置文件查看与编辑
-  iris extension          插件安装与管理
+  iris extension          插件安装与管理（含远程 / Git 安装）
 
 全局参数:
   -h, --help              显示帮助

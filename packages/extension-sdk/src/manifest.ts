@@ -103,9 +103,9 @@ export type ExtensionInstallFallbackReason = 'remote_path_not_found';
 export type ExtensionDistributionMode = 'bundled' | 'source';
 
 export interface InstalledExtensionResult {
-  source: 'remote' | 'local';
+  source: 'remote' | 'local' | 'git';
   requested: string;
- name: string;
+  name: string;
   version: string;
   targetDir: string;
   remotePath?: string;
@@ -113,4 +113,8 @@ export interface InstalledExtensionResult {
   fallbackReason?: ExtensionInstallFallbackReason;
   fallbackDetail?: string;
   distributionMode?: ExtensionDistributionMode;
+  gitUrl?: string;
+  gitRef?: string;
+  gitCommit?: string;
+  gitSubdir?: string;
 }

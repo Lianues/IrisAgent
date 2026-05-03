@@ -652,11 +652,13 @@ api.backend.on('custom:my-event', (data) => { ... });
 
 ```bash
 iris extension install <path>          # 远程优先，本地回退
+iris extension install-git <url>       # 从 Git 仓库安装 extension 发行包
 iris extension install-local <name>    # 仅本地
+iris extension update <name>           # 按已记录 Git 来源升级
 iris ext <path>                        # 简写
 ```
 
-安装流程（远程）：
+安装流程（远程目录）：
 1. 从远程 `extensions/index.json` 读取扩展路径列表
 2. 下载目标扩展的 `manifest.json`
 3. 按 `distribution.files` 下载所有分发文件
@@ -665,7 +667,23 @@ iris ext <path>                        # 简写
 
 回退机制：远程不存在时，自动尝试从本地 `./extensions/` 复制安装。
 
+安装流程（Git）：
+1. 解析 Git 地址，可选 `--ref <branch/tag/commit>` 与 `--subdir <repo/path>`
+2. 克隆仓库到临时目录；指定 ref 时会 fetch/checkout 对应 ref
+3. 从仓库根目录或 subdir 读取 `manifest.json`
+4. 校验是否为可直接运行的发行包；默认不执行第三方 `install/build` 脚本
+5. 复制 extension 文件到 `~/.iris/extensions/<manifest.name>/`，过滤 `.git/` 与 `node_modules/`
+6. 写入 `.iris-extension-install.json` 记录 Git URL、ref、commit、subdir，供后续管理/更新使用
+
+Git 片段写法示例：`iris ext install-git https://github.com/user/repo.git#main:extensions/demo`。
+
 ### 12.3 分发形态校验
+
+Git 升级流程：
+1. 从已安装 extension 目录读取 `.iris-extension-install.json`
+2. 复用记录的 Git URL / ref / subdir 拉取仓库；也允许命令行临时覆盖 ref/subdir
+3. 校验新包的 `manifest.name` 必须与当前 extension 一致，避免升级时变更包名造成残留
+4. 覆盖安装后更新 commit 记录，并保留原来的禁用标记；TUI 升级还会尽量保留启用/未启用状态
 
 `assertInstallableExtensionPackage()` 确保扩展包已包含可运行入口：
 - 分析 manifest 中声明的所有入口文件（plugin.entry + platforms[].entry）

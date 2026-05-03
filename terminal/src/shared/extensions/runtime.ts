@@ -23,6 +23,14 @@ import {
   analyzeRuntimeEntries,
   describeRuntimeIssues,
   type ExtensionManifestLike,
+  cloneGitRepository,
+  resolveGitExtensionTarget,
+  formatGitExtensionTarget,
+  readGitInstallMetadata,
+  writeGitInstallMetadata,
+  type GitCommandRunner,
+  type GitExtensionTarget,
+  type GitInstallMetadata,
 } from "irises-extension-sdk/utils"
 
 // ==================== TUI 专属类型 ====================
@@ -64,12 +72,40 @@ export interface ExtensionSummary {
   statusDetail: string
   rootDir?: string
   localSource?: ExtensionLocalSource
+  installSource?: "remote" | "local" | "git" | "embedded"
+  gitUrl?: string
+  gitRef?: string
+  gitCommit?: string
+  gitSubdir?: string
   localSourceLabel?: string
   localVersion?: string
   localVersionHint?: string
 }
 
+export interface GitExtensionInstallInput {
+  url: string
+  ref?: string
+  subdir?: string
+}
+
+export interface GitExtensionRuntimeOptions {
+  commandRunner?: GitCommandRunner
+}
+
+export interface GitExtensionPreview {
+  summary: ExtensionSummary
+  target: GitExtensionTarget
+  commit?: string
+}
+
+export interface GitExtensionUpdatePreview extends GitExtensionPreview {
+  current: ExtensionSummary
+  previousCommit?: string
+  sameCommit: boolean
+}
+
 export { getRemoteExtensionRequestTimeoutMs } from "irises-extension-sdk/utils"
+export { isGitExtensionUrlLike } from "irises-extension-sdk/utils"
 
 // ==================== TUI 专属工具 ====================
 
@@ -312,6 +348,11 @@ function buildSummary(
     stateLabel?: string
     statusDetail?: string
     localSource?: ExtensionLocalSource
+    installSource?: "remote" | "local" | "git" | "embedded"
+    gitUrl?: string
+    gitRef?: string
+    gitCommit?: string
+    gitSubdir?: string
     localSourceLabel?: string
     localVersion?: string
     localVersionHint?: string
@@ -341,6 +382,11 @@ function buildSummary(
     statusDetail: options?.statusDetail ?? "当前本地未发现同名 extension。",
     rootDir: options?.rootDir,
     localSource: options?.localSource,
+    installSource: options?.installSource,
+    gitUrl: options?.gitUrl,
+    gitRef: options?.gitRef,
+    gitCommit: options?.gitCommit,
+    gitSubdir: options?.gitSubdir,
     localSourceLabel: options?.localSourceLabel,
     localVersion: options?.localVersion,
     localVersionHint: options?.localVersionHint,
@@ -364,6 +410,7 @@ export function loadInstalledExtensions(): ExtensionSummary[] {
     if (!manifest) continue
     const distribution = analyzeDistribution(collectRelativeFilesFromDir(rootDir), manifest)
 
+    const installMetadata = readGitInstallMetadata(rootDir)
     const state = resolveInstalledState(manifest, rootDir)
     results.push(buildSummary(manifest.name!, manifest, {
       rootDir,
@@ -373,6 +420,11 @@ export function loadInstalledExtensions(): ExtensionSummary[] {
       statusDetail: state.statusDetail,
       localSource: "installed",
       localSourceLabel: "已安装",
+      installSource: installMetadata?.source,
+      gitUrl: installMetadata?.url,
+      gitRef: installMetadata?.ref,
+      gitCommit: installMetadata?.commit,
+      gitSubdir: installMetadata?.subdir,
       localVersion: manifest.version!,
       distributionMode: distribution.distributionMode,
       distributionLabel: distribution.distributionLabel,
@@ -570,6 +622,268 @@ export async function installRemoteExtension(requestedPath: string): Promise<Ext
     cleanupTempInstallDir(tempDir)
     throw error
   }
+}
+
+type GitExtensionTargetInput = string | GitExtensionInstallInput
+
+function resolveGitRuntimeTarget(input: GitExtensionTargetInput): GitExtensionTarget {
+  if (typeof input === "string") {
+    return resolveGitExtensionTarget(input)
+  }
+  return resolveGitExtensionTarget(input.url, {
+    ref: input.ref,
+    subdir: input.subdir,
+  })
+}
+
+function copyGitExtensionDirectory(sourceDir: string, targetDir: string): void {
+  fs.cpSync(sourceDir, targetDir, {
+    recursive: true,
+    filter: (sourcePath) => {
+      const basename = path.basename(sourcePath)
+      return basename !== ".git" && basename !== "node_modules"
+    },
+  })
+}
+
+function buildGitExtensionSummary(
+  target: GitExtensionTarget,
+  manifest: ExtensionManifestLike,
+  distribution: DistributionAnalysis,
+  commit: string | undefined,
+  rootDir?: string,
+): ExtensionSummary {
+  const installed = loadInstalledExtensions().find((item) => item.name === manifest.name)
+  const stateLabel = installed
+    ? `将覆盖已安装版本 ${installed.version}`
+    : "Git 待安装"
+  const statusDetail = installed
+    ? `本地已安装 ${installed.version}。确认安装后会覆盖 ~/.iris/extensions/${manifest.name}/。`
+    : "当前 Git 仓库中的 extension 尚未安装到用户目录。"
+
+  return buildSummary(formatGitExtensionTarget(target), manifest, {
+    rootDir,
+    installed: false,
+    enabled: false,
+    stateLabel,
+    statusDetail,
+    installSource: "git",
+    gitUrl: target.url,
+    gitRef: target.ref,
+    gitCommit: commit,
+    gitSubdir: target.subdir,
+    distributionMode: distribution.distributionMode,
+    distributionLabel: distribution.distributionLabel,
+    distributionDetail: distribution.distributionDetail,
+    runnableEntries: distribution.runnableEntries,
+  })
+}
+
+export async function inspectGitExtension(
+  input: GitExtensionTargetInput,
+  options: GitExtensionRuntimeOptions = {},
+): Promise<GitExtensionPreview> {
+  const target = resolveGitRuntimeTarget(input)
+  const installedRootDir = getInstalledExtensionsDir()
+  const tempRootDir = createTempInstallDir(installedRootDir)
+  const cloneDir = path.join(tempRootDir, "repo")
+
+  try {
+    const cloned = await cloneGitRepository(target, cloneDir, { commandRunner: options.commandRunner })
+    const sourceDir = target.subdir ? resolveSafeRelativePath(cloneDir, target.subdir) : cloneDir
+    const manifest = readManifestFromDir(sourceDir)
+    if (!manifest) {
+      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`)
+    }
+    const distribution = analyzeDistribution(collectRelativeFilesFromDir(sourceDir), manifest)
+    return {
+      summary: buildGitExtensionSummary(target, manifest, distribution, cloned.commit),
+      target,
+      commit: cloned.commit,
+    }
+  } finally {
+    cleanupTempInstallDir(tempRootDir)
+  }
+}
+
+interface InstallGitTargetContext {
+  expectedName?: string
+  existingMetadata?: GitInstallMetadata
+}
+
+function buildInstalledGitSummary(
+  target: GitExtensionTarget,
+  manifest: ExtensionManifestLike,
+  distribution: DistributionAnalysis,
+  commit: string | undefined,
+  targetDir: string,
+): ExtensionSummary {
+  const state = resolveInstalledState(manifest, targetDir)
+  return buildSummary(formatGitExtensionTarget(target), manifest, {
+    rootDir: targetDir,
+    installed: true,
+    enabled: state.enabled,
+    stateLabel: state.stateLabel,
+    statusDetail: state.statusDetail,
+    localSource: "installed",
+    localSourceLabel: "已安装",
+    installSource: "git",
+    gitUrl: target.url,
+    gitRef: target.ref,
+    gitCommit: commit,
+    gitSubdir: target.subdir,
+    localVersion: manifest.version!,
+    localVersionHint: `本地已有版本 ${manifest.version!}（已安装，运行时优先于源码内嵌）`,
+    distributionMode: distribution.distributionMode,
+    distributionLabel: distribution.distributionLabel,
+    distributionDetail: distribution.distributionDetail,
+    runnableEntries: distribution.runnableEntries,
+  })
+}
+
+async function installGitTarget(
+  target: GitExtensionTarget,
+  options: GitExtensionRuntimeOptions = {},
+  context: InstallGitTargetContext = {},
+): Promise<ExtensionSummary> {
+  const installedRootDir = getInstalledExtensionsDir()
+  const tempRootDir = createTempInstallDir(installedRootDir)
+  const cloneDir = path.join(tempRootDir, "repo")
+  const packageDir = path.join(tempRootDir, "package")
+
+  try {
+    const cloned = await cloneGitRepository(target, cloneDir, { commandRunner: options.commandRunner })
+    const sourceDir = target.subdir ? resolveSafeRelativePath(cloneDir, target.subdir) : cloneDir
+    if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+      throw new Error(`Git 仓库中未找到 extension 目录: ${target.subdir ?? "."}`)
+    }
+
+    copyGitExtensionDirectory(sourceDir, packageDir)
+    const manifest = readManifestFromDir(packageDir)
+    if (!manifest) {
+      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`)
+    }
+    if (context.expectedName && manifest.name !== context.expectedName) {
+      throw new Error(`Git extension manifest.name 不匹配：期望 ${context.expectedName}，实际 ${manifest.name}`)
+    }
+
+    const distribution = analyzeDistribution(collectRelativeFilesFromDir(packageDir), manifest)
+    if (distribution.distributionMode !== "bundled") {
+      throw new Error(distribution.distributionDetail)
+    }
+    writeGitInstallMetadata(packageDir, target, cloned.commit, {
+      installedAt: context.existingMetadata?.installedAt,
+      updatedAt: context.existingMetadata ? new Date().toISOString() : undefined,
+    })
+
+    const targetDir = path.join(installedRootDir, manifest.name!)
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    fs.renameSync(packageDir, targetDir)
+
+    if (hasPluginContribution(manifest)) {
+      upsertLocalPluginEnabled(manifest.name!, false)
+    }
+
+    return buildInstalledGitSummary(target, manifest, distribution, cloned.commit, targetDir)
+  } finally {
+    cleanupTempInstallDir(tempRootDir)
+  }
+}
+
+export async function installGitExtension(
+  input: GitExtensionTargetInput,
+  options: GitExtensionRuntimeOptions = {},
+): Promise<ExtensionSummary> {
+  return installGitTarget(resolveGitRuntimeTarget(input), options)
+}
+
+function resolveInstalledGitTarget(summary: ExtensionSummary): GitExtensionTarget {
+  if (!summary.rootDir) {
+    throw new Error(`extension ${summary.name} 缺少本地安装目录，无法升级`)
+  }
+  const metadata = readGitInstallMetadata(summary.rootDir)
+  const url = metadata?.url ?? summary.gitUrl
+  if (!url) {
+    throw new Error(`extension ${summary.name} 不是通过 Git 安装的，无法按 Git 来源升级`)
+  }
+  return resolveGitExtensionTarget(url, {
+    ref: metadata?.ref ?? summary.gitRef,
+    subdir: metadata?.subdir ?? summary.gitSubdir,
+  })
+}
+
+export async function inspectGitExtensionUpdate(
+  summary: ExtensionSummary,
+  options: GitExtensionRuntimeOptions = {},
+): Promise<GitExtensionUpdatePreview> {
+  const target = resolveInstalledGitTarget(summary)
+  const installedRootDir = getInstalledExtensionsDir()
+  const tempRootDir = createTempInstallDir(installedRootDir)
+  const cloneDir = path.join(tempRootDir, "repo")
+
+  try {
+    const cloned = await cloneGitRepository(target, cloneDir, { commandRunner: options.commandRunner })
+    const sourceDir = target.subdir ? resolveSafeRelativePath(cloneDir, target.subdir) : cloneDir
+    const manifest = readManifestFromDir(sourceDir)
+    if (!manifest) {
+      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`)
+    }
+    if (manifest.name !== summary.name) {
+      throw new Error(`Git extension manifest.name 不匹配：期望 ${summary.name}，实际 ${manifest.name}`)
+    }
+    const distribution = analyzeDistribution(collectRelativeFilesFromDir(sourceDir), manifest)
+    const sameCommit = !!summary.gitCommit && summary.gitCommit === cloned.commit
+    const previewSummary = buildSummary(formatGitExtensionTarget(target), manifest, {
+      installed: true,
+      enabled: summary.enabled,
+      stateLabel: sameCommit ? "当前已是记录的 Git commit" : `准备升级到 ${manifest.version}`,
+      statusDetail: `当前 commit: ${summary.gitCommit ?? "未知"}；远程 commit: ${cloned.commit ?? "未知"}。`,
+      installSource: "git",
+      gitUrl: target.url,
+      gitRef: target.ref,
+      gitCommit: cloned.commit,
+      gitSubdir: target.subdir,
+      localVersion: summary.version,
+      distributionMode: distribution.distributionMode,
+      distributionLabel: distribution.distributionLabel,
+      distributionDetail: distribution.distributionDetail,
+      runnableEntries: distribution.runnableEntries,
+    })
+    return {
+      summary: previewSummary,
+      target,
+      commit: cloned.commit,
+      current: summary,
+      previousCommit: summary.gitCommit,
+      sameCommit,
+    }
+  } finally {
+    cleanupTempInstallDir(tempRootDir)
+  }
+}
+
+export async function updateGitInstalledExtension(
+  summary: ExtensionSummary,
+  options: GitExtensionRuntimeOptions = {},
+): Promise<ExtensionSummary> {
+  const target = resolveInstalledGitTarget(summary)
+  const rootDir = summary.rootDir || path.join(getInstalledExtensionsDir(), summary.name)
+  const existingMetadata = readGitInstallMetadata(rootDir)
+  const preserveDisabledMarker = fs.existsSync(path.join(rootDir, DISABLED_MARKER_FILE))
+  const wasEnabled = summary.enabled
+
+  const updated = await installGitTarget(target, options, {
+    expectedName: summary.name,
+    existingMetadata,
+  })
+
+  if (preserveDisabledMarker) {
+    disableInstalledExtension(updated)
+  } else if (wasEnabled) {
+    enableInstalledExtension(updated)
+  }
+
+  return loadInstalledExtensions().find((item) => item.name === summary.name) ?? updated
 }
 
 export function enableInstalledExtension(summary: ExtensionSummary): void {

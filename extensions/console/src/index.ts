@@ -36,6 +36,7 @@ import {
   type ConfigManagerLike,
 } from 'irises-extension-sdk';
 import type { IPCClientLike } from 'irises-extension-sdk/ipc';
+import { readGitInstallMetadata } from 'irises-extension-sdk/utils';
 import { estimateTokenCount } from 'tokenx';
 import { App, AppHandle, MessageMeta } from './App';
 import { MessagePart } from './components/MessageItem';
@@ -843,6 +844,10 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onDeleteMemory: (id: number) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name: string) => this.handleToggleExtension(name),
+        onInstallGitExtension: (target: string) => this.handleInstallGitExtension(target),
+        onDeleteExtension: (name: string) => this.handleDeleteExtension(name),
+        onPreviewUpdateExtension: (name: string) => this.handlePreviewUpdateExtension(name),
+        onUpdateExtension: (name: string) => this.handleUpdateExtension(name),
         onListPluginSettingsTabs: () => this.api?.getConsoleSettingsTabs?.() ?? [],
         onRemoteConnect: (name?: string) => this.handleRemoteConnect(name),
         onRemoteDisconnect: () => this.handleRemoteDisconnect(),
@@ -1689,7 +1694,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
     try {
       // 1. 磁盘发现
-      const packages: Array<{ manifest: { name: string; version: string; description?: string; plugin?: any }; source: string }> = ext.discover();
+      const packages: Array<{ manifest: { name: string; version: string; description?: string; entry?: string; plugin?: any; platforms?: any[] }; source: string; rootDir: string }> = ext.discover();
       // 2. plugins.yaml 配置
       const raw = configManager.readEditableConfig() as Record<string, any>;
       const pluginEntries = this.readPluginEntries(raw);
@@ -1700,8 +1705,10 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
 
       return packages.map(pkg => {
         const name = pkg.manifest.name;
-        const hasPlugin = !!pkg.manifest.plugin;
+        const hasPlatforms = Array.isArray(pkg.manifest.platforms) && pkg.manifest.platforms.length > 0;
+        const hasPlugin = !!pkg.manifest.plugin || !!pkg.manifest.entry || !hasPlatforms;
         const inConfig = pluginMap.get(name);
+        const gitMetadata = readGitInstallMetadata(pkg.rootDir);
         let status: string;
 
         if (!hasPlugin) {
@@ -1724,6 +1731,11 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
           originalStatus: status,
           hasPlugin,
           source: pkg.source,
+          installSource: gitMetadata?.source,
+          gitUrl: gitMetadata?.url,
+          gitRef: gitMetadata?.ref,
+          gitCommit: gitMetadata?.commit,
+          gitSubdir: gitMetadata?.subdir,
         };
       }).sort((a, b) => {
         const groupA = a.hasPlugin ? 0 : 1;
@@ -1751,6 +1763,33 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     const nextSection = section && typeof section === 'object' ? { ...section } : {};
     nextSection.plugins = pluginEntries;
     return { plugins: nextSection };
+  }
+
+  private hasPluginContribution(manifest: { entry?: string; plugin?: any; platforms?: any[] }): boolean {
+    const hasPlatforms = Array.isArray(manifest.platforms) && manifest.platforms.length > 0;
+    return !!manifest.plugin || !!manifest.entry || !hasPlatforms;
+  }
+
+  private setPluginConfigEnabled(name: string, enabled: boolean): void {
+    const configManager = this.api?.configManager;
+    if (!configManager) return;
+    const raw = configManager.readEditableConfig() as Record<string, any>;
+    const pluginEntries: Array<{ name: string; enabled?: boolean; [k: string]: any }> = [...this.readPluginEntries(raw)];
+    const existing = pluginEntries.find(p => p.name === name);
+    if (existing) {
+      existing.enabled = enabled;
+    } else {
+      pluginEntries.push({ name, enabled });
+    }
+    configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, pluginEntries) as any);
+  }
+
+  private removePluginConfigEntry(name: string): void {
+    const configManager = this.api?.configManager;
+    if (!configManager) return;
+    const raw = configManager.readEditableConfig() as Record<string, any>;
+    const nextEntries = this.readPluginEntries(raw).filter((entry) => entry.name !== name);
+    configManager.updateEditableConfig(this.buildPluginsConfigUpdate(raw, nextEntries) as any);
   }
 
   private async handleToggleExtension(name: string): Promise<{ ok: boolean; message: string }> {
@@ -1793,6 +1832,92 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       }
     } catch (err) {
       return { ok: false, message: `操作失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+
+  private async handleInstallGitExtension(target: string): Promise<{ ok: boolean; message: string }> {
+    const ext = (this.api as any)?.extensions;
+    if (!ext?.installGit) {
+      return { ok: false, message: 'Git 扩展安装 API 不可用' };
+    }
+
+    try {
+      const result = await ext.installGit(target);
+      const packages: Array<{ manifest: { name: string; entry?: string; plugin?: any; platforms?: any[] } }> = ext.discover?.() ?? [];
+      const pkg = packages.find((item) => item.manifest.name === result.name);
+      const hasPlugin = pkg ? this.hasPluginContribution(pkg.manifest) : true;
+      if (!hasPlugin) {
+        return { ok: true, message: `已拉取安装 "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
+      }
+
+      const active = (this.api as any)?.pluginManager?.listPlugins?.() ?? [];
+      const alreadyActive = active.some((item: any) => item.name === result.name);
+      if (alreadyActive) {
+        this.setPluginConfigEnabled(result.name, true);
+        return { ok: true, message: `已覆盖安装 "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
+      }
+
+      await ext.activate(result.name);
+      this.setPluginConfigEnabled(result.name, true);
+      return { ok: true, message: `已拉取安装并启用 "${result.name}@${result.version}"` };
+    } catch (err) {
+      return { ok: false, message: `Git 拉取失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  private async handleDeleteExtension(name: string): Promise<{ ok: boolean; message: string }> {
+    const ext = (this.api as any)?.extensions;
+    if (!ext?.remove) {
+      return { ok: false, message: '扩展删除 API 不可用' };
+    }
+
+    try {
+      await ext.remove(name);
+      this.removePluginConfigEntry(name);
+      return { ok: true, message: `已删除 "${name}"` };
+    } catch (err) {
+      return { ok: false, message: `删除失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  private async handlePreviewUpdateExtension(name: string): Promise<{ ok: boolean; message: string }> {
+    const ext = (this.api as any)?.extensions;
+    if (!ext?.previewUpdateGit) {
+      return { ok: false, message: 'Git 扩展升级预览 API 不可用' };
+    }
+
+    try {
+      const preview = await ext.previewUpdateGit(name);
+      const currentCommit = preview.currentCommit ? String(preview.currentCommit).slice(0, 8) : '未知';
+      const nextCommit = preview.nextCommit ? String(preview.nextCommit).slice(0, 8) : '未知';
+      const versionPart = preview.currentVersion === preview.nextVersion
+        ? `版本 ${preview.currentVersion}`
+        : `版本 ${preview.currentVersion} -> ${preview.nextVersion}`;
+      const commitPart = preview.sameCommit
+        ? `commit ${currentCommit} 未变化`
+        : `commit ${currentCommit} -> ${nextCommit}`;
+      return {
+        ok: true,
+        message: `升级预览：${versionPart}，${commitPart}`,
+      };
+    } catch (err) {
+      return { ok: false, message: `检查更新失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+
+  private async handleUpdateExtension(name: string): Promise<{ ok: boolean; message: string }> {
+    const ext = (this.api as any)?.extensions;
+    if (!ext?.updateGit) {
+      return { ok: false, message: 'Git 扩展升级 API 不可用' };
+    }
+
+    try {
+      const result = await ext.updateGit(name);
+      return { ok: true, message: `已升级 "${result.name}@${result.version}" 到 ${result.gitCommit ?? '最新 commit'}。当前运行中的插件可能需要重启后完全生效。` };
+    } catch (err) {
+      return { ok: false, message: `升级失败: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 
