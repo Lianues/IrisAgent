@@ -117,6 +117,7 @@ async function createPlatforms(host: IrisHost) {
             {
               platform: agentCore.config.platform,
               configPath: agentCore.configDir,
+              api: agentCore.irisAPI,
               provider: agentCore.router.getCurrentModelInfo().provider,
               modelId: agentCore.router.getCurrentModelInfo().modelId,
               streamEnabled: agentCore.config.system.stream,
@@ -152,9 +153,28 @@ async function createPlatforms(host: IrisHost) {
 
   // 热重载注入
   if (sharedPlatform?.setReloadHandler) {
-    sharedPlatform.setReloadHandler(async (agent: any): Promise<any> => {
-      const agentName = (typeof agent === 'object' ? agent.name : undefined) ?? 'master';
-      return await host.reloadAgent(agentName);
+    sharedPlatform.setReloadHandler(async (request: any): Promise<any> => {
+      // Web 多 Agent 管理复用这个回调做运行时生命周期同步：
+      // - 新增 agent：Host 中不存在 → spawnAgent
+      // - 已存在 agent：reloadAgent
+      // - 删除 agent：destroyAgent
+      if (request && typeof request === 'object' && request.action === 'destroy') {
+        const name = typeof request.name === 'string' ? request.name : undefined;
+        if (!name) throw new Error('缺少要销毁的 Agent 名称');
+        host.refreshAgentDefs();
+        await host.destroyAgent(name);
+        return { destroyed: true, name };
+      }
+
+      const agentName = (typeof request === 'object' ? request.name : undefined) ?? 'master';
+      host.refreshAgentDefs();
+      if (host.getCore(agentName)) {
+        return await host.reloadAgent(agentName);
+      }
+      if (request && typeof request === 'object' && typeof request.name === 'string') {
+        return await host.spawnAgent(request);
+      }
+      throw new Error(`Agent "${agentName}" 不存在，无法 reload`);
     });
   }
 

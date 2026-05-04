@@ -188,8 +188,10 @@ export class IrisHost {
     const def = this.agentDefs.find(d => d.name === name) ?? { name };
     const newCore = await this.spawnAgent(def);
 
-    // 用新 Backend 替换 Handle 的底层实现（事件监听自动迁移）
+    // 用新 Backend 替换旧稳定 Handle 的底层实现（事件监听自动迁移）。
+    // 关键：新 Core 继续复用这个稳定 Handle，避免连续 reload 后平台仍持有上一代 Handle。
     handle.swap(newCore.backend);
+    newCore.backendHandle = handle;
 
     // 关闭旧 Core 的内部资源（MCP、SkillWatcher 等）
     await oldCore.shutdown();
@@ -248,6 +250,15 @@ export class IrisHost {
    * 获取 Agent 定义列表。
    */
   getAgentDefs(): AgentDefinition[] {
+    return this.agentDefs;
+  }
+
+  /**
+   * 重新读取 agents.yaml 并刷新 Host 内部 Agent 定义缓存。
+   * Web/平台层运行时 create/delete/update Agent 后调用，确保 agentNetwork 描述和 spawn 路径不陈旧。
+   */
+  refreshAgentDefs(): AgentDefinition[] {
+    this.agentDefs = loadAgentDefinitions();
     return this.agentDefs;
   }
 

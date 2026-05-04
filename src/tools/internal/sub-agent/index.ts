@@ -283,7 +283,6 @@ ${typeDescriptions}
       const prompt = args.prompt as string;
       const typeName = getSubAgentTypeName(args);
       const contextText = typeof args.context === 'string' && args.context.trim() ? args.context.trim() : undefined;
-      const runInBackground = args.run_in_background === true;
 
       // 将 context 和 prompt 拼接为子代理的完整输入。
       // 子代理不共享父级对话历史，context 是 AI 自主精炼后传入的背景信息。
@@ -302,6 +301,10 @@ ${typeDescriptions}
       if (!typeConfig) {
         return { error: `未知的子代理类型: ${typeName}。可用类型: ${deps.subAgentTypes.list().join(', ')}` };
       }
+
+      const runInBackground = typeof args.run_in_background === 'boolean'
+        ? args.run_in_background === true
+        : typeConfig.background === true;
 
       // 判断是否走异步路径
       const shouldRunAsync = asyncCapable && runInBackground;

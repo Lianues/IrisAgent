@@ -122,6 +122,38 @@ describe('async-sub-agent: 异步路径', () => {
     expect(task!.status).toBe('running');
   });
 
+  it('类型配置 background=true 时默认走后台异步路径', async () => {
+    typeRegistry.register({
+      name: 'background-worker',
+      description: '默认后台执行的子代理',
+      systemPrompt: '你是后台执行子代理。',
+      parallel: true,
+      maxToolRounds: 10,
+      stream: false,
+      background: true,
+    });
+
+    const tool = createSubAgentTool({
+      getRouter: () => router,
+      tools,
+      subAgentTypes: typeRegistry,
+      maxDepth: 3,
+      getToolPolicies: () => ({}),
+      getSessionId,
+      taskBoard,
+      agentName: 'test-agent',
+    });
+
+    const result = await tool.handler!({
+      prompt: '默认后台任务',
+      type: 'background-worker',
+    }) as any;
+
+    expect(result.status).toBe('async_launched');
+    expect(result.taskId).toBeDefined();
+    expect(taskBoard.get(result.taskId)!.status).toBe('running');
+  });
+
   // ---- 同步模式保持原有行为 ----
 
   /**

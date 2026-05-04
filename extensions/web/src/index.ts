@@ -44,6 +44,7 @@ export default definePlatformFactory<Record<string, unknown>, WebPlatform>({
       dataDir: (context as any).dataDir ?? '',
       configDir: context.configDir,
       isCompiledBinary: (context as any).isCompiledBinary ?? false,
+      agentName: context.agentName,
     });
 
     return webPlatform;

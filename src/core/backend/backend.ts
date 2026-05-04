@@ -308,6 +308,15 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
   }
 
   /**
+   * 释放 Backend 挂载在外部对象上的监听器。
+   * IrisCore 热重载/销毁时调用，避免旧 Backend 继续监听全局 TaskBoard 事件。
+   */
+  dispose(): void {
+    this.taskBoardCleanup?.();
+    this.taskBoardCleanup = undefined;
+  }
+
+  /**
    * 发送消息。
    *
    * 改造说明：

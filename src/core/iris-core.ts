@@ -823,6 +823,11 @@ export class IrisCore {
         try { await this.pluginManager.deactivateAll(); } catch { /* 忽略 */ }
       }
 
+      // 清理 Backend 挂在共享 TaskBoard 等外部对象上的监听器
+      if (this.backend) {
+        try { this.backend.dispose(); } catch { /* 忽略 */ }
+      }
+
       // 关闭存储
       if (this.storage) {
         try { await this.storage.close(); } catch { /* 忽略 */ }

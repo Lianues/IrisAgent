@@ -43,6 +43,11 @@ const logger = createExtensionLogger('WebPlatform');
 
 type RuntimeReloadExtensions = Record<string, unknown>;
 
+type AgentLifecycleRequest =
+  | AgentDefinitionLike
+  | '__default__'
+  | { action: 'destroy'; name: string };
+
 export interface WebPlatformConfig {
   port: number;
   host: string;
@@ -94,6 +99,8 @@ export interface WebPlatformDeps {
   dataDir?: string;
   configDir?: string;
   isCompiledBinary?: boolean;
+  /** 当前平台首次绑定的真实 Agent 名称；不传时保留旧的 default 占位语义 */
+  agentName?: string;
 }
 
 export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, RoutableHttpPlatform {
@@ -103,7 +110,7 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
   private publicDir: string;
   private deps: WebPlatformDeps;
 
-  /** Agent 上下文 Map（单 Agent 模式下只有一个 'default' 条目） */
+  /** Agent 上下文 Map（单 Agent 模式下只有一个条目，名称通常是 master；旧调用可为 default） */
   private agents = new Map<string, AgentContext>();
   private defaultAgentName = 'default';
 
@@ -120,7 +127,7 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
   private notificationHandler: NotificationHandler;
 
   /** Agent 热重载回调：给定 agent 定义，返回 bootstrap 结果 */
-  private reloadHandler?: (agent: AgentDefinitionLike | '__default__') => Promise<any>;
+  private reloadHandler?: (agent: AgentLifecycleRequest) => Promise<any>;
 
   /** 平台配置热重载回调 */
   private platformReloadHandler?: (mergedConfig: any) => Promise<void>;
@@ -138,8 +145,10 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
     this.router = new Router();
     this.publicDir = this.resolvePublicDir();
     // 单 Agent 模式：创建默认 agent 上下文
-    this.agents.set('default', {
-      name: 'default', backend, config,
+    const initialAgentName = deps.agentName || 'default';
+    this.defaultAgentName = initialAgentName;
+    this.agents.set(initialAgentName, {
+      name: initialAgentName, backend, config,
       dataDir: path.dirname(config.configPath),
       extensions: undefined,
       api: deps.api,
@@ -181,13 +190,15 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
     }
     // 从传入的通用配置中提取 Web 平台专属配置
     const raw = config as Record<string, unknown>;
+    const agentApi = api ?? raw.api;
+    const agentConfigPath = (raw.configPath ?? '') as string;
     const webSub = (raw.platform as Record<string, unknown> | undefined)?.web as Record<string, unknown> | undefined;
     const cfg: WebPlatformConfig = {
       port: (webSub?.port ?? raw.port ?? this.config.port) as number,
       host: (webSub?.host ?? raw.host ?? this.config.host) as string,
       authToken: (webSub?.authToken ?? raw.authToken ?? this.config.authToken) as string | undefined,
       managementToken: (webSub?.managementToken ?? raw.managementToken ?? this.config.managementToken) as string | undefined,
-      configPath: (raw.configPath ?? '') as string,
+      configPath: agentConfigPath,
       provider: (raw.provider ?? 'unknown') as string,
       modelId: (raw.modelId ?? 'unknown') as string,
       streamEnabled: (raw.streamEnabled ?? true) as boolean,
@@ -196,7 +207,7 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
       name, description, backend, config: cfg,
       dataDir: cfg.configPath ? path.dirname(cfg.configPath) : undefined,
       extensions,
-      api,
+      api: agentApi,
     });
   }
 
@@ -204,8 +215,8 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
    * 注入热重载回调。由 index.ts 在启动时调用，
    * 提供按 agent 名称执行 bootstrap 的能力。
    */
-  setReloadHandler(handler: (agent: AgentDefinitionLike | '__default__') => Promise<any>): void {
-    this.reloadHandler = handler;
+  setReloadHandler(handler: (...args: unknown[]) => Promise<unknown>): void {
+    this.reloadHandler = handler as (agent: AgentLifecycleRequest) => Promise<any>;
   }
 
   /** 注入平台配置热重载回调 */
@@ -233,9 +244,15 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
     // 多 Agent 配置分层重构：移除 enabled 判断和 __global__ 特判
     // 系统永远以 agent 为单位运行，直接使用 agents 列表
     const newDefs = status.agents;
+    if (!Array.isArray(newDefs) || newDefs.length === 0) {
+      const message = 'agents.yaml 中没有有效 Agent，已保留当前运行状态。请检查配置后重试。';
+      logger.warn(message);
+      return { added: [], removed: [], kept: [...this.agents.keys()], message };
+    }
     const newNames = new Set(newDefs.map(d => d.name));
 
     const currentNames = new Set(this.agents.keys());
+    const shouldRefreshKeptForNetwork = currentNames.size === 1 && newNames.size > 1;
     const added: string[] = [];
     const removed: string[] = [];
     const kept: string[] = [];
@@ -255,12 +272,14 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
       const result = await this.reloadHandler!(def);
       const name = def === '__default__' ? 'default' : (def as AgentDefinitionLike).name;
       const currentModel = result.router.getCurrentModelInfo();
+      const backend = result.backendHandle ?? result.backend;
+      await unwireAgent(name);
       this.agents.set(name, {
         name,
         description: def === '__default__' ? undefined
           // 多 Agent 配置分层重构：移除 __global__ 特判
           : (def as AgentDefinitionLike).description,
-        backend: result.backend,
+        backend,
         config: {
           ...this.config,
           provider: currentModel.provider,
@@ -270,55 +289,48 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
         },
         dataDir: path.dirname(result.configDir),
         extensions: { llmProviders: result.extensions.llmProviders, ocrProviders: result.extensions.ocrProviders },
+        api: result.irisAPI ?? result.api,
       });
-      this.wireBackendEvents(result.backend, name);
+      this.wireBackendEvents(backend, name);
     };
 
-    if (!enabled) {
-      // 切换到单 Agent 模式
-      if (!this.agents.has('default') || this.agents.size > 1) {
-        for (const name of currentNames) {
-          await unwireAgent(name);
-        }
-        this.agents.clear();
-
-        await bootstrapAgent('__default__');
-        this.defaultAgentName = 'default';
-        this.multiAgentMode = false;
-        return { added: [], removed: [...currentNames], kept: [], message: '已切换到单 Agent 模式。' };
-      }
-      return { added: [], removed: [], kept: ['default'], message: '已处于单 Agent 模式，无需变更。' };
-    }
-
-    // 多 Agent 模式
-    this.multiAgentMode = true;
+    // 多 Agent 配置分层重构后不再有 enabled 开关。
+    // agents.yaml 中的 agents 列表就是当前应运行的 Agent 集合。
+    this.multiAgentMode = newNames.size > 1;
 
     // 移除不再存在的 agent
     for (const name of currentNames) {
       if (name === 'default' || !newNames.has(name)) {
         await unwireAgent(name);
         this.agents.delete(name);
+
+        // default 是旧单 Agent 占位别名，不是 Host 中的真实 Agent 名称，不能销毁。
+        if (name !== 'default') {
+          try {
+            await this.reloadHandler!({ action: 'destroy', name });
+          } catch (err) {
+            logger.error(`销毁 Agent「${name}」失败:`, err);
+          }
+        }
         removed.push(name);
       }
     }
 
     // 保留未变更的 agent
-    for (const name of newNames) {
+    for (const def of newDefs) {
+      const name = def.name;
       if (currentNames.has(name) && name !== 'default') {
+        const existing = this.agents.get(name);
+        if (existing) existing.description = def.description;
         kept.push(name);
       }
     }
 
     // 新增 agent
-    for (const name of newNames) {
+    for (const def of newDefs) {
+      const name = def.name;
       if (!currentNames.has(name) || currentNames.has('default')) {
         try {
-          // 多 Agent 配置分层重构：移除 __global__ 特判
-          const def = newDefs.find(d => d.name === name);
-          if (!def) {
-            logger.warn(`Agent「${name}」在定义列表中未找到，跳过。`);
-            continue;
-          }
           await bootstrapAgent(def);
           added.push(name);
 
@@ -330,6 +342,28 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
         }
       }
     }
+
+    // 从单 Agent 运行时动态扩展到多 Agent 时，原本唯一的 Agent 启动时没有 agentNetwork，
+    // 因而没有 delegate_to_agent / console agent switch 等多 Agent 能力。
+    // 在所有新 Agent spawn 完成后重载保留的 Agent，使其工具描述能看到新 peers。
+    if (shouldRefreshKeptForNetwork) {
+      for (const def of newDefs) {
+        if (!kept.includes(def.name)) continue;
+        try {
+          await bootstrapAgent(def);
+        } catch (err) {
+          logger.error(`刷新 Agent「${def.name}」多 Agent 能力失败:`, err);
+        }
+      }
+    }
+
+    if (!this.agents.has(this.defaultAgentName)) {
+      const firstExisting = newDefs.find(def => this.agents.has(def.name))?.name
+        ?? this.agents.keys().next().value;
+      if (firstExisting) this.defaultAgentName = firstExisting;
+    }
+
+    this.multiAgentMode = this.agents.size > 1;
 
     const msg = `热重载完成：新增 ${added.length}，移除 ${removed.length}，保留 ${kept.length}。`;
     logger.info(msg);
@@ -347,8 +381,8 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
 
   /** 获取所有 Agent 列表（供 /api/agents 端点使用） */
   getAgentList(): { name: string; description?: string }[] {
-    // 单 Agent 模式（只有 'default'）返回空数组
-    if (this.agents.size === 1 && this.agents.has('default')) return [];
+    // 单 Agent 模式保持旧行为：不显示 Agent 选择器
+    if (this.agents.size <= 1) return [];
     return Array.from(this.agents.values()).map(a => ({ name: a.name, description: a.description }));
   }
 

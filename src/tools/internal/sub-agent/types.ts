@@ -25,6 +25,8 @@ export interface SubAgentTypeConfig {
   maxToolRounds: number;
   /** 此类型是否使用流式输出（已解析全局覆盖后的最终值） */
   stream: boolean;
+  /** 是否默认后台运行；调用参数 run_in_background 显式传入时优先 */
+  background?: boolean;
 }
 
 /** 异步子代理是否启用的标志 */
