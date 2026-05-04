@@ -99,8 +99,9 @@ export interface ToolExecutionContext {
    * 用户是否已手动批准此次工具调用。
    *
    * 由 scheduler 在用户通过 TUI Y/N 确认、或命令匹配 allowPatterns 时设置为 true。
-   * shell 工具检测到此标记后，跳过 AI 分类器判定（仅保留 deny 黑名单硬拦截），
-   * 尊重用户的明确授权意图。
+   * shell 工具检测到此标记后，跳过 AI 分类器判定，尊重用户的明确授权意图。
+   * 当 autoApproveAll 或 shell/bash.autoApprove 开启时，此标记同时跳过黑名单检查，
+   * 允许所有指令运行。
    */
   approvedByUser?: boolean;
   /**

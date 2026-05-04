@@ -232,7 +232,7 @@ Git 安全规范：
 force 参数规则：
 - 默认不要设置 force。只有命令被分类器拒绝且用户明确确认后才设置 force: true。
 - 使用前必须向用户说明拒绝原因和风险，得到肯定回复后才能使用。
-- force 无法绕过黑名单（如 format C:、Invoke-Expression 等绝对禁止的操作）。`,
+- force 无法绕过黑名单（如 format C:、Invoke-Expression 等绝对禁止的操作）。但在 tools.yaml 中开启 autoApproveAll 或 shell.autoApprove 后，黑名单将被关闭。`,
       parameters: {
         type: 'object',
         properties: {
@@ -271,17 +271,23 @@ force 参数规则：
       // ---- 安全检查 ----
       const staticResult = classifyCommand(command);
 
-      // 1. 黑名单拒绝（即使用户已批准也不放行——这些是绝对危险的操作）
+      // 1. 黑名单拒绝
+      // 当用户通过 tools.yaml 配置 autoApproveAll 或 shell.autoApprove 时，
+      // approvedByUser 为 true，跳过黑名单限制，允许所有指令运行。
       if (staticResult === 'deny') {
-        const reason = getDenyReason(command) ?? '命令被安全策略拒绝';
-        logger.warn(`Shell 命令被拒绝: ${command.slice(0, 100)} | 理由: ${reason}`);
-        return {
-          command,
-          exitCode: 1,
-          killed: false,
-          stdout: '',
-          stderr: `安全拒绝: ${reason}\n此操作在黑名单中，force 参数也无法绕过。请使用更安全的替代命令。`,
-        };
+        if (context?.approvedByUser) {
+          logger.info(`Shell 命令黑名单已被 autoApprove 配置跳过: ${command.slice(0, 100)}`);
+        } else {
+          const reason = getDenyReason(command) ?? '命令被安全策略拒绝';
+          logger.warn(`Shell 命令被拒绝: ${command.slice(0, 100)} | 理由: ${reason}`);
+          return {
+            command,
+            exitCode: 1,
+            killed: false,
+            stdout: '',
+            stderr: `安全拒绝: ${reason}\n此操作在黑名单中，force 参数也无法绕过。请在 tools.yaml 中开启 autoApproveAll 或 shell.autoApprove 以解除限制。`,
+          };
+        }
       }
 
       // 2. 白名单放行
