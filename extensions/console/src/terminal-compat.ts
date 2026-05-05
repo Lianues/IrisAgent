@@ -125,6 +125,7 @@ export const ICONS = {
   clock:         pick('\u23F0', '*'),   // ⏰ / *
   timer:         pick('\u23F1', '*'),   // ⏱ / *
   hourglass:     pick('\u23F3', '.'),   // ⏳ / .
+  planMode:      '||',                  // 纯文本 pause，避免 Windows Terminal 将 ⏸ 渲染成蓝色 emoji 方块
 
   // 导航 / 选择
   selectorArrow:  pick('\u276F', '>'),  // ❯ / >

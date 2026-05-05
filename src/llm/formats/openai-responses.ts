@@ -222,12 +222,13 @@ export class OpenAIResponsesFormat implements FormatAdapter {
         data.delta,
       );
     } else if (event === 'response.function_call_arguments.done') {
-      rememberPendingFunctionCall(streamState, {
+      const itemKey = rememberPendingFunctionCall(streamState, {
         id: data.item_id ?? data.id,
         call_id: data.call_id,
         name: data.name,
         arguments: data.arguments,
       });
+      if (itemKey) emitFunctionCallChunk(chunk, itemKey, streamState);
     } else if (event === 'response.output_item.done') {
       const item = data.item;
       if (item?.type === 'reasoning' && item.encrypted_content) {

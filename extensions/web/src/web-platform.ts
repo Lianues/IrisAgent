@@ -40,6 +40,20 @@ import { createTerminalHandler, type TerminalHandler } from './handlers/terminal
 import { createNotificationHandler, type NotificationHandler } from './handlers/notifications';
 
 const logger = createExtensionLogger('WebPlatform');
+const PLAN_MODE_SERVICE_ID = 'plan-mode';
+
+interface PlanModeServiceLike {
+  enter(sessionId: string): { sessionId?: string; planFilePath: string; active: boolean };
+  leave?(sessionId: string): unknown;
+  exit(sessionId: string): unknown;
+  isActive(sessionId?: string): boolean;
+  getState(sessionId?: string): { sessionId?: string; planFilePath: string; active: boolean; hasExited?: boolean } | null;
+  readPlan(sessionId: string): string | null;
+}
+
+function getPlanModeService(agent: AgentContext): PlanModeServiceLike | undefined {
+  return (agent.api?.services as any)?.get?.(PLAN_MODE_SERVICE_ID) as PlanModeServiceLike | undefined;
+}
 
 type RuntimeReloadExtensions = Record<string, unknown>;
 
@@ -789,6 +803,49 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
       return createSessionsHandlers(storage).remove(req, res, params);
     });
 
+    // Plan Mode API（按 X-Agent-Name 解析到当前 Agent 的 plan-mode service）
+    this.router.post('/api/plan-mode', async (req, res) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) { sendJSON(res, 503, { error: 'Plan Mode 服务不可用' }); return; }
+        const body = await readBody(req).catch(() => ({}));
+        const sessionId = typeof body.sessionId === 'string' && body.sessionId.trim()
+          ? body.sessionId.trim()
+          : `web-plan-${crypto.randomUUID()}`;
+        const state = service.enter(sessionId);
+        const plan = service.readPlan(sessionId) ?? '';
+        sendJSON(res, 200, { state: { ...state, sessionId }, plan });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : '进入 Plan Mode 失败' });
+      }
+    });
+
+    this.router.get('/api/plan-mode/:id', async (req, res, params) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) { sendJSON(res, 503, { error: 'Plan Mode 服务不可用' }); return; }
+        const state = service.getState(params.id);
+        const plan = service.readPlan(params.id) ?? '';
+        sendJSON(res, 200, { state, plan });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : '读取 Plan Mode 状态失败' });
+      }
+    });
+
+    this.router.post('/api/plan-mode/:id/exit', async (req, res, params) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) { sendJSON(res, 503, { error: 'Plan Mode 服务不可用' }); return; }
+        const state = service.leave?.(params.id) ?? service.exit(params.id);
+        sendJSON(res, 200, { state });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : '退出 Plan Mode 失败' });
+      }
+    });
+
     // 部署管理 API（全局，不区分 agent）
     const deploy = createDeployHandlers(configPath, () => this.deployToken);
     this.router.get('/api/deploy/state', deploy.getState);
@@ -927,6 +984,22 @@ export class WebPlatform extends PlatformAdapter implements MultiAgentCapable, R
         const handle = backend.getToolHandle?.(params.id);
         if (!handle) { sendJSON(res, 404, { error: '未找到工具调用' }); return; }
         handle.apply(body.applied);
+        sendJSON(res, 200, { ok: true });
+      } catch (err: unknown) {
+        sendJSON(res, 400, { error: err instanceof Error ? err.message : '操作失败' });
+      }
+    });
+
+    this.router.post('/api/tools/:id/send', async (req, res, params) => {
+      try {
+        const { backend } = this.resolveAgent(req);
+        const body = await readBody(req);
+        const handle = backend.getToolHandle?.(params.id);
+        if (!handle) { sendJSON(res, 404, { error: '未找到工具调用' }); return; }
+        if (typeof body.type !== 'string' || !body.type.trim()) {
+          sendJSON(res, 400, { error: '缺少 type 参数' }); return;
+        }
+        handle.send(body.type, body.data);
         sendJSON(res, 200, { ok: true });
       } catch (err: unknown) {
         sendJSON(res, 400, { error: err instanceof Error ? err.message : '操作失败' });

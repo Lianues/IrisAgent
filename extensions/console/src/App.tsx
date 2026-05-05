@@ -58,6 +58,7 @@ export function App({
   onClearRedoStack,
   onToolApproval,
   onToolApply,
+  onToolMessage,
   onAddCommandPattern,
   onAbort,
   onNewSession,
@@ -75,6 +76,7 @@ export function App({
   onEnterHeadless,
   supportsHeadlessTransition,
   onSummarize,
+  onPlanCommand,
   onListAgents,
   onSelectAgent,
   onThinkingEffortChange,
@@ -301,6 +303,7 @@ export function App({
     isRemote: !!remoteHost,
     remoteHost,
     onSummarize,
+    onPlanCommand,
     undoRedoRef,
     setMessages: appState.setMessages,
     commitTools: appState.commitTools,
@@ -361,6 +364,12 @@ export function App({
     }
   }, [appState.toolListItems]);
 
+  const askQuestionInvocation = appState.toolInvocations.find((tool) => (
+    tool.toolName === 'AskQuestionFirst'
+    && tool.status === 'executing'
+    && (tool.progress as Record<string, unknown> | undefined)?.kind === 'ask_question_first'
+  ));
+
   useAppKeyboard({
     viewMode,
     setViewMode,
@@ -373,6 +382,7 @@ export function App({
     setConfirmChoice,
     exitConfirm,
     isGenerating: appState.isGenerating,
+    askQuestionActive: !!askQuestionInvocation,
     pendingApplies: appState.pendingApplies,
     pendingApprovals: appState.pendingApprovals,
     onOpenToolDetail,
@@ -382,6 +392,7 @@ export function App({
     onToolApply,
     onToolApproval,
     onAddCommandPattern,
+    onPlanCommand,
     sessionList,
     modelList,
     setModelList,
@@ -604,7 +615,7 @@ export function App({
           retryInfo={appState.retryInfo}
           modelName={modelState.currentModelName}
           generatingLabel={appState.generatingLabel}
-          timerPaused={appState.pendingApprovals.length > 0 || appState.pendingApplies.length > 0}
+          timerPaused={appState.pendingApprovals.length > 0 || appState.pendingApplies.length > 0 || !!askQuestionInvocation}
           thoughtsToggleSignal={thoughtsToggleSignal}
           hasActiveTools={appState.toolInvocations.some(t => t.status === 'executing' || t.status === 'queued')}
           scrollBoxRef={chatScrollBoxRef}
@@ -615,6 +626,8 @@ export function App({
         hasMessages={hasMessages}
         pendingConfirm={pendingConfirm}
         confirmChoice={confirmChoice}
+        askQuestionInvocation={askQuestionInvocation}
+        askQuestionKey={askQuestionInvocation?.id}
         pendingApprovals={appState.pendingApprovals}
         approvalChoice={approval.approvalChoice}
         approvalPage={approval.approvalPage}
@@ -622,6 +635,7 @@ export function App({
         queueSize={messageQueue.size}
         onSubmit={handleSubmit}
         onPrioritySubmit={handlePrioritySubmit}
+        onToolMessage={onToolMessage}
         agentName={agentName}
         modeName={modeName}
         modelName={modelState.currentModelName}
@@ -630,6 +644,7 @@ export function App({
         copyMode={copyMode}
         exitConfirmArmed={exitConfirm.exitConfirmArmed}
         backgroundTaskCount={appState.backgroundTaskCount}
+        planModeActive={appState.planModeActive}
         delegateTaskCount={appState.delegateTaskCount}
         backgroundTaskTokens={appState.backgroundTaskTokens}
         backgroundTaskSpinnerFrame={appState.backgroundTaskSpinnerFrame}

@@ -25,6 +25,7 @@ export const COMMANDS: Command[] = [
   { name: '/sh',       description: '执行命令（如 cd、dir、git 等）' },
   { name: '/reset-config', description: '重置配置为默认值' },
   { name: '/compact',  description: '压缩上下文（总结历史消息）' },
+  { name: '/plan',     description: '进入或查看当前 Agent 会话的 Plan Mode' },
   { name: '/net',         description: '配置多端互联（Net）' },
   { name: '/remote',      description: '连接远程 Iris 实例' },
   { name: '/disconnect', description: '断开远程连接', remoteOnly: true, color: '#fdcb6e' },
@@ -40,7 +41,7 @@ export const COMMANDS: Command[] = [
 ];
 
 export function getCommandInput(cmd: Command): string {
-  return cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' || cmd.name === '/file' ? `${cmd.name} ` : cmd.name;
+  return cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' || cmd.name === '/file' || cmd.name === '/plan' ? `${cmd.name} ` : cmd.name;
 }
 
 export function isExactCommandValue(value: string, cmd: Command): boolean {

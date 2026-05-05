@@ -476,7 +476,49 @@ export function useChat() {
     /** 检查回调是否仍属于当前活动请求 */
     const isStale = () => activeRequestToken !== requestToken
 
+    const activeToolInvocations = new Map<string, any>()
+    const publishToolInvocations = () => {
+      setToolInvocations(Array.from(activeToolInvocations.values()))
+    }
+
     _currentController = api.sendChat(activeRequestSessionId, text, {
+      onToolStart(tool: any) {
+        if (isStale()) return
+        const id = tool.id ?? tool.toolId
+        if (!id) return
+        activeToolInvocations.set(id, {
+          id,
+          toolName: tool.toolName ?? tool.name,
+          status: tool.status ?? 'queued',
+          args: tool.args ?? {},
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          ...(tool.depth != null ? { depth: tool.depth } : {}),
+          ...(tool.parentId ? { parentToolId: tool.parentId } : {}),
+        })
+        publishToolInvocations()
+      },
+      onToolState(toolId, status, _prev, snapshot) {
+        if (isStale()) return
+        const existing = activeToolInvocations.get(toolId) ?? { id: toolId, createdAt: Date.now(), args: {} }
+        activeToolInvocations.set(toolId, {
+          ...existing,
+          ...snapshot,
+          id: (snapshot as any)?.id ?? toolId,
+          toolName: (snapshot as any)?.toolName ?? existing.toolName,
+          args: (snapshot as any)?.args ?? existing.args,
+          status,
+          updatedAt: Date.now(),
+        })
+        publishToolInvocations()
+      },
+      onToolProgress(toolId, data) {
+        if (isStale()) return
+        const existing = activeToolInvocations.get(toolId)
+        if (!existing) return
+        activeToolInvocations.set(toolId, { ...existing, progress: data, updatedAt: Date.now() })
+        publishToolInvocations()
+      },
       onSessionId(id) {
         if (isStale()) return
 

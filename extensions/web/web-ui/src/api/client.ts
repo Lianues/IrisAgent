@@ -7,7 +7,7 @@
 import type {
   ImageInput, DocumentInput, ChatImageAttachment, ChatDocumentAttachment, Message, StatusInfo, ChatCallbacks, DetectResponse, DeployResponse, DeploySyncCloudflareResponse,
   DeployFormOptions, DeployStateResponse, DeployPreviewResponse,
-  CfStatusResponse, CfDnsRecord, CfDnsInput, CfSetupResponse, SessionSummary, ConfigModelListResponse,
+  CfStatusResponse, CfDnsRecord, CfDnsInput, CfSetupResponse, SessionSummary, ConfigModelListResponse, PlanModeResponse,
 } from './types'
 import { clearManagementToken, loadManagementToken } from '../utils/managementToken'
 import { clearAuthToken, loadAuthToken } from '../utils/authToken'
@@ -200,6 +200,29 @@ export async function getStatus(): Promise<StatusInfo> {
   return res.json()
 }
 
+export async function enterPlanMode(sessionId?: string | null): Promise<PlanModeResponse> {
+  const res = await request('/api/plan-mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: sessionId || undefined }),
+  })
+  return res.json()
+}
+
+export async function getPlanMode(sessionId: string): Promise<PlanModeResponse> {
+  const res = await request(`/api/plan-mode/${encodeURIComponent(sessionId)}`)
+  return res.json()
+}
+
+export async function exitPlanMode(sessionId: string): Promise<{ state: unknown }> {
+  const res = await request(`/api/plan-mode/${encodeURIComponent(sessionId)}/exit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  return res.json()
+}
+
 export async function getConfig(): Promise<any> {
   const res = await request('/api/config')
   return res.json()
@@ -345,6 +368,15 @@ export async function applyTool(id: string, applied: boolean): Promise<{ ok: boo
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ applied }),
+  })
+  return res.json()
+}
+
+export async function sendToolMessage(id: string, type: string, data?: unknown): Promise<{ ok: boolean }> {
+  const res = await request(`/api/tools/${encodeURIComponent(id)}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, data }),
   })
   return res.json()
 }

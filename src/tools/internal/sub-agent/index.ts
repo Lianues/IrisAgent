@@ -122,6 +122,9 @@ const TOOL_NAME = 'sub_agent';
 /** 同一 session 最大并发异步子代理数（防止内存压力） */
 const MAX_CONCURRENT_ASYNC_AGENTS = 5;
 
+/** 主会话交互工具不应暴露给临时 sub_agent。 */
+const MAIN_SESSION_INTERACTIVE_TOOL_NAMES = ['EnterPlanMode', 'ExitPlanMode', 'read_plan', 'write_plan', 'AskQuestionFirst'];
+
 function getSubAgentTypeName(args: Record<string, unknown>): string {
   const type = args.type;
   return typeof type === 'string' && type.trim() ? type : 'general-purpose';
@@ -326,6 +329,10 @@ ${typeDescriptions}
         subTools.register(createSubAgentTool(deps, currentDepth + 1));
       } else {
         subTools.unregister(TOOL_NAME);
+      }
+
+      for (const toolName of MAIN_SESSION_INTERACTIVE_TOOL_NAMES) {
+        subTools.unregister(toolName);
       }
 
       if (shouldRunAsync) {

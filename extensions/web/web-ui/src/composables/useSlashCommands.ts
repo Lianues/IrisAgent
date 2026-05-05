@@ -25,6 +25,7 @@ const commands: SlashCommand[] = [
   { name: '/load', description: '加载历史对话', usage: '/load [ID]', hasArg: true },
   { name: '/compact', description: '压缩上下文（总结历史消息）', usage: '/compact', hasArg: false },
   { name: '/queue', description: '查看/管理排队消息', usage: '/queue [clear]', hasArg: true },
+  { name: '/plan', description: '进入或查看当前 Agent 会话的 Plan Mode', usage: '/plan [status|exit|任务描述]', hasArg: true },
   { name: '/undo', description: '撤销上一条消息', usage: '/undo', hasArg: false },
   { name: '/redo', description: '重做上一条撤销', usage: '/redo', hasArg: false },
   { name: '/model', description: '切换模型', usage: '/model <name>', hasArg: true },
@@ -219,6 +220,72 @@ async function executeCommand(text: string, ctx: CommandContext) {
             { type: 'function_response', name: 'compact_context', response: { ok: false, error: err instanceof Error ? err.message : String(err) } },
           ],
         })
+      }
+      break
+    }
+
+    case '/plan': {
+      if (arg === 'status') {
+        if (!ctx.currentSessionId.value) {
+          pushSystemMessage(ctx, '当前没有活跃会话。输入 `/plan <任务描述>` 可创建会话并进入 Plan Mode。')
+          return
+        }
+        try {
+          const result = await api.getPlanMode(ctx.currentSessionId.value)
+          if (!result.state) {
+            pushSystemMessage(ctx, '当前会话尚未进入 Plan Mode。')
+            return
+          }
+          const preview = result.plan.trim()
+            ? `\n\n计划预览：\n${result.plan.trim().split(/\r?\n/).slice(0, 20).join('\n')}`
+            : '\n\n当前计划为空。'
+          pushSystemMessage(ctx, `Plan Mode: ${result.state.active ? 'active' : 'inactive'}\n计划文件：${result.state.planFilePath}${preview}`)
+        } catch (err) {
+          pushSystemMessage(ctx, `读取 Plan Mode 状态失败: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
+      }
+
+      if (arg === 'exit') {
+        if (!ctx.currentSessionId.value) {
+          pushSystemMessage(ctx, '当前没有活跃会话。')
+          return
+        }
+        await api.exitPlanMode(ctx.currentSessionId.value)
+        pushSystemMessage(ctx, '已手动退出 Plan Mode。')
+        return
+      }
+
+      if (!arg) {
+        try {
+          if (ctx.currentSessionId.value) {
+            const current = await api.getPlanMode(ctx.currentSessionId.value)
+            if (current.state?.active) {
+              await api.exitPlanMode(ctx.currentSessionId.value)
+              pushSystemMessage(ctx, '已退出 Plan Mode。')
+              return
+            }
+          }
+          const result = await api.enterPlanMode(ctx.currentSessionId.value)
+          if (result.state?.sessionId && ctx.currentSessionId.value !== result.state.sessionId) {
+            ctx.currentSessionId.value = result.state.sessionId
+          }
+          pushSystemMessage(ctx, `已进入 Plan Mode。\n计划文件：${result.state?.planFilePath ?? '(未知)'}`)
+        } catch (err) {
+          pushSystemMessage(ctx, `切换 Plan Mode 失败: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
+      }
+
+      try {
+        const result = await api.enterPlanMode(ctx.currentSessionId.value)
+        if (result.state?.sessionId && ctx.currentSessionId.value !== result.state.sessionId) {
+          ctx.currentSessionId.value = result.state.sessionId
+        }
+        pushSystemMessage(ctx, `已进入 Plan Mode。\n计划文件：${result.state?.planFilePath ?? '(未知)'}`)
+        if (arg) ctx.sendMessage(arg)
+      } catch (err) {
+        pushSystemMessage(ctx, `进入 Plan Mode 失败: ${err instanceof Error ? err.message : String(err)}`)
       }
       break
     }

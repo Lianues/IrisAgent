@@ -47,6 +47,8 @@ interface UseAppKeyboardOptions {
   setConfirmChoice: SetState<ConfirmChoice>;
   exitConfirm: ExitConfirmController;
   isGenerating: boolean;
+  /** AskQuestionFirst 交互面板是否正在接管键盘 */
+  askQuestionActive?: boolean;
   pendingApplies: ToolInvocation[];
   pendingApprovals: ToolInvocation[];
   /** 打开工具详情 */
@@ -57,6 +59,7 @@ interface UseAppKeyboardOptions {
   onToolApply: (toolId: string, applied: boolean) => void;
   onToolApproval: (toolId: string, approved: boolean) => void;
   onAddCommandPattern?: (toolName: string, command: string, type: 'allow' | 'deny') => void;
+  onPlanCommand?: (arg: string) => Promise<{ ok: boolean; message: string; followupPrompt?: string }>;
   sessionList: SessionMeta[];
   modelList: LLMModelInfo[];
   defaultModelName: string;
@@ -153,6 +156,13 @@ function closeConfirm(
   setConfirmChoice('confirm');
 }
 
+function isPlanModeToggleShortcut(key: any): boolean {
+  return (key.shift && key.name === 'tab')
+    || key.name === 'backtab'
+    || key.name === 'shift-tab'
+    || key.sequence === '\x1b[Z';
+}
+
 export function useAppKeyboard({
   viewMode,
   setViewMode,
@@ -165,6 +175,7 @@ export function useAppKeyboard({
   setConfirmChoice,
   exitConfirm,
   isGenerating,
+  askQuestionActive,
   pendingApplies,
   pendingApprovals,
   onOpenToolDetail,
@@ -174,6 +185,7 @@ export function useAppKeyboard({
   onToolApply,
   onToolApproval,
   onAddCommandPattern,
+  onPlanCommand,
   sessionList,
   modelList,
   defaultModelName,
@@ -318,6 +330,23 @@ export function useAppKeyboard({
 
     if (key.ctrl && key.name === 'o') {
       onToggleThoughts();
+      return;
+    }
+
+    // Shift+Tab：切换当前 Agent/session 的 Plan Mode。
+    // 仅在聊天主视图空闲时触发，避免和审批页 Tab/Shift+Tab 选择冲突。
+    if (
+      isPlanModeToggleShortcut(key)
+      && viewMode === 'chat'
+      && !isGenerating
+      && pendingApprovals.length === 0
+      && pendingApplies.length === 0
+      && !pendingConfirm
+    ) {
+      key.preventDefault?.();
+      void onPlanCommand?.('').then((result) => {
+        appendCommandMessage(setMessages, result.message, result.ok ? { label: 'plan' } : { label: 'plan', isError: true });
+      }).catch((err) => appendCommandMessage(setMessages, `Plan Mode 操作失败: ${err instanceof Error ? err.message : String(err)}`, { label: 'plan', isError: true }));
       return;
     }
 
@@ -715,6 +744,10 @@ export function useAppKeyboard({
         setViewMode('chat');
         return;
       }
+      // AskQuestionFirst 面板自己处理 Esc（输入中/确认页返回，选择页取消问答）。
+      // 全局层不能把 Esc 当作 abort，否则会直接中断整个 turn。
+      if (askQuestionActive) return;
+
       if (isGenerating) {
         onAbort();
         return;

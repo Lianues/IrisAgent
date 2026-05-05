@@ -45,6 +45,7 @@ import { createHistorySearchTool } from '../tools/internal/history_search';
 import { createManageVariablesTool } from '../tools/internal/manage_variables';
 import { createReadSkillTool } from '../tools/internal/read_skill';
 import { createInvokeSkillTool } from '../tools/internal/invoke_skill';
+import { createAskQuestionFirstTool } from '../tools/internal/ask_question_first';
 import { DEFAULT_SYSTEM_PROMPT } from '../prompt/templates/default';
 import { Backend } from './backend';
 import type { StorageProvider } from '../storage/base';
@@ -87,6 +88,7 @@ import { normalizeDeleteCodeArgs } from '../tools/internal/delete_code';
 import { resolveProjectPath } from '../tools/utils';
 import { supportsVision as checkVision, supportsNativePDF as checkNativePDF, supportsNativeOffice as checkNativeOffice, isDocumentMimeType as checkDocMime } from '../llm/vision';
 import { setExtensionLogLevel } from 'irises-extension-sdk';
+import { planModePlugin } from '../plan-mode/plugin';
 
 // ── 类型 ──
 
@@ -215,7 +217,7 @@ export class IrisCore {
     }
 
     // ---- 0. 预加载插件 + PreBootstrap 阶段 ----
-    const inlinePlugins = options.inlinePlugins ?? [];
+    const inlinePlugins = [{ plugin: planModePlugin, priority: 10_000 }, ...(options.inlinePlugins ?? [])];
     const pluginManager = new PluginManager();
 
     // 自动发现所有 plugin 类型的 extension，与 plugins.yaml 显式配置合并
@@ -361,6 +363,9 @@ export class IrisCore {
       }));
       tools.register(createQueryDelegatedTaskTool({ taskBoard }));
     }
+
+    // 注册交互式澄清/选项询问工具
+    tools.register(createAskQuestionFirstTool());
 
     // 注册历史搜索工具
     tools.register(createHistorySearchTool({

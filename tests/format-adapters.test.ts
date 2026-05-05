@@ -1300,19 +1300,20 @@ describe('OpenAICompatibleFormat: stream decode — reasoning_content', () => {
     const chunk = fmt.decodeStreamChunk({
       choices: [{ delta: { reasoning_content: 'think', content: 'speak' } }],
     }, state);
-    expect(chunk.partsDelta).toHaveLength(1);
+    expect(chunk.partsDelta).toHaveLength(2);
     expect((chunk.partsDelta![0] as any).thought).toBe(true);
     expect((chunk.partsDelta![0] as any).text).toBe('think');
+    expect((chunk.partsDelta![1] as any).text).toBe('speak');
     expect(chunk.textDelta).toBe('speak');
   });
 
-  it('delta 无 reasoning_content → 不产生 thought partsDelta', () => {
+  it('delta 无 reasoning_content → 产生可见文本 partsDelta', () => {
     const state = fmt.createStreamState();
     const chunk = fmt.decodeStreamChunk({
       choices: [{ delta: { content: 'normal text' } }],
     }, state);
     expect(chunk.textDelta).toBe('normal text');
-    expect(chunk.partsDelta).toBeUndefined();
+    expect(chunk.partsDelta).toEqual([{ text: 'normal text' }]);
   });
 
   it('reasoning_content 后接 tool_calls → 两者都正确输出', () => {
@@ -1328,17 +1329,18 @@ describe('OpenAICompatibleFormat: stream decode — reasoning_content', () => {
     fmt.decodeStreamChunk({
       choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_stream_rc', function: { name: 'get_weather', arguments: '{"city":' } }] } }],
     }, state);
-    fmt.decodeStreamChunk({
+    const toolReady = fmt.decodeStreamChunk({
       choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"Tokyo"}' } }] } }],
     }, state);
+    expect(toolReady.functionCalls).toHaveLength(1);
+    expect(toolReady.functionCalls![0].functionCall.name).toBe('get_weather');
+    expect(toolReady.functionCalls![0].functionCall.callId).toBe('call_stream_rc');
 
-    // 结束
+    // 结束时不重复输出已提前发出的工具调用
     const cEnd = fmt.decodeStreamChunk({
       choices: [{ finish_reason: 'tool_calls', delta: {} }],
     }, state);
-    expect(cEnd.functionCalls).toHaveLength(1);
-    expect(cEnd.functionCalls![0].functionCall.name).toBe('get_weather');
-    expect(cEnd.functionCalls![0].functionCall.callId).toBe('call_stream_rc');
+    expect(cEnd.functionCalls).toBeUndefined();
   });
 });
 
@@ -1439,7 +1441,7 @@ describe('OpenAIResponsesFormat: stream decode', () => {
     expect(done.thoughtSignatures).toEqual({ openai: 'enc_final_sig' });
   });
 
-  it('function_call 只在 output_item.done 时输出一次', () => {
+  it('function_call 在 arguments.done 时提前输出，output_item.done 不重复输出', () => {
     const state = fmt.createStreamState();
 
     const added = fmt.decodeStreamChunk({
@@ -1466,7 +1468,13 @@ describe('OpenAIResponsesFormat: stream decode', () => {
       item_id: 'fc_stream_1',
       arguments: '{"paths":["."],"recursive":false}',
     }, state);
-    expect(argsDone.functionCalls).toBeUndefined();
+    expect(argsDone.functionCalls).toHaveLength(1);
+    expect(argsDone.functionCalls![0].functionCall).toEqual({
+      name: 'list_files',
+      args: { paths: ['.'], recursive: false },
+      callId: 'call_stream_1',
+    });
+    expect(argsDone.partsDelta).toEqual(argsDone.functionCalls);
 
     const itemDone = fmt.decodeStreamChunk({
       event: 'response.output_item.done',
@@ -1480,12 +1488,7 @@ describe('OpenAIResponsesFormat: stream decode', () => {
       },
     }, state);
 
-    expect(itemDone.functionCalls).toHaveLength(1);
-    expect(itemDone.functionCalls![0].functionCall).toEqual({
-      name: 'list_files',
-      args: { paths: ['.'], recursive: false },
-      callId: 'call_stream_1',
-    });
+    expect(itemDone.functionCalls).toBeUndefined();
 
     const completed = fmt.decodeStreamChunk({ event: 'response.completed', response: {} }, state);
     expect(completed.functionCalls).toBeUndefined();
@@ -1506,11 +1509,13 @@ describe('OpenAIResponsesFormat: stream decode', () => {
       },
     }, state);
 
-    fmt.decodeStreamChunk({
+    const argsDone = fmt.decodeStreamChunk({
       event: 'response.function_call_arguments.done',
       item_id: 'fc_stream_2',
       arguments: '{"files":[{"path":"README.md"}]}'
     }, state);
+    expect(argsDone.functionCalls?.[0].functionCall.callId).toBe('call_stream_2');
+    expect(argsDone.functionCalls?.[0].functionCall.name).toBe('read_file');
 
     const completed = fmt.decodeStreamChunk({
       event: 'response.completed',
@@ -1518,8 +1523,7 @@ describe('OpenAIResponsesFormat: stream decode', () => {
     }, state);
 
     expect(completed.usageMetadata).toEqual({ promptTokenCount: 11, candidatesTokenCount: 7, totalTokenCount: 18 });
-    expect(completed.functionCalls?.[0].functionCall.callId).toBe('call_stream_2');
-    expect(completed.functionCalls?.[0].functionCall.name).toBe('read_file');
+    expect(completed.functionCalls).toBeUndefined();
   });
 });
 

@@ -67,6 +67,22 @@ type DiscoverLanInstancesFn = () => Promise<import('./remote-wizard').Discovered
 
 const REMOTE_CONNECT_WS_CLIENT_SERVICE = 'remote-connect:WsIPCClient';
 const REMOTE_CONNECT_DISCOVERY_SERVICE = 'remote-connect:discoverLanInstances';
+const PLAN_MODE_SERVICE_ID = 'plan-mode';
+
+interface PlanModeServiceLike {
+  enter(sessionId: string): { planFilePath: string; active: boolean };
+  leave?(sessionId: string): unknown;
+  exit(sessionId: string): unknown;
+  isActive(sessionId?: string): boolean;
+  getState(sessionId?: string): { planFilePath: string; active: boolean; hasExited?: boolean } | null;
+  readPlan(sessionId: string): string | null;
+}
+
+interface PlanCommandResult {
+  ok: boolean;
+  message: string;
+  followupPrompt?: string;
+}
 
 function createToolInvocationFromFunctionCall(
   part: any,
@@ -460,6 +476,19 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     });
   }
 
+  private getPlanModeService(): PlanModeServiceLike | undefined {
+    return (this.api?.services as any)?.get?.(PLAN_MODE_SERVICE_ID) as PlanModeServiceLike | undefined;
+  }
+
+  private syncPlanModeStatus(): void {
+    try {
+      const active = this.getPlanModeService()?.isActive(this.sessionId) === true;
+      this.appHandle?.setPlanModeActive(active);
+    } catch {
+      this.appHandle?.setPlanModeActive(false);
+    }
+  }
+
   private getLocalExtensionService<T>(id: string): T | undefined {
     const api = this.originalApi ?? this.api;
     return (api?.services as any)?.get?.(id) as T | undefined;
@@ -552,8 +581,10 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
           });
         this.appHandle?.setToolInvocations(invocations);
         this.refreshToolDetailIfNeeded();
+        this.syncPlanModeStatus();
       };
       handle.on('state', refreshUI);
+      handle.on('progress', refreshUI);
       handle.on('output', refreshUI);
       handle.on('child', (childHandle: any) => {
         this._activeHandles.set(childHandle.id, childHandle);
@@ -593,6 +624,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       if (sid === this.sessionId) {
         this.appHandle?.finalizeResponse(durationMs);
         this.appHandle?.clearNotificationContext();
+        this.syncPlanModeStatus();
       }
     });
 
@@ -754,6 +786,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       const element = React.createElement(App, {
         onReady: (handle: AppHandle) => {
           this.appHandle = handle;
+          this.syncPlanModeStatus();
           resolve();
         },
         onSubmit: (text: string) => this.handleInput(text),
@@ -799,6 +832,9 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onToolApply: (toolId: string, applied: boolean) => {
           (this.backend as any).getToolHandle?.(toolId)?.apply(applied);
         },
+        onToolMessage: (toolId: string, type: string, data?: unknown) => {
+          (this.backend as any).getToolHandle?.(toolId)?.send(type, data);
+        },
         onAddCommandPattern: (toolName: string, command: string, type: 'allow' | 'deny') => {
           this.addCommandPattern(toolName, command, type);
         },
@@ -837,6 +873,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         } : undefined,
         supportsHeadlessTransition: this.supportsHeadlessTransition,
         onSummarize: () => this.handleSummarize(),
+        onPlanCommand: (arg: string) => this.handlePlanCommand(arg),
         onListAgents: () => this.handleListAgents(),
         onSelectAgent: (name: string) => this.handleSelectAgent(name),
         onDream: () => this.handleDream(),
@@ -1314,6 +1351,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     this.sessionId = generateSessionId();
     this.currentToolIds.clear();
     this._activeHandles.clear();
+    this.appHandle?.setPlanModeActive(false);
   }
 
   /** 打开工具详情 */
@@ -1512,6 +1550,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     this.sessionId = id;
     this.currentToolIds.clear();
     this._activeHandles.clear();
+    this.syncPlanModeStatus();
 
     const history = await this.backend.getHistory?.(id) ?? [];
 
@@ -1919,6 +1958,70 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
     } catch (err) {
       return { ok: false, message: `升级失败: ${err instanceof Error ? err.message : String(err)}` };
     }
+  }
+
+  private async handlePlanCommand(arg: string): Promise<PlanCommandResult> {
+    const service = (this.api?.services as any)?.get?.(PLAN_MODE_SERVICE_ID) as PlanModeServiceLike | undefined;
+    if (!service) {
+      return { ok: false, message: 'Plan Mode 服务不可用。' };
+    }
+
+    const normalized = arg.trim();
+    if (normalized === 'status' || normalized === 'open') {
+      const state = service.getState(this.sessionId);
+      this.syncPlanModeStatus();
+      const plan = service.readPlan(this.sessionId) ?? '';
+      const preview = plan.trim()
+        ? `\n\n当前计划预览：\n${plan.trim().split(/\r?\n/).slice(0, 20).join('\n')}${plan.trim().split(/\r?\n/).length > 20 ? '\n…' : ''}`
+        : '\n\n当前计划为空。';
+      return {
+        ok: true,
+        message: state
+          ? `Plan Mode: ${state.active ? 'active' : 'inactive'}\n计划文件：${state.planFilePath}${preview}`
+          : '当前会话尚未进入 Plan Mode。输入 /plan 可进入。',
+      };
+    }
+
+    if (!normalized) {
+      const currentState = service.getState(this.sessionId);
+      if (currentState?.active) {
+        const state = (service.leave?.(this.sessionId) ?? service.exit(this.sessionId)) as any;
+        this.syncPlanModeStatus();
+        return {
+          ok: true,
+          message: state
+            ? `已退出 Plan Mode。计划文件：${state.planFilePath}`
+            : '已退出 Plan Mode。',
+        };
+      }
+
+      const state = service.enter(this.sessionId);
+      this.syncPlanModeStatus();
+      const plan = service.readPlan(this.sessionId) ?? '';
+      return { ok: true, message: `已进入 Plan Mode（当前 Agent: ${this.agentName ?? 'default'}）。\n计划文件：${state.planFilePath}\n${plan.trim() ? '已有计划文件，模型会在下一轮读取/更新它。' : '计划文件为空，请让模型先探索并使用 write_plan 写入计划。'}` };
+    }
+
+    if (normalized === 'exit') {
+      const state = (service.leave?.(this.sessionId) ?? service.exit(this.sessionId)) as any;
+      this.syncPlanModeStatus();
+      return {
+        ok: true,
+        message: state
+          ? `已退出 Plan Mode。计划文件：${state.planFilePath}`
+          : '当前会话尚未进入 Plan Mode。',
+      };
+    }
+
+    const state = service.enter(this.sessionId);
+    this.syncPlanModeStatus();
+    const plan = service.readPlan(this.sessionId) ?? '';
+    const message = [
+      `已进入 Plan Mode（当前 Agent: ${this.agentName ?? 'default'}）。`,
+      `计划文件：${state.planFilePath}`,
+      plan.trim() ? '已有计划文件，模型会在下一轮读取/更新它。' : '计划文件为空，请让模型先探索并使用 write_plan 写入计划。',
+      normalized ? `已附带任务描述，接下来将发送给模型：${normalized}` : undefined,
+    ].filter(Boolean).join('\n');
+    return { ok: true, message, followupPrompt: normalized || undefined };
   }
 
   private async handleSummarize(): Promise<{ ok: boolean; message: string }> {

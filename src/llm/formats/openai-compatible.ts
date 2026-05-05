@@ -228,6 +228,10 @@ export class OpenAICompatibleFormat implements FormatAdapter {
 
     if (choice?.delta?.content) {
       chunk.textDelta = choice.delta.content;
+      chunk.partsDelta = [
+        ...(chunk.partsDelta || []),
+        { text: choice.delta.content },
+      ];
     }
 
     // 流式边执行优化：累积工具调用分片，并在检测到工具参数完整时立即输出。
@@ -238,22 +242,34 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     // 让 StreamingToolExecutor 可以在 LLM 还在输出后续工具参数时提前启动执行。
     // finish_reason 到达时，最后一个工具也输出。
     const pending = state.pendingToolCalls as Map<number, { callId?: string; name: string; arguments: string; emitted?: boolean }>;
+    const emitPendingToolCall = (entry: { callId?: string; name: string; arguments: string; emitted?: boolean }) => {
+      if (entry.emitted || !entry.name) return;
+      try {
+        const args = JSON.parse(entry.arguments || '{}');
+        if (!args || typeof args !== 'object' || Array.isArray(args)) return;
+        if (!chunk.functionCalls) chunk.functionCalls = [];
+        chunk.functionCalls.push({
+          functionCall: {
+            name: entry.name,
+            args,
+            callId: entry.callId,
+          },
+        });
+        chunk.partsDelta = [
+          ...(chunk.partsDelta || []),
+          chunk.functionCalls[chunk.functionCalls.length - 1],
+        ];
+        entry.emitted = true;
+      } catch {
+        // 参数 JSON 尚未完整，等待后续 delta 或 finish_reason。
+      }
+    };
     if (choice?.delta?.tool_calls) {
       for (const tc of choice.delta.tool_calls) {
         // 新 index 出现时，前面未输出的工具调用的参数一定已经完整，立即输出
         if (!pending.has(tc.index) && pending.size > 0) {
-          for (const [idx, entry] of pending) {
-            if (!entry.emitted && entry.name) {
-              if (!chunk.functionCalls) chunk.functionCalls = [];
-              chunk.functionCalls.push({
-                functionCall: {
-                  name: entry.name,
-                  args: JSON.parse(entry.arguments),
-                  callId: entry.callId,
-                },
-              });
-              entry.emitted = true;
-            }
+          for (const [, entry] of pending) {
+            emitPendingToolCall(entry);
           }
         }
         if (!pending.has(tc.index)) {
@@ -263,6 +279,9 @@ export class OpenAICompatibleFormat implements FormatAdapter {
         if (tc.id) entry.callId = normalizeCallId(tc.id) ?? entry.callId;
         if (tc.function?.name) entry.name = tc.function.name;
         if (tc.function?.arguments) entry.arguments += tc.function.arguments;
+        // 单个 tool_call 没有“下一个 index”可作为完成信号；当参数 JSON 已经完整时立即输出，
+        // 让 AskQuestionFirst 这类交互工具可以在 message 结束前显示面板。
+        emitPendingToolCall(entry);
       }
     }
     // finish_reason 到达时，输出最后一个（及所有尚未输出的）工具调用
@@ -270,17 +289,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       chunk.finishReason = choice.finish_reason;
       if (pending.size > 0) {
         for (const [, entry] of pending) {
-          if (!entry.emitted && entry.name) {
-            if (!chunk.functionCalls) chunk.functionCalls = [];
-            chunk.functionCalls.push({
-              functionCall: {
-                name: entry.name,
-                args: JSON.parse(entry.arguments),
-                callId: entry.callId,
-              },
-            });
-            entry.emitted = true;
-          }
+          emitPendingToolCall(entry);
         }
         pending.clear();
       }

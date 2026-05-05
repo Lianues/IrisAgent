@@ -6,6 +6,8 @@ import type { ApprovalChoice, ConfirmChoice, PendingConfirm, ThinkingEffortLevel
 import type { ApprovalPage } from '../hooks/use-approval';
 import { ApprovalBar } from './ApprovalBar';
 import { ConfirmBar } from './ConfirmBar';
+import { AskQuestionFirstPanel } from './AskQuestionFirstPanel';
+import { PlanApprovalBar } from './PlanApprovalBar';
 import { HintBar } from './HintBar';
 import { InputBar, type PendingFile } from './InputBar';
 import type { Command } from '../input-commands';
@@ -17,6 +19,8 @@ interface BottomPanelProps {
   hasMessages: boolean;
   pendingConfirm: PendingConfirm | null;
   confirmChoice: ConfirmChoice;
+  askQuestionInvocation?: ToolInvocation;
+  askQuestionKey?: string;
   pendingApprovals: ToolInvocation[];
   approvalChoice: ApprovalChoice;
   approvalPage?: ApprovalPage;
@@ -24,6 +28,7 @@ interface BottomPanelProps {
   queueSize: number;
   onSubmit: (text: string) => void;
   onPrioritySubmit: (text: string) => void;
+  onToolMessage?: (toolId: string, type: string, data?: unknown) => void;
   agentName?: string;
   modeName?: string;
   modelName: string;
@@ -33,6 +38,8 @@ interface BottomPanelProps {
   exitConfirmArmed: boolean;
   /** 当前后台运行中的异步子代理数量 */
   backgroundTaskCount?: number;
+  /** 当前会话是否处于 Plan Mode */
+  planModeActive?: boolean;
   /** 当前后台运行中的委派任务数量（delegate_to_agent） */
   delegateTaskCount?: number;
   /** 所有后台任务的累计 token 数 */
@@ -59,6 +66,8 @@ export function BottomPanel({
   hasMessages,
   pendingConfirm,
   confirmChoice,
+  askQuestionInvocation,
+  askQuestionKey,
   pendingApprovals,
   approvalChoice,
   approvalPage,
@@ -66,6 +75,7 @@ export function BottomPanel({
   queueSize,
   onSubmit,
   onPrioritySubmit,
+  onToolMessage,
   agentName,
   modeName,
   modelName,
@@ -74,6 +84,7 @@ export function BottomPanel({
   copyMode,
   exitConfirmArmed,
   backgroundTaskCount,
+  planModeActive,
   delegateTaskCount,
   backgroundTaskTokens,
   backgroundTaskSpinnerFrame,
@@ -87,12 +98,16 @@ export function BottomPanel({
   supportsHeadlessTransition,
 }: BottomPanelProps) {
   // 输入框仅在审批/确认对话框期间完全禁用
-  const inputDisabled = !!(pendingConfirm || pendingApprovals.length > 0);
+  const inputDisabled = !!(pendingConfirm || askQuestionInvocation || pendingApprovals.length > 0);
 
   return (
     <box flexDirection="column" flexShrink={0} paddingX={1} paddingBottom={1} paddingTop={hasMessages ? 1 : 0}>
       {pendingConfirm ? (
         <ConfirmBar message={pendingConfirm.message} choice={confirmChoice} />
+      ) : askQuestionInvocation && onToolMessage ? (
+        <AskQuestionFirstPanel key={askQuestionKey} invocation={askQuestionInvocation} onToolMessage={onToolMessage} planModeActive={planModeActive} />
+      ) : pendingApprovals.length > 0 && pendingApprovals[0].toolName === 'ExitPlanMode' ? (
+        <PlanApprovalBar invocation={pendingApprovals[0]} remainingCount={pendingApprovals.length} choice={approvalChoice} />
       ) : pendingApprovals.length > 0 ? (
         <ApprovalBar
           toolName={pendingApprovals[0].toolName}
@@ -131,6 +146,7 @@ export function BottomPanel({
             contextTokens={contextTokens}
             contextWindow={contextWindow}
             queueSize={queueSize}
+            planModeActive={planModeActive}
             remoteHost={remoteHost}
             backgroundTaskCount={backgroundTaskCount}
             delegateTaskCount={delegateTaskCount}

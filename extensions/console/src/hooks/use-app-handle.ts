@@ -26,6 +26,8 @@ export interface AppHandle {
   setGenerating(generating: boolean): void;
   setGeneratingLabel(label: string | undefined): void;
   clearMessages(): void;
+  /** 更新当前会话 Plan Mode 指示状态 */
+  setPlanModeActive(active: boolean): void;
   setUserTokens(tokenCount: number): void;
   addSummaryMessage(summaryText: string, tokenCount?: number): void;
   commitTools(): void;
@@ -105,6 +107,8 @@ export interface UseAppHandleReturn {
   pendingApprovals: ToolInvocation[];
   pendingApplies: ToolInvocation[];
   toolInvocations: ToolInvocation[];
+  /** 当前会话是否处于 Plan Mode */
+  planModeActive: boolean;
   /** 当前后台运行中的异步子代理数量 */
   backgroundTaskCount: number;
   /** 当前后台运行中的委派任务数量（delegate_to_agent），与子代理分开计数 */
@@ -130,6 +134,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendin
   const [retryInfo, setRetryInfo] = useState<RetryInfo | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<ToolInvocation[]>([]);
   const [pendingApplies, setPendingApplies] = useState<ToolInvocation[]>([]);
+  const [planModeActive, setPlanModeActive] = useState(false);
   const [toolInvocations, setToolInvocationsState] = useState<ToolInvocation[]>([]);
   const [backgroundTaskCount, setBackgroundTaskCount] = useState(0);
   // [职责分离] 委派任务独立计数，不与异步子代理的 spinner / token 混用
@@ -347,6 +352,9 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendin
         streamPartsRef.current = [];
         uncommittedStreamPartsRef.current = [];
       },
+      setPlanModeActive(active: boolean) {
+        setPlanModeActive(active);
+      },
       commitTools,
       setUserTokens(tokenCount: number) {
         setMessages((prev) => {
@@ -497,6 +505,7 @@ export function useAppHandle({ onReady, undoRedoRef, drainCallbackRef, setPendin
     retryInfo,
     pendingApprovals,
     pendingApplies,
+    planModeActive,
     toolInvocations,
     backgroundTaskCount,
     delegateTaskCount,

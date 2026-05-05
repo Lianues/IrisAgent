@@ -10334,6 +10334,10 @@ function createNotificationHandler() {
 
 // src/web-platform.ts
 var logger3 = createExtensionLogger("WebPlatform");
+var PLAN_MODE_SERVICE_ID = "plan-mode";
+function getPlanModeService(agent) {
+  return agent.api?.services?.get?.(PLAN_MODE_SERVICE_ID);
+}
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -10918,6 +10922,52 @@ class WebPlatform extends PlatformAdapter {
       }
       return createSessionsHandlers(storage).remove(req, res, params);
     });
+    this.router.post("/api/plan-mode", async (req, res) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) {
+          sendJSON(res, 503, { error: "Plan Mode 服务不可用" });
+          return;
+        }
+        const body = await readBody(req).catch(() => ({}));
+        const sessionId = typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : `web-plan-${crypto4.randomUUID()}`;
+        const state = service.enter(sessionId);
+        const plan = service.readPlan(sessionId) ?? "";
+        sendJSON(res, 200, { state: { ...state, sessionId }, plan });
+      } catch (err) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : "进入 Plan Mode 失败" });
+      }
+    });
+    this.router.get("/api/plan-mode/:id", async (req, res, params) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) {
+          sendJSON(res, 503, { error: "Plan Mode 服务不可用" });
+          return;
+        }
+        const state = service.getState(params.id);
+        const plan = service.readPlan(params.id) ?? "";
+        sendJSON(res, 200, { state, plan });
+      } catch (err) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : "读取 Plan Mode 状态失败" });
+      }
+    });
+    this.router.post("/api/plan-mode/:id/exit", async (req, res, params) => {
+      try {
+        const agent = this.resolveAgent(req);
+        const service = getPlanModeService(agent);
+        if (!service) {
+          sendJSON(res, 503, { error: "Plan Mode 服务不可用" });
+          return;
+        }
+        const state = service.leave?.(params.id) ?? service.exit(params.id);
+        sendJSON(res, 200, { state });
+      } catch (err) {
+        sendJSON(res, 500, { error: err instanceof Error ? err.message : "退出 Plan Mode 失败" });
+      }
+    });
     const deploy = createDeployHandlers(configPath, () => this.deployToken);
     this.router.get("/api/deploy/state", deploy.getState);
     this.router.get("/api/deploy/detect", deploy.detect);
@@ -11053,6 +11103,25 @@ class WebPlatform extends PlatformAdapter {
           return;
         }
         handle.apply(body.applied);
+        sendJSON(res, 200, { ok: true });
+      } catch (err) {
+        sendJSON(res, 400, { error: err instanceof Error ? err.message : "操作失败" });
+      }
+    });
+    this.router.post("/api/tools/:id/send", async (req, res, params) => {
+      try {
+        const { backend } = this.resolveAgent(req);
+        const body = await readBody(req);
+        const handle = backend.getToolHandle?.(params.id);
+        if (!handle) {
+          sendJSON(res, 404, { error: "未找到工具调用" });
+          return;
+        }
+        if (typeof body.type !== "string" || !body.type.trim()) {
+          sendJSON(res, 400, { error: "缺少 type 参数" });
+          return;
+        }
+        handle.send(body.type, body.data);
         sendJSON(res, 200, { ok: true });
       } catch (err) {
         sendJSON(res, 400, { error: err instanceof Error ? err.message : "操作失败" });

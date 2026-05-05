@@ -23,6 +23,8 @@ export interface AppProps {
   onClearRedoStack: () => void;
   onToolApproval: (toolId: string, approved: boolean) => void;
   onToolApply: (toolId: string, applied: boolean) => void;
+  /** 向交互式工具发送上行消息 */
+  onToolMessage?: (toolId: string, type: string, data?: unknown) => void;
   /** shell/bash 审批中用户选择"始终允许"或"始终询问"时，持久化命令模式 */
   onAddCommandPattern?: (toolName: string, command: string, type: 'allow' | 'deny') => void;
   onAbort: () => void;
@@ -52,6 +54,8 @@ export interface AppProps {
   /** 当前宿主是否支持 TUI 内 /headless 切换。attach 客户端不支持远程关闭宿主平台。 */
   supportsHeadlessTransition?: boolean;
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
+  /** Plan Mode 命令处理（/plan）。返回需要显示在聊天区的提示文本。 */
+  onPlanCommand?: (arg: string) => Promise<{ ok: boolean; message: string; followupPrompt?: string }>;
   /** 获取可切换的 Agent 列表（/agent 命令触发） */
   onListAgents?: () => AgentDefinitionLike[];
   /** 用户在 agent-list 视图中确认选择后，执行实际的 Agent 切换 */

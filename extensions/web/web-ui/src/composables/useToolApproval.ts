@@ -68,6 +68,18 @@ async function abort(id: string) {
   }
 }
 
+async function sendMessage(id: string, type: string, data?: unknown) {
+  if (inflightIds.has(id)) return
+  inflightIds.add(id)
+  try {
+    await api.sendToolMessage(id, type, data)
+  } catch (err) {
+    console.error('[useToolApproval] sendMessage failed:', err)
+  } finally {
+    inflightIds.delete(id)
+  }
+}
+
 export function useToolApproval() {
   return {
     toolInvocations,
@@ -75,6 +87,6 @@ export function useToolApproval() {
     pendingApplies,
     setToolInvocations,
     clearToolState,
-    approve, apply, abort,
+    approve, apply, abort, sendMessage,
   }
 }

@@ -120,13 +120,18 @@ export interface StatusInfo {
 /** 工具调用状态 */
 export type ToolStatus =
   | 'pending'
+  | 'streaming'
+  | 'queued'
   | 'running'
+  | 'executing'
   | 'awaiting_approval'
   | 'awaiting_apply'
   | 'approved'
   | 'rejected'
   | 'applied'
   | 'skipped'
+  | 'success'
+  | 'warning'
   | 'completed'
   | 'error'
 
@@ -140,6 +145,22 @@ export interface ToolInvocation {
   error?: string
   createdAt: number
   updatedAt: number
+  progress?: Record<string, unknown>
+}
+
+export interface PlanModeState {
+  sessionId: string
+  active: boolean
+  hasExited?: boolean
+  needsExitReminder?: boolean
+  planFilePath: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+export interface PlanModeResponse {
+  state: PlanModeState | null
+  plan: string
 }
 
 /** 模型用量元数据 */

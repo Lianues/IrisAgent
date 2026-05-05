@@ -189,6 +189,11 @@ function canUseInteractiveApproval(toolState?: ToolStateManager, invocationId?: 
 function analyzeStructuredToolResult(result: unknown): { status: 'success' | 'warning' | 'error'; error?: string } | undefined {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
   const record = result as Record<string, unknown>;
+
+  if (record.cancelled === true) {
+    return { status: 'warning', error: typeof record.message === 'string' ? record.message : '用户取消了工具交互。' };
+  }
+
   const successCount = typeof record.successCount === 'number' ? record.successCount : undefined;
   const failCount = typeof record.failCount === 'number' ? record.failCount : undefined;
   const totalCount = typeof record.totalCount === 'number' ? record.totalCount : undefined;

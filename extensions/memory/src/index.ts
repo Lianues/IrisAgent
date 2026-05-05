@@ -101,6 +101,11 @@ function getActiveTurnSessionId(state: AgentMemoryState): string | undefined {
   return (state.cachedApi?.backend as any)?.getActiveSessionId?.() ?? state.fallbackSessionId;
 }
 
+function isPlanModeActive(state: AgentMemoryState, sessionId: string): boolean {
+  const service = (state.cachedApi?.services as any)?.get?.('plan-mode');
+  return service?.isActive?.(sessionId) === true;
+}
+
 // ============ 辅助：初始化 / 销毁 Provider ============
 
 /** 创建 Provider、注册工具、注入系统提示词 */
@@ -452,6 +457,7 @@ export default definePlugin({
       priority: 100,
       async onAfterChat({ sessionId }) {
         if (!state.activeProvider || !state.cachedApi || !state.currentConfig.autoExtract) return undefined;
+        if (isPlanModeActive(state, sessionId)) return undefined;
         const s = getSessionState(state, sessionId);
 
         if (s.memoryWrittenThisTurn) return undefined;
@@ -496,6 +502,7 @@ export default definePlugin({
         if (!state.activeProvider || !state.cachedApi) return undefined;
         const sid = getActiveTurnSessionId(state);
         if (!sid) return undefined;
+        if (isPlanModeActive(state, sid)) return undefined;
 
         const tokens = (content as any).usageMetadata?.totalTokenCount;
         if (!tokens || tokens <= 0) return undefined;

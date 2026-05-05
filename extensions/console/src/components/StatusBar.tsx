@@ -11,6 +11,8 @@ interface StatusBarProps {
   contextTokens: number;
   contextWindow?: number;
   queueSize?: number;
+  /** 当前会话是否处于 Plan Mode */
+  planModeActive?: boolean;
   /** 远程连接的主机地址（非空时显示远程标识） */
   remoteHost?: string;
   /** 当前后台运行中的异步子代理数量 */
@@ -23,7 +25,7 @@ interface StatusBarProps {
   backgroundTaskSpinnerFrame?: number;
 }
 
-export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, remoteHost, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }: StatusBarProps) {
+export function StatusBar({ agentName, modeName, modelName, contextTokens, contextWindow, queueSize, planModeActive, remoteHost, backgroundTaskCount, delegateTaskCount, backgroundTaskTokens, backgroundTaskSpinnerFrame }: StatusBarProps) {
   const resolvedModeName = modeName ?? 'normal';
   const modeNameCapitalized = resolvedModeName.charAt(0).toUpperCase() + resolvedModeName.slice(1);
   const contextStr = contextTokens > 0 ? contextTokens.toLocaleString() : '-';
@@ -40,7 +42,7 @@ export function StatusBar({ agentName, modeName, modelName, contextTokens, conte
 
   return (
     <box flexDirection="row" marginTop={1}>
-      <box flexGrow={1}>
+      <box flexGrow={1} flexShrink={1}>
         <text>
           {remoteHost ? <span fg={C.warn}><strong>[远程: {remoteHost}]</strong></span> : null}
           {remoteHost ? <span fg={C.dim}> {ICONS.separator} </span> : null}
@@ -75,8 +77,17 @@ export function StatusBar({ agentName, modeName, modelName, contextTokens, conte
           ) : null}
         </text>
       </box>
+      {planModeActive ? (
+        <box flexShrink={0}>
+          <text>
+            <span fg={C.dim}> {ICONS.separator}  </span>
+            <span fg={C.warn}><strong>{ICONS.planMode} Plan Mode</strong></span>
+            <span fg={C.dim}>  </span>
+          </text>
+        </box>
+      ) : null}
       <box flexShrink={0}>
-        <text fg={C.dim}>ctx {contextStr}{contextLimitStr}{contextPercent}</text>
+        <text fg={C.dim}> ctx {contextStr}{contextLimitStr}{contextPercent}</text>
       </box>
     </box>
   );

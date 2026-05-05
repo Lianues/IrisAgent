@@ -46,6 +46,7 @@ interface UseCommandDispatchOptions {
   onSummarize: () => Promise<{ ok: boolean; message: string }>;
   /** 获取可切换的 Agent 列表，返回后由 /agent 命令切换到 agent-list 视图 */
   onListAgents?: () => AgentDefinitionLike[];
+  onPlanCommand?: (arg: string) => Promise<{ ok: boolean; message: string; followupPrompt?: string }>;
   setAgentList: SetAgentList;
   onDream?: () => Promise<{ ok: boolean; message: string }>;
   onListMemories?: () => Promise<MemoryItem[]>;
@@ -99,6 +100,7 @@ export function useCommandDispatch({
   onExit,
   onEnterHeadless,
   onListAgents,
+  onPlanCommand,
   setAgentList,
 
   onDream,
@@ -387,6 +389,28 @@ export function useCommandDispatch({
       return;
     }
 
+    if (text === '/plan' || text.startsWith('/plan ')) {
+      const arg = text.slice('/plan'.length).trim();
+      const planMessageOptions = { label: 'plan' as const };
+      if (!onPlanCommand) {
+        appendCommandMessage(setMessages, 'Plan Mode 服务不可用。', { ...planMessageOptions, isError: true });
+        return;
+      }
+      void onPlanCommand(arg).then((result) => {
+        appendCommandMessage(setMessages, result.message, result.ok ? planMessageOptions : { ...planMessageOptions, isError: true });
+        if (result.ok && result.followupPrompt) {
+          onSubmit(result.followupPrompt);
+        }
+      }).catch((err) => {
+        appendCommandMessage(
+          setMessages,
+          `Plan Mode 操作失败: ${err instanceof Error ? err.message : String(err)}`,
+          { ...planMessageOptions, isError: true },
+        );
+      });
+      return;
+    }
+
     if (text.startsWith('/sh ') || text === '/sh') {
       const cmd = text.slice(4).trim();
       if (!cmd) return;
@@ -444,6 +468,7 @@ export function useCommandDispatch({
     onDream,
     onSwitchModel,
     onSummarize,
+    onPlanCommand,
     onUndo,
     queueClear,
     queueSize,

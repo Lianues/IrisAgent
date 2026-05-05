@@ -1691,6 +1691,10 @@ function getSessionState(state, sessionId) {
 function getActiveTurnSessionId(state) {
   return state.cachedApi?.backend?.getActiveSessionId?.() ?? state.fallbackSessionId;
 }
+function isPlanModeActive(state, sessionId) {
+  const service = state.cachedApi?.services?.get?.("plan-mode");
+  return service?.isActive?.(sessionId) === true;
+}
 async function enableMemorySystem(state, ctx) {
   if (!state.cachedApi || state.activeProvider)
     return;
@@ -2019,6 +2023,8 @@ var src_default = definePlugin({
       async onAfterChat({ sessionId }) {
         if (!state.activeProvider || !state.cachedApi || !state.currentConfig.autoExtract)
           return;
+        if (isPlanModeActive(state, sessionId))
+          return;
         const s = getSessionState(state, sessionId);
         if (s.memoryWrittenThisTurn)
           return;
@@ -2057,6 +2063,8 @@ var src_default = definePlugin({
           return;
         const sid = getActiveTurnSessionId(state);
         if (!sid)
+          return;
+        if (isPlanModeActive(state, sid))
           return;
         const tokens = content.usageMetadata?.totalTokenCount;
         if (!tokens || tokens <= 0)

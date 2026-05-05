@@ -32,6 +32,13 @@ const FILE_TYPE_ICONS: Record<string, string> = {
   image: '📷', document: '📄', audio: '🎵', video: '🎬',
 };
 
+function isPlanModeToggleShortcut(key: any): boolean {
+  return (key.shift && key.name === 'tab')
+    || key.name === 'backtab'
+    || key.name === 'shift-tab'
+    || key.sequence === '\x1b[Z';
+}
+
 interface InputBarProps {
   disabled: boolean;
   isGenerating: boolean;
@@ -147,6 +154,12 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
       rapidKeyCountRef.current++;
     } else if (delta > 80) {
       rapidKeyCountRef.current = 0;
+    }
+
+    // Shift+Tab 是全局 Plan Mode 切换快捷键，输入框不应插入 Tab 或消费该按键。
+    if (isPlanModeToggleShortcut(key)) {
+      key.preventDefault?.();
+      return;
     }
 
     // 指令面板导航

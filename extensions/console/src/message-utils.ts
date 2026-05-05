@@ -102,7 +102,7 @@ export function appendAssistantParts(prev: ChatMessage[], partsToAppend: Message
 export function appendCommandMessage(
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>,
   text: string,
-  options?: { isError?: boolean },
+  options?: { isError?: boolean; label?: ChatMessage['commandLabel'] },
 ): void {
   setMessages((prev) => [
     ...prev.filter((message) => !message.isCommand),
@@ -111,6 +111,7 @@ export function appendCommandMessage(
       role: 'assistant',
       parts: [{ type: 'text', text }],
       isCommand: true,
+      commandLabel: options?.label,
       isError: options?.isError,
     },
   ]);

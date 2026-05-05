@@ -97,6 +97,8 @@ export interface ChatMessage {
   createdAt?: number;
   isError?: boolean;
   isCommand?: boolean;
+  /** 命令/系统反馈消息的显示标签，默认 shell */
+  commandLabel?: 'shell' | 'plan' | string;
   /** 是否由异步子代理 notification turn 触发 */
   isNotification?: boolean;
   /** notification turn 的任务描述（供显示） */
@@ -273,8 +275,10 @@ export const MessageItem = React.memo(function MessageItem(
     );
   }
 
-  const labelName = isSummary ? 'context' : isUser ? 'you' : (msg.isCommand ? 'shell' : (msg.modelName || modelName || 'iris').toLowerCase());
-  const labelColor = isSummary ? C.warn : isUser ? C.roleUser : (msg.isError ? C.error : (msg.isCommand ? C.command : C.roleAssistant));
+  const commandLabel = msg.commandLabel ?? 'shell';
+  const labelName = isSummary ? 'context' : isUser ? 'you' : (msg.isCommand ? commandLabel : (msg.modelName || modelName || 'iris').toLowerCase());
+  const commandColor = commandLabel === 'plan' ? C.warn : C.command;
+  const labelColor = isSummary ? C.warn : isUser ? C.roleUser : (msg.isError ? C.error : (msg.isCommand ? commandColor : C.roleAssistant));
   const headerText = `${ICONS.separator} ${labelName} `;
 
   const displayParts: MessagePart[] = [...msg.parts];
