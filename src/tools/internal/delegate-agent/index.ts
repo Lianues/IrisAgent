@@ -45,14 +45,20 @@ const MAX_CONCURRENT_DELEGATE_PER_TARGET = 5;
  * 同时明确与 sub_agent 的区别，避免 LLM 混淆。
  */
 export function createDelegateToAgentTool(deps: DelegateAgentToolDeps): ToolDefinition {
-  // 构建可委派 Agent 列表描述
-  const peers = deps.agentNetwork.listPeers();
-  const peerDescriptions = peers.map((name: string) => {
-    const desc = deps.agentNetwork.getPeerDescription(name);
-    return `  - ${name}: ${desc ?? '(无描述)'}`;
-  }).join('\n');
+  // 可委派 Agent 列表必须动态读取：
+  // - 启动阶段 IrisHost 顺序创建 Core，工具创建时 peers 可能尚未全部就绪；
+  // - 运行时 Web 可新增/删除 Agent，静态快照会导致工具描述和错误提示过期。
+  const getPeers = () => deps.agentNetwork.listPeers();
+  const buildPeerDescriptions = () => {
+    const peers = getPeers();
+    if (peers.length === 0) return '  (当前没有可委派的其他 Agent)';
+    return peers.map((name: string) => {
+      const desc = deps.agentNetwork.getPeerDescription(name);
+      return `  - ${name}: ${desc ?? '(无描述)'}`;
+    }).join('\n');
+  };
 
-  const toolDescription = `将任务委派给另一个独立的 Agent 执行（fire-and-forget）。
+  const buildToolDescription = () => `将任务委派给另一个独立的 Agent 执行（fire-and-forget）。
 目标 Agent 拥有自己的人格、记忆、工具集和会话历史，是一个完全独立的实体。
 完成后结果会通过 <task-notification> 自动通知你。
 
@@ -60,7 +66,7 @@ export function createDelegateToAgentTool(deps: DelegateAgentToolDeps): ToolDefi
 delegate_to_agent 是把任务交给一个真正的、不同的 Agent。
 
 可委派的 Agent：
-${peerDescriptions}
+${buildPeerDescriptions()}
 
 使用原则：
 - 选择最适合任务的 Agent 进行委派
@@ -72,7 +78,9 @@ ${peerDescriptions}
   return {
     declaration: {
       name: 'delegate_to_agent',
-      description: toolDescription,
+      get description() {
+        return buildToolDescription();
+      },
       parameters: {
         type: 'object',
         properties: {
@@ -97,8 +105,10 @@ ${peerDescriptions}
       // 1. 校验目标 Agent 存在
       const targetBackend = deps.agentNetwork.getPeerBackend(targetAgentName);
       if (!targetBackend) {
+        const peers = getPeers();
+        const available = peers.length > 0 ? peers.join(', ') : '(无)';
         return {
-          error: `目标 Agent "${targetAgentName}" 不存在。可用的 Agent: ${peers.join(', ')}`,
+          error: `目标 Agent "${targetAgentName}" 不存在。可用的 Agent: ${available}`,
         };
       }
 
