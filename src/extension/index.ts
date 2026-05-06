@@ -19,12 +19,14 @@ export type { ExtensionDiscoveryOptions } from './registry';
 export {
   deleteInstalledExtension,
   inspectGitExtensionUpdate,
-  getRemoteExtensionIndexUrl,
   installExtension,
   installGitExtension,
   installLocalExtension,
   updateGitExtension,
-} from './installer';
+  resolveScopeInstallDir,
+} from 'irises-extension-sdk/utils';
+
+export { getRemoteExtensionInstallIndexUrl as getRemoteExtensionIndexUrl } from 'irises-extension-sdk/utils';
 
 export type {
   ExtensionInstallOptions,
@@ -32,9 +34,7 @@ export type {
   GitExtensionUpdateOptions,
   GitExtensionUpdatePreviewResult,
   InstallScope,
-} from './installer';
-
-export { resolveScopeInstallDir } from './installer';
+} from 'irises-extension-sdk/utils';
 
 // ── 插件系统实现 ───────────────────────────────────────────
 

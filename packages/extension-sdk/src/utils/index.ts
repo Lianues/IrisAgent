@@ -52,6 +52,29 @@ export {
   getInstalledExtensionsDir,
 } from './runtime-paths.js';
 
+// ---- installer ----
+export type {
+  ExtensionInstallOptions,
+  GitExtensionInstallOptions,
+  GitExtensionUpdateOptions,
+  GitExtensionUpdatePreviewResult,
+  InstallScope,
+  ValidatedInstallableExtensionResult,
+} from './installer.js';
+export {
+  assertInstallableExtensionPackage,
+  copyExtensionDirectory,
+  deleteInstalledExtension,
+  getRemoteExtensionIndexUrl as getRemoteExtensionInstallIndexUrl,
+  installExtension,
+  installGitExtension,
+  installLocalExtension,
+  inspectGitExtensionUpdate,
+  resolveScopeInstallDir,
+  resolveScopePluginsYamlPath,
+  updateGitExtension,
+} from './installer.js';
+
 // ---- remote ----
 export type { RemoteExtensionOptions } from './remote.js';
 export {

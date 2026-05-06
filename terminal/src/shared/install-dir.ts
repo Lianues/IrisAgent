@@ -1,15 +1,17 @@
 import fs from "node:fs"
 import path from "node:path"
-import { getInstalledExtensionsDir, resolveRuntimeDataDir } from "irises-extension-sdk/utils"
+import {
+  resolveScopeInstallDir,
+  resolveScopePluginsYamlPath,
+  type InstallScope,
+} from "irises-extension-sdk/utils"
 
 /**
  * 安装范围：
  *   - global：~/.iris/extensions/，所有 agent 共享
  *   - agent ：~/.iris/agents/<name>/extensions/，仅指定 agent 可见，优先级最高
  */
-export type InstallScope =
-  | { kind: "global" }
-  | { kind: "agent"; agentName: string }
+export type { InstallScope }
 
 /** 是否为 global scope（type guard） */
 export function isGlobalScope(scope: InstallScope): scope is { kind: "global" } {
@@ -18,16 +20,12 @@ export function isGlobalScope(scope: InstallScope): scope is { kind: "global" } 
 
 /** 把 scope 解析成"已安装扩展"的根目录绝对路径 */
 export function resolveInstallDirForScope(scope: InstallScope): string {
-  if (scope.kind === "global") return getInstalledExtensionsDir()
-  return path.join(resolveRuntimeDataDir(), "agents", scope.agentName, "extensions")
+  return resolveScopeInstallDir(scope)
 }
 
 /** 把 scope 解析成对应层 plugins.yaml 路径 */
 export function resolvePluginsYamlPathForScope(scope: InstallScope): string {
-  if (scope.kind === "global") {
-    return path.join(resolveRuntimeDataDir(), "configs", "plugins.yaml")
-  }
-  return path.join(resolveRuntimeDataDir(), "agents", scope.agentName, "configs", "plugins.yaml")
+  return resolveScopePluginsYamlPath(scope)
 }
 
 /** scope 的人类可读标签 */

@@ -31,7 +31,14 @@ import {
   type GitCommandRunner,
   type GitExtensionTarget,
   type GitInstallMetadata,
+  installExtension as sdkInstallExtension,
+  installGitExtension as sdkInstallGitExtension,
+  installLocalExtension as sdkInstallLocalExtension,
+  updateGitExtension as sdkUpdateGitExtension,
+  inspectGitExtensionUpdate as sdkInspectGitExtensionUpdate,
+  deleteInstalledExtension as sdkDeleteInstalledExtension,
 } from "irises-extension-sdk/utils"
+import type { InstalledExtensionResult } from "irises-extension-sdk"
 import {
   resolveInstallDirForScope,
   resolvePluginsYamlPathForScope,
@@ -369,7 +376,7 @@ function buildSummary(
     stateLabel?: string
     statusDetail?: string
     localSource?: ExtensionLocalSource
-    installSource?: "remote" | "local" | "git" | "embedded"
+    installSource?: "remote" | "local" | "git" | "embedded" | "workspace"
     gitUrl?: string
     gitRef?: string
     gitCommit?: string
@@ -384,6 +391,8 @@ function buildSummary(
   },
 ): ExtensionSummary {
   return {
+
+
     requestedPath,
     name: manifest.name!,
     version: manifest.version!,
@@ -413,6 +422,40 @@ function buildSummary(
     localVersionHint: options?.localVersionHint,
   }
 }
+
+/** 把 SDK installer 的 InstalledExtensionResult 转换成 terminal TUI 使用的 ExtensionSummary。 */
+function summaryFromInstalledResult(result: InstalledExtensionResult, scope: InstallScope): ExtensionSummary {
+  const manifest = readManifestFromDir(result.targetDir)
+  if (!manifest) {
+    throw new Error(`安装结果目录缺少 manifest.json: ${result.targetDir}`)
+  }
+  const distribution = analyzeDistribution(collectRelativeFilesFromDir(result.targetDir), manifest)
+  const state = resolveInstalledState(manifest, result.targetDir)
+  const localSource: ExtensionLocalSource = scope.kind === "agent" ? "agent-installed" : "installed"
+  const localSourceLabel = scope.kind === "agent" ? "Agent 安装" : "已安装"
+  return buildSummary(result.requested, manifest, {
+    rootDir: result.targetDir,
+    installed: true,
+    enabled: state.enabled,
+    stateLabel: state.stateLabel,
+    statusDetail: state.statusDetail,
+    localSource,
+    localSourceLabel,
+    installSource: result.source,
+    gitUrl: result.gitUrl,
+    gitRef: result.gitRef,
+    gitCommit: result.gitCommit,
+    gitSubdir: result.gitSubdir,
+    localVersion: manifest.version!,
+    localVersionHint: `本地已有版本 ${manifest.version!}（${localSourceLabel}，运行时优先于源码内嵌）`,
+    distributionMode: distribution.distributionMode,
+    distributionLabel: distribution.distributionLabel,
+    distributionDetail: distribution.distributionDetail,
+    runnableEntries: distribution.runnableEntries,
+    agentName: scope.kind === "agent" ? scope.agentName : undefined,
+  })
+}
+
 
 // ==================== 公开 API ====================
 
@@ -652,75 +695,14 @@ export async function installRemoteExtension(
   requestedPath: string,
   scope: InstallScope = { kind: "global" },
 ): Promise<ExtensionSummary> {
-  const requested = normalizeRequestedExtensionPath(requestedPath, "extension 路径")
-  const installedRootDir = resolveInstallDirForScope(scope)
-  ensureDirectory(installedRootDir)
-  const tempDir = createTempInstallDir(installedRootDir)
-
-  try {
-    const remoteIndex = await fetchRemoteIndex()
-    if (!remoteIndex.includes(requested)) {
-      throw new Error(`远程 extension 目录不存在: ${requested}`)
-    }
-
-    const manifest = await fetchRemoteManifest(requested)
-    const files = getRemoteDistributionFiles(manifest)
-
-    ensureDirectory(tempDir)
-    fs.writeFileSync(
-      path.join(tempDir, MANIFEST_FILE),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      "utf-8",
-    )
-
-    for (const relativePath of files) {
-      const normalizedRelativePath = normalizeRelativeFilePath(relativePath)
-      if (normalizedRelativePath === MANIFEST_FILE) continue
-      const destination = resolveSafeRelativePath(tempDir, normalizedRelativePath)
-      ensureDirectory(path.dirname(destination))
-      fs.writeFileSync(destination, await fetchBuffer(buildRemoteExtensionFileUrl(requested, normalizedRelativePath), "extension 文件"))
-    }
-
-    const installedManifest = readManifestFromDir(tempDir)
-    if (!installedManifest) {
-      throw new Error(`远程 extension 目录缺少 manifest.json: ${requested}`)
-    }
-
-    const distribution = analyzeDistribution(collectRelativeFilesFromDir(tempDir), installedManifest)
-    if (distribution.distributionMode !== "bundled") {
-      throw new Error(distribution.distributionDetail)
-    }
-
-    const targetDir = path.join(installedRootDir, installedManifest.name!)
-    fs.rmSync(targetDir, { recursive: true, force: true })
-    fs.renameSync(tempDir, targetDir)
-
-    if (hasPluginContribution(installedManifest)) {
-      upsertLocalPluginEnabled(installedManifest.name!, false, scope)
-    }
-
-    const state = resolveInstalledState(installedManifest, targetDir)
-    const sourceLabel = scope.kind === "agent" ? "Agent 安装" : "已安装"
-    return buildSummary(requested, installedManifest, {
-      rootDir: targetDir,
-      installed: true,
-      enabled: state.enabled,
-      stateLabel: state.stateLabel,
-      statusDetail: state.statusDetail,
-      localSource: scope.kind === "agent" ? "agent-installed" : "installed",
-      localSourceLabel: sourceLabel,
-      localVersion: installedManifest.version!,
-      localVersionHint: `本地已有版本 ${installedManifest.version!}（已安装，运行时优先于源码内嵌）`,
-      distributionMode: distribution.distributionMode,
-      distributionLabel: distribution.distributionLabel,
-      distributionDetail: distribution.distributionDetail,
-      runnableEntries: distribution.runnableEntries,
-      agentName: scope.kind === "agent" ? scope.agentName : undefined,
-    })
-  } catch (error) {
-    cleanupTempInstallDir(tempDir)
-    throw error
+  const result = await sdkInstallExtension(requestedPath, {
+    installedExtensionsDir: resolveInstallDirForScope(scope),
+  })
+  const summary = summaryFromInstalledResult(result, scope)
+  if (summary.hasPlugin) {
+    upsertLocalPluginEnabled(summary.name, false, scope)
   }
+  return summary
 }
 
 type GitExtensionTargetInput = string | GitExtensionInstallInput
@@ -735,14 +717,21 @@ function resolveGitRuntimeTarget(input: GitExtensionTargetInput): GitExtensionTa
   })
 }
 
-function copyGitExtensionDirectory(sourceDir: string, targetDir: string): void {
-  fs.cpSync(sourceDir, targetDir, {
-    recursive: true,
-    filter: (sourcePath) => {
-      const basename = path.basename(sourcePath)
-      return basename !== ".git" && basename !== "node_modules"
-    },
+
+
+/** 从本地 extensions/ 目录安装扩展（发行包必须已包含可运行入口）。 */
+export async function installLocalExtension(
+  requestedName: string,
+  scope: InstallScope = { kind: "global" },
+): Promise<ExtensionSummary> {
+  const result = await sdkInstallLocalExtension(requestedName, {
+    installedExtensionsDir: resolveInstallDirForScope(scope),
   })
+  const summary = summaryFromInstalledResult(result, scope)
+  if (summary.hasPlugin) {
+    upsertLocalPluginEnabled(summary.name, false, scope)
+  }
+  return summary
 }
 
 function buildGitExtensionSummary(
@@ -813,167 +802,66 @@ export async function inspectGitExtension(
   }
 }
 
-interface InstallGitTargetContext {
-  expectedName?: string
-  existingMetadata?: GitInstallMetadata
-}
-
-function buildInstalledGitSummary(
-  target: GitExtensionTarget,
-  manifest: ExtensionManifestLike,
-  distribution: DistributionAnalysis,
-  commit: string | undefined,
-  targetDir: string,
-  scope: InstallScope = { kind: "global" },
-): ExtensionSummary {
-  const state = resolveInstalledState(manifest, targetDir)
-  const sourceLabel = scope.kind === "agent" ? "Agent 安装" : "已安装"
-  return buildSummary(formatGitExtensionTarget(target), manifest, {
-    rootDir: targetDir,
-    installed: true,
-    enabled: state.enabled,
-    stateLabel: state.stateLabel,
-    statusDetail: state.statusDetail,
-    localSource: scope.kind === "agent" ? "agent-installed" : "installed",
-    localSourceLabel: sourceLabel,
-    installSource: "git",
-    gitUrl: target.url,
-    gitRef: target.ref,
-    gitCommit: commit,
-    gitSubdir: target.subdir,
-    localVersion: manifest.version!,
-    localVersionHint: `本地已有版本 ${manifest.version!}（已安装，运行时优先于源码内嵌）`,
-    distributionMode: distribution.distributionMode,
-    distributionLabel: distribution.distributionLabel,
-    distributionDetail: distribution.distributionDetail,
-    runnableEntries: distribution.runnableEntries,
-    agentName: scope.kind === "agent" ? scope.agentName : undefined,
-  })
-}
-
-async function installGitTarget(
-  target: GitExtensionTarget,
-  options: GitExtensionRuntimeOptions = {},
-  context: InstallGitTargetContext = {},
-  scope: InstallScope = { kind: "global" },
-): Promise<ExtensionSummary> {
-  const installedRootDir = resolveInstallDirForScope(scope)
-  ensureDirectory(installedRootDir)
-  const tempRootDir = createTempInstallDir(installedRootDir)
-  const cloneDir = path.join(tempRootDir, "repo")
-  const packageDir = path.join(tempRootDir, "package")
-
-  try {
-    const cloned = await cloneGitRepository(target, cloneDir, { commandRunner: options.commandRunner })
-    const sourceDir = target.subdir ? resolveSafeRelativePath(cloneDir, target.subdir) : cloneDir
-    if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
-      throw new Error(`Git 仓库中未找到 extension 目录: ${target.subdir ?? "."}`)
-    }
-
-    copyGitExtensionDirectory(sourceDir, packageDir)
-    const manifest = readManifestFromDir(packageDir)
-    if (!manifest) {
-      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`)
-    }
-    if (context.expectedName && manifest.name !== context.expectedName) {
-      throw new Error(`Git extension manifest.name 不匹配：期望 ${context.expectedName}，实际 ${manifest.name}`)
-    }
-
-    const distribution = analyzeDistribution(collectRelativeFilesFromDir(packageDir), manifest)
-    if (distribution.distributionMode !== "bundled") {
-      throw new Error(distribution.distributionDetail)
-    }
-    writeGitInstallMetadata(packageDir, target, cloned.commit, {
-      installedAt: context.existingMetadata?.installedAt,
-      updatedAt: context.existingMetadata ? new Date().toISOString() : undefined,
-    })
-
-    const targetDir = path.join(installedRootDir, manifest.name!)
-    fs.rmSync(targetDir, { recursive: true, force: true })
-    fs.renameSync(packageDir, targetDir)
-
-    if (hasPluginContribution(manifest)) {
-      upsertLocalPluginEnabled(manifest.name!, false, scope)
-    }
-
-    return buildInstalledGitSummary(target, manifest, distribution, cloned.commit, targetDir, scope)
-  } finally {
-    cleanupTempInstallDir(tempRootDir)
-  }
-}
 
 export async function installGitExtension(
   input: GitExtensionTargetInput,
   options: GitExtensionRuntimeOptions = {},
   scope: InstallScope = { kind: "global" },
 ): Promise<ExtensionSummary> {
-  return installGitTarget(resolveGitRuntimeTarget(input), options, {}, scope)
-}
-
-function resolveInstalledGitTarget(summary: ExtensionSummary): GitExtensionTarget {
-  if (!summary.rootDir) {
-    throw new Error(`extension ${summary.name} 缺少本地安装目录，无法升级`)
-  }
-  const metadata = readGitInstallMetadata(summary.rootDir)
-  const url = metadata?.url ?? summary.gitUrl
-  if (!url) {
-    throw new Error(`extension ${summary.name} 不是通过 Git 安装的，无法按 Git 来源升级`)
-  }
-  return resolveGitExtensionTarget(url, {
-    ref: metadata?.ref ?? summary.gitRef,
-    subdir: metadata?.subdir ?? summary.gitSubdir,
+  const target = resolveGitRuntimeTarget(input)
+  const result = await sdkInstallGitExtension(target.url, {
+    ref: target.ref,
+    subdir: target.subdir,
+    commandRunner: options.commandRunner,
+    installedExtensionsDir: resolveInstallDirForScope(scope),
   })
+  const summary = summaryFromInstalledResult(result, scope)
+  if (summary.hasPlugin) {
+    upsertLocalPluginEnabled(summary.name, false, scope)
+  }
+  return summary
 }
 
 export async function inspectGitExtensionUpdate(
   summary: ExtensionSummary,
   options: GitExtensionRuntimeOptions = {},
 ): Promise<GitExtensionUpdatePreview> {
-  const target = resolveInstalledGitTarget(summary)
-  const scope = scopeFromSummary(summary)
-  const installedRootDir = resolveInstallDirForScope(scope)
-  ensureDirectory(installedRootDir)
-  const tempRootDir = createTempInstallDir(installedRootDir)
-  const cloneDir = path.join(tempRootDir, "repo")
 
-  try {
-    const cloned = await cloneGitRepository(target, cloneDir, { commandRunner: options.commandRunner })
-    const sourceDir = target.subdir ? resolveSafeRelativePath(cloneDir, target.subdir) : cloneDir
-    const manifest = readManifestFromDir(sourceDir)
-    if (!manifest) {
-      throw new Error(`Git extension 缺少有效 manifest.json: ${sourceDir}`)
-    }
-    if (manifest.name !== summary.name) {
-      throw new Error(`Git extension manifest.name 不匹配：期望 ${summary.name}，实际 ${manifest.name}`)
-    }
-    const distribution = analyzeDistribution(collectRelativeFilesFromDir(sourceDir), manifest)
-    const sameCommit = !!summary.gitCommit && summary.gitCommit === cloned.commit
-    const previewSummary = buildSummary(formatGitExtensionTarget(target), manifest, {
-      installed: true,
-      enabled: summary.enabled,
-      stateLabel: sameCommit ? "当前已是记录的 Git commit" : `准备升级到 ${manifest.version}`,
-      statusDetail: `当前 commit: ${summary.gitCommit ?? "未知"}；远程 commit: ${cloned.commit ?? "未知"}。`,
-      installSource: "git",
-      gitUrl: target.url,
-      gitRef: target.ref,
-      gitCommit: cloned.commit,
-      gitSubdir: target.subdir,
-      localVersion: summary.version,
-      distributionMode: distribution.distributionMode,
-      distributionLabel: distribution.distributionLabel,
-      distributionDetail: distribution.distributionDetail,
-      runnableEntries: distribution.runnableEntries,
-    })
-    return {
-      summary: previewSummary,
-      target,
-      commit: cloned.commit,
-      current: summary,
-      previousCommit: summary.gitCommit,
-      sameCommit,
-    }
-  } finally {
-    cleanupTempInstallDir(tempRootDir)
+  const scope = scopeFromSummary(summary)
+  const preview = await sdkInspectGitExtensionUpdate(summary.name, {
+    installedExtensionsDir: resolveInstallDirForScope(scope),
+    commandRunner: options.commandRunner,
+  })
+  const target = resolveGitExtensionTarget(preview.gitUrl, {
+    ref: preview.gitRef,
+    subdir: preview.gitSubdir,
+  })
+  const previewSummary = buildSummary(formatGitExtensionTarget(target), {
+    name: preview.name,
+    version: preview.nextVersion,
+  }, {
+    installed: true,
+    enabled: summary.enabled,
+    stateLabel: preview.sameCommit ? "当前已是记录的 Git commit" : `准备升级到 ${preview.nextVersion}`,
+    statusDetail: `当前 commit: ${preview.currentCommit ?? "未知"}；远程 commit: ${preview.nextCommit ?? "未知"}。`,
+    installSource: "git",
+    gitUrl: target.url,
+    gitRef: target.ref,
+    gitCommit: preview.nextCommit,
+    gitSubdir: target.subdir,
+    localVersion: summary.version,
+    distributionMode: preview.distributionMode,
+    distributionLabel: preview.distributionMode === "bundled" ? "可直接安装" : "源码包",
+    distributionDetail: preview.distributionMode === "bundled" ? "远程 Git 包已通过可运行入口校验。" : "远程 Git 包不是可直接安装的发行包。",
+    runnableEntries: preview.runnableEntries,
+  })
+  return {
+    summary: previewSummary,
+    target,
+    commit: preview.nextCommit,
+    current: summary,
+    previousCommit: preview.currentCommit,
+    sameCommit: preview.sameCommit,
   }
 }
 
@@ -981,17 +869,16 @@ export async function updateGitInstalledExtension(
   summary: ExtensionSummary,
   options: GitExtensionRuntimeOptions = {},
 ): Promise<ExtensionSummary> {
-  const target = resolveInstalledGitTarget(summary)
   const scope = scopeFromSummary(summary)
   const rootDir = summary.rootDir || path.join(resolveInstallDirForScope(scope), summary.name)
-  const existingMetadata = readGitInstallMetadata(rootDir)
   const preserveDisabledMarker = fs.existsSync(path.join(rootDir, DISABLED_MARKER_FILE))
   const wasEnabled = summary.enabled
 
-  const updated = await installGitTarget(target, options, {
-    expectedName: summary.name,
-    existingMetadata,
-  }, scope)
+  const result = await sdkUpdateGitExtension(summary.name, {
+    installedExtensionsDir: resolveInstallDirForScope(scope),
+    commandRunner: options.commandRunner,
+  })
+  const updated = summaryFromInstalledResult(result, scope)
 
   if (preserveDisabledMarker) {
     disableInstalledExtension(updated)

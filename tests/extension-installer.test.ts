@@ -2,8 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installExtension, installGitExtension, installLocalExtension, updateGitExtension } from '../src/extension/installer.js';
-import type { GitCommandRunner } from 'irises-extension-sdk/utils';
+import { installExtension, installGitExtension, installLocalExtension, updateGitExtension, type GitCommandRunner } from 'irises-extension-sdk/utils';
 
 const createdDirs: string[] = [];
 

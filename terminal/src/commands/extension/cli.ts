@@ -28,6 +28,7 @@ import {
   enableInstalledExtension,
   inspectGitExtensionUpdate,
   installGitExtension,
+  installLocalExtension,
   installRemoteExtension,
   loadInstalledExtensions,
   updateGitInstalledExtension,
@@ -180,12 +181,12 @@ async function runInstallGit(
 }
 
 async function runInstallLocal(_name: string | undefined, _scope: InstallScope): Promise<CliResult> {
-  // terminal/runtime.ts 当前没有 installLocalExtension（远程为主）；如需复用 SDK 那个，
-  // 可在 Phase F 把 SDK 的 installLocalExtension 接进来。本期先返回提示。
+  if (!_name?.trim()) return { ok: false, message: "缺少 extension 名称或路径参数。\n\n" + HELP_TEXT, exitCode: 2 }
+  const result = await installLocalExtension(_name, _scope)
+  enableInstalledExtension(result)
   return {
-    ok: false,
-    message: "install-local 子命令暂未实现（请使用 install <path> 或 install-git <url>）",
-    exitCode: 2,
+    ok: true,
+    message: formatInstalled(result, _scope, "本地安装"),
   }
 }
 
@@ -312,7 +313,7 @@ Iris Extension CLI
   iris extension list                         列出当前 scope 下的已发现扩展
   iris extension install <path>               从远程仓库安装；URL 时自动转 install-git
   iris extension install-git <url>            从 Git 仓库安装 (支持 --ref/--subdir)
-  iris extension install-local <name>         从本地 extensions/ 目录安装（暂未实现）
+  iris extension install-local <name>         从本地 extensions/ 目录安装
   iris extension update <name>                按记录的 Git 来源升级
   iris extension delete <name>                删除已安装扩展（embedded/workspace 不可删）
   iris extension enable <name>                写 plugins.yaml: enabled: true
