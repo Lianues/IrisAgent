@@ -32,6 +32,11 @@ import {
   type GitExtensionTarget,
   type GitInstallMetadata,
 } from "irises-extension-sdk/utils"
+import {
+  resolveInstallDirForScope,
+  resolvePluginsYamlPathForScope,
+  type InstallScope,
+} from "../install-dir.js"
 
 // ==================== TUI 专属类型 ====================
 
@@ -43,7 +48,14 @@ interface EditablePluginEntry {
   config?: Record<string, unknown>
 }
 
-type ExtensionLocalSource = "installed" | "embedded"
+/**
+ * 扩展来源：
+ *   - installed       = ~/.iris/extensions/<name>            （全局已安装）
+ *   - agent-installed = ~/.iris/agents/<id>/extensions/<name>（agent 专属，优先级最高）
+ *   - embedded        = <installDir>/extensions/<name> 且 ∈ embedded.json （随发行包内嵌）
+ *   - workspace       = <installDir>/extensions/<name> 且 ∉ embedded.json （源码仓库的额外项）
+ */
+type ExtensionLocalSource = "installed" | "agent-installed" | "embedded" | "workspace"
 
 interface DistributionAnalysis {
   distributionMode: "bundled" | "source"
@@ -72,7 +84,7 @@ export interface ExtensionSummary {
   statusDetail: string
   rootDir?: string
   localSource?: ExtensionLocalSource
-  installSource?: "remote" | "local" | "git" | "embedded"
+  installSource?: "remote" | "local" | "git" | "embedded" | "workspace"
   gitUrl?: string
   gitRef?: string
   gitCommit?: string
@@ -80,6 +92,8 @@ export interface ExtensionSummary {
   localSourceLabel?: string
   localVersion?: string
   localVersionHint?: string
+  /** agent-installed 时记录所属 agent 名（用于后续 update/delete 时定位 plugins.yaml） */
+  agentName?: string
 }
 
 export interface GitExtensionInstallInput {
@@ -184,8 +198,8 @@ function analyzeDistribution(availableFiles: string[], manifest: ExtensionManife
 
 // ==================== plugins.yaml 读写 ====================
 
-function readEditablePluginEntries(): EditablePluginEntry[] {
-  const pluginsPath = path.join(resolveRuntimeConfigDir(), "plugins.yaml")
+function readEditablePluginEntries(scope: InstallScope = { kind: "global" }): EditablePluginEntry[] {
+  const pluginsPath = resolvePluginsYamlPathForScope(scope)
   if (!fs.existsSync(pluginsPath)) return []
 
   try {
@@ -213,16 +227,15 @@ function readEditablePluginEntries(): EditablePluginEntry[] {
   }
 }
 
-function writeEditablePluginEntries(entries: EditablePluginEntry[]): void {
-  const configDir = resolveRuntimeConfigDir()
-  const pluginsPath = path.join(configDir, "plugins.yaml")
-  ensureDirectory(configDir)
+function writeEditablePluginEntries(entries: EditablePluginEntry[], scope: InstallScope = { kind: "global" }): void {
+  const pluginsPath = resolvePluginsYamlPathForScope(scope)
+  ensureDirectory(path.dirname(pluginsPath))
   const content = `# 插件配置\n\n${stringify({ plugins: entries }, { indent: 2 })}`
   fs.writeFileSync(pluginsPath, content, "utf-8")
 }
 
-function upsertLocalPluginEnabled(name: string, enabled: boolean): void {
-  const entries = readEditablePluginEntries()
+function upsertLocalPluginEnabled(name: string, enabled: boolean, scope: InstallScope = { kind: "global" }): void {
+  const entries = readEditablePluginEntries(scope)
   const existingIndex = entries.findIndex((entry) => entry.name === name && (entry.type ?? "local") === "local")
 
   if (existingIndex >= 0) {
@@ -239,18 +252,26 @@ function upsertLocalPluginEnabled(name: string, enabled: boolean): void {
     })
   }
 
-  writeEditablePluginEntries(entries)
+  writeEditablePluginEntries(entries, scope)
 }
 
-function removeLocalPluginEntry(name: string): void {
-  const nextEntries = readEditablePluginEntries().filter((entry) => !(entry.name === name && (entry.type ?? "local") === "local"))
-  writeEditablePluginEntries(nextEntries)
+function removeLocalPluginEntry(name: string, scope: InstallScope = { kind: "global" }): void {
+  const nextEntries = readEditablePluginEntries(scope).filter((entry) => !(entry.name === name && (entry.type ?? "local") === "local"))
+  writeEditablePluginEntries(nextEntries, scope)
 }
 
-function getPluginEnabledState(name: string): boolean | undefined {
-  const entry = readEditablePluginEntries().find((item) => item.name === name && (item.type ?? "local") === "local")
+function getPluginEnabledState(name: string, scope: InstallScope = { kind: "global" }): boolean | undefined {
+  const entry = readEditablePluginEntries(scope).find((item) => item.name === name && (item.type ?? "local") === "local")
   if (!entry) return undefined
   return entry.enabled !== false
+}
+
+/** 将 ExtensionSummary 还原成 InstallScope，用于后续 update/delete/enable/disable 写对应层 plugins.yaml。 */
+function scopeFromSummary(summary: ExtensionSummary): InstallScope {
+  if (summary.localSource === "agent-installed" && summary.agentName) {
+    return { kind: "agent", agentName: summary.agentName }
+  }
+  return { kind: "global" }
 }
 
 // ==================== 安装状态 ====================
@@ -395,8 +416,56 @@ function buildSummary(
 
 // ==================== 公开 API ====================
 
-export function loadInstalledExtensions(): ExtensionSummary[] {
-  const installedRootDir = getInstalledExtensionsDir()
+/**
+ * 加载所有已发现的 extension。
+ *
+ * 顺序（同名取优先级最高的，后续重名跳过）：
+ *   1. agent-installed（仅当 opts.agentExtensionsDir 提供）
+ *   2. installed       (~/.iris/extensions/)
+ *   3. embedded + workspace（来自 installDir/extensions/，按 embedded.json 二分类）
+ *
+ * @param installDir   发行包根目录（用于扫描 embedded/workspace）；不传则跳过该层
+ * @param opts.agentExtensionsDir 当前 agent 的扩展目录（用于扫描 agent-installed）
+ * @param opts.agentName          agent 名（用于在 ExtensionSummary 中记录归属）
+ */
+export function loadInstalledExtensions(opts?: {
+  installDir?: string
+  agentExtensionsDir?: string
+  agentName?: string
+}): ExtensionSummary[] {
+  const seen = new Set<string>()
+  const results: ExtensionSummary[] = []
+
+  // 1) agent-installed
+  if (opts?.agentExtensionsDir) {
+    for (const item of scanInstalledDir(opts.agentExtensionsDir, "agent-installed", { kind: "agent", agentName: opts.agentName ?? "" })) {
+      if (seen.has(item.name)) continue
+      seen.add(item.name)
+      results.push({ ...item, agentName: opts.agentName })
+    }
+  }
+
+  // 2) installed (global)
+  for (const item of scanInstalledDir(getInstalledExtensionsDir(), "installed", { kind: "global" })) {
+    if (seen.has(item.name)) continue
+    seen.add(item.name)
+    results.push(item)
+  }
+
+  // 3) embedded + workspace（来自 installDir/extensions/）
+  if (opts?.installDir) {
+    for (const item of loadEmbeddedAndWorkspaceExtensions(opts.installDir)) {
+      if (seen.has(item.name)) continue
+      seen.add(item.name)
+      results.push(item)
+    }
+  }
+
+  return results.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** 扫描指定目录下的扩展（installed 或 agent-installed）。 */
+function scanInstalledDir(installedRootDir: string, source: "installed" | "agent-installed", scope: InstallScope): ExtensionSummary[] {
   if (!fs.existsSync(installedRootDir) || !fs.statSync(installedRootDir).isDirectory()) {
     return []
   }
@@ -412,14 +481,15 @@ export function loadInstalledExtensions(): ExtensionSummary[] {
 
     const installMetadata = readGitInstallMetadata(rootDir)
     const state = resolveInstalledState(manifest, rootDir)
+    const sourceLabel = source === "agent-installed" ? "Agent 安装" : "已安装"
     results.push(buildSummary(manifest.name!, manifest, {
       rootDir,
       installed: true,
       enabled: state.enabled,
       stateLabel: state.stateLabel,
       statusDetail: state.statusDetail,
-      localSource: "installed",
-      localSourceLabel: "已安装",
+      localSource: source,
+      localSourceLabel: sourceLabel,
       installSource: installMetadata?.source,
       gitUrl: installMetadata?.url,
       gitRef: installMetadata?.ref,
@@ -433,54 +503,71 @@ export function loadInstalledExtensions(): ExtensionSummary[] {
     }))
   }
 
-  return results.sort((a, b) => a.name.localeCompare(b.name))
+  return results
 }
 
-function loadEmbeddedExtensions(installDir: string): ExtensionSummary[] {
+/**
+ * 扫描 installDir/extensions/ 下所有扩展，按 embedded.json 二分类：
+ *   - 名字在 embedded.json 里 → source='embedded'
+ *   - 否则                      → source='workspace'
+ */
+function loadEmbeddedAndWorkspaceExtensions(installDir: string): ExtensionSummary[] {
   const embeddedRootDir = getEmbeddedExtensionsDir(installDir)
+  if (!fs.existsSync(embeddedRootDir) || !fs.statSync(embeddedRootDir).isDirectory()) return []
+
+  // 读取 embedded.json 名单
+  const embeddedNames = new Set<string>()
   const embeddedConfigPath = path.join(embeddedRootDir, "embedded.json")
-  if (!fs.existsSync(embeddedConfigPath)) {
-    return []
+  if (fs.existsSync(embeddedConfigPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(embeddedConfigPath, "utf-8")) as {
+        extensions?: Array<{ name?: string }>
+      }
+      if (Array.isArray(raw.extensions)) {
+        for (const item of raw.extensions) {
+          const name = normalizeText(item?.name)
+          if (name) embeddedNames.add(name)
+        }
+      }
+    } catch {
+      // ignore — embedded.json 解析失败时按全部 workspace 处理
+    }
   }
 
-  try {
-    const raw = JSON.parse(fs.readFileSync(embeddedConfigPath, "utf-8")) as {
-      extensions?: Array<{ name?: string }>
-    }
-    const names = Array.isArray(raw.extensions)
-      ? raw.extensions
-          .map((item) => normalizeText(item?.name))
-          .filter((name): name is string => !!name)
-      : []
+  const results: ExtensionSummary[] = []
+  for (const dirent of fs.readdirSync(embeddedRootDir, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) continue
+    const rootDir = path.join(embeddedRootDir, dirent.name)
+    const manifest = readManifestFromDir(rootDir)
+    if (!manifest) continue
+    const distribution = analyzeDistribution(collectRelativeFilesFromDir(rootDir), manifest)
 
-    const results: ExtensionSummary[] = []
-    for (const name of names) {
-      const rootDir = path.join(embeddedRootDir, name)
-      const manifest = readManifestFromDir(rootDir)
-      if (!manifest) continue
-      const distribution = analyzeDistribution(collectRelativeFilesFromDir(rootDir), manifest)
+    const isEmbedded = embeddedNames.has(manifest.name!)
+    const source: ExtensionLocalSource = isEmbedded ? "embedded" : "workspace"
+    const sourceLabel = isEmbedded ? "源码内嵌" : "源码 workspace"
+    const stateLabel = isEmbedded ? "源码内嵌" : "源码 workspace（默认不加载）"
+    const statusDetail = isEmbedded
+      ? "当前安装目录已内嵌该 extension。若用户目录安装同名版本，运行时将优先加载用户目录版本。"
+      : "源码仓库中的额外扩展，默认不被加载。需在 system.yaml 中开启 loadWorkspaceExtensions 才能生效。"
 
-      results.push(buildSummary(manifest.name!, manifest, {
-        rootDir,
-        installed: false,
-        // 自动发现机制：embedded 扩展默认启用，仅 plugins.yaml 显式 false 或 disabled marker 关闭
-        enabled: getPluginEnabledState(manifest.name!) !== false && !hasDisabledMarker(rootDir),
-        stateLabel: "源码内嵌",
-        statusDetail: "当前安装目录已内嵌该 extension。若用户目录安装同名版本，运行时将优先加载用户目录版本。",
-        localSource: "embedded",
-        localSourceLabel: "源码内嵌",
-        localVersion: manifest.version!,
-        distributionMode: distribution.distributionMode,
-        distributionLabel: distribution.distributionLabel,
-        distributionDetail: distribution.distributionDetail,
-        runnableEntries: distribution.runnableEntries,
-      }))
-    }
-
-    return results.sort((a, b) => a.name.localeCompare(b.name))
-  } catch {
-    return []
+    results.push(buildSummary(manifest.name!, manifest, {
+      rootDir,
+      installed: false,
+      enabled: getPluginEnabledState(manifest.name!) !== false && !hasDisabledMarker(rootDir),
+      stateLabel,
+      statusDetail,
+      localSource: source,
+      localSourceLabel: sourceLabel,
+      installSource: isEmbedded ? "embedded" : "workspace",
+      localVersion: manifest.version!,
+      distributionMode: distribution.distributionMode,
+      distributionLabel: distribution.distributionLabel,
+      distributionDetail: distribution.distributionDetail,
+      runnableEntries: distribution.runnableEntries,
+    }))
   }
+
+  return results.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 function buildLocalVersionHint(summary: ExtensionSummary): string {
@@ -495,7 +582,10 @@ function buildLocalVersionHint(summary: ExtensionSummary): string {
   return `本地已有版本 ${summary.version}`
 }
 
-export async function listRemoteExtensions(installDir: string): Promise<ExtensionSummary[]> {
+export async function listRemoteExtensions(installDir: string, opts?: {
+  agentExtensionsDir?: string
+  agentName?: string
+}): Promise<ExtensionSummary[]> {
   const remoteIndex = await fetchRemoteIndex()
   const remoteEntries = (await Promise.allSettled(
     remoteIndex.map(async (requestedPath) => {
@@ -514,8 +604,11 @@ export async function listRemoteExtensions(installDir: string): Promise<Extensio
   if (remoteIndex.length > 0 && remoteEntries.length === 0) {
     throw new Error("远程 extension manifest 全部读取失败")
   }
-  const installedMap = new Map(loadInstalledExtensions().map((item) => [item.name, item]))
-  const embeddedMap = new Map(loadEmbeddedExtensions(installDir).map((item) => [item.name, item]))
+  // 收集本地已发现的同名扩展（用于"本地兼容"提示），含 4 类源
+  const localMap = new Map(
+    loadInstalledExtensions({ installDir, agentExtensionsDir: opts?.agentExtensionsDir, agentName: opts?.agentName })
+      .map((item) => [item.name, item])
+  )
   const results: ExtensionSummary[] = []
   const seenRequestedPaths = new Set<string>()
 
@@ -525,7 +618,7 @@ export async function listRemoteExtensions(installDir: string): Promise<Extensio
 
     try {
       const distribution = analyzeDistribution(entry.files, entry.manifest)
-      const local = installedMap.get(entry.manifest.name!) ?? embeddedMap.get(entry.manifest.name!)
+      const local = localMap.get(entry.manifest.name!)
 
       results.push(buildSummary(requestedPath, entry.manifest, local ? {
         installed: local.installed,
@@ -555,9 +648,13 @@ export async function listRemoteExtensions(installDir: string): Promise<Extensio
   return results.sort((a, b) => a.requestedPath.localeCompare(b.requestedPath))
 }
 
-export async function installRemoteExtension(requestedPath: string): Promise<ExtensionSummary> {
+export async function installRemoteExtension(
+  requestedPath: string,
+  scope: InstallScope = { kind: "global" },
+): Promise<ExtensionSummary> {
   const requested = normalizeRequestedExtensionPath(requestedPath, "extension 路径")
-  const installedRootDir = getInstalledExtensionsDir()
+  const installedRootDir = resolveInstallDirForScope(scope)
+  ensureDirectory(installedRootDir)
   const tempDir = createTempInstallDir(installedRootDir)
 
   try {
@@ -599,24 +696,26 @@ export async function installRemoteExtension(requestedPath: string): Promise<Ext
     fs.renameSync(tempDir, targetDir)
 
     if (hasPluginContribution(installedManifest)) {
-      upsertLocalPluginEnabled(installedManifest.name!, false)
+      upsertLocalPluginEnabled(installedManifest.name!, false, scope)
     }
 
     const state = resolveInstalledState(installedManifest, targetDir)
+    const sourceLabel = scope.kind === "agent" ? "Agent 安装" : "已安装"
     return buildSummary(requested, installedManifest, {
       rootDir: targetDir,
       installed: true,
       enabled: state.enabled,
       stateLabel: state.stateLabel,
       statusDetail: state.statusDetail,
-      localSource: "installed",
-      localSourceLabel: "已安装",
+      localSource: scope.kind === "agent" ? "agent-installed" : "installed",
+      localSourceLabel: sourceLabel,
       localVersion: installedManifest.version!,
       localVersionHint: `本地已有版本 ${installedManifest.version!}（已安装，运行时优先于源码内嵌）`,
       distributionMode: distribution.distributionMode,
       distributionLabel: distribution.distributionLabel,
       distributionDetail: distribution.distributionDetail,
       runnableEntries: distribution.runnableEntries,
+      agentName: scope.kind === "agent" ? scope.agentName : undefined,
     })
   } catch (error) {
     cleanupTempInstallDir(tempDir)
@@ -652,14 +751,20 @@ function buildGitExtensionSummary(
   distribution: DistributionAnalysis,
   commit: string | undefined,
   rootDir?: string,
+  scope: InstallScope = { kind: "global" },
 ): ExtensionSummary {
-  const installed = loadInstalledExtensions().find((item) => item.name === manifest.name)
+  const installed = loadInstalledExtensions(
+    scope.kind === "agent" ? { agentExtensionsDir: resolveInstallDirForScope(scope), agentName: scope.agentName } : undefined,
+  ).find((item) => item.name === manifest.name)
   const stateLabel = installed
     ? `将覆盖已安装版本 ${installed.version}`
     : "Git 待安装"
+  const installLocation = scope.kind === "agent"
+    ? `~/.iris/agents/${scope.agentName}/extensions/${manifest.name}/`
+    : `~/.iris/extensions/${manifest.name}/`
   const statusDetail = installed
-    ? `本地已安装 ${installed.version}。确认安装后会覆盖 ~/.iris/extensions/${manifest.name}/。`
-    : "当前 Git 仓库中的 extension 尚未安装到用户目录。"
+    ? `本地已安装 ${installed.version}。确认安装后会覆盖 ${installLocation}。`
+    : `当前 Git 仓库中的 extension 尚未安装到用户目录（目标：${installLocation}）。`
 
   return buildSummary(formatGitExtensionTarget(target), manifest, {
     rootDir,
@@ -682,9 +787,11 @@ function buildGitExtensionSummary(
 export async function inspectGitExtension(
   input: GitExtensionTargetInput,
   options: GitExtensionRuntimeOptions = {},
+  scope: InstallScope = { kind: "global" },
 ): Promise<GitExtensionPreview> {
   const target = resolveGitRuntimeTarget(input)
-  const installedRootDir = getInstalledExtensionsDir()
+  const installedRootDir = resolveInstallDirForScope(scope)
+  ensureDirectory(installedRootDir)
   const tempRootDir = createTempInstallDir(installedRootDir)
   const cloneDir = path.join(tempRootDir, "repo")
 
@@ -697,7 +804,7 @@ export async function inspectGitExtension(
     }
     const distribution = analyzeDistribution(collectRelativeFilesFromDir(sourceDir), manifest)
     return {
-      summary: buildGitExtensionSummary(target, manifest, distribution, cloned.commit),
+      summary: buildGitExtensionSummary(target, manifest, distribution, cloned.commit, undefined, scope),
       target,
       commit: cloned.commit,
     }
@@ -717,16 +824,18 @@ function buildInstalledGitSummary(
   distribution: DistributionAnalysis,
   commit: string | undefined,
   targetDir: string,
+  scope: InstallScope = { kind: "global" },
 ): ExtensionSummary {
   const state = resolveInstalledState(manifest, targetDir)
+  const sourceLabel = scope.kind === "agent" ? "Agent 安装" : "已安装"
   return buildSummary(formatGitExtensionTarget(target), manifest, {
     rootDir: targetDir,
     installed: true,
     enabled: state.enabled,
     stateLabel: state.stateLabel,
     statusDetail: state.statusDetail,
-    localSource: "installed",
-    localSourceLabel: "已安装",
+    localSource: scope.kind === "agent" ? "agent-installed" : "installed",
+    localSourceLabel: sourceLabel,
     installSource: "git",
     gitUrl: target.url,
     gitRef: target.ref,
@@ -738,6 +847,7 @@ function buildInstalledGitSummary(
     distributionLabel: distribution.distributionLabel,
     distributionDetail: distribution.distributionDetail,
     runnableEntries: distribution.runnableEntries,
+    agentName: scope.kind === "agent" ? scope.agentName : undefined,
   })
 }
 
@@ -745,8 +855,10 @@ async function installGitTarget(
   target: GitExtensionTarget,
   options: GitExtensionRuntimeOptions = {},
   context: InstallGitTargetContext = {},
+  scope: InstallScope = { kind: "global" },
 ): Promise<ExtensionSummary> {
-  const installedRootDir = getInstalledExtensionsDir()
+  const installedRootDir = resolveInstallDirForScope(scope)
+  ensureDirectory(installedRootDir)
   const tempRootDir = createTempInstallDir(installedRootDir)
   const cloneDir = path.join(tempRootDir, "repo")
   const packageDir = path.join(tempRootDir, "package")
@@ -781,10 +893,10 @@ async function installGitTarget(
     fs.renameSync(packageDir, targetDir)
 
     if (hasPluginContribution(manifest)) {
-      upsertLocalPluginEnabled(manifest.name!, false)
+      upsertLocalPluginEnabled(manifest.name!, false, scope)
     }
 
-    return buildInstalledGitSummary(target, manifest, distribution, cloned.commit, targetDir)
+    return buildInstalledGitSummary(target, manifest, distribution, cloned.commit, targetDir, scope)
   } finally {
     cleanupTempInstallDir(tempRootDir)
   }
@@ -793,8 +905,9 @@ async function installGitTarget(
 export async function installGitExtension(
   input: GitExtensionTargetInput,
   options: GitExtensionRuntimeOptions = {},
+  scope: InstallScope = { kind: "global" },
 ): Promise<ExtensionSummary> {
-  return installGitTarget(resolveGitRuntimeTarget(input), options)
+  return installGitTarget(resolveGitRuntimeTarget(input), options, {}, scope)
 }
 
 function resolveInstalledGitTarget(summary: ExtensionSummary): GitExtensionTarget {
@@ -817,7 +930,9 @@ export async function inspectGitExtensionUpdate(
   options: GitExtensionRuntimeOptions = {},
 ): Promise<GitExtensionUpdatePreview> {
   const target = resolveInstalledGitTarget(summary)
-  const installedRootDir = getInstalledExtensionsDir()
+  const scope = scopeFromSummary(summary)
+  const installedRootDir = resolveInstallDirForScope(scope)
+  ensureDirectory(installedRootDir)
   const tempRootDir = createTempInstallDir(installedRootDir)
   const cloneDir = path.join(tempRootDir, "repo")
 
@@ -867,7 +982,8 @@ export async function updateGitInstalledExtension(
   options: GitExtensionRuntimeOptions = {},
 ): Promise<ExtensionSummary> {
   const target = resolveInstalledGitTarget(summary)
-  const rootDir = summary.rootDir || path.join(getInstalledExtensionsDir(), summary.name)
+  const scope = scopeFromSummary(summary)
+  const rootDir = summary.rootDir || path.join(resolveInstallDirForScope(scope), summary.name)
   const existingMetadata = readGitInstallMetadata(rootDir)
   const preserveDisabledMarker = fs.existsSync(path.join(rootDir, DISABLED_MARKER_FILE))
   const wasEnabled = summary.enabled
@@ -875,7 +991,7 @@ export async function updateGitInstalledExtension(
   const updated = await installGitTarget(target, options, {
     expectedName: summary.name,
     existingMetadata,
-  })
+  }, scope)
 
   if (preserveDisabledMarker) {
     disableInstalledExtension(updated)
@@ -883,41 +999,48 @@ export async function updateGitInstalledExtension(
     enableInstalledExtension(updated)
   }
 
-  return loadInstalledExtensions().find((item) => item.name === summary.name) ?? updated
+  // 同 scope 重新加载
+  const reloaded = scope.kind === "agent"
+    ? loadInstalledExtensions({ agentExtensionsDir: resolveInstallDirForScope(scope), agentName: scope.agentName })
+    : loadInstalledExtensions()
+  return reloaded.find((item) => item.name === summary.name) ?? updated
 }
 
 export function enableInstalledExtension(summary: ExtensionSummary): void {
-  const rootDir = summary.rootDir || path.join(getInstalledExtensionsDir(), summary.name)
+  const scope = scopeFromSummary(summary)
+  const rootDir = summary.rootDir || path.join(resolveInstallDirForScope(scope), summary.name)
   if (!fs.existsSync(rootDir)) {
     throw new Error(`extension 不存在: ${summary.name}`)
   }
 
   setDisabledMarker(rootDir, false)
   if (summary.hasPlugin) {
-    upsertLocalPluginEnabled(summary.name, true)
+    upsertLocalPluginEnabled(summary.name, true, scope)
   }
 }
 
 export function disableInstalledExtension(summary: ExtensionSummary): void {
-  const rootDir = summary.rootDir || path.join(getInstalledExtensionsDir(), summary.name)
+  const scope = scopeFromSummary(summary)
+  const rootDir = summary.rootDir || path.join(resolveInstallDirForScope(scope), summary.name)
   if (!fs.existsSync(rootDir)) {
     throw new Error(`extension 不存在: ${summary.name}`)
   }
 
   setDisabledMarker(rootDir, true)
   if (summary.hasPlugin) {
-    upsertLocalPluginEnabled(summary.name, false)
+    upsertLocalPluginEnabled(summary.name, false, scope)
   }
 }
 
 export function deleteInstalledExtension(summary: ExtensionSummary): void {
-  const rootDir = summary.rootDir || path.join(getInstalledExtensionsDir(), summary.name)
+  const scope = scopeFromSummary(summary)
+  const rootDir = summary.rootDir || path.join(resolveInstallDirForScope(scope), summary.name)
   if (!fs.existsSync(rootDir)) {
     throw new Error(`extension 不存在: ${summary.name}`)
   }
 
   fs.rmSync(rootDir, { recursive: true, force: true })
   if (summary.hasPlugin) {
-    removeLocalPluginEntry(summary.name)
+    removeLocalPluginEntry(summary.name, scope)
   }
 }

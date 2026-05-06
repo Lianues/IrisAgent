@@ -28,13 +28,23 @@ import {
   type GitExtensionPreview,
   type GitExtensionUpdatePreview,
 } from "../../shared/extensions/runtime.js"
+import {
+  describeScope,
+  resolveInstallDirForScope,
+  type InstallScope,
+} from "../../shared/install-dir.js"
+import { loadAgentList } from "../../shared/agents-registry.js"
 
 interface ExtensionAppProps {
   installDir: string
+  /** 由 index.tsx 解析 --global / --agent <name> 后传入；undefined 表示走 UI scope 选择 */
+  initialScope?: InstallScope
 }
 
 type Step =
   | "home"
+  | "scope-pick"          // 选择 global / agent
+  | "agent-pick"          // scope=agent 时列出所有 agent
   | "git-input" | "git-inspect" | "git-confirm"
   | "manage-update-inspect" | "manage-update-confirm"
   | "download-platform-list" | "download-plugin-list" | "download-confirm"
@@ -42,6 +52,9 @@ type Step =
 type ManageAction = "enable" | "disable" | "delete" | "update"
 type DownloadCategory = "platform" | "plugin"
 type ManageCategory = "platform" | "plugin"
+
+/** scope-pick 后的下一步意图 */
+type ScopeFollowup = "download-platform" | "download-plugin" | "install-git" | "manage-platform" | "manage-plugin"
 
 type RemoteCatalogState =
   | { status: "idle" | "loading"; items: ExtensionSummary[]; error?: string }
@@ -98,6 +111,19 @@ function StatusPage({
   )
 }
 
+/** 4 类来源徽章 */
+const SOURCE_BADGES: Record<string, string> = {
+  installed: "[全局]",
+  "agent-installed": "[Agent]",
+  embedded: "[内嵌]",
+  workspace: "[源码]",
+}
+
+function buildSourceBadge(summary: ExtensionSummary): string {
+  if (!summary.localSource) return ""
+  return SOURCE_BADGES[summary.localSource] ?? ""
+}
+
 function buildRemoteExtensionOption(summary: ExtensionSummary): OptionSelectItem {
   const parts = [
     summary.typeLabel,
@@ -120,14 +146,24 @@ function buildRemoteExtensionOption(summary: ExtensionSummary): OptionSelectItem
 }
 
 function buildInstalledExtensionOption(summary: ExtensionSummary): OptionSelectItem {
+  const badge = buildSourceBadge(summary)
   return {
     value: summary.requestedPath,
-    label: summary.name,
+    label: badge ? `${badge} ${summary.name}` : summary.name,
     description: `${summary.typeLabel} · ${summary.stateLabel} · ${summary.statusDetail}`,
   }
 }
 
 function buildManageActionOptions(summary: ExtensionSummary): OptionSelectItem[] {
+  // embedded / workspace 不可在 TUI 内删除/启用/关闭（属于发行包/源码仓库），只显示提示
+  if (summary.localSource === "embedded" || summary.localSource === "workspace") {
+    return [{
+      value: "noop",
+      label: summary.localSource === "embedded" ? "（内嵌扩展不可在此操作）" : "（源码 workspace 扩展不可在此操作）",
+      description: "请通过对应层 plugins.yaml 设置 enabled: false 来禁用，或在 system.yaml 中调整 loadWorkspaceExtensions。",
+    }]
+  }
+
   const toggleOption: OptionSelectItem = summary.enabled
     ? {
         value: "disable",
@@ -215,12 +251,21 @@ function validateGitSubdir(value: string): string | undefined {
   return value.includes("..") ? "子目录不能包含 .." : undefined
 }
 
-export function App({ installDir }: ExtensionAppProps) {
+export function App({ installDir, initialScope }: ExtensionAppProps) {
   const [step, setStep] = useState<Step>("home")
+  /** 当前 scope（管理列表/安装目标层）。默认 global；可由 initialScope 或 UI 选择覆盖 */
+  const [currentScope, setCurrentScope] = useState<InstallScope>(initialScope ?? { kind: "global" })
+  /** scope-pick 完成后要跳转的下一步意图 */
+  const [scopeFollowup, setScopeFollowup] = useState<ScopeFollowup | null>(null)
   const [remoteCatalogState, setRemoteCatalogState] = useState<RemoteCatalogState>({ status: "idle", items: [] })
   const [remoteCatalogRefreshToken, setRemoteCatalogRefreshToken] = useState(0)
   const [installedRefreshToken, setInstalledRefreshToken] = useState(0)
-  const installedExtensions = useMemo(() => loadInstalledExtensions(), [installedRefreshToken])
+  const installedExtensions = useMemo(() => {
+    const opts = currentScope.kind === "agent"
+      ? { installDir, agentExtensionsDir: resolveInstallDirForScope(currentScope), agentName: currentScope.agentName }
+      : { installDir }
+    return loadInstalledExtensions(opts)
+  }, [installedRefreshToken, currentScope, installDir])
   const [selectedRemoteExtension, setSelectedRemoteExtension] = useState<ExtensionSummary | null>(null)
   const [selectedInstalledExtension, setSelectedInstalledExtension] = useState<ExtensionSummary | null>(null)
   const [selectedManageAction, setSelectedManageAction] = useState<ManageAction | null>(null)
@@ -232,6 +277,48 @@ export function App({ installDir }: ExtensionAppProps) {
   const [downloadCategory, setDownloadCategory] = useState<DownloadCategory>("platform")
   const [manageCategory, setManageCategory] = useState<ManageCategory>("platform")
   const remoteTimeoutMs = useMemo(() => getRemoteExtensionRequestTimeoutMs(), [])
+  /** 缓存 agent 列表（agent-pick 页面用） */
+  const agentList = useMemo(() => loadAgentList(), [])
+
+  /** 把 scope-pick 后的意图转换成实际 step，并更新分类。 */
+  const dispatchScopeFollowup = (followup: ScopeFollowup) => {
+    switch (followup) {
+      case "download-platform":
+        setDownloadCategory("platform")
+        setStep("download-platform-list")
+        return
+      case "download-plugin":
+        setDownloadCategory("plugin")
+        setStep("download-plugin-list")
+        return
+      case "install-git":
+        setStep("git-input")
+        return
+      case "manage-platform":
+        setManageCategory("platform")
+        setStep("manage-platform-list")
+        return
+      case "manage-plugin":
+        setManageCategory("plugin")
+        setStep("manage-plugin-list")
+        return
+    }
+  }
+
+  /**
+   * 进入需要 scope 的子流程。
+   *   - 如果 agentList 为空 → 默认 global，跳过 scope-pick
+   *   - 否则进入 scope-pick 页面
+   */
+  const beginScopedFlow = (followup: ScopeFollowup) => {
+    setScopeFollowup(followup)
+    if (agentList.length === 0) {
+      setCurrentScope({ kind: "global" })
+      dispatchScopeFollowup(followup)
+    } else {
+      setStep("scope-pick")
+    }
+  }
 
   // 按类型过滤
   const remotePlatforms = useMemo(() => remoteCatalogState.items.filter((e) => e.hasPlatforms), [remoteCatalogState.items])
@@ -246,7 +333,12 @@ export function App({ installDir }: ExtensionAppProps) {
     let cancelled = false
     setRemoteCatalogState({ status: "loading", items: [] })
 
-    listRemoteExtensions(installDir)
+    listRemoteExtensions(
+      installDir,
+      currentScope.kind === "agent"
+        ? { agentExtensionsDir: resolveInstallDirForScope(currentScope), agentName: currentScope.agentName }
+        : undefined,
+    )
       .then((items) => {
         if (cancelled) return
         setRemoteCatalogState({ status: "ready", items })
@@ -263,7 +355,7 @@ export function App({ installDir }: ExtensionAppProps) {
     return () => {
       cancelled = true
     }
-  }, [installDir, isDownloadStep, remoteCatalogRefreshToken])
+  }, [installDir, isDownloadStep, remoteCatalogRefreshToken, currentScope])
 
   useEffect(() => {
     if (step !== "git-inspect" || !gitInstallInput) return
@@ -271,7 +363,7 @@ export function App({ installDir }: ExtensionAppProps) {
     setGitPreview(null)
     setGitPreviewError(null)
 
-    inspectGitExtension(gitInstallInput)
+    inspectGitExtension(gitInstallInput, {}, currentScope)
       .then((preview) => {
         if (cancelled) return
         setGitPreview(preview)
@@ -285,7 +377,7 @@ export function App({ installDir }: ExtensionAppProps) {
     return () => {
       cancelled = true
     }
-  }, [step, gitInstallInput])
+  }, [step, gitInstallInput, currentScope])
 
   useEffect(() => {
     if (step !== "manage-update-inspect" || !selectedInstalledExtension) return
@@ -314,7 +406,7 @@ export function App({ installDir }: ExtensionAppProps) {
     return (
       <OptionSelectPage
         title="扩展安装与管理"
-        description="选择要进行的操作。可从远程仓库分别下载平台和插件扩展，也可分类管理本地已安装的扩展。"
+        description={`当前 scope：${describeScope(currentScope)}。选择操作；下载/安装/管理时会再次确认目标 scope（全局或某 agent）。`}
         options={[
           {
             value: "download-platform",
@@ -345,27 +437,81 @@ export function App({ installDir }: ExtensionAppProps) {
         onSelect={(value) => {
           switch (value) {
             case "download-platform":
-              setDownloadCategory("platform")
-              setStep("download-platform-list")
+              beginScopedFlow("download-platform")
               return
             case "download-plugin":
-              setDownloadCategory("plugin")
-              setStep("download-plugin-list")
+              beginScopedFlow("download-plugin")
               return
             case "install-git":
-              setStep("git-input")
+              beginScopedFlow("install-git")
               return
             case "manage-platform":
-              setManageCategory("platform")
-              setStep("manage-platform-list")
+              beginScopedFlow("manage-platform")
               return
             case "manage-plugin":
-              setManageCategory("plugin")
-              setStep("manage-plugin-list")
+              beginScopedFlow("manage-plugin")
               return
           }
         }}
         onBack={() => gracefulExit()}
+      />
+    )
+  }
+
+  // ==================== Scope 选择 ====================
+  if (step === "scope-pick" && scopeFollowup) {
+    return (
+      <OptionSelectPage
+        title="选择安装/管理范围"
+        description={`选择「全局」会作用于 ~/.iris/extensions/，所有 agent 共享；选择某个 agent 会作用于 ~/.iris/agents/<id>/extensions/，仅该 agent 可见，且优先级高于全局。`}
+        options={[
+          {
+            value: "__global__",
+            label: "全局",
+            description: "~/.iris/extensions/ — 所有 agent 共享可见",
+          },
+          {
+            value: "__agent__",
+            label: "指定 agent",
+            description: `下一步选择具体 agent (~/.iris/agents/<id>/extensions/) — 共 ${agentList.length} 个可选`,
+          },
+        ]}
+        onSelect={(value) => {
+          if (value === "__global__") {
+            setCurrentScope({ kind: "global" })
+            const followup = scopeFollowup
+            setScopeFollowup(null)
+            dispatchScopeFollowup(followup)
+          } else {
+            setStep("agent-pick")
+          }
+        }}
+        onBack={() => {
+          setScopeFollowup(null)
+          setStep("home")
+        }}
+      />
+    )
+  }
+
+  // ==================== Agent 选择 ====================
+  if (step === "agent-pick" && scopeFollowup) {
+    return (
+      <OptionSelectPage
+        title="选择 agent"
+        description="选择要操作的 agent。该 agent 的扩展位于 ~/.iris/agents/<id>/extensions/，仅对该 agent 生效。"
+        options={agentList.map((a) => ({
+          value: a.name,
+          label: a.name,
+          description: a.description ?? "(无描述)",
+        }))}
+        onSelect={(name) => {
+          setCurrentScope({ kind: "agent", agentName: name })
+          const followup = scopeFollowup
+          setScopeFollowup(null)
+          dispatchScopeFollowup(followup)
+        }}
+        onBack={() => setStep("scope-pick")}
       />
     )
   }
@@ -500,7 +646,7 @@ export function App({ installDir }: ExtensionAppProps) {
             url: gitPreview.target.url,
             ref: gitPreview.target.ref,
             subdir: gitPreview.target.subdir,
-          })
+          }, {}, currentScope)
           enableInstalledExtension(installed)
           setInstalledRefreshToken((value) => value + 1)
           setRemoteCatalogState({ status: "idle", items: [] })
@@ -648,7 +794,7 @@ export function App({ installDir }: ExtensionAppProps) {
           if (selectedRemoteExtension.distributionMode !== "bundled") {
             throw new Error("当前远程包缺少可运行入口，例如 dist/index.mjs，不可直接安装。")
           }
-          const installed = await installRemoteExtension(selectedRemoteExtension.requestedPath)
+          const installed = await installRemoteExtension(selectedRemoteExtension.requestedPath, currentScope)
           enableInstalledExtension(installed)
           setInstalledRefreshToken((value) => value + 1)
           setRemoteCatalogState({ status: "idle", items: [] })
@@ -675,14 +821,15 @@ export function App({ installDir }: ExtensionAppProps) {
     const filteredInstalled = manageCategory === "platform" ? installedPlatforms : installedPlugins
     const emptyLabel = manageCategory === "platform" ? "平台" : "插件"
     const downloadHint = manageCategory === "platform" ? "下载平台" : "下载插件"
+    const scopeHint = describeScope(currentScope)
 
     if (filteredInstalled.length === 0) {
       return (
         <StatusPage
-          title={title}
-          description={`当前没有本地已安装的${emptyLabel}扩展。`}
+          title={`${title} · ${scopeHint}`}
+          description={`当前 scope (${scopeHint}) 没有本地已安装的${emptyLabel}扩展。`}
           lines={[
-            `尚未在 ~/.iris/extensions/ 下发现已安装的${emptyLabel}扩展。`,
+            `尚未在 ${resolveInstallDirForScope(currentScope)} 下发现已安装的${emptyLabel}扩展。`,
             `请先进入「${downloadHint}」流程，或使用命令行安装。`,
           ]}
           onBack={() => setStep("home")}
@@ -692,8 +839,8 @@ export function App({ installDir }: ExtensionAppProps) {
 
     return (
       <OptionSelectPage
-        title={title}
-        description={`选择一个已安装的${emptyLabel}扩展，然后执行开启、关闭或删除。`}
+        title={`${title} · ${scopeHint}`}
+        description={`选择一个已发现的${emptyLabel}扩展，然后执行开启、关闭或删除。徽章 [全局]/[Agent]/[内嵌]/[源码] 标识其来源。`}
         options={filteredInstalled.map(buildInstalledExtensionOption)}
         onSelect={(requestedPath) => {
           const selected = filteredInstalled.find((item) => item.requestedPath === requestedPath)
@@ -714,9 +861,10 @@ export function App({ installDir }: ExtensionAppProps) {
     return (
       <OptionSelectPage
         title={title}
-        description={`${selectedInstalledExtension.name} · ${selectedInstalledExtension.typeLabel} · ${selectedInstalledExtension.stateLabel} · ${selectedInstalledExtension.statusDetail}`}
+        description={`${buildSourceBadge(selectedInstalledExtension)} ${selectedInstalledExtension.name} · ${selectedInstalledExtension.typeLabel} · ${selectedInstalledExtension.stateLabel} · ${selectedInstalledExtension.statusDetail}`}
         options={buildManageActionOptions(selectedInstalledExtension)}
         onSelect={(value) => {
+          if (value === "noop") return
           const action = value as ManageAction
           setSelectedManageAction(action)
           if (action === "update") {
