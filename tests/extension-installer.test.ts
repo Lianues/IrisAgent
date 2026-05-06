@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseExtensionCommandArgs } from '../src/extension/command.js';
 import { installExtension, installGitExtension, installLocalExtension, updateGitExtension } from '../src/extension/installer.js';
 import type { GitCommandRunner } from 'irises-extension-sdk/utils';
 
@@ -327,45 +326,5 @@ describe('extension installer', () => {
       installedAt: initialMetadata.installedAt,
     });
     expect(typeof metadata.updatedAt).toBe('string');
-  });
-});
-
-describe('extension command parser', () => {
-  it('支持 ext 的最简写法与 install-local 子命令', () => {
-    expect(parseExtensionCommandArgs(['ext', 'community/demo-extension'])).toEqual({
-      namespace: 'ext',
-      action: 'install',
-      target: 'community/demo-extension',
-    });
-
-    expect(parseExtensionCommandArgs(['extension', 'install-local', 'demo-extension'])).toEqual({
-      namespace: 'extension',
-      action: 'install-local',
-      target: 'demo-extension',
-    });
-
-    expect(parseExtensionCommandArgs(['ext', 'install-git', 'https://github.com/acme/demo.git', '--ref', 'main', '--subdir', 'extensions/demo'])).toEqual({
-      namespace: 'ext',
-      action: 'install-git',
-      target: 'https://github.com/acme/demo.git',
-      ref: 'main',
-      subdir: 'extensions/demo',
-    });
-
-    expect(parseExtensionCommandArgs(['ext', 'https://github.com/acme/demo.git#v1:extensions/demo'])).toEqual({
-      namespace: 'ext',
-      action: 'install-git',
-      target: 'https://github.com/acme/demo.git#v1:extensions/demo',
-      ref: undefined,
-      subdir: undefined,
-    });
-
-    expect(parseExtensionCommandArgs(['ext', 'update', 'demo-extension'])).toEqual({
-      namespace: 'ext',
-      action: 'update',
-      target: 'demo-extension',
-      ref: undefined,
-      subdir: undefined,
-    });
   });
 });

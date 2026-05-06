@@ -91,18 +91,10 @@ if (command === '-v' || command === '--version') {
 if (command && TERMINAL_COMMANDS.has(command)) {
   runTerminalCommand(command, args.slice(1));
 } else if (command === 'extension' || command === 'extensions' || command === 'ext') {
-  // Extension（TUI / 子命令）
-  if (args.length === 1) {
-    runTerminalCommand('extension');
-  }
-  try {
-    const { runExtensionCommand } = await import('./extension/command');
-    await runExtensionCommand(args);
-    process.exit(0);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
+  // Extension：所有 `iris extension <args>` 都转给独立 TUI 二进制（iris-onboard extension），
+  // 由它统一处理 install/list/manage/scope 选择等所有交互。
+  // 别名 extensions/ext 都归一化成 extension。
+  runTerminalCommand('extension', args.slice(1));
 } else if (command === 'chat') {
   // CLI 提示词模式
   process.argv.splice(2, 1); // 移除 'chat'，让 cli.ts 解析剩余参数
