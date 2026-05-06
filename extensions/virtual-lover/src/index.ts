@@ -53,6 +53,14 @@ export default definePlugin({
     }
 
     const initialConfig = parseVirtualLoverConfig(ctx.readConfigSection('virtual_lover'));
+
+    // 顶层 enabled: false 时直接退出，不注册任何 hook / tool / route。
+    // 注：这样做意味着运行期开关切换需要重启 Iris；这是有意为之的简单设计。
+    if (!initialConfig.enabled) {
+      logger.info('virtual_lover.enabled=false，跳过激活（不注册任何 hook / tool / route）');
+      return;
+    }
+
     const dataDir = ctx.getDataDir();
     const extensionRootDir = ctx.getExtensionRootDir();
     ensureVirtualLoverData(dataDir, extensionRootDir, initialConfig.agent.defaultAgentId);

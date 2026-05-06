@@ -1,12 +1,23 @@
 /**
  * 本地 extension 扫描与解析。
  *
- * 当前阶段先不接入 HTTP Registry，只支持：
- * 1. 用户数据目录 ~/.iris/extensions/
- * 2. 源码仓库根目录 ./extensions/
+ * 扩展有三类加载源：
+ *   - installed：~/.iris/extensions/<name>                                   —— 用户通过 `iris extension install*` 主动安装，始终参与发现。
+ *   - embedded： <projectRoot>/extensions/<name>，且 name ∈ embedded.json    —— 随发行包/源码仓库内置（构建时被打包进发行产物），始终参与发现；
+ *                                                                              在 ~/.iris/extensions/ 出现同名 installed 时，installed 优先（覆盖）。
+ *   - workspace：<projectRoot>/extensions/<name>，且 name ∉ embedded.json    —— 源码仓库里"额外"的扩展（开发态可见），默认 **不参与发现**；
+ *                                                                              需 system.yaml 中 `extensions.loadWorkspaceExtensions: true` 才会扫描，
+ *                                                                              并可用 `workspaceAllowlist` 进一步收窄。
  *
- * 这样可以先把 plugin 与 channel 统一到 extension 概念下，
- * 后续再接入远程下载与多版本管理。
+ * 调用方通过 `ExtensionDiscoveryOptions` 传入开关与白名单（仅影响 workspace 源；embedded 与 installed 不受影响）：
+ *   - `workspace.enabled`：是否纳入 workspace 源；默认 false。
+ *   - `workspace.allowlist`：纳入后再按名收窄；空数组 = 不收窄。
+ *
+ * 与 devSourceExtensions 正交：本文件决定一个扩展"是否被发现"；
+ * devSourceExtensions 决定被发现后"用 dist 还是 src 入口"（对三类源都一视同仁，例如把某个 embedded 扩展加到
+ * devSourceExtensions 即可在开发态从源码加载，覆盖发行包打包好的 dist 入口）。
+ *
+ * 启用/禁用单个扩展请通过 plugins.yaml（全局或 agent 层），与本文件的"发现范围"控制正交。
  */
 import type { PluginEntry } from 'irises-extension-sdk';
 
@@ -37,6 +48,37 @@ interface ExtensionSearchDirectory {
   source: ExtensionSource;
 }
 
+/** 扩展发现选项 — 由调用方根据 system.yaml 构造并透传到下游所有 discover/register 函数。 */
+export interface ExtensionDiscoveryOptions {
+  workspace?: {
+    /** 是否扫描 <projectRoot>/extensions/ 目录。默认 false。 */
+    enabled: boolean;
+    /** 仅这些名字会被纳入；空数组表示不收窄。 */
+    allowlist?: string[];
+  };
+}
+
+/** 加载 <workspaceExtensionsDir>/embedded.json 的 name 集合；不存在或解析失败时返回空集合。 */
+function loadEmbeddedExtensionNames(): Set<string> {
+  const configPath = path.join(workspaceExtensionsDir, 'embedded.json');
+  if (!fs.existsSync(configPath)) return new Set<string>();
+  try {
+    const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const list = Array.isArray(raw?.extensions) ? raw.extensions : [];
+    const names = new Set<string>();
+    for (const item of list) {
+      const name = typeof item === 'string'
+        ? item
+        : (item && typeof item === 'object' && typeof item.name === 'string' ? item.name : '');
+      if (name && name.trim()) names.add(name.trim());
+    }
+    return names;
+  } catch (err) {
+    logger.warn(`extensions/embedded.json 解析失败，忽略 embedded 分类: ${configPath}`, err);
+    return new Set<string>();
+  }
+}
+
 function getExtensionSearchDirectories(): ExtensionSearchDirectory[] {
   const dirs: ExtensionSearchDirectory[] = [];
 
@@ -44,6 +86,8 @@ function getExtensionSearchDirectories(): ExtensionSearchDirectory[] {
     dirs.push({ dir: extensionsDir, source: 'installed' });
   }
 
+  // workspace 目录总是扫描（用于找出 embedded 分类的扩展）；
+  // 是否启用 non-embedded 项由 discoverLocalExtensions 内部按 opts 过滤。
   if (workspaceExtensionsDir !== extensionsDir && isDirectory(workspaceExtensionsDir)) {
     dirs.push({ dir: workspaceExtensionsDir, source: 'workspace' });
   }
@@ -167,9 +211,14 @@ function resolvePlatformFactoryExport(
   return candidate as PlatformFactory;
 }
 
-export function discoverLocalExtensions(): ExtensionPackage[] {
+export function discoverLocalExtensions(opts?: ExtensionDiscoveryOptions): ExtensionPackage[] {
   const packages: ExtensionPackage[] = [];
   const seenNames = new Set<string>();
+
+  const workspaceEnabled = opts?.workspace?.enabled === true;
+  const allowlist = opts?.workspace?.allowlist ?? [];
+  const allowlistSet = allowlist.length > 0 ? new Set(allowlist) : undefined;
+  const embeddedNames = loadEmbeddedExtensionNames();
 
   for (const searchDir of getExtensionSearchDirectories()) {
     const entries = fs.readdirSync(searchDir.dir, { withFileTypes: true });
@@ -197,11 +246,24 @@ export function discoverLocalExtensions(): ExtensionPackage[] {
         continue;
       }
 
+      // workspace 目录里的扩展按 embedded.json 二次分类：
+      //   - 在 embedded.json 中 → source='embedded'，始终参与发现；
+      //   - 不在 → source='workspace'，受 loadWorkspaceExtensions + allowlist 控制。
+      let effectiveSource: ExtensionSource = searchDir.source;
+      if (searchDir.source === 'workspace') {
+        if (embeddedNames.has(manifest.name)) {
+          effectiveSource = 'embedded';
+        } else {
+          if (!workspaceEnabled) continue;
+          if (allowlistSet && !allowlistSet.has(manifest.name)) continue;
+        }
+      }
+
       seenNames.add(manifest.name);
       packages.push({
         manifest,
         rootDir,
-        source: searchDir.source,
+        source: effectiveSource,
       });
     }
   }
@@ -217,10 +279,12 @@ export function discoverLocalExtensions(): ExtensionPackage[] {
  * 调用方可将返回值与 plugins.yaml 的显式配置合并，显式配置拥有更高优先级。
  */
 export function discoverLocalPluginEntries(
-  extensionPackages: ExtensionPackage[] = discoverLocalExtensions(),
+  extensionPackages?: ExtensionPackage[],
+  opts?: ExtensionDiscoveryOptions,
 ): PluginEntry[] {
+  const packages = extensionPackages ?? discoverLocalExtensions(opts);
   const entries: PluginEntry[] = [];
-  for (const pkg of extensionPackages) {
+  for (const pkg of packages) {
     const pluginContribution = normalizePluginContribution(pkg.manifest);
     if (!pluginContribution) continue; // 纯 platform extension，跳过
     entries.push({
@@ -270,10 +334,12 @@ export function mergePluginEntries(
 
 export function resolveLocalPluginSource(
   name: string,
-  extensionPackages: ExtensionPackage[] = discoverLocalExtensions(),
+  extensionPackages?: ExtensionPackage[],
   devSourceExtensions?: string[],
+  opts?: ExtensionDiscoveryOptions,
 ): ResolvedLocalPlugin {
-  const extensionPackage = extensionPackages.find((item) => item.manifest.name === name);
+  const packages = extensionPackages ?? discoverLocalExtensions(opts);
+  const extensionPackage = packages.find((item) => item.manifest.name === name);
   if (!extensionPackage) {
     throw new Error(`未找到本地 extension: ${name}`);
   }
@@ -312,12 +378,14 @@ export async function importLocalExtensionModule(entryFile: string): Promise<Rec
 
 export function registerExtensionPlatforms(
   registry: PlatformRegistry,
-  extensionPackages: ExtensionPackage[] = discoverLocalExtensions(),
+  extensionPackages?: ExtensionPackage[],
   devSourceExtensions?: string[],
+  opts?: ExtensionDiscoveryOptions,
 ): string[] {
+  const packages = extensionPackages ?? discoverLocalExtensions(opts);
   const registeredPlatforms: string[] = [];
 
-  for (const extensionPackage of extensionPackages) {
+  for (const extensionPackage of packages) {
     const contributions = getPlatformContributions(extensionPackage.manifest);
     for (const contribution of contributions) {
       if (!contribution.name.trim()) continue;

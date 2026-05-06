@@ -81,7 +81,7 @@ export interface ExtensionManifest {
   distribution?: ExtensionDistributionContribution;
 }
 
-export type ExtensionSource = 'installed' | 'workspace';
+export type ExtensionSource = 'installed' | 'embedded' | 'workspace';
 
 export interface ExtensionPackage {
   manifest: ExtensionManifest;

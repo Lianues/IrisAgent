@@ -23,6 +23,7 @@ import {
   importLocalExtensionModule,
   resolveLocalPluginSource,
 } from './registry';
+import type { ExtensionDiscoveryOptions } from './registry';
 import type { ResolvedLocalPlugin } from 'irises-extension-sdk';
 import { ServiceRegistry } from './service-registry';
 import { ConfigContributionRegistry } from './config-contribution-registry';
@@ -57,6 +58,8 @@ export class PluginManager {
   private _configDir?: string;
   /** 开发模式：源码加载的扩展白名单 */
   private _devSourceExtensions?: string[];
+  /** 扩展发现选项（来自 system.yaml.extensions），由 bootstrap 设置 */
+  private _extensionDiscoveryOptions?: ExtensionDiscoveryOptions;
   /** 钩子变更回调 — 由宿主注册，在插件增删后调用以刷新 backend 的钩子缓存 */
   private _onHooksChanged?: () => void;
 
@@ -65,6 +68,9 @@ export class PluginManager {
 
   /** 设置源码加载白名单（供 bootstrap 调用） */
   setDevSourceExtensions(list?: string[]): void { this._devSourceExtensions = list; }
+
+  /** 设置扩展发现选项（供 bootstrap 调用） */
+  setExtensionDiscoveryOptions(opts?: ExtensionDiscoveryOptions): void { this._extensionDiscoveryOptions = opts; }
 
   /** 注册钩子变更回调（供 bootstrap 调用，在插件增删时刷新 backend 钩子缓存） */
   setOnHooksChanged(callback: () => void): void { this._onHooksChanged = callback; }
@@ -424,7 +430,12 @@ export class PluginManager {
   }
 
   private async loadLocalPlugin(name: string): Promise<{ plugin: IrisPlugin; localSource: ResolvedLocalPlugin }> {
-    const localSource = resolveLocalPluginSource(name, undefined, this._devSourceExtensions);
+    const localSource = resolveLocalPluginSource(
+      name,
+      undefined,
+      this._devSourceExtensions,
+      this._extensionDiscoveryOptions,
+    );
     const mod = await importLocalExtensionModule(localSource.entryFile);
     const plugin = mod.default ?? mod;
     this.validatePlugin(plugin, name);

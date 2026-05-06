@@ -207,7 +207,21 @@ export class IrisCore {
     const globalDir = findConfigFile();
     const config = options.resolvedConfig ?? loadConfig(agentPaths?.configDir, agentPaths);
     const extensions = createBootstrapExtensionRegistry();
-    registerExtensionPlatforms(extensions.platforms, undefined, config.system.devSourceExtensions);
+
+    // 构造扩展发现选项：决定 workspace 源是否被纳入 + 白名单收窄。
+    const extDiscoveryOptions = {
+      workspace: {
+        enabled: config.system.extensions?.loadWorkspaceExtensions === true,
+        allowlist: config.system.extensions?.workspaceAllowlist ?? [],
+      },
+    };
+
+    registerExtensionPlatforms(
+      extensions.platforms,
+      undefined,
+      config.system.devSourceExtensions,
+      extDiscoveryOptions,
+    );
 
     if (config.system.devSourceExtensions?.length) {
       if (config.system.devSourceSdk) {
@@ -221,12 +235,13 @@ export class IrisCore {
     const pluginManager = new PluginManager();
 
     // 自动发现所有 plugin 类型的 extension，与 plugins.yaml 显式配置合并
-    const discoveredPlugins = discoverLocalPluginEntries();
+    const discoveredPlugins = discoverLocalPluginEntries(undefined, extDiscoveryOptions);
     const mergedPlugins = mergePluginEntries(discoveredPlugins, config.plugins ?? []);
 
     if (mergedPlugins.length > 0 || inlinePlugins.length > 0) {
       pluginManager.setConfigDir(configDir);
       pluginManager.setDevSourceExtensions(config.system.devSourceExtensions);
+      pluginManager.setExtensionDiscoveryOptions(extDiscoveryOptions);
       await pluginManager.prepareAll(mergedPlugins, config, inlinePlugins);
       await pluginManager.runPreBootstrap(config, extensions);
     }
@@ -759,7 +774,7 @@ export class IrisCore {
 
       // 挂载扩展管理 API，供 console 等平台通过 (api as any).extensions 访问
       (irisAPI as any).extensions = {
-        discover: () => discoverLocalExtensions(),
+        discover: () => discoverLocalExtensions(extDiscoveryOptions),
         activate: (name: string) => pluginManager.activatePlugin(name),
         deactivate: (name: string) => pluginManager.deactivatePlugin(name),
         installGit: (target: string, options?: { ref?: string; subdir?: string }) => installGitExtension(target, options),

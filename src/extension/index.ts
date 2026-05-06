@@ -14,6 +14,8 @@ export {
   ensureDevSourceSdkShims,
 } from './registry';
 
+export type { ExtensionDiscoveryOptions } from './registry';
+
 export {
   deleteInstalledExtension,
   inspectGitExtensionUpdate,

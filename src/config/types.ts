@@ -280,6 +280,27 @@ export interface SystemConfig {
    * 需配合 devSourceExtensions 使用，仅在非编译二进制环境下生效。
    */
   devSourceSdk?: boolean;
+
+  /**
+   * 扩展加载相关开关（系统级）。
+   *
+   * Iris 的扩展按"来源"分三类，本字段只控制其中的 **workspace** 类：
+   *   - installed：~/.iris/extensions/，用户主动安装，默认启用。
+   *   - embedded：随发行包/源码仓库内置（在 extensions/embedded.json 中声明），始终参与发现；
+   *               默认启用，要关闭只能在 plugins.yaml 中写 enabled: false。
+   *   - workspace：源码仓库 <projectRoot>/extensions/ 中"额外"的扩展（不在 embedded.json 里），
+   *               默认 **不参与发现**，需通过下面的开关与白名单显式开启。
+   *
+   * 与 `devSourceExtensions` 正交：
+   *   - 这里决定一个 workspace 扩展"是否被发现"；
+   *   - `devSourceExtensions` 决定被发现后"用 dist 还是 src 入口"。
+   */
+  extensions?: {
+    /** 是否扫描 <projectRoot>/extensions/ 中**非 embedded** 的扩展。默认 false。 */
+    loadWorkspaceExtensions?: boolean;
+    /** 当 loadWorkspaceExtensions=true 时，仅这些名字会被纳入；为空表示不收窄（全部纳入）。 */
+    workspaceAllowlist?: string[];
+  };
 }
 
 /** 上下文压缩（/compact）配置 */
@@ -324,9 +345,12 @@ export interface AppConfig {
   /** 子代理配置（可选，对应 sub-agents.yaml） */
   subAgents?: SubAgentsConfig;
   /**
-   * 插件声明列表（可选，对应 plugins.yaml）。全局独占配置，agent 层不可覆盖。
+   * 插件覆盖配置列表（可选，对应 plugins.yaml）。
    *
-   * 注意：这里的 "plugin" 是 extension 的一种贡献角色，不是独立于 extension 的系统。
+   * plugins.yaml 既可放在全局 ~/.iris/configs/，也可放在 agent 的 configs/ 下，
+   * 按 name 浅合并；agent 层可单独覆盖某个插件的 enabled / priority / config。
+   *
+   * 这里的 "plugin" 是 extension 的一种贡献角色，不是独立于 extension 的系统。
    * 每个条目的 name 对应 extensions/ 下一个有 plugin 贡献的 extension。
    * 详见 src/config/plugins.ts 顶部注释。
    */

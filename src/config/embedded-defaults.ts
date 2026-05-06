@@ -100,11 +100,25 @@ maxRetries: 3
 # logRequests: true
 # asyncSubAgents: true
 
-# 开发模式：源码加载的扩展白名单
+# 扩展发现范围（仅控制 workspace 源；embedded 与 installed 不受影响）：
+#   - embedded：发行包/源码仓库自带（在 extensions/embedded.json 中声明），始终参与发现，
+#               要关闭某个 embedded 扩展请到 plugins.yaml 写 enabled: false。
+#   - installed：~/.iris/extensions/ 下用户主动安装的，始终参与发现。
+#   - workspace：源码仓库 <projectRoot>/extensions/ 中**非 embedded** 的"额外"扩展，
+#               默认 **不参与发现**；下面打开后还可用 workspaceAllowlist 收窄。
+extensions:
+  loadWorkspaceExtensions: false
+  workspaceAllowlist: []
+  #   - virtual-lover
+  #   - sillytavern
+
+# 开发模式：在已被发现的扩展中，哪些用源码入口（src/index.ts）而不是 dist/index.mjs。
+# 仅在非编译二进制下生效。
 # devSourceExtensions:
 #   - cron
 #   - memory
 # devSourceSdk: true
+
 `,
 
   'tools.yaml': `# 工具配置
@@ -298,11 +312,12 @@ types:
 `,
 
   // plugins.yaml — 插件覆盖配置（可选）。
-  // 所有 extension（plugin 和 platform）均会被自动发现和注册。
+  // installed 源（~/.iris/extensions/）默认启用；workspace 源由 system.yaml.extensions 控制。
   // 此文件仅用于覆盖默认行为：禁用某个插件、调整优先级、传递额外 config 等。
-  // 全局独占配置，所有 agent 共享，agent 层不可覆盖。
-  'plugins.yaml': `# 插件配置
-# 所有 extension 均会被自动发现和注册，无需在此声明。
+  // 既可放在全局 ~/.iris/configs/，也可放在 agent 的 configs/，按 name 浅合并；
+  // agent 层可单独覆盖某个插件的 enabled / priority / config。
+  'plugins.yaml': `# 插件覆盖配置（仅在需要时填写）
+# 所有已被纳入的扩展默认启用（workspace 源是否纳入由 system.yaml 控制）。
 # 仅当需要覆盖默认行为（禁用、调整优先级、传递 config）时才需要配置。
 plugins:
 #   - name: memory

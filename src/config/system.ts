@@ -63,5 +63,24 @@ export function parseSystemConfig(raw: any = {}, dataDir?: string): SystemConfig
       ? raw.devSourceExtensions.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
       : undefined,
     devSourceSdk: raw.devSourceSdk === true,
+    extensions: parseExtensionsBlock(raw.extensions),
+  };
+}
+
+/**
+ * 解析 system.yaml 中的 `extensions:` 块。
+ *
+ * 缺省（整块缺失）→ 返回 undefined，调用方按默认行为处理。
+ * 字段非法时按默认值兜底，不抛错。
+ */
+function parseExtensionsBlock(raw: unknown): NonNullable<SystemConfig['extensions']> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const allowlist = Array.isArray(r.workspaceAllowlist)
+    ? r.workspaceAllowlist.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+    : [];
+  return {
+    loadWorkspaceExtensions: r.loadWorkspaceExtensions === true,
+    workspaceAllowlist: allowlist,
   };
 }
