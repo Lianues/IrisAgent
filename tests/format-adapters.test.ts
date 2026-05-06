@@ -1441,6 +1441,91 @@ describe('OpenAIResponsesFormat: stream decode', () => {
     expect(done.thoughtSignatures).toEqual({ openai: 'enc_final_sig' });
   });
 
+  it('reasoning_summary_text.delta 会作为 thought 增量输出并进入后端存储链路', () => {
+    const state = fmt.createStreamState();
+
+    const added = fmt.decodeStreamChunk({
+      event: 'response.output_item.added',
+      item: {
+        id: 'rs_delta_1',
+        type: 'reasoning',
+        summary: [],
+      },
+    }, state);
+    expect(added.partsDelta).toBeUndefined();
+
+    const delta1 = fmt.decodeStreamChunk({
+      event: 'response.reasoning_summary_text.delta',
+      item_id: 'rs_delta_1',
+      output_index: 0,
+      summary_index: 0,
+      delta: 'step 1: inspect ',
+    }, state);
+    expect(delta1.partsDelta).toEqual([{ text: 'step 1: inspect ', thought: true }]);
+    expect(delta1.textDelta).toBeUndefined();
+
+    const delta2 = fmt.decodeStreamChunk({
+      event: 'response.reasoning_summary_text.delta',
+      item_id: 'rs_delta_1',
+      output_index: 0,
+      summary_index: 0,
+      delta: 'then answer',
+    }, state);
+    expect(delta2.partsDelta).toEqual([{ text: 'then answer', thought: true }]);
+    expect(delta2.textDelta).toBeUndefined();
+
+    const done = fmt.decodeStreamChunk({
+      event: 'response.output_item.done',
+      item: {
+        id: 'rs_delta_1',
+        type: 'reasoning',
+        summary: [{ type: 'summary_text', text: 'step 1: inspect then answer' }],
+        encrypted_content: 'enc_delta_sig',
+      },
+    }, state);
+
+    // summary 文本已通过 delta 发出，done 阶段只补签名，避免后端重复存储思维链。
+    expect(done.partsDelta).toEqual([{ thought: true, thoughtSignatures: { openai: 'enc_delta_sig' } }]);
+    expect(done.thoughtSignatures).toEqual({ openai: 'enc_delta_sig' });
+  });
+
+  it('reasoning_summary_text.done 在缺少 delta 时会兜底输出完整 thought 文本', () => {
+    const state = fmt.createStreamState();
+
+    const done = fmt.decodeStreamChunk({
+      event: 'response.reasoning_summary_text.done',
+      item_id: 'rs_done_text_only',
+      output_index: 0,
+      summary_index: 0,
+      text: 'complete reasoning summary',
+    }, state);
+
+    expect(done.partsDelta).toEqual([{ text: 'complete reasoning summary', thought: true }]);
+    expect(done.textDelta).toBeUndefined();
+  });
+
+  it('response.completed 中的 reasoning output 只兜底补齐 summary，不保存最终 encrypted_content', () => {
+    const state = fmt.createStreamState();
+
+    const completed = fmt.decodeStreamChunk({
+      event: 'response.completed',
+      response: {
+        output: [{
+          id: 'rs_completed_only',
+          type: 'reasoning',
+          summary: [{ type: 'summary_text', text: 'final reasoning from completed' }],
+          encrypted_content: 'enc_completed_sig',
+        }],
+        usage: { input_tokens: 11, output_tokens: 7, total_tokens: 18 },
+      },
+    }, state);
+
+    expect(completed.partsDelta).toEqual([
+      { text: 'final reasoning from completed', thought: true },
+    ]);
+    expect(completed.usageMetadata).toEqual({ promptTokenCount: 11, candidatesTokenCount: 7, totalTokenCount: 18 });
+  });
+
   it('function_call 在 arguments.done 时提前输出，output_item.done 不重复输出', () => {
     const state = fmt.createStreamState();
 

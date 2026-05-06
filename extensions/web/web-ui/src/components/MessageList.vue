@@ -131,6 +131,20 @@
           :class="{ compact: isToolGroupCompact(item.key), collapsing: isToolGroupCollapsing(item.key) }"
           :ref="(el) => setToolWorkflowStackEl(item.key, el)"
         >
+          <template v-for="thought in getToolGroupThoughtEntries(item)" :key="thought.key">
+            <div class="tool-workflow-thought-block message message-model message-thought-block expanded">
+              <div class="thought-header">
+                <span class="thought-label">思考过程</span>
+                <span v-if="thought.durationMs != null" class="thought-duration">
+                  {{ formatThoughtDuration(thought.durationMs) }}
+                </span>
+              </div>
+              <div class="thought-content expanded">
+                {{ thought.text }}
+              </div>
+            </div>
+          </template>
+
           <button
             class="tool-workflow-card"
             :class="{ expanded: isToolGroupExpanded(item.key), compact: isToolGroupCompact(item.key), collapsing: isToolGroupCollapsing(item.key), running: isToolGroupRunning(item.key) }"
@@ -309,6 +323,12 @@ interface ToolWorkflowNoteStep {
   status: 'running' | 'completed'
 }
 
+interface ToolGroupThoughtEntry {
+  key: string
+  text: string
+  durationMs?: number
+}
+
 type DisplayItem = DisplayMessageItem | DisplayToolGroupItem
 
 const props = defineProps<{
@@ -409,6 +429,28 @@ function extractToolNames(entries: ToolGroupEntry[]): string[] {
   }
 
   return names
+}
+
+/**
+ * 提取工具工作流中的思考内容。
+ * 对含 thought + function_call 的 assistant 消息，思考块应优先显示在工具卡片前，
+ * 不要求用户展开工具详情才能看到。
+ */
+function getToolGroupThoughtEntries(item: DisplayToolGroupItem): ToolGroupThoughtEntry[] {
+  const thoughts: ToolGroupThoughtEntry[] = []
+
+  for (const entry of item.entries) {
+    entry.message.parts.forEach((part, partIndex) => {
+      if (part.type !== 'thought' || !part.text?.trim()) return
+      thoughts.push({
+        key: `${item.key}-entry-${entry.messageIndex}-thought-${partIndex}`,
+        text: part.text,
+        durationMs: part.durationMs,
+      })
+    })
+  }
+
+  return thoughts
 }
 
 /**

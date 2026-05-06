@@ -471,7 +471,15 @@
   contain: paint;
 }
 
+.tool-workflow-thought-block {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  cursor: default;
+}
+
 .tool-workflow-stack.collapsing .tool-workflow-section,
+.tool-workflow-stack.collapsing .tool-workflow-thought-block,
 .tool-workflow-stack.collapsing .tool-workflow-body .tool-block,
 .tool-workflow-stack.collapsing .tool-pre {
   box-shadow: none;

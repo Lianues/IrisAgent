@@ -205,16 +205,19 @@ export class OpenAIResponsesFormat implements FormatAdapter {
     } else if (event === 'response.output_item.added') {
       const item = data.item;
       if (item?.type === 'reasoning') {
-        const part = createReasoningPart(item, { includeText: true, includeSignature: false });
-        if (part) {
-          chunk.partsDelta = [part];
-          if ('thoughtSignatures' in part && part.thoughtSignatures) {
-            chunk.thoughtSignatures = { ...part.thoughtSignatures };
-          }
-        }
+        // Responses API 的 reasoning item 在 added 阶段通常只有空 summary；
+        // 但部分兼容端会直接把 summary 放在这里，仍需立即转成 thought part。
+        // encrypted_content 只在 output_item.done 阶段采信，避免保存未完成或最终全量重复签名。
+        emitReasoningItemSummary(chunk, streamState, item, data);
       } else if (item?.type === 'function_call') {
         rememberPendingFunctionCall(streamState, item);
       }
+    } else if (isReasoningTextDeltaEvent(event)) {
+      emitReasoningDeltaText(chunk, streamState, data, data.delta);
+    } else if (isReasoningTextDoneEvent(event)) {
+      emitReasoningFullText(chunk, streamState, data, data.text ?? data.content ?? data.summary_text);
+    } else if (isReasoningSummaryPartEvent(event)) {
+      emitReasoningFullText(chunk, streamState, data, extractReasoningSummaryPartText(data.part ?? data.summary_part ?? data.content_part ?? data));
     } else if (event === 'response.function_call_arguments.delta') {
       appendPendingFunctionCallArguments(
         streamState,
@@ -231,14 +234,11 @@ export class OpenAIResponsesFormat implements FormatAdapter {
       if (itemKey) emitFunctionCallChunk(chunk, itemKey, streamState);
     } else if (event === 'response.output_item.done') {
       const item = data.item;
-      if (item?.type === 'reasoning' && item.encrypted_content) {
-        const part = createReasoningPart(item, { includeText: false, includeSignature: true });
-        if (part) {
-          chunk.partsDelta = [part];
-          if ('thoughtSignatures' in part && part.thoughtSignatures) {
-            chunk.thoughtSignatures = { ...part.thoughtSignatures };
-          }
-        }
+      if (item?.type === 'reasoning') {
+        // 如果前面没有 reasoning_summary_text.delta，done 里的完整 summary 是最后兜底，
+        // 否则只补 encrypted_content 签名，避免重复存储思维链文本。
+        emitReasoningItemSummary(chunk, streamState, item, data);
+        emitReasoningSignature(chunk, streamState, item, data);
       } else if (item?.type === 'function_call') {
         rememberPendingFunctionCall(streamState, item);
         emitFunctionCallChunk(chunk, item, streamState);
@@ -255,6 +255,18 @@ export class OpenAIResponsesFormat implements FormatAdapter {
           totalTokenCount: usage.total_tokens,
         };
       }
+      for (const item of data.response?.output ?? data.output ?? []) {
+        if (item?.type === 'reasoning') {
+          // 部分网关不会发送 reasoning_* delta，只在 completed.response.output
+          // 中带最终 summary；这里作为最终兜底，确保后端历史与前端回显都能拿到 thought part。
+          emitReasoningItemSummary(chunk, streamState, item, data);
+          // 不保存 response.completed 中的最终 encrypted_content。
+          // OpenAI Responses 在 completed 阶段可能给出一份“全量最终签名”，
+          // 与 output_item.done 阶段的 reasoning 签名重复且常出现在可见正文之后，
+          // 会在历史里形成额外的 signature-only thought part。保持原逻辑：
+          // 只在 output_item.done 阶段接收 reasoning.encrypted_content。
+        }
+      }
       flushPendingFunctionCalls(chunk, streamState);
     }
 
@@ -265,6 +277,8 @@ export class OpenAIResponsesFormat implements FormatAdapter {
     return {
       emittedFunctionCallIds: new Set<string>(),
       pendingFunctionCalls: new Map<string, PendingOpenAIResponsesFunctionCall>(),
+      reasoningTextByKey: new Map<string, string>(),
+      emittedReasoningSignatures: new Set<string>(),
     } as OpenAIResponsesStreamState;
   }
 }
@@ -272,6 +286,8 @@ export class OpenAIResponsesFormat implements FormatAdapter {
 interface OpenAIResponsesStreamState extends StreamDecodeState {
   emittedFunctionCallIds: Set<string>;
   pendingFunctionCalls: Map<string, PendingOpenAIResponsesFunctionCall>;
+  reasoningTextByKey: Map<string, string>;
+  emittedReasoningSignatures: Set<string>;
 }
 
 interface PendingOpenAIResponsesFunctionCall {
@@ -299,11 +315,113 @@ function createReasoningPart(
 }
 
 function extractReasoningSummaryText(summary: unknown): string {
+  if (typeof summary === 'string') return summary;
   if (!Array.isArray(summary)) return '';
   return summary
-    .map(item => (item && typeof item === 'object' && 'text' in item ? (item as any).text : ''))
+    .map(extractReasoningSummaryPartText)
     .filter(Boolean)
     .join('\n');
+}
+
+function extractReasoningSummaryPartText(part: unknown): string {
+  if (typeof part === 'string') return part;
+  if (!part || typeof part !== 'object') return '';
+  const record = part as any;
+  if (typeof record.text === 'string') return record.text;
+  if (typeof record.summary_text === 'string') return record.summary_text;
+  if (typeof record.content === 'string') return record.content;
+  return '';
+}
+
+function isReasoningTextDeltaEvent(event: unknown): boolean {
+  return event === 'response.reasoning_summary_text.delta'
+    || event === 'response.reasoning_text.delta'
+    || event === 'response.reasoning.delta';
+}
+
+function isReasoningTextDoneEvent(event: unknown): boolean {
+  return event === 'response.reasoning_summary_text.done'
+    || event === 'response.reasoning_text.done'
+    || event === 'response.reasoning.done';
+}
+
+function isReasoningSummaryPartEvent(event: unknown): boolean {
+  return event === 'response.reasoning_summary_part.added'
+    || event === 'response.reasoning_summary_part.done';
+}
+
+function emitReasoningDeltaText(
+  chunk: LLMStreamChunk,
+  state: OpenAIResponsesStreamState,
+  data: any,
+  delta: unknown,
+): void {
+  const text = typeof delta === 'string' ? delta : extractReasoningSummaryPartText(delta);
+  if (!text) return;
+  const key = getReasoningStateKey(data);
+  state.reasoningTextByKey.set(key, (state.reasoningTextByKey.get(key) ?? '') + text);
+  appendPartDelta(chunk, { text, thought: true } as any);
+}
+
+function emitReasoningFullText(
+  chunk: LLMStreamChunk,
+  state: OpenAIResponsesStreamState,
+  data: any,
+  text: unknown,
+): void {
+  if (typeof text !== 'string' || !text) return;
+  const key = getReasoningStateKey(data);
+  const emitted = state.reasoningTextByKey.get(key) ?? '';
+  if (text === emitted) return;
+
+  // done / completed 事件给的是完整文本：只补齐尚未通过 delta 发出的后缀。
+  // 如果 provider 在 done 中返回了与 delta 不同的修订文本，则不追加，避免历史中重复或错序。
+  if (emitted && !text.startsWith(emitted)) {
+    state.reasoningTextByKey.set(key, text);
+    return;
+  }
+
+  const delta = emitted ? text.slice(emitted.length) : text;
+  state.reasoningTextByKey.set(key, text);
+  if (delta) appendPartDelta(chunk, { text: delta, thought: true } as any);
+}
+
+function emitReasoningItemSummary(
+  chunk: LLMStreamChunk,
+  state: OpenAIResponsesStreamState,
+  item: any,
+  context?: any,
+): void {
+  const text = extractReasoningSummaryText(item?.summary);
+  emitReasoningFullText(chunk, state, { ...context, item }, text);
+}
+
+function emitReasoningSignature(
+  chunk: LLMStreamChunk,
+  state: OpenAIResponsesStreamState,
+  item: any,
+  context?: any,
+): void {
+  const signature = typeof item?.encrypted_content === 'string' ? item.encrypted_content : '';
+  if (!signature) return;
+  const key = `${getReasoningStateKey({ ...context, item })}:${signature}`;
+  if (state.emittedReasoningSignatures.has(key)) return;
+  state.emittedReasoningSignatures.add(key);
+
+  const part = { thought: true, thoughtSignatures: { openai: signature } } as any;
+  appendPartDelta(chunk, part);
+  chunk.thoughtSignatures = { ...(chunk.thoughtSignatures ?? {}), openai: signature };
+}
+
+function appendPartDelta(chunk: LLMStreamChunk, part: Part): void {
+  chunk.partsDelta = [...(chunk.partsDelta ?? []), part];
+}
+
+function getReasoningStateKey(data: any): string {
+  return normalizeCallId(data?.item_id)
+    ?? normalizeCallId(data?.item?.id)
+    ?? normalizeCallId(data?.id)
+    ?? `output:${data?.output_index ?? data?.index ?? 'default'}`;
 }
 
 function createFunctionCallPart(item: any): FunctionCallPart {
