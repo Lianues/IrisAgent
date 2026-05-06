@@ -2819,7 +2819,7 @@ var COMMANDS = [
   { name: "/exit", description: "退出应用" }
 ];
 function getCommandInput(cmd) {
-  return cmd.name === "/sh" || cmd.name === "/model" || cmd.name === "/remote" || cmd.name === "/file" || cmd.name === "/plan" ? `${cmd.name} ` : cmd.name;
+  return cmd.acceptsArgs || cmd.name === "/sh" || cmd.name === "/model" || cmd.name === "/remote" || cmd.name === "/file" || cmd.name === "/plan" ? `${cmd.name} ` : cmd.name;
 }
 function isExactCommandValue(value, cmd) {
   return value === cmd.name || value === getCommandInput(cmd);
@@ -2877,20 +2877,44 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
   const exactMatchIndex = useMemo3(() => {
     return visibleCommands.findIndex((cmd) => isExactCommandValue(value, cmd));
   }, [value, visibleCommands]);
+  const activeArgCommand = useMemo3(() => {
+    if (inputDisabled || !value.startsWith("/"))
+      return;
+    return visibleCommands.filter((cmd) => cmd.acceptsArgs && (value === cmd.name || value.startsWith(`${cmd.name} `))).sort((a, b) => b.name.length - a.name.length)[0];
+  }, [inputDisabled, value, visibleCommands]);
+  const argQuery = useMemo3(() => {
+    if (!activeArgCommand)
+      return "";
+    if (value === activeArgCommand.name)
+      return "";
+    return value.slice(activeArgCommand.name.length).trimStart();
+  }, [activeArgCommand, value]);
+  const argSuggestions = useMemo3(() => {
+    if (!activeArgCommand?.getArgSuggestions)
+      return [];
+    const all = activeArgCommand.getArgSuggestions({ arg: argQuery, raw: value });
+    const q = argQuery.trim().toLowerCase();
+    if (!q)
+      return all;
+    return all.filter((item) => item.value.toLowerCase().includes(q));
+  }, [activeArgCommand, argQuery, value]);
   const commandQuery = useMemo3(() => {
     if (inputDisabled)
       return "";
     if (!value.startsWith("/"))
       return "";
+    if (activeArgCommand && value.startsWith(`${activeArgCommand.name} `))
+      return "";
     if (/\s/.test(value) && exactMatchIndex < 0)
       return "";
     return value;
-  }, [inputDisabled, value, exactMatchIndex]);
+  }, [inputDisabled, value, exactMatchIndex, activeArgCommand]);
   const [commandsDismissed, setCommandsDismissed] = useState4(false);
   useEffect4(() => {
     setCommandsDismissed(false);
   }, [commandQuery]);
   const showCommands = commandQuery.length > 0 && !commandsDismissed;
+  const showArgSuggestions = !!activeArgCommand && argSuggestions.length > 0 && !commandsDismissed && value.startsWith(`${activeArgCommand.name} `);
   const filtered = useMemo3(() => {
     if (!showCommands)
       return [];
@@ -2899,6 +2923,10 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
     return visibleCommands.filter((cmd) => cmd.name.startsWith(commandQuery.trim()));
   }, [showCommands, exactMatchIndex, commandQuery, visibleCommands]);
   useEffect4(() => {
+    if (showArgSuggestions) {
+      setSelectedIndex((prev) => Math.min(prev, argSuggestions.length - 1));
+      return;
+    }
     if (!showCommands || filtered.length === 0) {
       setSelectedIndex(0);
       return;
@@ -2908,11 +2936,12 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
       return;
     }
     setSelectedIndex((prev) => Math.min(prev, filtered.length - 1));
-  }, [showCommands, filtered.length, exactMatchIndex]);
+  }, [showCommands, filtered.length, exactMatchIndex, showArgSuggestions, argSuggestions.length]);
   const applySelection = (index) => {
-    if (filtered.length === 0)
+    const count = showArgSuggestions ? argSuggestions.length : filtered.length;
+    if (count === 0)
       return;
-    const normalizedIndex = (index % filtered.length + filtered.length) % filtered.length;
+    const normalizedIndex = (index % count + count) % count;
     setSelectedIndex(normalizedIndex);
   };
   useKeyboard2((key) => {
@@ -2932,7 +2961,7 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
       key.preventDefault?.();
       return;
     }
-    if (showCommands && filtered.length > 0) {
+    if (showCommands && filtered.length > 0 || showArgSuggestions && argSuggestions.length > 0) {
       if (key.name === "up") {
         applySelection(selectedIndex + 1);
         return;
@@ -2942,6 +2971,12 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
         return;
       }
       if (key.name === "tab") {
+        if (showArgSuggestions && activeArgCommand) {
+          const current2 = argSuggestions[selectedIndex];
+          if (current2)
+            inputActions.setValue(`${activeArgCommand.name} ${current2.value}`);
+          return;
+        }
         const current = filtered[selectedIndex];
         if (current) {
           if (isExactCommandValue(value, current)) {
@@ -2976,7 +3011,11 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
         return;
       }
       let text = value.trim();
-      if (showCommands && filtered.length > 0) {
+      if (showArgSuggestions && activeArgCommand && argSuggestions.length > 0) {
+        const suggestion = argSuggestions[selectedIndex];
+        if (suggestion)
+          text = `${activeArgCommand.name} ${suggestion.value}`;
+      } else if (showCommands && filtered.length > 0) {
         const cmd = filtered[selectedIndex];
         if (cmd)
           text = getCommandInput(cmd);
@@ -3020,6 +3059,7 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
     }, 150);
   });
   const maxLen = filtered.length > 0 ? Math.max(...filtered.map((cmd) => cmd.name.length)) : 0;
+  const maxArgLen = argSuggestions.length > 0 ? Math.max(...argSuggestions.map((item) => item.value.length)) : 0;
   const MAX_VISIBLE_INPUT_LINES = 8;
   const baseAvailableWidth = Math.max(1, termWidth - 9);
   const visualLineCount = useMemo3(() => {
@@ -3069,7 +3109,45 @@ function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPrioritySubmi
   return /* @__PURE__ */ jsxDEV8("box", {
     flexDirection: "column",
     children: [
-      filtered.length > 0 && /* @__PURE__ */ jsxDEV8("box", {
+      showArgSuggestions && argSuggestions.length > 0 && /* @__PURE__ */ jsxDEV8("box", {
+        flexDirection: "column",
+        backgroundColor: C.panelBg,
+        paddingX: 1,
+        children: [...argSuggestions].reverse().map((item, _i) => {
+          const index = argSuggestions.indexOf(item);
+          const padded = item.value.padEnd(maxArgLen);
+          const isSelected = index === selectedIndex;
+          return /* @__PURE__ */ jsxDEV8("box", {
+            paddingLeft: 1,
+            backgroundColor: isSelected ? C.border : undefined,
+            children: /* @__PURE__ */ jsxDEV8("text", {
+              children: [
+                /* @__PURE__ */ jsxDEV8("span", {
+                  fg: isSelected ? C.accent : C.dim,
+                  children: isSelected ? `${ICONS.triangleRight} ` : "  "
+                }, undefined, false, undefined, this),
+                isSelected ? /* @__PURE__ */ jsxDEV8("strong", {
+                  children: /* @__PURE__ */ jsxDEV8("span", {
+                    fg: item.color ?? C.text,
+                    children: padded
+                  }, undefined, false, undefined, this)
+                }, undefined, false, undefined, this) : /* @__PURE__ */ jsxDEV8("span", {
+                  fg: item.color ?? C.textSec,
+                  children: padded
+                }, undefined, false, undefined, this),
+                item.description ? /* @__PURE__ */ jsxDEV8("span", {
+                  fg: isSelected ? C.textSec : C.dim,
+                  children: [
+                    "  ",
+                    item.description
+                  ]
+                }, undefined, true, undefined, this) : null
+              ]
+            }, undefined, true, undefined, this)
+          }, `${item.value}-${index}`, false, undefined, this);
+        })
+      }, undefined, false, undefined, this),
+      !showArgSuggestions && filtered.length > 0 && /* @__PURE__ */ jsxDEV8("box", {
         flexDirection: "column",
         backgroundColor: C.panelBg,
         paddingX: 1,
@@ -3729,6 +3807,17 @@ function ShellRenderer({ result }) {
   const r = result || {};
   const exitCode = r.exitCode ?? 0;
   const isError = exitCode !== 0;
+  if (r.abortedByUser) {
+    return /* @__PURE__ */ jsxDEV16("text", {
+      fg: "#ff0000",
+      children: /* @__PURE__ */ jsxDEV16("em", {
+        children: [
+          ` ${ICONS.resultArrow} `,
+          "被用户终止"
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this);
+  }
   if (r.killed) {
     return /* @__PURE__ */ jsxDEV16("text", {
       fg: "#ff0000",
@@ -4244,6 +4333,45 @@ function getToolDetailRenderer(toolName) {
   return detailRenderers[toolName] ?? null;
 }
 
+// src/tool-errors.ts
+function formatToolError(error) {
+  if (!error)
+    return error;
+  const normalized = error.trim();
+  if (normalized === "Operation aborted" || normalized === "Aborted by user" || normalized === "AbortError" || /aborted by user/i.test(normalized) || /operation aborted/i.test(normalized) || /the operation was aborted/i.test(normalized)) {
+    return "被用户终止";
+  }
+  return error;
+}
+
+// src/tool-display-service.ts
+var CONSOLE_TOOL_DISPLAY_SERVICE_ID = "console:tool-display";
+var providers = new Map;
+var consoleToolDisplayService = {
+  register(toolName, provider) {
+    providers.set(toolName, provider);
+    let disposed = false;
+    return {
+      dispose() {
+        if (disposed)
+          return;
+        disposed = true;
+        if (providers.get(toolName) === provider)
+          providers.delete(toolName);
+      }
+    };
+  },
+  get(toolName) {
+    return providers.get(toolName);
+  },
+  list() {
+    return Array.from(providers.keys());
+  }
+};
+function getToolDisplayProvider(toolName) {
+  return providers.get(toolName);
+}
+
 // src/components/ToolCall.tsx
 init_terminal_compat();
 import { jsxDEV as jsxDEV26 } from "@opentui/react/jsx-dev-runtime";
@@ -4317,9 +4445,12 @@ function getArgsSummary(toolName, args) {
 }
 function ToolCall({ invocation }) {
   const { toolName, status, args, result, error, createdAt, updatedAt } = invocation;
+  const displayError = formatToolError(error);
   const progress = invocation.progress;
   const progressTokens = typeof progress?.tokens === "number" ? progress.tokens : undefined;
   const progressFrame = typeof progress?.frame === "number" ? progress.frame : undefined;
+  const displayProvider = getToolDisplayProvider(toolName);
+  const customProgressLine = displayProvider?.getProgressLine?.({ toolName, args, progress }) ?? "";
   const hasProgress = progress != null;
   const childStatus = typeof progress?.childStatus === "string" ? progress.childStatus : "";
   const streamingText = typeof progress?.streamingText === "string" ? progress.streamingText : "";
@@ -4327,10 +4458,11 @@ function ToolCall({ invocation }) {
   const isFinal = TERMINAL_STATUSES.has(status);
   const isExecuting = status === "executing";
   const isAwaitingApproval = status === "awaiting_approval";
-  const argsSummary = getArgsSummary(toolName, args);
+  const argsSummary = displayProvider?.getArgsSummary?.({ toolName, args }) ?? getArgsSummary(toolName, args);
   const Renderer = isFinal && result != null ? getToolRenderer(toolName) : null;
   const durationSec = (updatedAt - createdAt) / 1000;
   const duration = isFinal && durationSec > 0 ? durationSec.toFixed(1) + "s" : "";
+  const customResultSummary = isFinal && result != null ? displayProvider?.getResultSummary?.({ toolName, args, result }) ?? "" : "";
   const nameBg = status === "error" ? C.error : isAwaitingApproval ? C.warn : C.accent;
   return /* @__PURE__ */ jsxDEV26("box", {
     flexDirection: "column",
@@ -4394,6 +4526,13 @@ function ToolCall({ invocation }) {
                   duration
                 ]
               }, undefined, true, undefined, this) : null,
+              customResultSummary ? /* @__PURE__ */ jsxDEV26("span", {
+                fg: C.dim,
+                children: [
+                  " ",
+                  customResultSummary
+                ]
+              }, undefined, true, undefined, this) : null,
               isExecuting && progressTokens != null && progressTokens > 0 ? /* @__PURE__ */ jsxDEV26("span", {
                 fg: C.dim,
                 children: [
@@ -4415,12 +4554,21 @@ function ToolCall({ invocation }) {
           }, undefined, false, undefined, this) : null
         ]
       }, undefined, true, undefined, this),
-      status === "error" && error && /* @__PURE__ */ jsxDEV26("text", {
+      status === "error" && displayError && /* @__PURE__ */ jsxDEV26("text", {
         fg: C.error,
         children: /* @__PURE__ */ jsxDEV26("em", {
           children: [
             "  ",
-            error
+            displayError
+          ]
+        }, undefined, true, undefined, this)
+      }, undefined, false, undefined, this),
+      isExecuting && customProgressLine.length > 0 && /* @__PURE__ */ jsxDEV26("text", {
+        children: /* @__PURE__ */ jsxDEV26("span", {
+          fg: C.accent,
+          children: [
+            "  ",
+            customProgressLine
           ]
         }, undefined, true, undefined, this)
       }, undefined, false, undefined, this),
@@ -6478,7 +6626,7 @@ function ResultSection({ status, error, result, toolName, args, Renderer }) {
       fg: C.error,
       children: [
         "  ",
-        error
+        formatToolError(error)
       ]
     }, undefined, true, undefined, this);
   }
@@ -7311,6 +7459,12 @@ var STATUS_LABELS = {
   available: { label: "available", color: "#f39c12" },
   platform: { label: "platform", color: "#95a5a6" }
 };
+var SOURCE_BADGES = {
+  installed: { label: "G", color: "#74b9ff" },
+  "agent-installed": { label: "A", color: "#ff7675" },
+  embedded: { label: "E", color: "#a29bfe" },
+  workspace: { label: "W", color: "#fdcb6e" }
+};
 var GIT_INPUT_PLACEHOLDER = "https://github.com/user/repo.git#main:extensions/demo";
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -7446,6 +7600,8 @@ function ExtensionListView({
   gitInputValue = "",
   gitInputCursor = 0,
   gitInputCursorVisible = true,
+  scopePickMode = false,
+  installScope = "agent",
   pendingDeleteName = null,
   pendingUpdateName = null
 }) {
@@ -7478,6 +7634,30 @@ function ExtensionListView({
           }, undefined, false, undefined, this)
         ]
       }, undefined, true, undefined, this),
+      scopePickMode && /* @__PURE__ */ jsxDEV39("box", {
+        flexDirection: "column",
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingBottom: 1,
+        children: [
+          /* @__PURE__ */ jsxDEV39("text", {
+            fg: C.primary,
+            children: "选择安装范围："
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV39("text", {
+            fg: C.text,
+            children: "  [1] 全局      ~/.iris/extensions/         （所有 agent 共享）"
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV39("text", {
+            fg: C.text,
+            children: "  [2] 此 agent  ~/.iris/agents/<id>/extensions/（仅当前 agent，优先级更高）"
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsxDEV39("text", {
+            fg: C.dim,
+            children: "按数字选择，Esc 取消。选完会进入 Git 地址输入。"
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this),
       gitInputMode && /* @__PURE__ */ jsxDEV39("box", {
         flexDirection: "column",
         paddingLeft: 2,
@@ -7486,7 +7666,7 @@ function ExtensionListView({
         children: [
           /* @__PURE__ */ jsxDEV39("text", {
             fg: C.primary,
-            children: "Git 地址（支持 #ref:subdir）："
+            children: `Git 地址（→ ${installScope === "global" ? "全局" : "此 agent"}，支持 #ref:subdir）：`
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsxDEV39(GitInputFrame, {
             value: gitInputValue,
@@ -7543,6 +7723,13 @@ function ExtensionListView({
                         fg: statusInfo.color,
                         children: `[${isToggling ? "..." : `${statusInfo.label}${isDirty ? "*" : ""}`}] `
                       }, undefined, false, undefined, this),
+                      (() => {
+                        const badge = SOURCE_BADGES[item.source];
+                        return badge ? /* @__PURE__ */ jsxDEV39("span", {
+                          fg: badge.color,
+                          children: `[${badge.label}] `
+                        }, undefined, false, undefined, this) : null;
+                      })(),
                       isSelected ? /* @__PURE__ */ jsxDEV39("strong", {
                         children: /* @__PURE__ */ jsxDEV39("span", {
                           fg: C.text,
@@ -9669,6 +9856,10 @@ function useAppKeyboard({
   setExtensionGitInputMode,
   extensionGitInputState,
   extensionGitInputActions,
+  extensionScopePickMode,
+  setExtensionScopePickMode,
+  extensionInstallScope,
+  setExtensionInstallScope,
   extensionPendingDeleteName,
   setExtensionPendingDeleteName,
   extensionPendingUpdateName,
@@ -9833,6 +10024,33 @@ function useAppKeyboard({
       if (extensionBusy) {
         return;
       }
+      if (extensionScopePickMode) {
+        if (key.name === "escape") {
+          setExtensionScopePickMode(false);
+          setExtensionStatusMessage(null);
+          setExtensionStatusIsError(false);
+          return;
+        }
+        if (key.name === "1" || key.sequence === "1") {
+          setExtensionInstallScope("global");
+          setExtensionScopePickMode(false);
+          setExtensionGitInputMode(true);
+          extensionGitInputActions.setValue("");
+          setExtensionStatusMessage("安装范围：全局 (~/.iris/extensions/)。输入 Git 地址后按 Enter 拉取安装");
+          setExtensionStatusIsError(false);
+          return;
+        }
+        if (key.name === "2" || key.sequence === "2") {
+          setExtensionInstallScope("agent");
+          setExtensionScopePickMode(false);
+          setExtensionGitInputMode(true);
+          extensionGitInputActions.setValue("");
+          setExtensionStatusMessage("安装范围：此 agent (仅当前 agent 可见)。输入 Git 地址后按 Enter 拉取安装");
+          setExtensionStatusIsError(false);
+          return;
+        }
+        return;
+      }
       if (extensionGitInputMode) {
         if (key.ctrl && key.name === "v") {
           const pasted = readClipboardText();
@@ -9864,10 +10082,11 @@ function useAppKeyboard({
             setExtensionStatusIsError(true);
             return;
           }
-          setExtensionStatusMessage(`拉取 Git 扩展中：${target}`);
+          const scopeLabel = extensionInstallScope === "global" ? "全局" : "此 agent";
+          setExtensionStatusMessage(`拉取 Git 扩展中（→ ${scopeLabel}）：${target}`);
           setExtensionStatusIsError(false);
           setExtensionBusy(true);
-          onInstallGitExtension(target).then(async (result) => {
+          onInstallGitExtension(target, extensionInstallScope).then(async (result) => {
             if (!result.ok) {
               setExtensionStatusMessage(result.message);
               setExtensionStatusIsError(true);
@@ -9968,11 +10187,10 @@ function useAppKeyboard({
       } else if (key.name === "g") {
         if (blockIfDirty("Git 拉取"))
           return;
-        setExtensionGitInputMode(true);
-        extensionGitInputActions.setValue("");
+        setExtensionScopePickMode(true);
         setExtensionPendingDeleteName(null);
         setExtensionPendingUpdateName(null);
-        setExtensionStatusMessage("输入 Git 地址后按 Enter 拉取安装");
+        setExtensionStatusMessage("选择安装范围：[1] 全局  [2] 此 agent  Esc 取消");
         setExtensionStatusIsError(false);
       } else if (key.name === "d") {
         if (blockIfDirty("删除"))
@@ -10559,6 +10777,84 @@ function useApproval(pendingApprovals, pendingApplies) {
 
 // src/hooks/use-command-dispatch.ts
 import { useCallback as useCallback7 } from "react";
+
+// src/slash-command-service.ts
+var CONSOLE_SLASH_COMMAND_SERVICE_ID = "console:slash-command";
+var commands = new Map;
+var listeners = new Set;
+function emitChange() {
+  for (const listener of [...listeners]) {
+    try {
+      listener();
+    } catch {}
+  }
+}
+function matchCommand(rawInput) {
+  const raw = rawInput.trim();
+  if (!raw.startsWith("/"))
+    return;
+  let best;
+  for (const command of commands.values()) {
+    const name = command.name.trim();
+    if (raw === name || raw.startsWith(`${name} `)) {
+      const arg = raw === name ? "" : raw.slice(name.length).trim();
+      if (!best || name.length > best.command.name.length)
+        best = { command, arg };
+    }
+  }
+  return best;
+}
+var consoleSlashCommandService = {
+  register(command) {
+    commands.set(command.name, command);
+    emitChange();
+    let disposed = false;
+    return {
+      dispose() {
+        if (disposed)
+          return;
+        disposed = true;
+        if (commands.get(command.name) === command) {
+          commands.delete(command.name);
+          emitChange();
+        }
+      }
+    };
+  },
+  list() {
+    return Array.from(commands.values()).map(({ handle: _handle, ...command }) => command);
+  },
+  canHandle(raw) {
+    return !!matchCommand(raw);
+  },
+  async dispatch(raw) {
+    const matched = matchCommand(raw);
+    if (!matched)
+      return;
+    const result = await matched.command.handle({ raw: raw.trim(), name: matched.command.name, arg: matched.arg });
+    return result ?? {};
+  },
+  onDidChange(listener) {
+    listeners.add(listener);
+    return { dispose: () => {
+      listeners.delete(listener);
+    } };
+  }
+};
+function getSlashCommands() {
+  return consoleSlashCommandService.list();
+}
+function onSlashCommandsChanged(listener) {
+  return consoleSlashCommandService.onDidChange(listener);
+}
+function canHandleSlashCommand(raw) {
+  return consoleSlashCommandService.canHandle(raw);
+}
+function dispatchSlashCommand(raw) {
+  return consoleSlashCommandService.dispatch(raw);
+}
+
+// src/hooks/use-command-dispatch.ts
 function resetRedo(undoRedoRef, onClearRedoStack) {
   clearRedo(undoRedoRef.current);
   onClearRedoStack();
@@ -10887,6 +11183,19 @@ function useCommandDispatch({
       onFileAttach(filePath);
       return;
     }
+    if (text.startsWith("/") && canHandleSlashCommand(text)) {
+      dispatchSlashCommand(text).then((result) => {
+        if (!result?.message)
+          return;
+        appendCommandMessage(setMessages, result.message, {
+          isError: result.isError,
+          label: result.label ?? "cmd"
+        });
+      }).catch((err) => {
+        appendCommandMessage(setMessages, `指令执行失败: ${err instanceof Error ? err.message : String(err)}`, { isError: true, label: "cmd" });
+      });
+      return;
+    }
     resetRedo(undoRedoRef, onClearRedoStack);
     onSubmit(text);
   }, [
@@ -11105,6 +11414,7 @@ function App({
   onToolMessage,
   onAddCommandPattern,
   onAbort,
+  onToolAbort,
   onNewSession,
   onLoadSession,
   onListSessions,
@@ -11172,21 +11482,30 @@ function App({
   const [extensionStatusMessage, setExtensionStatusMessage] = useState15(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState15(false);
   const [extensionGitInputMode, setExtensionGitInputMode] = useState15(false);
+  const [extensionScopePickMode, setExtensionScopePickMode] = useState15(false);
+  const [extensionInstallScope, setExtensionInstallScope] = useState15("agent");
   const [extensionPendingDeleteName, setExtensionPendingDeleteName] = useState15(null);
   const [extensionPendingUpdateName, setExtensionPendingUpdateName] = useState15(null);
   const [extensionBusy, setExtensionBusy] = useState15(false);
   const [pendingFiles, setPendingFiles] = useState15([]);
   const [runtimePluginSettingsTabs, setRuntimePluginSettingsTabs] = useState15(pluginSettingsTabs ?? []);
+  const [runtimeSlashCommands, setRuntimeSlashCommands] = useState15(() => getSlashCommands());
   useEffect12(() => {
     setRuntimePluginSettingsTabs(pluginSettingsTabs ?? []);
   }, [pluginSettingsTabs]);
+  useEffect12(() => {
+    const disposable = onSlashCommandsChanged(() => setRuntimeSlashCommands(getSlashCommands()));
+    setRuntimeSlashCommands(getSlashCommands());
+    return () => disposable.dispose();
+  }, []);
   const [fileBrowserPath, setFileBrowserPath] = useState15("");
   const [fileBrowserEntries, setFileBrowserEntries] = useState15([]);
   const disabledExtensionNames = useMemo7(() => new Set(extensionList.filter((item) => (item.originalStatus ?? item.status) === "disabled").map((item) => item.name)), [extensionList]);
   const activePluginSettingsTabs = useMemo7(() => runtimePluginSettingsTabs.filter((tab) => !disabledExtensionNames.has(tab.id)), [runtimePluginSettingsTabs, disabledExtensionNames]);
   const dynamicCommands = useMemo7(() => {
-    return activePluginSettingsTabs.some((tab) => tab.id === "virtual-lover") ? [{ name: "/lover", description: "打开 Virtual Lover 配置" }] : [];
-  }, [activePluginSettingsTabs]);
+    const pluginCommands = activePluginSettingsTabs.some((tab) => tab.id === "virtual-lover") ? [{ name: "/lover", description: "打开 Virtual Lover 配置" }] : [];
+    return [...pluginCommands, ...runtimeSlashCommands];
+  }, [activePluginSettingsTabs, runtimeSlashCommands]);
   const canOpenLoverSettings = dynamicCommands.some((command) => command.name === "/lover");
   const refreshPluginSettingsTabs = useCallback11(() => {
     setRuntimePluginSettingsTabs(onListPluginSettingsTabs?.() ?? pluginSettingsTabs ?? []);
@@ -11433,6 +11752,10 @@ function App({
     setExtensionStatusIsError,
     extensionGitInputMode,
     setExtensionGitInputMode,
+    extensionScopePickMode,
+    setExtensionScopePickMode,
+    extensionInstallScope,
+    setExtensionInstallScope,
     extensionGitInputState,
     extensionGitInputActions,
     extensionPendingDeleteName,
@@ -11506,6 +11829,8 @@ function App({
       gitInputValue: extensionGitInputState.value,
       gitInputCursor: extensionGitInputState.cursor,
       gitInputCursorVisible: true,
+      scopePickMode: extensionScopePickMode,
+      installScope: extensionInstallScope,
       pendingDeleteName: extensionPendingDeleteName,
       pendingUpdateName: extensionPendingUpdateName
     }, undefined, false, undefined, this);
@@ -11554,9 +11879,7 @@ function App({
         breadcrumb: appState.toolDetailStack,
         onNavigateChild: onNavigateToolDetail,
         onClose: onCloseToolDetail,
-        onAbort: (toolId) => {
-          onOpenToolDetail(toolId);
-        }
+        onAbort: onToolAbort
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this);
   }
@@ -12186,6 +12509,19 @@ class ConsolePlatform extends PlatformAdapter {
       services: options.api?.services,
       extensions: options.extensions
     });
+    const services = options.api?.services;
+    if (services && !services.has(CONSOLE_TOOL_DISPLAY_SERVICE_ID)) {
+      services.register(CONSOLE_TOOL_DISPLAY_SERVICE_ID, consoleToolDisplayService, {
+        description: "Console TUI 工具显示扩展服务",
+        version: "1.0.0"
+      });
+    }
+    if (services && !services.has(CONSOLE_SLASH_COMMAND_SERVICE_ID)) {
+      services.register(CONSOLE_SLASH_COMMAND_SERVICE_ID, consoleSlashCommandService, {
+        description: "Console TUI 斜杠指令扩展服务",
+        version: "1.0.0"
+      });
+    }
   }
   getPlanModeService() {
     return this.api?.services?.get?.(PLAN_MODE_SERVICE_ID);
@@ -12496,6 +12832,9 @@ ${summaryText}`;
         onAbort: () => {
           this.backend.abortChat?.(this.sessionId);
         },
+        onToolAbort: (toolId) => {
+          (this._activeHandles.get(toolId) ?? this.backend.getToolHandle?.(toolId))?.abort();
+        },
         onOpenToolDetail: (toolId) => {
           this.openToolDetail(toolId);
         },
@@ -12536,7 +12875,7 @@ ${summaryText}`;
         onDeleteMemory: (id) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name) => this.handleToggleExtension(name),
-        onInstallGitExtension: (target) => this.handleInstallGitExtension(target),
+        onInstallGitExtension: (target, scope) => this.handleInstallGitExtension(target, scope),
         onDeleteExtension: (name) => this.handleDeleteExtension(name),
         onPreviewUpdateExtension: (name) => this.handlePreviewUpdateExtension(name),
         onUpdateExtension: (name) => this.handleUpdateExtension(name),
@@ -13331,28 +13670,30 @@ ${summaryText}`;
       return { ok: false, message: `操作失败: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
-  async handleInstallGitExtension(target) {
+  async handleInstallGitExtension(target, scope = "agent") {
     const ext = this.api?.extensions;
     if (!ext?.installGit) {
       return { ok: false, message: "Git 扩展安装 API 不可用" };
     }
     try {
-      const result = await ext.installGit(target);
+      const installScope = scope === "global" ? { scope: { kind: "global" } } : undefined;
+      const result = await ext.installGit(target, installScope);
       const packages = ext.discover?.() ?? [];
       const pkg = packages.find((item) => item.manifest.name === result.name);
       const hasPlugin = pkg ? this.hasPluginContribution(pkg.manifest) : true;
+      const scopeLabel = scope === "global" ? "全局" : "此 agent";
       if (!hasPlugin) {
-        return { ok: true, message: `已拉取安装 "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
+        return { ok: true, message: `已拉取安装到${scopeLabel} "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
       }
       const active = this.api?.pluginManager?.listPlugins?.() ?? [];
       const alreadyActive = active.some((item) => item.name === result.name);
       if (alreadyActive) {
         this.setPluginConfigEnabled(result.name, true);
-        return { ok: true, message: `已覆盖安装 "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
+        return { ok: true, message: `已覆盖安装到${scopeLabel} "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
       }
       await ext.activate(result.name);
       this.setPluginConfigEnabled(result.name, true);
-      return { ok: true, message: `已拉取安装并启用 "${result.name}@${result.version}"` };
+      return { ok: true, message: `已拉取安装到${scopeLabel}并启用 "${result.name}@${result.version}"` };
     } catch (err) {
       return { ok: false, message: `Git 拉取失败: ${err instanceof Error ? err.message : String(err)}` };
     }
@@ -13362,8 +13703,18 @@ ${summaryText}`;
     if (!ext?.remove) {
       return { ok: false, message: "扩展删除 API 不可用" };
     }
+    const packages = ext.discover?.() ?? [];
+    const pkg = packages.find((p) => p.manifest.name === name);
+    if (!pkg) {
+      return { ok: false, message: `未找到扩展 "${name}"` };
+    }
+    if (pkg.source === "embedded" || pkg.source === "workspace") {
+      const label = pkg.source === "embedded" ? "内嵌扩展" : "源码 workspace 扩展";
+      return { ok: false, message: `${label}不可删除，请改用 plugins.yaml 设置 enabled: false 来禁用` };
+    }
+    const scope = pkg.source === "installed" ? { kind: "global" } : undefined;
     try {
-      await ext.remove(name);
+      await ext.remove(name, scope ? { scope } : undefined);
       this.removePluginConfigEntry(name);
       return { ok: true, message: `已删除 "${name}"` };
     } catch (err) {
@@ -13375,8 +13726,12 @@ ${summaryText}`;
     if (!ext?.previewUpdateGit) {
       return { ok: false, message: "Git 扩展升级预览 API 不可用" };
     }
+    const scope = this.resolveScopeForInstalled(name);
+    if (!scope) {
+      return { ok: false, message: "该扩展不是通过 Git 安装到 installed/agent-installed 目录，无法升级" };
+    }
     try {
-      const preview = await ext.previewUpdateGit(name);
+      const preview = await ext.previewUpdateGit(name, { scope });
       const currentCommit = preview.currentCommit ? String(preview.currentCommit).slice(0, 8) : "未知";
       const nextCommit = preview.nextCommit ? String(preview.nextCommit).slice(0, 8) : "未知";
       const versionPart = preview.currentVersion === preview.nextVersion ? `版本 ${preview.currentVersion}` : `版本 ${preview.currentVersion} -> ${preview.nextVersion}`;
@@ -13394,12 +13749,28 @@ ${summaryText}`;
     if (!ext?.updateGit) {
       return { ok: false, message: "Git 扩展升级 API 不可用" };
     }
+    const scope = this.resolveScopeForInstalled(name);
+    if (!scope) {
+      return { ok: false, message: "该扩展不是通过 Git 安装到 installed/agent-installed 目录，无法升级" };
+    }
     try {
-      const result = await ext.updateGit(name);
+      const result = await ext.updateGit(name, { scope });
       return { ok: true, message: `已升级 "${result.name}@${result.version}" 到 ${result.gitCommit ?? "最新 commit"}。当前运行中的插件可能需要重启后完全生效。` };
     } catch (err) {
       return { ok: false, message: `升级失败: ${err instanceof Error ? err.message : String(err)}` };
     }
+  }
+  resolveScopeForInstalled(name) {
+    const ext = this.api?.extensions;
+    const packages = ext?.discover?.() ?? [];
+    const pkg = packages.find((p) => p.manifest.name === name);
+    if (!pkg)
+      return;
+    if (pkg.source === "installed")
+      return { kind: "global" };
+    if (pkg.source === "agent-installed")
+      return ext?.defaultScope ?? undefined;
+    return;
   }
   async handlePlanCommand(arg) {
     const service = this.api?.services?.get?.(PLAN_MODE_SERVICE_ID);

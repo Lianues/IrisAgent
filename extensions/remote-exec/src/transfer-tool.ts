@@ -37,6 +37,23 @@ interface DirEntry {
   type: ResolvedKind;
 }
 
+interface TransferStats {
+  files: number;
+  dirs: number;
+  bytes: number;
+}
+
+interface TransferProgressTracker {
+  context?: ToolExecutionContext;
+  startedAt: number;
+  totalBytes: number;
+  totalFiles: number;
+  transferredBytes: number;
+  completedFiles: number;
+  currentSourcePath?: string;
+  currentTargetPath?: string;
+}
+
 interface StreamHandle {
   stream: Readable | Writable;
   done?: () => Promise<void>;
@@ -228,7 +245,10 @@ async function runTransfer(
   }
 
   if (kind === 'file') {
-    const copied = await copyFile({ from, to, sourcePath, targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+    const tracker = createTransferTracker(context, { files: 1, dirs: 0, bytes: sourceStat.size });
+    reportTransferProgress(tracker);
+    const copied = await copyFile({ from, to, sourcePath, targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, tracker });
+    reportTransferProgress(tracker, true);
     return {
       success: true,
       index,
@@ -242,7 +262,11 @@ async function runTransfer(
     };
   }
 
-  const copied = await copyDirectory({ from, to, sourceDir: sourcePath, targetDir: targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+  const planned = await collectTransferStats(from, sourcePath, sourceStat);
+  const tracker = createTransferTracker(context, planned);
+  reportTransferProgress(tracker);
+  const copied = await copyDirectory({ from, to, sourceDir: sourcePath, targetDir: targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, tracker });
+  reportTransferProgress(tracker, true);
   return {
     success: true,
     index,
@@ -273,6 +297,65 @@ async function createEndpoint(environment: string, envMgr: EnvironmentManager, t
   }
 }
 
+
+function createTransferTracker(context: ToolExecutionContext | undefined, stats: TransferStats): TransferProgressTracker {
+  return {
+    context,
+    startedAt: Date.now(),
+    totalBytes: stats.bytes,
+    totalFiles: stats.files,
+    transferredBytes: 0,
+    completedFiles: 0,
+  };
+}
+
+async function collectTransferStats(endpoint: Endpoint, p: string, knownStat?: StatInfo): Promise<TransferStats> {
+  const st = knownStat ?? await endpoint.stat(p);
+  if (st.type === 'file') return { files: 1, dirs: 0, bytes: st.size };
+
+  let files = 0;
+  let dirs = 1;
+  let bytes = 0;
+  const entries = await endpoint.readdir(p);
+  for (const entry of entries) {
+    const child = endpoint.join(p, entry.name);
+    if (entry.type === 'directory') {
+      const nested = await collectTransferStats(endpoint, child);
+      files += nested.files;
+      dirs += nested.dirs;
+      bytes += nested.bytes;
+    } else {
+      const childStat = await endpoint.stat(child);
+      files += 1;
+      bytes += childStat.size;
+    }
+  }
+  return { files, dirs, bytes };
+}
+
+function reportTransferProgress(tracker: TransferProgressTracker, final = false): void {
+  const elapsedMs = Math.max(1, Date.now() - tracker.startedAt);
+  const speedBytesPerSec = tracker.transferredBytes / (elapsedMs / 1000);
+  const remainingBytes = Math.max(0, tracker.totalBytes - tracker.transferredBytes);
+  const percent = tracker.totalBytes > 0
+    ? Math.min(100, Math.round((tracker.transferredBytes / tracker.totalBytes) * 100))
+    : 100;
+
+  tracker.context?.reportProgress?.({
+    kind: 'transfer_files',
+    sourcePath: tracker.currentSourcePath,
+    targetPath: tracker.currentTargetPath,
+    bytesTransferred: tracker.transferredBytes,
+    totalBytes: tracker.totalBytes,
+    percent: final ? 100 : percent,
+    speedBytesPerSec,
+    etaSec: speedBytesPerSec > 0 ? Math.ceil(remainingBytes / speedBytesPerSec) : undefined,
+    elapsedMs,
+    filesTransferred: tracker.completedFiles,
+    totalFiles: tracker.totalFiles,
+  });
+}
+
 async function copyDirectory(input: {
   from: Endpoint;
   to: Endpoint;
@@ -281,9 +364,9 @@ async function copyDirectory(input: {
   overwrite: boolean;
   createDirs: boolean;
   verify: VerifyMode;
-  context?: ToolExecutionContext;
+  tracker: TransferProgressTracker;
 }): Promise<{ files: number; dirs: number; bytes: number; verifyOk: boolean }> {
-  const { from, to, sourceDir, targetDir, overwrite, createDirs, verify, context } = input;
+  const { from, to, sourceDir, targetDir, overwrite, createDirs, verify, tracker } = input;
   const st = await from.stat(sourceDir);
   if (st.type !== 'directory') throw new Error(`源路径不是目录: ${sourceDir}`);
   if (createDirs) await to.mkdirp(targetDir);
@@ -298,13 +381,13 @@ async function copyDirectory(input: {
     const src = from.join(sourceDir, entry.name);
     const dst = to.join(targetDir, entry.name);
     if (entry.type === 'directory') {
-      const nested = await copyDirectory({ from, to, sourceDir: src, targetDir: dst, overwrite, createDirs, verify, context });
+      const nested = await copyDirectory({ from, to, sourceDir: src, targetDir: dst, overwrite, createDirs, verify, tracker });
       files += nested.files;
       dirs += nested.dirs;
       bytes += nested.bytes;
       verifyOk = verifyOk && nested.verifyOk;
     } else {
-      const one = await copyFile({ from, to, sourcePath: src, targetPath: dst, overwrite, createDirs, verify, context });
+      const one = await copyFile({ from, to, sourcePath: src, targetPath: dst, overwrite, createDirs, verify, tracker });
       files += 1;
       bytes += one.bytes;
       verifyOk = verifyOk && one.verifyOk;
@@ -321,9 +404,9 @@ async function copyFile(input: {
   overwrite: boolean;
   createDirs: boolean;
   verify: VerifyMode;
-  context?: ToolExecutionContext;
+  tracker: TransferProgressTracker;
 }): Promise<{ bytes: number; verifyOk: boolean }> {
-  const { from, to, sourcePath, targetPath, overwrite, createDirs, verify, context } = input;
+  const { from, to, sourcePath, targetPath, overwrite, createDirs, verify, tracker } = input;
   const st = await from.stat(sourcePath);
   if (st.type !== 'file') throw new Error(`源路径不是文件: ${sourcePath}`);
 
@@ -333,17 +416,13 @@ async function copyFile(input: {
   if (createDirs) await to.mkdirp(to.dirname(targetPath));
 
   const tempPath = makeTempPath(to, targetPath);
-  let transferred = 0;
+  tracker.currentSourcePath = sourcePath;
+  tracker.currentTargetPath = targetPath;
   const progress = new Transform({
     transform(chunk, _encoding, callback) {
       const n = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-      transferred += n;
-      context?.reportProgress?.({
-        kind: 'transfer_files',
-        bytesTransferred: transferred,
-        totalBytes: st.size,
-        percent: st.size > 0 ? Math.min(100, Math.round((transferred / st.size) * 100)) : 100,
-      });
+      tracker.transferredBytes += n;
+      reportTransferProgress(tracker);
       callback(null, chunk);
     },
   });
@@ -364,6 +443,8 @@ async function copyFile(input: {
     }
 
     await to.rename(tempPath, targetPath, overwrite);
+    tracker.completedFiles += 1;
+    reportTransferProgress(tracker);
     return { bytes: st.size, verifyOk };
   } catch (err) {
     await safeUnlink(to, tempPath);

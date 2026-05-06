@@ -5,11 +5,21 @@
 export interface Command {
   name: string;
   description: string;
+  /** 是否接受空格后的参数；用于补全时保留一个尾随空格 */
+  acceptsArgs?: boolean;
+  /** 参数候选项（当输入形如 `/cmd <arg>` 时展示） */
+  getArgSuggestions?: (input: { arg: string; raw: string }) => CommandArgSuggestion[];
   /** 仅在远程连接时显示 */
   remoteOnly?: boolean;
   /** 仅在宿主支持保留 Core / IPC 的 TUI headless 切换时显示 */
   requiresHeadlessSupport?: boolean;
   /** 自定义颜色（十六进制） */
+  color?: string;
+}
+
+export interface CommandArgSuggestion {
+  value: string;
+  description?: string;
   color?: string;
 }
 
@@ -41,7 +51,7 @@ export const COMMANDS: Command[] = [
 ];
 
 export function getCommandInput(cmd: Command): string {
-  return cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' || cmd.name === '/file' || cmd.name === '/plan' ? `${cmd.name} ` : cmd.name;
+  return cmd.acceptsArgs || cmd.name === '/sh' || cmd.name === '/model' || cmd.name === '/remote' || cmd.name === '/file' || cmd.name === '/plan' ? `${cmd.name} ` : cmd.name;
 }
 
 export function isExactCommandValue(value: string, cmd: Command): boolean {

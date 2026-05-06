@@ -13,6 +13,7 @@ import { appendCommandMessage } from '../message-utils';
 import { clearRedo, performRedo, performUndo, type UndoRedoStack } from '../undo-redo';
 import type { UseModelStateReturn } from './use-model-state';
 import type { MemoryItem, MemoryFilter } from '../components/MemoryListView';
+import { canHandleSlashCommand, dispatchSlashCommand } from '../slash-command-service';
 
 type SetMessages = Dispatch<SetStateAction<ChatMessage[]>>;
 type SetMemoryList = Dispatch<SetStateAction<MemoryItem[]>>;
@@ -439,6 +440,23 @@ export function useCommandDispatch({
       }
       // 有参数 → 直接附加指定路径
       onFileAttach(filePath);
+      return;
+    }
+
+    if (text.startsWith('/') && canHandleSlashCommand(text)) {
+      void dispatchSlashCommand(text).then((result) => {
+        if (!result?.message) return;
+        appendCommandMessage(setMessages, result.message, {
+          isError: result.isError,
+          label: result.label ?? 'cmd',
+        });
+      }).catch((err) => {
+        appendCommandMessage(
+          setMessages,
+          `指令执行失败: ${err instanceof Error ? err.message : String(err)}`,
+          { isError: true, label: 'cmd' },
+        );
+      });
       return;
     }
 

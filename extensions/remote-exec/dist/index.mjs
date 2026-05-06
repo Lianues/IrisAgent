@@ -7800,7 +7800,10 @@ async function runTransfer(item, verify, envMgr, transport, context, index) {
     targetPath = to.join(targetPath, from.basename(sourcePath));
   }
   if (kind === "file") {
-    const copied2 = await copyFile({ from, to, sourcePath, targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+    const tracker2 = createTransferTracker(context, { files: 1, dirs: 0, bytes: sourceStat.size });
+    reportTransferProgress(tracker2);
+    const copied2 = await copyFile({ from, to, sourcePath, targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, tracker: tracker2 });
+    reportTransferProgress(tracker2, true);
     return {
       success: true,
       index,
@@ -7813,7 +7816,11 @@ async function runTransfer(item, verify, envMgr, transport, context, index) {
       verify: { mode: verify, ok: copied2.verifyOk }
     };
   }
-  const copied = await copyDirectory({ from, to, sourceDir: sourcePath, targetDir: targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+  const planned = await collectTransferStats(from, sourcePath, sourceStat);
+  const tracker = createTransferTracker(context, planned);
+  reportTransferProgress(tracker);
+  const copied = await copyDirectory({ from, to, sourceDir: sourcePath, targetDir: targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, tracker });
+  reportTransferProgress(tracker, true);
   return {
     success: true,
     index,
@@ -7847,8 +7854,60 @@ async function createEndpoint(environment, envMgr, transport) {
     throw err;
   }
 }
+function createTransferTracker(context, stats) {
+  return {
+    context,
+    startedAt: Date.now(),
+    totalBytes: stats.bytes,
+    totalFiles: stats.files,
+    transferredBytes: 0,
+    completedFiles: 0
+  };
+}
+async function collectTransferStats(endpoint, p, knownStat) {
+  const st = knownStat ?? await endpoint.stat(p);
+  if (st.type === "file")
+    return { files: 1, dirs: 0, bytes: st.size };
+  let files = 0;
+  let dirs = 1;
+  let bytes = 0;
+  const entries = await endpoint.readdir(p);
+  for (const entry of entries) {
+    const child = endpoint.join(p, entry.name);
+    if (entry.type === "directory") {
+      const nested = await collectTransferStats(endpoint, child);
+      files += nested.files;
+      dirs += nested.dirs;
+      bytes += nested.bytes;
+    } else {
+      const childStat = await endpoint.stat(child);
+      files += 1;
+      bytes += childStat.size;
+    }
+  }
+  return { files, dirs, bytes };
+}
+function reportTransferProgress(tracker, final = false) {
+  const elapsedMs = Math.max(1, Date.now() - tracker.startedAt);
+  const speedBytesPerSec = tracker.transferredBytes / (elapsedMs / 1000);
+  const remainingBytes = Math.max(0, tracker.totalBytes - tracker.transferredBytes);
+  const percent = tracker.totalBytes > 0 ? Math.min(100, Math.round(tracker.transferredBytes / tracker.totalBytes * 100)) : 100;
+  tracker.context?.reportProgress?.({
+    kind: "transfer_files",
+    sourcePath: tracker.currentSourcePath,
+    targetPath: tracker.currentTargetPath,
+    bytesTransferred: tracker.transferredBytes,
+    totalBytes: tracker.totalBytes,
+    percent: final ? 100 : percent,
+    speedBytesPerSec,
+    etaSec: speedBytesPerSec > 0 ? Math.ceil(remainingBytes / speedBytesPerSec) : undefined,
+    elapsedMs,
+    filesTransferred: tracker.completedFiles,
+    totalFiles: tracker.totalFiles
+  });
+}
 async function copyDirectory(input) {
-  const { from, to, sourceDir, targetDir, overwrite, createDirs, verify, context } = input;
+  const { from, to, sourceDir, targetDir, overwrite, createDirs, verify, tracker } = input;
   const st = await from.stat(sourceDir);
   if (st.type !== "directory")
     throw new Error(`源路径不是目录: ${sourceDir}`);
@@ -7863,13 +7922,13 @@ async function copyDirectory(input) {
     const src = from.join(sourceDir, entry.name);
     const dst = to.join(targetDir, entry.name);
     if (entry.type === "directory") {
-      const nested = await copyDirectory({ from, to, sourceDir: src, targetDir: dst, overwrite, createDirs, verify, context });
+      const nested = await copyDirectory({ from, to, sourceDir: src, targetDir: dst, overwrite, createDirs, verify, tracker });
       files += nested.files;
       dirs += nested.dirs;
       bytes += nested.bytes;
       verifyOk = verifyOk && nested.verifyOk;
     } else {
-      const one = await copyFile({ from, to, sourcePath: src, targetPath: dst, overwrite, createDirs, verify, context });
+      const one = await copyFile({ from, to, sourcePath: src, targetPath: dst, overwrite, createDirs, verify, tracker });
       files += 1;
       bytes += one.bytes;
       verifyOk = verifyOk && one.verifyOk;
@@ -7878,7 +7937,7 @@ async function copyDirectory(input) {
   return { files, dirs, bytes, verifyOk };
 }
 async function copyFile(input) {
-  const { from, to, sourcePath, targetPath, overwrite, createDirs, verify, context } = input;
+  const { from, to, sourcePath, targetPath, overwrite, createDirs, verify, tracker } = input;
   const st = await from.stat(sourcePath);
   if (st.type !== "file")
     throw new Error(`源路径不是文件: ${sourcePath}`);
@@ -7888,17 +7947,13 @@ async function copyFile(input) {
   if (createDirs)
     await to.mkdirp(to.dirname(targetPath));
   const tempPath = makeTempPath(to, targetPath);
-  let transferred = 0;
+  tracker.currentSourcePath = sourcePath;
+  tracker.currentTargetPath = targetPath;
   const progress = new Transform({
     transform(chunk, _encoding, callback) {
       const n = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-      transferred += n;
-      context?.reportProgress?.({
-        kind: "transfer_files",
-        bytesTransferred: transferred,
-        totalBytes: st.size,
-        percent: st.size > 0 ? Math.min(100, Math.round(transferred / st.size * 100)) : 100
-      });
+      tracker.transferredBytes += n;
+      reportTransferProgress(tracker);
       callback(null, chunk);
     }
   });
@@ -7918,6 +7973,8 @@ async function copyFile(input) {
         throw new Error(`size 校验失败: source=${st.size}, temp=${tempStat.size}`);
     }
     await to.rename(tempPath, targetPath, overwrite);
+    tracker.completedFiles += 1;
+    reportTransferProgress(tracker);
     return { bytes: st.size, verifyOk };
   } catch (err) {
     await safeUnlink(to, tempPath);
@@ -8186,6 +8243,180 @@ class RemoteBashEndpoint {
       done: async () => assertExecOk(await handle.done, `write ${p}`)
     };
   }
+}
+
+// src/console-display.ts
+var CONSOLE_TOOL_DISPLAY_SERVICE_ID = "console:tool-display";
+var CONSOLE_SLASH_COMMAND_SERVICE_ID = "console:slash-command";
+var displayRegistration;
+var displayRegistering = false;
+var slashRegistrations = [];
+var slashRegistering = false;
+function registerRemoteExecConsoleIntegration(api, envMgr) {
+  registerTransferFilesDisplay(api);
+  registerEnvironmentSlashCommands(api, envMgr);
+}
+function disposeRemoteExecConsoleIntegration() {
+  displayRegistration?.dispose();
+  displayRegistration = undefined;
+  displayRegistering = false;
+  for (const registration of slashRegistrations.splice(0)) {
+    try {
+      registration.dispose();
+    } catch {}
+  }
+  slashRegistering = false;
+}
+function registerTransferFilesDisplay(api) {
+  if (displayRegistration || displayRegistering)
+    return;
+  displayRegistering = true;
+  api.services.waitFor(CONSOLE_TOOL_DISPLAY_SERVICE_ID, 5000).then((service) => {
+    if (displayRegistration)
+      return;
+    displayRegistration = service.register("transfer_files", {
+      getArgsSummary({ args }) {
+        return formatArgsSummary(args);
+      },
+      getProgressLine({ progress }) {
+        return formatProgress(progress);
+      },
+      getResultSummary({ result }) {
+        return formatResult(result);
+      }
+    });
+  }).catch(() => {}).finally(() => {
+    displayRegistering = false;
+  });
+}
+function registerEnvironmentSlashCommands(api, envMgr) {
+  if (slashRegistrations.length > 0 || slashRegistering)
+    return;
+  slashRegistering = true;
+  api.services.waitFor(CONSOLE_SLASH_COMMAND_SERVICE_ID, 5000).then((service) => {
+    if (slashRegistrations.length > 0)
+      return;
+    const switchTo = (name) => {
+      const { previous, current } = envMgr.setActive(name);
+      return {
+        message: previous === current ? `当前已经在环境：${current}` : `已切换环境：${previous} → ${current}`,
+        label: "env"
+      };
+    };
+    slashRegistrations.push(service.register({
+      name: "/env",
+      description: "查看或快速切换 remote-exec 执行环境",
+      acceptsArgs: true,
+      getArgSuggestions({ arg }) {
+        const q = arg.trim().toLowerCase();
+        return envMgr.listEnvs().filter((env) => !q || env.name.toLowerCase().includes(q)).map((env) => ({
+          value: env.name,
+          description: env.isLocal ? "本地执行环境" : [env.description, env.hostName ? `${env.user ?? "?"}@${env.hostName}` : undefined].filter(Boolean).join(" · ")
+        }));
+      },
+      handle({ arg }) {
+        const name = arg.trim();
+        if (name)
+          return switchTo(name);
+        const current = envMgr.getActive();
+        const lines = [
+          `当前环境：${current}`,
+          "可用环境：",
+          ...envMgr.listEnvs().map((env) => `  - ${env.name}${env.isLocal ? " (local)" : env.hostName ? ` (${env.user ?? "?"}@${env.hostName})` : ""}`),
+          "",
+          "用法：/env <环境名>"
+        ];
+        return { message: lines.join(`
+`), label: "env" };
+      }
+    }));
+  }).catch(() => {}).finally(() => {
+    slashRegistering = false;
+  });
+}
+function formatArgsSummary(args) {
+  const first = Array.isArray(args.transfers) && args.transfers.length > 0 ? args.transfers[0] : args;
+  if (!first || typeof first !== "object" || Array.isArray(first)) {
+    return Array.isArray(args.transfers) ? `${args.transfers.length} transfers` : "";
+  }
+  const obj = first;
+  const from = `${String(obj.fromEnvironment || "")}:${String(obj.fromPath || "")}`;
+  const to = `${String(obj.toEnvironment || "")}:${String(obj.toPath || "")}`;
+  const summary = `${from} → ${to}`;
+  const clipped = summary.length > 60 ? `${summary.slice(0, 60)}…` : summary;
+  return Array.isArray(args.transfers) && args.transfers.length > 1 ? `${clipped} +${args.transfers.length - 1}` : clipped;
+}
+function formatProgress(progress) {
+  if (progress?.kind !== "transfer_files")
+    return;
+  const transferred = numberField2(progress.bytesTransferred);
+  const total = numberField2(progress.totalBytes);
+  const percent = numberField2(progress.percent) ?? (transferred != null && total != null && total > 0 ? Math.round(transferred / total * 100) : undefined);
+  const speed = numberField2(progress.speedBytesPerSec);
+  const eta = numberField2(progress.etaSec);
+  const filesDone = numberField2(progress.filesTransferred);
+  const filesTotal = numberField2(progress.totalFiles);
+  const chunks = [];
+  if (percent != null)
+    chunks.push(`${Math.max(0, Math.min(100, Math.round(percent)))}%`);
+  if (transferred != null && total != null)
+    chunks.push(`${formatBytes(transferred)}/${formatBytes(total)}`);
+  else if (transferred != null)
+    chunks.push(formatBytes(transferred));
+  if (filesDone != null && filesTotal != null && filesTotal > 1)
+    chunks.push(`${Math.round(filesDone)}/${Math.round(filesTotal)} files`);
+  if (speed != null && speed > 0)
+    chunks.push(`${formatBytes(speed)}/s`);
+  if (eta != null && eta > 0)
+    chunks.push(`ETA ${formatDuration(eta)}`);
+  return chunks.join(" ") || undefined;
+}
+function formatResult(result) {
+  if (!result || typeof result !== "object")
+    return;
+  const obj = result;
+  const total = numberField2(obj.totalCount);
+  const ok = numberField2(obj.successCount);
+  const results = Array.isArray(obj.results) ? obj.results : [];
+  let bytes = 0;
+  for (const item of results) {
+    if (item && typeof item === "object") {
+      const b = numberField2(item.bytes);
+      if (b != null)
+        bytes += b;
+    }
+  }
+  const chunks = [];
+  if (ok != null && total != null)
+    chunks.push(`${Math.round(ok)}/${Math.round(total)}`);
+  if (bytes > 0)
+    chunks.push(formatBytes(bytes));
+  return chunks.join(" ") || undefined;
+}
+function numberField2(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n < 0)
+    return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = n;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  const digits = value >= 100 || i === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)}${units[i]}`;
+}
+function formatDuration(sec) {
+  if (!Number.isFinite(sec) || sec < 0)
+    return "";
+  if (sec < 60)
+    return `${Math.ceil(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.ceil(sec % 60);
+  return `${m}m${String(s).padStart(2, "0")}s`;
 }
 
 // src/translators.ts
@@ -9718,6 +9949,7 @@ var src_default = definePlugin({
       cachedApi.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
       transferToolRegistered = false;
     }
+    disposeRemoteExecConsoleIntegration();
     envMgr = undefined;
     cachedApi = undefined;
     cachedCtx = undefined;
@@ -9789,6 +10021,7 @@ function reregisterRemoteExecTools(api) {
   });
   api.tools.register(transferTool);
   transferToolRegistered = true;
+  registerRemoteExecConsoleIntegration(api, envMgr);
 }
 export {
   src_default as default

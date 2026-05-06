@@ -37,6 +37,7 @@ import { useMessageQueue } from './hooks/use-message-queue';
 import { useModelState } from './hooks/use-model-state';
 import { useTextInput } from './hooks/use-text-input';
 import { createUndoRedoStack, type UndoRedoStack } from './undo-redo';
+import { getSlashCommands, onSlashCommandsChanged } from './slash-command-service';
 
 export type { AppHandle } from './hooks/use-app-handle';
 export type { MessageMeta } from './app-types';
@@ -147,9 +148,15 @@ export function App({
   const [pendingFiles, setPendingFiles] = useState<import('./components/InputBar').PendingFile[]>([]);
 
   const [runtimePluginSettingsTabs, setRuntimePluginSettingsTabs] = useState(pluginSettingsTabs ?? []);
+  const [runtimeSlashCommands, setRuntimeSlashCommands] = useState<Command[]>(() => getSlashCommands());
   useEffect(() => {
     setRuntimePluginSettingsTabs(pluginSettingsTabs ?? []);
   }, [pluginSettingsTabs]);
+  useEffect(() => {
+    const disposable = onSlashCommandsChanged(() => setRuntimeSlashCommands(getSlashCommands()));
+    setRuntimeSlashCommands(getSlashCommands());
+    return () => disposable.dispose();
+  }, []);
 
   // 文件浏览器状态
   const [fileBrowserPath, setFileBrowserPath] = useState('');
@@ -167,10 +174,11 @@ export function App({
   );
 
   const dynamicCommands = useMemo<Command[]>(() => {
-    return activePluginSettingsTabs.some((tab) => tab.id === 'virtual-lover')
+    const pluginCommands = activePluginSettingsTabs.some((tab) => tab.id === 'virtual-lover')
       ? [{ name: '/lover', description: '打开 Virtual Lover 配置' }]
       : [];
-  }, [activePluginSettingsTabs]);
+    return [...pluginCommands, ...runtimeSlashCommands];
+  }, [activePluginSettingsTabs, runtimeSlashCommands]);
 
   const canOpenLoverSettings = dynamicCommands.some((command) => command.name === '/lover');
 

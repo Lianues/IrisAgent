@@ -46,6 +46,8 @@ import { attachCompiledResizeWatcher } from './resize-watcher';
 import { ICONS } from './terminal-compat';
 import type { ConsoleConfig } from './console-config';
 import { resolveConsoleConfig } from './console-config';
+import { CONSOLE_TOOL_DISPLAY_SERVICE_ID, consoleToolDisplayService } from './tool-display-service';
+import { CONSOLE_SLASH_COMMAND_SERVICE_ID, consoleSlashCommandService } from './slash-command-service';
 
 /** 从 shell 命令生成前缀通配模式（如 "npm install express" → "npm install *"） */
 function generateCommandPattern(command: string): string {
@@ -474,6 +476,19 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       services: options.api?.services,
       extensions: options.extensions,
     });
+    const services = options.api?.services;
+    if (services && !services.has(CONSOLE_TOOL_DISPLAY_SERVICE_ID)) {
+      services.register(CONSOLE_TOOL_DISPLAY_SERVICE_ID, consoleToolDisplayService, {
+        description: 'Console TUI 工具显示扩展服务',
+        version: '1.0.0',
+      });
+    }
+    if (services && !services.has(CONSOLE_SLASH_COMMAND_SERVICE_ID)) {
+      services.register(CONSOLE_SLASH_COMMAND_SERVICE_ID, consoleSlashCommandService, {
+        description: 'Console TUI 斜杠指令扩展服务',
+        version: '1.0.0',
+      });
+    }
   }
 
   private getPlanModeService(): PlanModeServiceLike | undefined {

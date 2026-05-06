@@ -26,6 +26,7 @@ import { SshTransport } from './transport.js';
 import { EnvironmentManager } from './environment.js';
 import { buildSwitchEnvironmentTool } from './tools.js';
 import { buildTransferFilesTool, TRANSFER_FILES_TOOL_NAME } from './transfer-tool.js';
+import { disposeRemoteExecConsoleIntegration, registerRemoteExecConsoleIntegration } from './console-display.js';
 import { installToolWrappers, type WrapInstaller } from './wrap.js';
 
 const logger = createPluginLogger('remote-exec');
@@ -93,6 +94,7 @@ export default definePlugin({
       cachedApi.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
       transferToolRegistered = false;
     }
+    disposeRemoteExecConsoleIntegration();
     envMgr = undefined;
     cachedApi = undefined;
     cachedCtx = undefined;
@@ -176,6 +178,7 @@ function reregisterRemoteExecTools(api: IrisAPI): void {
   });
   api.tools.register(transferTool);
   transferToolRegistered = true;
+  registerRemoteExecConsoleIntegration(api, envMgr);
 }
 
 

@@ -9,6 +9,7 @@ import { Spinner } from './Spinner';
 import type { ToolInvocation, ToolStatus } from 'irises-extension-sdk';
 import { getToolRenderer } from '../tool-renderers';
 import { formatToolError } from '../tool-errors';
+import { getToolDisplayProvider } from '../tool-display-service';
 import { C } from '../theme';
 import { SPINNER_FRAMES, ICONS } from '../terminal-compat';
 
@@ -97,6 +98,8 @@ export function ToolCall({ invocation }: ToolCallProps) {
   const progress = invocation.progress as Record<string, unknown> | undefined;
   const progressTokens = typeof progress?.tokens === 'number' ? progress.tokens : undefined;
   const progressFrame = typeof progress?.frame === 'number' ? progress.frame : undefined;
+  const displayProvider = getToolDisplayProvider(toolName);
+  const customProgressLine = displayProvider?.getProgressLine?.({ toolName, args, progress }) ?? '';
   const hasProgress = progress != null;
   // sub_agent 专用：实时状态行
   //   childStatus  — 子代理内部正在执行的工具摘要（工具执行期间）
@@ -110,10 +113,13 @@ export function ToolCall({ invocation }: ToolCallProps) {
   const isExecuting = status === 'executing';
   const isAwaitingApproval = status === 'awaiting_approval';
 
-  const argsSummary = getArgsSummary(toolName, args);
+  const argsSummary = displayProvider?.getArgsSummary?.({ toolName, args }) ?? getArgsSummary(toolName, args);
   const Renderer = isFinal && result != null ? getToolRenderer(toolName) : null;
   const durationSec = (updatedAt - createdAt) / 1000;
   const duration = isFinal && durationSec > 0 ? durationSec.toFixed(1) + 's' : '';
+  const customResultSummary = isFinal && result != null
+    ? displayProvider?.getResultSummary?.({ toolName, args, result }) ?? ''
+    : '';
 
   const nameBg = status === 'error' ? C.error : isAwaitingApproval ? C.warn : C.accent;
 
@@ -129,6 +135,7 @@ export function ToolCall({ invocation }: ToolCallProps) {
           {isAwaitingApproval ? <span fg={C.warn}> [待确认]</span> : null}
           {!isFinal && !isExecuting && !isAwaitingApproval ? <span fg={C.dim}> [{status}]</span> : null}
           {duration ? <span fg={C.dim}> {duration}</span> : null}
+          {customResultSummary ? <span fg={C.dim}> {customResultSummary}</span> : null}
           {/* 工具执行中进度：实时 token 计数 */}
           {isExecuting && progressTokens != null && progressTokens > 0 ? (
             <span fg={C.dim}> {ICONS.upArrow}{progressTokens.toLocaleString()}tk</span>
@@ -143,6 +150,9 @@ export function ToolCall({ invocation }: ToolCallProps) {
       </box>
       {status === 'error' && displayError && (
         <text fg={C.error}><em>  {displayError}</em></text>
+      )}
+      {isExecuting && customProgressLine.length > 0 && (
+        <text><span fg={C.accent}>  {customProgressLine}</span></text>
       )}
       {/* sub_agent 执行中：显示当前子工具 或 LLM 文本预览 */}
       {isExecuting && toolName === 'sub_agent' && subAgentStatusLine.length > 0 && (

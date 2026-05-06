@@ -12,7 +12,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import { COMMANDS, type Command, getCommandInput, isExactCommandValue } from '../input-commands';
+import { COMMANDS, type Command, type CommandArgSuggestion, getCommandInput, isExactCommandValue } from '../input-commands';
 import { useTextInput } from '../hooks/use-text-input';
 import { useCursorBlink } from '../hooks/use-cursor-blink';
 import { usePaste } from '../hooks/use-paste';
@@ -102,12 +102,34 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     return visibleCommands.findIndex((cmd) => isExactCommandValue(value, cmd));
   }, [value, visibleCommands]);
 
+  const activeArgCommand = useMemo(() => {
+    if (inputDisabled || !value.startsWith('/')) return undefined;
+    return visibleCommands
+      .filter((cmd) => cmd.acceptsArgs && (value === cmd.name || value.startsWith(`${cmd.name} `)))
+      .sort((a, b) => b.name.length - a.name.length)[0];
+  }, [inputDisabled, value, visibleCommands]);
+
+  const argQuery = useMemo(() => {
+    if (!activeArgCommand) return '';
+    if (value === activeArgCommand.name) return '';
+    return value.slice(activeArgCommand.name.length).trimStart();
+  }, [activeArgCommand, value]);
+
+  const argSuggestions = useMemo<CommandArgSuggestion[]>(() => {
+    if (!activeArgCommand?.getArgSuggestions) return [];
+    const all = activeArgCommand.getArgSuggestions({ arg: argQuery, raw: value });
+    const q = argQuery.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((item) => item.value.toLowerCase().includes(q));
+  }, [activeArgCommand, argQuery, value]);
+
   const commandQuery = useMemo(() => {
     if (inputDisabled) return '';
     if (!value.startsWith('/')) return '';
+    if (activeArgCommand && value.startsWith(`${activeArgCommand.name} `)) return '';
     if (/\s/.test(value) && exactMatchIndex < 0) return '';
     return value;
-  }, [inputDisabled, value, exactMatchIndex]);
+  }, [inputDisabled, value, exactMatchIndex, activeArgCommand]);
 
   const [commandsDismissed, setCommandsDismissed] = useState(false);
 
@@ -115,6 +137,7 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
   useEffect(() => { setCommandsDismissed(false); }, [commandQuery]);
 
   const showCommands = commandQuery.length > 0 && !commandsDismissed;
+  const showArgSuggestions = !!activeArgCommand && argSuggestions.length > 0 && !commandsDismissed && value.startsWith(`${activeArgCommand.name} `);
 
   const filtered = useMemo(() => {
     if (!showCommands) return [];
@@ -123,6 +146,10 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
   }, [showCommands, exactMatchIndex, commandQuery, visibleCommands]);
 
   useEffect(() => {
+    if (showArgSuggestions) {
+      setSelectedIndex((prev) => Math.min(prev, argSuggestions.length - 1));
+      return;
+    }
     if (!showCommands || filtered.length === 0) {
       setSelectedIndex(0);
       return;
@@ -132,11 +159,12 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
       return;
     }
     setSelectedIndex((prev) => Math.min(prev, filtered.length - 1));
-  }, [showCommands, filtered.length, exactMatchIndex]);
+  }, [showCommands, filtered.length, exactMatchIndex, showArgSuggestions, argSuggestions.length]);
 
   const applySelection = (index: number) => {
-    if (filtered.length === 0) return;
-    const normalizedIndex = ((index % filtered.length) + filtered.length) % filtered.length;
+    const count = showArgSuggestions ? argSuggestions.length : filtered.length;
+    if (count === 0) return;
+    const normalizedIndex = ((index % count) + count) % count;
     setSelectedIndex(normalizedIndex);
   };
 
@@ -163,10 +191,15 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     }
 
     // 指令面板导航
-    if (showCommands && filtered.length > 0) {
+    if ((showCommands && filtered.length > 0) || (showArgSuggestions && argSuggestions.length > 0)) {
       if (key.name === 'up') { applySelection(selectedIndex + 1); return; }
       if (key.name === 'down') { applySelection(selectedIndex - 1); return; }
       if (key.name === 'tab') {
+        if (showArgSuggestions && activeArgCommand) {
+          const current = argSuggestions[selectedIndex];
+          if (current) inputActions.setValue(`${activeArgCommand.name} ${current.value}`);
+          return;
+        }
         const current = filtered[selectedIndex];
         if (current) {
           if (isExactCommandValue(value, current)) {
@@ -207,7 +240,10 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
       }
       // 命令面板打开时，Enter 先补全为选中的命令再提交
       let text = value.trim();
-      if (showCommands && filtered.length > 0) {
+      if (showArgSuggestions && activeArgCommand && argSuggestions.length > 0) {
+        const suggestion = argSuggestions[selectedIndex];
+        if (suggestion) text = `${activeArgCommand.name} ${suggestion.value}`;
+      } else if (showCommands && filtered.length > 0) {
         const cmd = filtered[selectedIndex];
         if (cmd) text = getCommandInput(cmd);
       }
@@ -258,6 +294,9 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
 
   const maxLen = filtered.length > 0
     ? Math.max(...filtered.map((cmd) => cmd.name.length))
+    : 0;
+  const maxArgLen = argSuggestions.length > 0
+    ? Math.max(...argSuggestions.map((item) => item.value.length))
     : 0;
 
   // ── 输入区域滚动判定 ──────────────────────────────────────
@@ -315,7 +354,27 @@ export function InputBar({ disabled, isGenerating, queueSize, onSubmit, onPriori
     <box flexDirection="column">
 
       {/* 指令列表（向上展开，位于输入框上方） */}
-      {filtered.length > 0 && (
+      {showArgSuggestions && argSuggestions.length > 0 && (
+        <box flexDirection="column" backgroundColor={C.panelBg} paddingX={1}>
+          {[...argSuggestions].reverse().map((item: CommandArgSuggestion, _i) => {
+            const index = argSuggestions.indexOf(item);
+            const padded = item.value.padEnd(maxArgLen);
+            const isSelected = index === selectedIndex;
+            return (
+              <box key={`${item.value}-${index}`} paddingLeft={1} backgroundColor={isSelected ? C.border : undefined}>
+                <text>
+                  <span fg={isSelected ? C.accent : C.dim}>{isSelected ? `${ICONS.triangleRight} ` : '  '}</span>
+                  {isSelected
+                    ? <strong><span fg={item.color ?? C.text}>{padded}</span></strong>
+                    : <span fg={item.color ?? C.textSec}>{padded}</span>}
+                  {item.description ? <span fg={isSelected ? C.textSec : C.dim}>  {item.description}</span> : null}
+                </text>
+              </box>
+            );
+          })}
+        </box>
+      )}
+      {!showArgSuggestions && filtered.length > 0 && (
         <box flexDirection="column" backgroundColor={C.panelBg} paddingX={1}>
           {[...filtered].reverse().map((cmd: Command, _i) => {
             const index = filtered.indexOf(cmd);
