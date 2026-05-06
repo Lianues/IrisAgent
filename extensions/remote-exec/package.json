@@ -1,0 +1,17 @@
+{
+  "name": "@iris-extension/remote-exec",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outfile ./dist/index.mjs --target=node --format=esm --external=ssh2"
+  },
+  "dependencies": {
+    "irises-extension-sdk": "file:../../packages/extension-sdk",
+    "ssh2": "^1.15.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/ssh2": "^1.15.0",
+    "bun-types": "^1.3.13"
+  }
+}

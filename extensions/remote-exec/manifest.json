@@ -1,0 +1,14 @@
+{
+  "name": "remote-exec",
+  "version": "0.1.0",
+  "description": "把工具调用透明转发到远端服务器执行（SSH / 服务器集群无缝维护）",
+  "plugin": {
+    "entry": "dist/index.mjs"
+  },
+  "distribution": {
+    "files": [
+      "dist/index.mjs",
+      "package.json"
+    ]
+  }
+}

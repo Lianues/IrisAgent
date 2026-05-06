@@ -25,6 +25,10 @@
       "name": "remote-connect"
     },
     {
+      "name": "remote-exec",
+      "external": ["ssh2"]
+    },
+    {
       "name": "telegram"
     }
   ]
