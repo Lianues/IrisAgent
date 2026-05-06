@@ -141,6 +141,8 @@ export interface AgentPaths {
   sessionDbPath: string;
   /** 记忆数据库路径 */
   memoryDbPath: string;
+  /** Agent 专属扩展安装目录（agent-installed 来源），优先级高于全局 ~/.iris/extensions/ */
+  extensionsDir: string;
 }
 
 /** 获取指定 Agent 的路径集 */
@@ -156,10 +158,11 @@ export function getAgentPaths(agentName: string, customDataDir?: string): AgentP
     logsDir: path.join(agentDataDir, 'logs'),
     sessionDbPath: path.join(agentDataDir, 'iris.db'),
     memoryDbPath: path.join(agentDataDir, 'memory.db'),
+    extensionsDir: path.join(agentDataDir, 'extensions'),
   };
 }
 
 /** 获取默认（单 Agent）路径集，等价于现有全局常量 */
 export function getDefaultPaths(): AgentPaths {
-  return { dataDir, configDir, attachmentsDir, sessionsDir, logsDir, sessionDbPath, memoryDbPath };
+  return { dataDir, configDir, attachmentsDir, sessionsDir, logsDir, sessionDbPath, memoryDbPath, extensionsDir };
 }

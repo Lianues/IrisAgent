@@ -1,24 +1,27 @@
 /**
  * 本地 extension 扫描与解析。
  *
- * 扩展有三类加载源：
- *   - installed：~/.iris/extensions/<name>                                   —— 用户通过 `iris extension install*` 主动安装，始终参与发现。
+ * 扩展有四类加载源（按发现优先级降序，同名取最先发现的，后续重名跳过）：
+ *   - agent-installed：~/.iris/agents/<id>/extensions/<name>                 —— 当前 agent 上下文专属安装，仅在 opts.agentExtensionsDir 提供时纳入；
+ *                                                                              优先级最高，可就近覆盖同名的 installed/embedded。
+ *   - installed：~/.iris/extensions/<name>                                   —— 用户通过 `iris extension install*` 主动安装到全局，始终参与发现。
  *   - embedded： <projectRoot>/extensions/<name>，且 name ∈ embedded.json    —— 随发行包/源码仓库内置（构建时被打包进发行产物），始终参与发现；
- *                                                                              在 ~/.iris/extensions/ 出现同名 installed 时，installed 优先（覆盖）。
+ *                                                                              在 ~/.iris/extensions/ 出现同名 installed 时 installed 优先。
  *   - workspace：<projectRoot>/extensions/<name>，且 name ∉ embedded.json    —— 源码仓库里"额外"的扩展（开发态可见），默认 **不参与发现**；
  *                                                                              需 system.yaml 中 `extensions.loadWorkspaceExtensions: true` 才会扫描，
  *                                                                              并可用 `workspaceAllowlist` 进一步收窄。
  *
- * 调用方通过 `ExtensionDiscoveryOptions` 传入开关与白名单（仅影响 workspace 源；embedded 与 installed 不受影响）：
+ * 调用方通过 `ExtensionDiscoveryOptions` 传入开关与白名单：
+ *   - `agentExtensionsDir`：当前 agent 的扩展目录绝对路径；不传则不纳入 agent-installed 源。
  *   - `workspace.enabled`：是否纳入 workspace 源；默认 false。
  *   - `workspace.allowlist`：纳入后再按名收窄；空数组 = 不收窄。
  *
  * 与 devSourceExtensions 正交：本文件决定一个扩展"是否被发现"；
- * devSourceExtensions 决定被发现后"用 dist 还是 src 入口"（对三类源都一视同仁，例如把某个 embedded 扩展加到
- * devSourceExtensions 即可在开发态从源码加载，覆盖发行包打包好的 dist 入口）。
+ * devSourceExtensions 决定被发现后"用 dist 还是 src 入口"（对四类源都一视同仁）。
  *
  * 启用/禁用单个扩展请通过 plugins.yaml（全局或 agent 层），与本文件的"发现范围"控制正交。
  */
+
 import type { PluginEntry } from 'irises-extension-sdk';
 
 import * as fs from 'fs';
@@ -50,6 +53,11 @@ interface ExtensionSearchDirectory {
 
 /** 扩展发现选项 — 由调用方根据 system.yaml 构造并透传到下游所有 discover/register 函数。 */
 export interface ExtensionDiscoveryOptions {
+  /**
+   * 当前 agent 的扩展安装目录绝对路径（~/.iris/agents/<id>/extensions/）。
+   * 提供时会作为最高优先级的发现源参与扫描，同名时覆盖 installed/embedded。
+   */
+  agentExtensionsDir?: string;
   workspace?: {
     /** 是否扫描 <projectRoot>/extensions/ 目录。默认 false。 */
     enabled: boolean;
@@ -79,8 +87,16 @@ function loadEmbeddedExtensionNames(): Set<string> {
   }
 }
 
-function getExtensionSearchDirectories(): ExtensionSearchDirectory[] {
+function getExtensionSearchDirectories(opts?: ExtensionDiscoveryOptions): ExtensionSearchDirectory[] {
   const dirs: ExtensionSearchDirectory[] = [];
+
+  // agent-installed：仅当调用方提供 agentExtensionsDir 且目录存在时纳入；优先级最高。
+  if (opts?.agentExtensionsDir && isDirectory(opts.agentExtensionsDir)) {
+    // 防止与全局 extensionsDir 重合时被重复扫描（极端情况下 customDataDir 指向相同位置）
+    if (path.resolve(opts.agentExtensionsDir) !== path.resolve(extensionsDir)) {
+      dirs.push({ dir: opts.agentExtensionsDir, source: 'agent-installed' });
+    }
+  }
 
   if (isDirectory(extensionsDir)) {
     dirs.push({ dir: extensionsDir, source: 'installed' });

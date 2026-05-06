@@ -36,6 +36,11 @@ import { loadRawConfigDir } from './raw';
 import { parsePluginsConfig } from './plugins';
 import { parseSummaryConfig } from './summary';
 import { parseDeliveryConfig } from './delivery';
+import { discoverLocalExtensions } from '../extension/registry';
+import type { ExtensionPackage } from 'irises-extension-sdk';
+import { createLogger } from '../logger';
+
+const pluginsLogger = createLogger('PluginsConfig');
 
 export type {
   AppConfig,
@@ -264,6 +269,9 @@ export function loadAgentConfig(
   const mergedToolsRaw = fieldOverride(globalRaw.tools ?? {}, agentRaw.tools);
   const mergedSummaryRaw = fieldOverride(globalRaw.summary ?? {}, agentRaw.summary);
 
+  // 提前解析 system，便于 plugins 合并阶段按 system.extensions 做发现校验。
+  const system = parseSystemConfig(mergedSystemRaw, effectiveDataDir);
+
   // --- 第二类条目级合并：modes / sub_agents ---
   // modes: 按模式名合并（原始数据是对象形式，key = 模式名）
   const mergedModesRaw = (globalRaw.modes || agentRaw.modes)
@@ -285,26 +293,19 @@ export function loadAgentConfig(
     policies: entryMerge(globalRaw.delivery?.policies, agentRaw.delivery?.policies),
   } : undefined;
 
-  // plugins 既可在全局配置中声明，也可由 Console /extension 写入当前 Agent 覆盖层。
-  // 合并时按插件名覆盖，确保：
-  // - agent 层保存的 enabled 状态重启后生效；
-  // - global 层已有 priority/config 不会因为 agent 只保存了某个开关而丢失。
+  // plugins.yaml 分层语义：
+  //   - 全局 plugins.yaml 只能控制 installed + embedded（全局可见的扩展）
+  //   - agent  plugins.yaml 可声明 agent-installed 扩展，并覆盖全局可见扩展的 enabled/priority/config
+  //   - 任意层若列出"既不在对应源也不在更高优先级源"中的条目，会被 warn 后忽略；
+  //     例外：type === 'npm' 的条目按"全局基础设施"原则保留，但仅允许出现在全局层。
   const globalPlugins = parsePluginsConfig(globalRaw.plugins) ?? [];
-  const agentPlugins = parsePluginsConfig(agentRaw.plugins) ?? [];
-  const effectivePlugins = (() => {
-    const map = new Map(globalPlugins.map((entry) => [entry.name, entry]));
-    for (const entry of agentPlugins) {
-      const previous = map.get(entry.name);
-      map.set(entry.name, {
-        ...(previous ?? {}),
-        ...entry,
-        type: entry.type === 'npm' ? 'npm' : previous?.type ?? entry.type,
-        priority: entry.priority ?? previous?.priority,
-        config: entry.config ?? previous?.config,
-      });
-    }
-    return Array.from(map.values());
-  })();
+  const agentPlugins  = parsePluginsConfig(agentRaw.plugins)  ?? [];
+  const effectivePlugins = classifyAndMergePlugins(globalPlugins, agentPlugins, {
+    agentExtensionsDir: agentPaths?.extensionsDir,
+    workspaceEnabled: system.extensions?.loadWorkspaceExtensions === true,
+    workspaceAllowlist: system.extensions?.workspaceAllowlist ?? [],
+    agentLabel: agentPaths?.configDir ? path.basename(path.dirname(agentPaths.configDir)) : 'global',
+  });
 
   return {
     llm,
@@ -312,7 +313,7 @@ export function loadAgentConfig(
     platform,
     storage,
     tools: parseToolsConfig(mergedToolsRaw),
-    system: parseSystemConfig(mergedSystemRaw, effectiveDataDir),
+    system,
     // mcp: handled by mcp extension via readConfigSection,
     modes: parseModeConfig(mergedModesRaw),
     subAgents: parseSubAgentsConfig(mergedSubAgentsRaw),
@@ -320,5 +321,94 @@ export function loadAgentConfig(
     summary: parseSummaryConfig(mergedSummaryRaw),
     delivery: parseDeliveryConfig(mergedDeliveryRaw),
   };
+}
+
+/**
+ * 按"全局只管全局，agent 只管 agent + 覆盖"的语义合并 plugins 条目。
+ *
+ * 算法：
+ *   1. 用 ExtensionDiscoveryOptions 做一次发现，得到当前 agent 上下文下的扩展包列表。
+ *   2. 按 source 把扩展名分桶：
+ *        globalScope = installed + embedded   （全局层合法 + agent 层可覆盖）
+ *        agentScope  = agent-installed         （仅 agent 层合法）
+ *   3. 全局层条目：name ∈ globalScope 直接生效；type==='npm' 直接生效；其它 warn 丢弃。
+ *   4. agent 层条目：
+ *        - name ∈ agentScope            → 视为 agent 自己的声明
+ *        - name ∈ globalScope           → 视为对全局的覆盖（浅合并 enabled/priority/config）
+ *        - 其它                         → warn 丢弃
+ */
+function classifyAndMergePlugins(
+  globalPlugins: import('irises-extension-sdk').PluginEntry[],
+  agentPlugins: import('irises-extension-sdk').PluginEntry[],
+  ctx: {
+    agentExtensionsDir?: string;
+    workspaceEnabled: boolean;
+    workspaceAllowlist: string[];
+    agentLabel: string;
+  },
+): import('irises-extension-sdk').PluginEntry[] {
+  let packages: ExtensionPackage[] = [];
+  try {
+    packages = discoverLocalExtensions({
+      agentExtensionsDir: ctx.agentExtensionsDir,
+      workspace: { enabled: ctx.workspaceEnabled, allowlist: ctx.workspaceAllowlist },
+    });
+  } catch (err) {
+    pluginsLogger.warn(`扩展发现失败，plugins.yaml 归属校验跳过：${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const globalScope = new Set<string>();
+  const agentScope = new Set<string>();
+  for (const pkg of packages) {
+    if (pkg.source === 'installed' || pkg.source === 'embedded') globalScope.add(pkg.manifest.name);
+    else if (pkg.source === 'agent-installed') agentScope.add(pkg.manifest.name);
+    // workspace 类型同样属于"全局可见"（所有 agent 共用），归入 globalScope
+    else if (pkg.source === 'workspace') globalScope.add(pkg.manifest.name);
+  }
+
+  const merged = new Map<string, import('irises-extension-sdk').PluginEntry>();
+
+  for (const entry of globalPlugins) {
+    if (entry.type === 'npm' || globalScope.has(entry.name)) {
+      merged.set(entry.name, entry);
+    } else {
+      pluginsLogger.warn(
+        `全局 plugins.yaml 列了未发现的扩展 "${entry.name}"，已忽略。` +
+        `（提示：agent 专属扩展应配置在 ~/.iris/agents/<id>/configs/plugins.yaml）`,
+      );
+    }
+  }
+
+  for (const entry of agentPlugins) {
+    if (entry.type === 'npm') {
+      pluginsLogger.warn(
+        `agent[${ctx.agentLabel}] plugins.yaml 出现 type=npm 的 "${entry.name}"，` +
+        `npm 类扩展只能在全局 plugins.yaml 声明，已忽略。`,
+      );
+      continue;
+    }
+
+    const inAgentScope = agentScope.has(entry.name);
+    const inGlobalScope = globalScope.has(entry.name);
+
+    if (!inAgentScope && !inGlobalScope) {
+      pluginsLogger.warn(
+        `agent[${ctx.agentLabel}] plugins.yaml 列了未发现的扩展 "${entry.name}"，已忽略。`,
+      );
+      continue;
+    }
+
+    const previous = merged.get(entry.name);
+    merged.set(entry.name, {
+      ...(previous ?? {}),
+      ...entry,
+      // 此处 entry.type 已被上面 continue 排除 'npm'，按 entry > previous 的优先级合并即可。
+      type: entry.type ?? previous?.type,
+      priority: entry.priority ?? previous?.priority,
+      config: entry.config ?? previous?.config,
+    });
+  }
+
+  return Array.from(merged.values());
 }
 

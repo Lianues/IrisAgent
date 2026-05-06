@@ -312,13 +312,18 @@ types:
 `,
 
   // plugins.yaml — 插件覆盖配置（可选）。
-  // installed 源（~/.iris/extensions/）默认启用；workspace 源由 system.yaml.extensions 控制。
-  // 此文件仅用于覆盖默认行为：禁用某个插件、调整优先级、传递额外 config 等。
-  // 既可放在全局 ~/.iris/configs/，也可放在 agent 的 configs/，按 name 浅合并；
-  // agent 层可单独覆盖某个插件的 enabled / priority / config。
+  //
+  // 全局 ~/.iris/configs/plugins.yaml：
+  //   只能控制 installed (~/.iris/extensions/) + embedded 扩展。
+  //   列出 agent-installed 或不存在的扩展会被 warn 后忽略。
+  //
+  // Agent ~/.iris/agents/<id>/configs/plugins.yaml：
+  //   1) 控制本 agent 的 agent-installed 扩展（~/.iris/agents/<id>/extensions/）；
+  //   2) 可覆盖全局可见扩展的 enabled / priority / config（按 name 浅合并）。
+  //   不允许出现 type=npm 的条目（npm 类扩展只能在全局声明）。
   'plugins.yaml': `# 插件覆盖配置（仅在需要时填写）
-# 所有已被纳入的扩展默认启用（workspace 源是否纳入由 system.yaml 控制）。
-# 仅当需要覆盖默认行为（禁用、调整优先级、传递 config）时才需要配置。
+# 全局层只能控制 installed + embedded；agent 层管 agent-installed 并可覆盖全局。
+# 详见 src/config/plugins.ts 顶部注释。
 plugins:
 #   - name: memory
 #     enabled: false    # 禁用自动发现的插件

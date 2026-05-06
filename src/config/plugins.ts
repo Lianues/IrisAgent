@@ -13,8 +13,13 @@
  * 所有 extension（无论 platform 还是 plugin）均会被自动发现和注册。
  * plugins.yaml 仅用于覆盖自动发现的配置（如禁用某个插件、调整优先级、传递 config）。
  *
- *
- * plugins.yaml 属于全局独占配置，所有 agent 共享，agent 层不可覆盖。
+ * 分层语义（在 src/config/index.ts::classifyAndMergePlugins 中实现）：
+ *   - 全局 ~/.iris/configs/plugins.yaml：只能控制 installed (~/.iris/extensions/) + embedded 扩展。
+ *     列出 agent-installed 或不存在的扩展会被 warn 后忽略。
+ *   - Agent ~/.iris/agents/<id>/configs/plugins.yaml：
+ *       1) 控制该 agent 的 agent-installed 扩展（~/.iris/agents/<id>/extensions/）；
+ *       2) 可覆盖全局可见扩展的 enabled / priority / config（按 name 浅合并 enabled/priority/config）。
+ *     不允许 type=npm 条目（npm 扩展属全局基础设施，只能在全局层声明）。
  *
  * 配置格式：
  *   plugins:

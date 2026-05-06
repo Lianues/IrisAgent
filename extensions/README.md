@@ -6,8 +6,8 @@
 
 1. `plugin` 与原先的 `channel` 都统一收敛到 extension 概念下。
 2. 平台 extension 的运行时入口应指向自包含产物（例如 `dist/index.mjs`），不应依赖 Iris 内部源码路径。
-3. 运行时只扫描本地 extension 目录；安装命令会把远程仓库中的 `extensions/<folder>/` 下载到本地。
-4. 源码运行时会扫描仓库根目录 `./extensions/`，也会扫描用户目录 `~/.iris/extensions/`。
+3. 运行时按四类来源扫描扩展（详见下面"加载来源"小节）；安装命令会把远程仓库中的 `extensions/<folder>/` 下载到目标目录。
+4. 加载源由 `system.yaml.extensions` 与 CLI `--global` / `--agent <name>` 参数控制。
 5. 不再需要维护 `extensions/registry.json`。
 6. 发行包内嵌哪些 extension，由 `extensions/embedded.json` 控制。
 7. extension 与宿主之间的公共边界，统一通过 `packages/extension-sdk/` 暴露。
@@ -38,6 +38,29 @@
 ## embedded.json
 
 `extensions/embedded.json` 是发行包内嵌 extension 的白名单。只有这个文件里列出的 extension，才会在 `script/build.ts` 中被预先打包，并复制进最终产物的 `extensions/` 目录。当前内嵌的是 `cron`、`web`、`console` 和 `telegram`；`lark`、`discord`、`qq`、`wxwork`、`weixin`、`computer-use` 和 `memory` 不在白名单内，属于可选 extension。
+
+## 加载来源（4 类，按发现优先级降序）
+
+| 来源 | 物理位置 | 默认行为 | 安装方式 |
+|---|---|---|---|
+| **agent-installed** | `~/.iris/agents/<id>/extensions/<name>/` | 仅当前 agent 可见，优先级最高（就近覆盖同名扩展） | `iris extension install <x> --agent <id>` |
+| **installed** | `~/.iris/extensions/<name>/` | 全局可见，所有 agent 共享 | `iris extension install <x> --global` |
+| **embedded** | `<projectRoot>/extensions/<name>/` 且 `name ∈ embedded.json` | 随发行包打包，始终启用 | 不需要单独安装 |
+| **workspace** | `<projectRoot>/extensions/<name>/` 且 `name ∉ embedded.json` | 默认关闭，需 `system.yaml: extensions.loadWorkspaceExtensions: true` | 仅源码态有效 |
+
+## plugins.yaml 分层
+
+- **全局** `~/.iris/configs/plugins.yaml`：只能控制 `installed` + `embedded`。
+- **Agent** `~/.iris/agents/<id>/configs/plugins.yaml`：控制本 agent 的 `agent-installed` 扩展，并可覆盖全局可见扩展的 `enabled` / `priority` / `config`（按 name 浅合并）。
+- 任意层若列出"既不在对应源也不在更高优先级源"中的条目，启动时会 warn 并忽略。
+
+## CLI 安装目标
+
+```bash
+iris extension install foo --global              # → ~/.iris/extensions/foo/
+iris extension install-git <url> --agent my      # → ~/.iris/agents/my/extensions/<name>/
+iris extension install foo                       # 不指定 → 交互式选择（TTY）或报错（非 TTY）
+```
 
 ## SDK 与依赖边界
 

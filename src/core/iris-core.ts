@@ -57,9 +57,13 @@ import {
   discoverLocalPluginEntries,
   inspectGitExtensionUpdate,
   installGitExtension,
+  installExtension,
+  installLocalExtension,
   mergePluginEntries,
+  resolveScopeInstallDir,
   updateGitExtension,
 } from '../extension';
+import type { InstallScope } from '../extension';
 import { createBootstrapExtensionRegistry, type BootstrapExtensionRegistry } from '../bootstrap/extensions';
 import type { PlatformRegistry } from './platform-registry';
 import { PluginEventBus } from '../extension/event-bus';
@@ -210,6 +214,7 @@ export class IrisCore {
 
     // 构造扩展发现选项：决定 workspace 源是否被纳入 + 白名单收窄。
     const extDiscoveryOptions = {
+      agentExtensionsDir: agentPaths?.extensionsDir,
       workspace: {
         enabled: config.system.extensions?.loadWorkspaceExtensions === true,
         allowlist: config.system.extensions?.workspaceAllowlist ?? [],
@@ -773,19 +778,35 @@ export class IrisCore {
       }
 
       // 挂载扩展管理 API，供 console 等平台通过 (api as any).extensions 访问
+      // 默认 scope = 当前 agent（agent-installed 优先原则）；调用方可显式覆盖。
+      const defaultScope: InstallScope = agentLabel
+        ? { kind: 'agent', agentName: agentLabel }
+        : { kind: 'global' };
+      const resolveDir = (scope?: InstallScope): string =>
+        resolveScopeInstallDir(scope ?? defaultScope);
+
       (irisAPI as any).extensions = {
         discover: () => discoverLocalExtensions(extDiscoveryOptions),
         activate: (name: string) => pluginManager.activatePlugin(name),
         deactivate: (name: string) => pluginManager.deactivatePlugin(name),
-        installGit: (target: string, options?: { ref?: string; subdir?: string }) => installGitExtension(target, options),
-        previewUpdateGit: (name: string, options?: { ref?: string; subdir?: string }) => inspectGitExtensionUpdate(name, options),
-        updateGit: (name: string, options?: { ref?: string; subdir?: string }) => updateGitExtension(name, options),
-        remove: async (name: string) => {
+        installGit: (target: string, options?: { ref?: string; subdir?: string; scope?: InstallScope }) =>
+          installGitExtension(target, { ...options, installedExtensionsDir: resolveDir(options?.scope) }),
+        installRemote: (requested: string, options?: { scope?: InstallScope }) =>
+          installExtension(requested, { installedExtensionsDir: resolveDir(options?.scope) }),
+        installLocal: (requested: string, options?: { scope?: InstallScope }) =>
+          installLocalExtension(requested, { installedExtensionsDir: resolveDir(options?.scope) }),
+        previewUpdateGit: (name: string, options?: { ref?: string; subdir?: string; scope?: InstallScope }) =>
+          inspectGitExtensionUpdate(name, { ...options, installedExtensionsDir: resolveDir(options?.scope) }),
+        updateGit: (name: string, options?: { ref?: string; subdir?: string; scope?: InstallScope }) =>
+          updateGitExtension(name, { ...options, installedExtensionsDir: resolveDir(options?.scope) }),
+        remove: async (name: string, options?: { scope?: InstallScope }) => {
           if (pluginManager.getPlugin(name)) {
             await pluginManager.deactivatePlugin(name);
           }
-          return deleteInstalledExtension(name);
+          return deleteInstalledExtension(name, { installedExtensionsDir: resolveDir(options?.scope) });
         },
+        /** 默认 scope（=当前 agent），供 UI 显示 */
+        defaultScope,
       };
     }
 

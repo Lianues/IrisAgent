@@ -31,7 +31,10 @@ export type {
   GitExtensionInstallOptions,
   GitExtensionUpdateOptions,
   GitExtensionUpdatePreviewResult,
+  InstallScope,
 } from './installer';
+
+export { resolveScopeInstallDir } from './installer';
 
 // ── 插件系统实现 ───────────────────────────────────────────
 

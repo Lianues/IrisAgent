@@ -28,6 +28,17 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   platform: { label: 'platform', color: '#95a5a6' },
 };
 
+/**
+ * 扩展来源徽章（installed/agent-installed/embedded/workspace）。
+ * 影响是否可删除：embedded / workspace 不可在 TUI 内删除（属于发行包/源码仓库）。
+ */
+const SOURCE_BADGES: Record<string, { label: string; color: string }> = {
+  installed:         { label: 'G', color: '#74b9ff' }, // Global installed
+  'agent-installed': { label: 'A', color: '#ff7675' }, // Agent installed
+  embedded:          { label: 'E', color: '#a29bfe' }, // Embedded
+  workspace:         { label: 'W', color: '#fdcb6e' }, // Workspace dev
+};
+
 const GIT_INPUT_PLACEHOLDER = 'https://github.com/user/repo.git#main:extensions/demo';
 
 function clamp(value: number, min: number, max: number): number {
@@ -217,6 +228,10 @@ export function ExtensionListView({
                   {isSelected ? `${ICONS.selectorArrow} ` : '  '}
                 </span>
                 <span fg={statusInfo.color}>{`[${isToggling ? '...' : `${statusInfo.label}${isDirty ? '*' : ''}`}] `}</span>
+                {(() => {
+                  const badge = SOURCE_BADGES[item.source];
+                  return badge ? <span fg={badge.color}>{`[${badge.label}] `}</span> : null;
+                })()}
                 {isSelected
                   ? <strong><span fg={C.text}>{item.name}</span></strong>
                   : <span fg={C.textSec}>{item.name}</span>}

@@ -1911,8 +1911,23 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       return { ok: false, message: '扩展删除 API 不可用' };
     }
 
+    // 识别该扩展的来源（installed/agent-installed/embedded/workspace），
+    // 仅前两类可在 TUI 中删除；embedded/workspace 属于发行包/源码仓库，应通过 plugins.yaml 禁用。
+    const packages: Array<{ manifest: { name: string }; source?: string }> = ext.discover?.() ?? [];
+    const pkg = packages.find((p) => p.manifest.name === name);
+    if (!pkg) {
+      return { ok: false, message: `未找到扩展 "${name}"` };
+    }
+    if (pkg.source === 'embedded' || pkg.source === 'workspace') {
+      const label = pkg.source === 'embedded' ? '内嵌扩展' : '源码 workspace 扩展';
+      return { ok: false, message: `${label}不可删除，请改用 plugins.yaml 设置 enabled: false 来禁用` };
+    }
+
+    // installed → scope: global；agent-installed → scope: 当前 agent（=默认 scope）
+    const scope = pkg.source === 'installed' ? { kind: 'global' as const } : undefined;
+
     try {
-      await ext.remove(name);
+      await ext.remove(name, scope ? { scope } : undefined);
       this.removePluginConfigEntry(name);
       return { ok: true, message: `已删除 "${name}"` };
     } catch (err) {
@@ -1926,8 +1941,14 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       return { ok: false, message: 'Git 扩展升级预览 API 不可用' };
     }
 
+    // 升级前先识别该扩展安装位置：installed → 全局；agent-installed → 当前 agent；其它 → 不支持
+    const scope = this.resolveScopeForInstalled(name);
+    if (!scope) {
+      return { ok: false, message: '该扩展不是通过 Git 安装到 installed/agent-installed 目录，无法升级' };
+    }
+
     try {
-      const preview = await ext.previewUpdateGit(name);
+      const preview = await ext.previewUpdateGit(name, { scope });
       const currentCommit = preview.currentCommit ? String(preview.currentCommit).slice(0, 8) : '未知';
       const nextCommit = preview.nextCommit ? String(preview.nextCommit).slice(0, 8) : '未知';
       const versionPart = preview.currentVersion === preview.nextVersion
@@ -1952,12 +1973,31 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
       return { ok: false, message: 'Git 扩展升级 API 不可用' };
     }
 
+    const scope = this.resolveScopeForInstalled(name);
+    if (!scope) {
+      return { ok: false, message: '该扩展不是通过 Git 安装到 installed/agent-installed 目录，无法升级' };
+    }
+
     try {
-      const result = await ext.updateGit(name);
+      const result = await ext.updateGit(name, { scope });
       return { ok: true, message: `已升级 "${result.name}@${result.version}" 到 ${result.gitCommit ?? '最新 commit'}。当前运行中的插件可能需要重启后完全生效。` };
     } catch (err) {
       return { ok: false, message: `升级失败: ${err instanceof Error ? err.message : String(err)}` };
     }
+  }
+
+  /**
+   * 根据当前发现的扩展包列表，识别给定 name 的扩展归属于哪个 scope。
+   * 仅 installed / agent-installed 可被 update/remove；返回 undefined 表示不可操作。
+   */
+  private resolveScopeForInstalled(name: string): { kind: 'global' } | { kind: 'agent'; agentName: string } | undefined {
+    const ext = (this.api as any)?.extensions;
+    const packages: Array<{ manifest: { name: string }; source?: string }> = ext?.discover?.() ?? [];
+    const pkg = packages.find((p) => p.manifest.name === name);
+    if (!pkg) return undefined;
+    if (pkg.source === 'installed') return { kind: 'global' };
+    if (pkg.source === 'agent-installed') return ext?.defaultScope ?? undefined;
+    return undefined;
   }
 
   private async handlePlanCommand(arg: string): Promise<PlanCommandResult> {

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../logger';
-import { extensionsDir as defaultInstalledExtensionsDir, workspaceExtensionsDir as defaultLocalExtensionsDir } from '../paths';
+import { extensionsDir as defaultInstalledExtensionsDir, workspaceExtensionsDir as defaultLocalExtensionsDir, getAgentPaths } from '../paths';
 import { assertInstallableExtensionPackage, copyExtensionDirectory } from './dependencies';
 import type {
   ExtensionManifest,
@@ -44,6 +44,24 @@ const logger = createLogger('ExtensionInstaller');
 export interface ExtensionInstallOptions extends RemoteExtensionOptions {
   installedExtensionsDir?: string;
   localExtensionsDir?: string;
+}
+
+/**
+ * 安装/删除/升级扩展的目标范围。
+ *
+ * - `global`  → 写入 ~/.iris/extensions/，所有 agent 共享可见。
+ * - `agent`   → 写入 ~/.iris/agents/<agentName>/extensions/，仅该 agent 可见，
+ *               同名时覆盖全局/embedded 版本。
+ */
+export type InstallScope =
+  | { kind: 'global' }
+  | { kind: 'agent'; agentName: string };
+
+/** 把 InstallScope 解析成绝对目录路径。 */
+export function resolveScopeInstallDir(scope: InstallScope): string {
+  if (scope.kind === 'global') return defaultInstalledExtensionsDir;
+  const ap = getAgentPaths(scope.agentName);
+  return ap.extensionsDir;
 }
 
 export interface GitExtensionInstallOptions {
