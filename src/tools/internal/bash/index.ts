@@ -32,6 +32,7 @@ interface BashResult {
   command: string;
   exitCode: number;
   killed: boolean;
+  abortedByUser?: boolean;
   stdout: string;
   stderr: string;
 }
@@ -78,6 +79,17 @@ function killProcessTree(pid: number | undefined): void {
         }
       });
       wmic.on('error', () => {});
+    } else {
+      // Unix: exec 时使用 detached=true，使 shell 成为进程组 leader。
+      // 终止负 PID 可同时终止 shell 及其子进程；失败时退回单进程 kill。
+      try { process.kill(-pid, 'SIGTERM'); }
+      catch { try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ } }
+
+      const timer = setTimeout(() => {
+        try { process.kill(-pid, 'SIGKILL'); }
+        catch { try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ } }
+      }, 500);
+      timer.unref?.();
     }
   } catch { /* 进程可能已退出 */ }
 }
@@ -91,38 +103,62 @@ function executeCommand(
   timeout: number,
   maxBuffer: number,
   maxOutputChars: number,
+  signal?: AbortSignal,
 ): Promise<BashResult> {
   return new Promise<BashResult>((resolve) => {
+    let abortedByUser = false;
+    let settled = false;
+    let onAbort: () => void = () => {};
+    const execOptions = {
+      cwd: workDir,
+      timeout,
+      maxBuffer,
+      shell: getShell(),
+      detached: process.platform !== 'win32',
+      env: {
+        ...process.env,
+        // 确保 UTF-8 输出
+        LANG: process.env.LANG || 'en_US.UTF-8',
+        PYTHONIOENCODING: 'utf-8',
+      },
+    } as any;
     const child = exec(
       command,
-      {
-        cwd: workDir,
-        timeout,
-        maxBuffer,
-        shell: getShell(),
-        env: {
-          ...process.env,
-          // 确保 UTF-8 输出
-          LANG: process.env.LANG || 'en_US.UTF-8',
-          PYTHONIOENCODING: 'utf-8',
-        },
-      },
-      (error, stdout, stderr) => {
-        // 确保进程树被完全终止，防止孤儿进程
-        killProcessTree(child.pid);
+      execOptions,
+      (error: any, stdout: string, stderr: string) => {
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        // 超时或用户中止时确保进程树被完全终止，防止孤儿进程。
+        // 正常结束时不在 Unix 上 killProcessTree，避免 PID 复用误杀。
+        if (process.platform === 'win32' || abortedByUser || (error as any)?.killed) {
+          killProcessTree(child.pid);
+        }
 
-        const exitCode = error ? (error as any).code ?? 1 : 0;
-        const killed = error ? !!(error as any).killed : false;
+        const exitCode = abortedByUser ? 1 : (error ? (error as any).code ?? 1 : 0);
+        const killed = abortedByUser || (error ? !!(error as any).killed : false);
 
         resolve({
           command,
           exitCode,
           killed,
+          abortedByUser: abortedByUser || undefined,
           stdout: truncate(stdout, maxOutputChars),
           stderr: truncate(stderr, maxOutputChars),
         });
       },
     );
+
+    onAbort = () => {
+      if (settled) return;
+      abortedByUser = true;
+      killProcessTree(child.pid);
+      try { child.kill(); } catch { /* 进程可能已退出 */ }
+    };
+
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -131,6 +167,11 @@ function executeCommand(
  * 不修改原始 exitCode，仅在 stderr 末尾追加辅助说明。
  */
 function annotateResult(result: BashResult): BashResult {
+  if (result.abortedByUser) {
+    const note = '命令已被用户终止。';
+    return { ...result, stderr: result.stderr ? result.stderr + '\n' + note : note };
+  }
+
   // 超时被终止
   if (result.killed) {
     const note = '(命令执行超时被终止。如需更长时间，请增加 timeout 参数。)';
@@ -262,7 +303,7 @@ force 参数规则：
       // 2. 白名单放行
       if (staticResult === 'allow') {
         logger.info(`Bash 命令白名单放行: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -270,7 +311,7 @@ force 参数规则：
       // 2.5. 用户已通过调度器审批
       if (context?.approvedByUser) {
         logger.info(`Bash 命令已获用户批准，跳过分类器: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -278,7 +319,7 @@ force 参数规则：
       // 2.75. force=true → 仅在非交互上下文（无 Y/N 弹窗）中生效
       if (force && !context?.requestApproval) {
         logger.info(`Bash 命令 force 执行（用户已在对话中确认）: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -295,7 +336,7 @@ force 参数规则：
             const approved = await context.requestApproval();
             if (approved) {
               logger.info(`Bash 命令用户已批准: ${command.slice(0, 100)}`);
-              const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+              const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
               maybeLearnAfterExec(command, result, deps);
               return annotateResult(result);
             }
@@ -315,7 +356,7 @@ force 参数规则：
           };
         }
         logger.info(`Bash 命令不在白名单，分类器未启用，兜底放行: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -327,7 +368,7 @@ force 参数规则：
 
       if (decision.allow) {
         logger.info(`Bash 命令分类器放行: ${command.slice(0, 100)} | 理由: ${decision.reason}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -338,7 +379,7 @@ force 参数规则：
         const approved = await context.requestApproval();
         if (approved) {
           logger.info(`Bash 命令用户已批准（分类器拒绝后）: ${command.slice(0, 100)}`);
-          const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+          const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
           maybeLearnAfterExec(command, result, deps);
           return annotateResult(result);
         }

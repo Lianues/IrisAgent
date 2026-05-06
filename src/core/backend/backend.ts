@@ -390,6 +390,13 @@ export class Backend extends TypedEventEmitter<BackendEvents> {
       controller.abort();
       logger.info(`abortChat: session=${sessionId}`);
     }
+
+    // 同步触发该会话内所有活跃工具的工具级 AbortSignal。
+    // 会话级 signal 负责中止 ToolLoop；工具级 signal 让正在运行的 handler
+    // （尤其是 shell/bash 这类外部进程工具）可以立即收到中止并更新 UI 状态。
+    for (const handle of this.toolState.getHandlesBySession(sessionId)) {
+      handle.abort();
+    }
   }
 
   /** 清空指定会话 */

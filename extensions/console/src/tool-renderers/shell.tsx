@@ -15,6 +15,7 @@ interface ShellResult {
   command?: string;
   exitCode?: number;
   killed?: boolean;
+  abortedByUser?: boolean;
   stdout?: string;
   stderr?: string;
 }
@@ -36,6 +37,15 @@ export function ShellRenderer({ result }: ToolRendererProps) {
   const r = (result || {}) as ShellResult;
   const exitCode = r.exitCode ?? 0;
   const isError = exitCode !== 0;
+
+  // ---- 被用户终止 ----
+  if (r.abortedByUser) {
+    return (
+      <text fg="#ff0000">
+        <em>{` ${ICONS.resultArrow} `}被用户终止</em>
+      </text>
+    );
+  }
 
   // ---- 被超时杀死 ----
   if (r.killed) {

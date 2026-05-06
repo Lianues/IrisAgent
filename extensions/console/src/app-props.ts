@@ -30,6 +30,8 @@ export interface AppProps {
   onAbort: () => void;
   /** 用户请求打开工具详情 */
   onOpenToolDetail: (toolId: string) => void;
+  /** 用户请求终止指定工具 */
+  onToolAbort: (toolId: string) => void;
   /** 用户在详情页请求查看子工具 */
   onNavigateToolDetail: (toolId: string) => void;
   /** 用户关闭工具详情（返回上一层或退出） */

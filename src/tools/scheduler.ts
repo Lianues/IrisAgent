@@ -292,6 +292,8 @@ export function buildExecutionPlan(
 
 // ============ 执行 ============
 
+const OPERATION_ABORTED_ERROR = 'Operation aborted';
+
 /**
  * 合并多个 AbortSignal，任一触发即 abort。
  * 用于合并会话级 signal 和工具级 signal。
@@ -311,6 +313,84 @@ function combineAbortSignals(...signals: (AbortSignal | undefined)[]): AbortSign
     s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
   }
   return controller.signal;
+}
+
+class ToolAbortError extends Error {
+  constructor(readonly reason?: unknown) {
+    super(OPERATION_ABORTED_ERROR);
+    this.name = 'ToolAbortError';
+  }
+}
+
+function isAbortError(err: unknown, signal?: AbortSignal): boolean {
+  if (err instanceof ToolAbortError) return true;
+  if (signal?.aborted) return true;
+  if (err instanceof Error) {
+    return err.name === 'AbortError' || err.message === OPERATION_ABORTED_ERROR;
+  }
+  return false;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new ToolAbortError(signal.reason);
+}
+
+/**
+ * 将任意异步等待点与 AbortSignal race。
+ *
+ * 注意：被 race 的原始 Promise 后续可能仍会 settle；这里始终给它挂上
+ * then/catch，避免提前返回后产生 unhandled rejection。
+ */
+function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new ToolAbortError(signal.reason));
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new ToolAbortError(signal.reason));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(err);
+      },
+    );
+  });
+}
+
+function markInvocationAborted(toolState?: ToolStateManager, invocationId?: string): void {
+  if (!toolState || !invocationId) return;
+  try {
+    toolState.transition(invocationId, 'error', { error: OPERATION_ABORTED_ERROR });
+  } catch {
+    // 可能已进入终态，忽略
+  }
+}
+
+function createAbortResponse(call: FunctionCallPart, durationMs?: number): FunctionResponsePart {
+  return {
+    functionResponse: {
+      name: call.functionCall.name,
+      callId: call.functionCall.callId,
+      response: { error: OPERATION_ABORTED_ERROR },
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    },
+  };
 }
 
 /**
@@ -405,20 +485,15 @@ async function executeSingle(
   onAttachments?: (attachments: ToolAttachment[]) => void,
 ): Promise<FunctionResponsePart> {
   const toolName = call.functionCall.name;
+  const handle = toolState && invocationId ? toolState.getHandle(invocationId) : undefined;
+  // 合并会话级 signal 和工具级 signal（Handle.abort() 触发工具级 signal）。
+  // 该 signal 覆盖审批、分类器、插件钩子与 handler 执行的所有等待点。
+  const effectiveSignal = combineAbortSignals(signal, handle?.signal);
 
   // 执行前检查 abort
-  if (signal?.aborted) {
-    const abortMsg = 'Operation aborted';
-    if (toolState && invocationId) {
-      toolState.transition(invocationId, 'error', { error: abortMsg });
-    }
-    return {
-      functionResponse: {
-        name: toolName,
-        callId: call.functionCall.callId,
-        response: { error: abortMsg },
-      },
-    };
+  if (effectiveSignal?.aborted) {
+    markInvocationAborted(toolState, invocationId);
+    return createAbortResponse(call);
   }
 
   // 检查工具策略
@@ -491,8 +566,9 @@ async function executeSingle(
     // ── 一类审批：autoApprove 控制，底部 Y/N ──
     if (!autoApproved) {
       toolState.transition(invocationId, 'awaiting_approval');
-      const approved = await toolState.waitForApproval(invocationId, signal);
+      const approved = await toolState.waitForApproval(invocationId, effectiveSignal);
       if (!approved) {
+        if (effectiveSignal?.aborted) return createAbortResponse(call);
         return {
           functionResponse: {
             name: toolName,
@@ -510,8 +586,9 @@ async function executeSingle(
     // 对隐藏后台 session / 无 ToolState 的非交互场景，不再把它当作阻塞条件。
     if (!globalSkipDiff && shouldShowDiffPreview(call, effectivePolicy)) {
       toolState.transition(invocationId, 'awaiting_apply');
-      const applied = await toolState.waitForApply(invocationId, signal);
+      const applied = await toolState.waitForApply(invocationId, effectiveSignal);
       if (!applied) {
+        if (effectiveSignal?.aborted) return createAbortResponse(call);
         return {
           functionResponse: {
             name: toolName,
@@ -575,7 +652,7 @@ async function executeSingle(
 
   if (beforeToolExec) {
     try {
-      const interception = await beforeToolExec(toolName, effectiveArgs);
+      const interception = await raceWithAbort(Promise.resolve(beforeToolExec(toolName, effectiveArgs)), effectiveSignal);
       if (interception) {
         if (interception.blocked) {
           if (toolState && invocationId) {
@@ -593,7 +670,13 @@ async function executeSingle(
           effectiveArgs = interception.args;
         }
       }
-    } catch { /* 拦截器错误不阻止执行 */ }
+    } catch (err) {
+      if (isAbortError(err, effectiveSignal)) {
+        markInvocationAborted(toolState, invocationId);
+        return createAbortResponse(call);
+      }
+      /* 拦截器错误不阻止执行 */
+    }
   }
 
     // 创建工具执行上下文：带节流的进度上报 + 中止信号 + Handle 能力。
@@ -602,9 +685,6 @@ async function executeSingle(
     if (toolState && invocationId) {
       progressCtx = createThrottledReportProgress(toolState, invocationId);
     }
-    const handle = toolState?.getHandle(invocationId!);
-    // 合并会话级 signal 和工具级 signal（Handle 的 abort() 触发工具级 signal）
-    const effectiveSignal = combineAbortSignals(signal, handle?.signal);
     const executionContext: ToolExecutionContext = {
       reportProgress: progressCtx?.reportProgress,
       signal: effectiveSignal,
@@ -615,7 +695,7 @@ async function executeSingle(
       requestApproval: (interactiveApproval && toolState && invocationId)
         ? async () => {
             toolState.transition(invocationId, 'awaiting_approval');
-            return toolState.waitForApproval(invocationId, signal);
+            return toolState.waitForApproval(invocationId, effectiveSignal);
           }
         : undefined,
       invocationId,
@@ -639,7 +719,10 @@ async function executeSingle(
     // 两种机制是互斥的替代方案，不应在同一个工具中混用。
     // registry.execute 可能返回 Promise（async handler 包裹 generator 的情况）
     // 或直接返回 AsyncIterable。先 await 解包可能的 Promise 层。
-    const rawReturn = await registry.execute(toolName, effectiveArgs, executionContext);
+    const rawReturn = await raceWithAbort(
+      Promise.resolve().then(() => registry.execute(toolName, effectiveArgs, executionContext)),
+      effectiveSignal,
+    );
     let result: unknown;
 
     // 检测 AsyncIterable（async handler 返回 generator 时，await 后得到 generator 对象）
@@ -647,24 +730,37 @@ async function executeSingle(
       // 迭代消费 generator 的所有 yield 值
       let lastValue: unknown;
       let frameCounter = 0;
-      for await (const intermediate of rawReturn as AsyncIterable<unknown>) {
-        lastValue = intermediate;
-        frameCounter++;
-        // 将 yield 的中间值作为 progress 推送到 ToolStateManager，
-        // 通过 Handle 的 progress 事件推送到前端 ToolCall 组件。
-        // 节流：每 4 个 yield 推送一次，避免高频渲染。
-        if (toolState && invocationId && frameCounter % 4 === 0) {
-          const progress = (typeof lastValue === 'object' && lastValue !== null)
-            ? lastValue as Record<string, unknown>
-            : { value: lastValue };
-          toolState.transition(invocationId, 'executing', { progress });
+      const iterator = (rawReturn as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      try {
+        while (true) {
+          const next = await raceWithAbort(Promise.resolve(iterator.next()), effectiveSignal);
+          if (next.done) break;
+          const intermediate = next.value;
+          lastValue = intermediate;
+          frameCounter++;
+          // 将 yield 的中间值作为 progress 推送到 ToolStateManager，
+          // 通过 Handle 的 progress 事件推送到前端 ToolCall 组件。
+          // 节流：每 4 个 yield 推送一次，避免高频渲染。
+          if (toolState && invocationId && frameCounter % 4 === 0) {
+            const progress = (typeof lastValue === 'object' && lastValue !== null)
+              ? lastValue as Record<string, unknown>
+              : { value: lastValue };
+            toolState.transition(invocationId, 'executing', { progress });
+          }
         }
+      } catch (err) {
+        if (isAbortError(err, effectiveSignal)) {
+          // 不等待 return()，避免非协作 generator 卡住中止路径；只做尽力清理。
+          void Promise.resolve(iterator.return?.()).catch(() => {});
+        }
+        throw err;
       }
       result = lastValue;
     } else {
-      // 普通 Promise 返回：直接 await
-      result = await rawReturn;
+      // 普通 Promise 返回：registry.execute 已在上方与 AbortSignal race。
+      result = rawReturn;
     }
+    throwIfAborted(effectiveSignal);
     const durationMs = Date.now() - execStart;
 
     // 保存原始返回值，用于 MCP 附件识别兜底（afterToolExec 可能改变 result 的结构）
@@ -673,11 +769,15 @@ async function executeSingle(
     // 插件钩子：工具执行后拦截器（上游 main 新增）
     if (afterToolExec) {
       try {
-        const interception = await afterToolExec(toolName, effectiveArgs, result, durationMs);
+        const interception = await raceWithAbort(
+          Promise.resolve(afterToolExec(toolName, effectiveArgs, result, durationMs)),
+          effectiveSignal,
+        );
         if (interception) {
           result = interception.result;
         }
       } catch (err: unknown) {
+        if (isAbortError(err, effectiveSignal)) throw err;
         const errorMsg = err instanceof Error ? err.message : String(err);
         logger.warn(`插件 onAfterToolExec 执行失败，已忽略: ${toolName}: ${errorMsg}`);
       }
@@ -768,7 +868,8 @@ async function executeSingle(
       },
     };
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const aborted = isAbortError(err, effectiveSignal);
+    const errorMsg = aborted ? OPERATION_ABORTED_ERROR : (err instanceof Error ? err.message : String(err));
     const durationMs = Date.now() - execStart;
     // 销毁进度上报（防止 trailing timer 在终态后触发非法状态转换）
     progressCtx?.dispose();
@@ -779,7 +880,11 @@ async function executeSingle(
         // 可能已在终态（如 handler 内 requestApproval 被用户拒绝），忽略二次转换错误
       }
     }
-    logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
+    if (aborted) {
+      logger.info(`工具执行被中止: ${call.functionCall.name}${invocationId ? ` (${invocationId})` : ''}`);
+    } else {
+      logger.error(`工具执行失败: ${call.functionCall.name}:`, errorMsg);
+    }
     return {
       functionResponse: {
         name: call.functionCall.name,
@@ -821,17 +926,8 @@ export async function executePlan(
     if (signal?.aborted) {
       for (const i of batch.indices) {
         if (!responseParts[i]) {
-          const abortMsg = 'Operation aborted';
-          if (toolState && invocationIds?.[i]) {
-            try { toolState.transition(invocationIds[i], 'error', { error: abortMsg }); } catch { /* 状态已经终态 */ }
-          }
-          responseParts[i] = {
-            functionResponse: {
-              name: calls[i].functionCall.name,
-              callId: calls[i].functionCall.callId,
-              response: { error: abortMsg },
-            },
-          };
+          markInvocationAborted(toolState, invocationIds?.[i]);
+          responseParts[i] = createAbortResponse(calls[i]);
         }
       }
       continue;

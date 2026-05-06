@@ -13,6 +13,7 @@ import { useKeyboard } from '@opentui/react';
 import type { ToolInvocation, ToolOutputEntry, ToolStatus } from 'irises-extension-sdk';
 import type { ToolDetailData, ToolDetailBreadcrumb } from '../app-types';
 import { getToolRenderer, getToolDetailRenderer } from '../tool-renderers';
+import { formatToolError } from '../tool-errors';
 import { Spinner } from './Spinner';
 import { C } from '../theme';
 import { ICONS } from '../terminal-compat';
@@ -300,7 +301,7 @@ function ResultSection({ status, error, result, toolName, args, Renderer }: {
   Renderer: React.FC<{ toolName: string; args: Record<string, unknown>; result: unknown }> | null;
 }) {
   if (status === 'error' && error) {
-    return <text fg={C.error}>  {error}</text>;
+    return <text fg={C.error}>  {formatToolError(error)}</text>;
   }
   if (Renderer && result != null) {
     return (

@@ -61,6 +61,7 @@ export function App({
   onToolMessage,
   onAddCommandPattern,
   onAbort,
+  onToolAbort,
   onNewSession,
   onLoadSession,
   onListSessions,
@@ -603,9 +604,7 @@ export function App({
           breadcrumb={appState.toolDetailStack}
           onNavigateChild={onNavigateToolDetail}
           onClose={onCloseToolDetail}
-          onAbort={(toolId) => {
-            onOpenToolDetail(toolId);
-          }}
+          onAbort={onToolAbort}
         />
       </box>
     );

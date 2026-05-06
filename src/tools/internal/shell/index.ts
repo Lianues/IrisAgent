@@ -65,6 +65,7 @@ interface ShellResult {
   command: string;
   exitCode: number;
   killed: boolean;
+  abortedByUser?: boolean;
   stdout: string;
   stderr: string;
 }
@@ -121,10 +122,14 @@ function executeCommand(
   timeout: number,
   maxBuffer: number,
   maxOutputChars: number,
+  signal?: AbortSignal,
 ): Promise<ShellResult> {
   const wrappedCommand = PS_UTF8_PREFIX + command;
 
   return new Promise<ShellResult>((resolve) => {
+    let abortedByUser = false;
+    let settled = false;
+    let onAbort: () => void = () => {};
     const child = exec(
       wrappedCommand,
       {
@@ -135,23 +140,38 @@ function executeCommand(
         env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
       },
       (error, stdout, stderr) => {
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
         // Windows: 确保进程树被完全终止。
         // 管道截断（Select-Object -First N）或超时后，npx/node 等原生子进程
         // 可能不会随 PowerShell 退出而终止，成为孤儿进程占满 CPU。
         killProcessTree(child.pid);
 
-        const exitCode = error ? (error as any).code ?? 1 : 0;
-        const killed = error ? !!(error as any).killed : false;
+        const exitCode = abortedByUser ? 1 : (error ? (error as any).code ?? 1 : 0);
+        const killed = abortedByUser || (error ? !!(error as any).killed : false);
 
         resolve({
           command,
           exitCode,
           killed,
+          abortedByUser: abortedByUser || undefined,
           stdout: truncate(stdout, maxOutputChars),
           stderr: truncate(stderr, maxOutputChars),
         });
       },
     );
+
+    onAbort = () => {
+      if (settled) return;
+      abortedByUser = true;
+      killProcessTree(child.pid);
+      try { child.kill(); } catch { /* 进程可能已退出 */ }
+    };
+
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -160,6 +180,11 @@ function executeCommand(
  * 不修改原始 exitCode，仅在 stderr 末尾追加辅助说明。
  */
 function annotateResult(result: ShellResult): ShellResult {
+  if (result.abortedByUser) {
+    const note = '命令已被用户终止。';
+    return { ...result, stderr: result.stderr ? result.stderr + '\n' + note : note };
+  }
+
   // 超时被终止
   if (result.killed) {
     const note = '(命令执行超时被终止。如需更长时间，请增加 timeout 参数。)';
@@ -293,7 +318,7 @@ force 参数规则：
       // 2. 白名单放行
       if (staticResult === 'allow') {
         logger.info(`Shell 命令白名单放行: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -302,7 +327,7 @@ force 参数规则：
       // 尊重用户的明确授权意图，不再用 AI 分类器二次否决。
       if (context?.approvedByUser) {
         logger.info(`Shell 命令已获用户批准，跳过分类器: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -311,7 +336,7 @@ force 参数规则：
       // 用于 LLM 对话确认后重试。交互上下文中 Y/N 已替代 force，忽略以防绕过用户拒绝。
       if (force && !context?.requestApproval) {
         logger.info(`Shell 命令 force 执行（用户已在对话中确认）: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -329,7 +354,7 @@ force 参数规则：
             const approved = await context.requestApproval();
             if (approved) {
               logger.info(`Shell 命令用户已批准: ${command.slice(0, 100)}`);
-              const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+              const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
               maybeLearnAfterExec(command, result, deps);
               return annotateResult(result);
             }
@@ -350,7 +375,7 @@ force 参数规则：
         }
         // fallback === 'allow'
         logger.info(`Shell 命令不在白名单，分类器未启用，兜底放行: ${command.slice(0, 100)}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -362,7 +387,7 @@ force 参数规则：
 
       if (decision.allow) {
         logger.info(`Shell 命令分类器放行: ${command.slice(0, 100)} | 理由: ${decision.reason}`);
-        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+        const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
         maybeLearnAfterExec(command, result, deps);
         return annotateResult(result);
       }
@@ -373,7 +398,7 @@ force 参数规则：
         const approved = await context.requestApproval();
         if (approved) {
           logger.info(`Shell 命令用户已批准（分类器拒绝后）: ${command.slice(0, 100)}`);
-          const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars);
+          const result = await executeCommand(command, workDir, timeout, limits.maxBuffer, limits.maxOutputChars, context?.signal);
           maybeLearnAfterExec(command, result, deps);
           return annotateResult(result);
         }

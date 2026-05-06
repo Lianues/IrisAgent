@@ -841,6 +841,9 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onAbort: () => {
           this.backend.abortChat?.(this.sessionId);
         },
+        onToolAbort: (toolId: string) => {
+          (this._activeHandles.get(toolId) ?? (this.backend as any).getToolHandle?.(toolId))?.abort();
+        },
         onOpenToolDetail: (toolId: string) => {
           this.openToolDetail(toolId);
         },

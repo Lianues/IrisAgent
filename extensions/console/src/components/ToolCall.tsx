@@ -8,6 +8,7 @@ import React from 'react';
 import { Spinner } from './Spinner';
 import type { ToolInvocation, ToolStatus } from 'irises-extension-sdk';
 import { getToolRenderer } from '../tool-renderers';
+import { formatToolError } from '../tool-errors';
 import { C } from '../theme';
 import { SPINNER_FRAMES, ICONS } from '../terminal-compat';
 
@@ -89,6 +90,7 @@ function getArgsSummary(toolName: string, args: Record<string, unknown>): string
 
 export function ToolCall({ invocation }: ToolCallProps) {
   const { toolName, status, args, result, error, createdAt, updatedAt } = invocation;
+  const displayError = formatToolError(error);
 
   // 通用进度字段（由 handler yield 的中间值填充，scheduler 推送到 ToolStateManager.progress）
   // 各工具自行定义结构，如 sub_agent: { tokens: number, frame: number, streamingText: string }
@@ -139,8 +141,8 @@ export function ToolCall({ invocation }: ToolCallProps) {
           <text><Spinner /></text>
         ) : null}
       </box>
-      {status === 'error' && error && (
-        <text fg={C.error}><em>  {error}</em></text>
+      {status === 'error' && displayError && (
+        <text fg={C.error}><em>  {displayError}</em></text>
       )}
       {/* sub_agent 执行中：显示当前子工具 或 LLM 文本预览 */}
       {isExecuting && toolName === 'sub_agent' && subAgentStatusLine.length > 0 && (

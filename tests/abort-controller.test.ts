@@ -17,7 +17,7 @@ import { ToolRegistry } from '../src/tools/registry.js';
 import { ToolStateManager } from '../src/tools/state.js';
 import { buildExecutionPlan, executePlan } from '../src/tools/scheduler.js';
 import { PromptAssembler } from '../src/prompt/assembler.js';
-import type { Content, FunctionCallPart } from '../src/types/index.js';
+import type { Content, FunctionCallPart, ToolExecutionContext } from '../src/types/index.js';
 import type { ToolPolicyConfig } from '../src/config/types.js';
 import { sanitizeHistory, cleanupTrailingHistory } from '../src/core/history-sanitizer.js';
 
@@ -27,7 +27,11 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function createRegistry(tools: Array<{ name: string; handler: (args: Record<string, unknown>) => Promise<unknown>; parallel?: boolean }>): ToolRegistry {
+function createRegistry(tools: Array<{
+  name: string;
+  handler: (args: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown> | AsyncIterable<unknown>;
+  parallel?: boolean;
+}>): ToolRegistry {
   const registry = new ToolRegistry();
   for (const t of tools) {
     registry.register({
@@ -90,7 +94,7 @@ describe('scheduler: abort support', () => {
     expect(handlerCalled).toBe(false);
   });
 
-  it('executePlan: 多批中途 abort，剩余批次返回错误', async () => {
+  it('executePlan: 多批中途 abort，当前工具和剩余批次返回错误', async () => {
     const executionOrder: string[] = [];
     const controller = new AbortController();
 
@@ -110,7 +114,7 @@ describe('scheduler: abort support', () => {
     const results = await executePlan(calls, plan, registry, undefined, undefined, allToolsAutoApprove(...calls.map(c => c.functionCall.name)), controller.signal);
 
     expect(results).toHaveLength(2);
-    expect((results[0].functionResponse.response as any).result).toBe('a_result');
+    expect((results[0].functionResponse.response as any).error).toBe('Operation aborted');
     expect((results[1].functionResponse.response as any).error).toBe('Operation aborted');
     expect(executionOrder).toEqual(['a']);
   });
@@ -166,6 +170,79 @@ describe('scheduler: abort support', () => {
     const results = await executePlan(calls, plan, registry, undefined, undefined, allToolsAutoApprove(...calls.map(c => c.functionCall.name)), controller.signal);
 
     expect((results[0].functionResponse.response as any).result).toBe('result_ok');
+  });
+
+  it('executePlan: 运行中的非协作 Promise 工具在 abort 后应快速返回', async () => {
+    const controller = new AbortController();
+    let handlerCalled = false;
+
+    const registry = createRegistry([{
+      name: 'never_tool',
+      handler: async () => {
+        handlerCalled = true;
+        await new Promise<never>(() => {});
+        return 'should_not_resolve';
+      },
+    }]);
+    const toolState = new ToolStateManager();
+    const invocation = toolState.create('never_tool', {}, 'queued');
+
+    const calls = [fc('never_tool')];
+    const plan = buildExecutionPlan(calls, registry);
+    setTimeout(() => controller.abort(), 20);
+
+    const start = Date.now();
+    const results = await executePlan(
+      calls,
+      plan,
+      registry,
+      toolState,
+      [invocation.id],
+      allToolsAutoApprove('never_tool'),
+      controller.signal,
+    );
+    const elapsed = Date.now() - start;
+
+    expect(handlerCalled).toBe(true);
+    expect(elapsed).toBeLessThan(150);
+    expect((results[0].functionResponse.response as any).error).toBe('Operation aborted');
+    expect(toolState.get(invocation.id)!.status).toBe('error');
+  });
+
+  it('executePlan: AsyncIterable 工具迭代中 abort 后应快速返回', async () => {
+    const controller = new AbortController();
+
+    async function* endlessGenerator() {
+      yield { frame: 1 };
+      await new Promise<never>(() => {});
+    }
+
+    const registry = createRegistry([{
+      name: 'stream_tool',
+      handler: () => endlessGenerator(),
+    }]);
+    const toolState = new ToolStateManager();
+    const invocation = toolState.create('stream_tool', {}, 'queued');
+
+    const calls = [fc('stream_tool')];
+    const plan = buildExecutionPlan(calls, registry);
+    setTimeout(() => controller.abort(), 20);
+
+    const start = Date.now();
+    const results = await executePlan(
+      calls,
+      plan,
+      registry,
+      toolState,
+      [invocation.id],
+      allToolsAutoApprove('stream_tool'),
+      controller.signal,
+    );
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(150);
+    expect((results[0].functionResponse.response as any).error).toBe('Operation aborted');
+    expect(toolState.get(invocation.id)!.status).toBe('error');
   });
 });
 
