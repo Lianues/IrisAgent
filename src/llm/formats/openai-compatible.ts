@@ -242,10 +242,21 @@ export class OpenAICompatibleFormat implements FormatAdapter {
     // 让 StreamingToolExecutor 可以在 LLM 还在输出后续工具参数时提前启动执行。
     // finish_reason 到达时，最后一个工具也输出。
     const pending = state.pendingToolCalls as Map<number, { callId?: string; name: string; arguments: string; emitted?: boolean }>;
-    const emitPendingToolCall = (entry: { callId?: string; name: string; arguments: string; emitted?: boolean }) => {
+    const emitPendingToolCall = (
+      entry: { callId?: string; name: string; arguments: string; emitted?: boolean },
+      options?: { allowEmptyArgs?: boolean },
+    ) => {
       if (entry.emitted || !entry.name) return;
+      const rawArgs = entry.arguments ?? '';
+      if (!rawArgs.trim() && !options?.allowEmptyArgs) {
+        // OpenAI-compatible providers often send an initial tool_call delta with
+        // function.name and arguments="", followed by later arguments fragments.
+        // Treating empty arguments as {} here would prematurely emit the tool
+        // call and drop subsequent argument deltas.
+        return;
+      }
       try {
-        const args = JSON.parse(entry.arguments || '{}');
+        const args = rawArgs.trim() ? JSON.parse(rawArgs) : {};
         if (!args || typeof args !== 'object' || Array.isArray(args)) return;
         if (!chunk.functionCalls) chunk.functionCalls = [];
         chunk.functionCalls.push({
@@ -269,7 +280,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
         // 新 index 出现时，前面未输出的工具调用的参数一定已经完整，立即输出
         if (!pending.has(tc.index) && pending.size > 0) {
           for (const [, entry] of pending) {
-            emitPendingToolCall(entry);
+            emitPendingToolCall(entry, { allowEmptyArgs: true });
           }
         }
         if (!pending.has(tc.index)) {
@@ -289,7 +300,7 @@ export class OpenAICompatibleFormat implements FormatAdapter {
       chunk.finishReason = choice.finish_reason;
       if (pending.size > 0) {
         for (const [, entry] of pending) {
-          emitPendingToolCall(entry);
+          emitPendingToolCall(entry, { allowEmptyArgs: true });
         }
         pending.clear();
       }

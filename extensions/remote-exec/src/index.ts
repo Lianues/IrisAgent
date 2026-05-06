@@ -9,8 +9,6 @@
  *   deactivate  关闭 SSH 连接，撤销 register patch
  */
 
-import path from 'node:path';
-import { promises as fs, existsSync, writeFileSync } from 'node:fs';
 import {
   definePlugin,
   createPluginLogger,
@@ -20,17 +18,16 @@ import {
 } from 'irises-extension-sdk';
 import {
   DEFAULT_REMOTE_EXEC_YAML,
-  DEFAULT_REMOTE_EXEC_SERVERS,
+  DEFAULT_REMOTE_EXEC_SERVERS_YAML,
 } from './config-template.js';
 import { parseRemoteExecConfig, type RemoteExecConfig } from './config.js';
-import { parseServersFile, type ServerEntry } from './ssh-config.js';
+import { parseServersSectionDetailed, type ServerEntry } from './ssh-config.js';
 import { SshTransport } from './transport.js';
 import { EnvironmentManager } from './environment.js';
 import { buildSwitchEnvironmentTool } from './tools.js';
 import { installToolWrappers, type WrapInstaller } from './wrap.js';
 
 const logger = createPluginLogger('remote-exec');
-const SERVERS_FILENAME = 'remote_exec_servers';
 
 // 模块级状态
 let cfg: RemoteExecConfig = parseRemoteExecConfig({});
@@ -54,7 +51,9 @@ export default definePlugin({
     if (ctx.ensureConfigFile('remote_exec.yaml', DEFAULT_REMOTE_EXEC_YAML)) {
       logger.info('已生成默认配置 remote_exec.yaml');
     }
-    ensureServersFile(ctx);
+    if (ctx.ensureConfigFile('remote_exec_servers.yaml', DEFAULT_REMOTE_EXEC_SERVERS_YAML)) {
+      logger.info('已生成默认服务器配置 remote_exec_servers.yaml');
+    }
 
     ctx.onReady(async (api) => {
       cachedApi = api;
@@ -67,7 +66,7 @@ export default definePlugin({
         if (!cachedApi || !cachedCtx) return;
         const raw = (rawMergedConfig as Record<string, unknown>)?.remote_exec;
         cfg = parseRemoteExecConfig(raw ?? {});
-        servers = await readServersFile(cachedCtx);
+        servers = readServersSection(cachedCtx, rawMergedConfig as Record<string, unknown>);
         rebuildTransport();
         // 重注册 switch_environment（环境列表可能已变）
         reregisterSwitchTool(cachedApi);
@@ -96,34 +95,23 @@ export default definePlugin({
 
 // ───────────────────────────── helpers ─────────────────────────────
 
-function ensureServersFile(ctx: PluginContext): void {
-  const dir = ctx.getConfigDir();
-  const file = path.join(dir, SERVERS_FILENAME);
-  if (existsSync(file)) return;
-  try {
-    writeFileSync(file, DEFAULT_REMOTE_EXEC_SERVERS, 'utf8');
-    logger.info(`已生成默认服务器清单文件: ${file}`);
-  } catch (err) {
-    logger.warn(`生成 ${SERVERS_FILENAME} 失败: ${(err as Error).message}`);
+function readServersSection(ctx: PluginContext, rawMergedConfig?: Record<string, unknown>): Map<string, ServerEntry> {
+  const raw = rawMergedConfig?.remote_exec_servers ?? ctx.readConfigSection('remote_exec_servers');
+  const parsed = parseServersSectionDetailed(raw);
+  for (const warning of parsed.warnings) {
+    logger.warn(`remote_exec_servers.yaml: ${warning}`);
   }
-}
-
-async function readServersFile(ctx: PluginContext): Promise<Map<string, ServerEntry>> {
-  const file = path.join(ctx.getConfigDir(), SERVERS_FILENAME);
-  try {
-    const text = await fs.readFile(file, 'utf8');
-    return parseServersFile(text);
-  } catch (err) {
-    logger.warn(`读取 ${SERVERS_FILENAME} 失败: ${(err as Error).message}`);
-    return new Map();
+  if (raw && parsed.servers.size === 0) {
+    logger.warn('remote_exec_servers.yaml 中未解析到有效 servers。请检查格式：servers.<name>.hostName / user / password|identityFile');
   }
+  return parsed.servers;
 }
 
 async function reloadAll(ctx: PluginContext, api: IrisAPI): Promise<void> {
   const merged = api.configManager?.readEditableConfig?.() as Record<string, unknown> | undefined;
   const rawSection = merged?.remote_exec ?? ctx.readConfigSection('remote_exec');
   cfg = parseRemoteExecConfig(rawSection ?? {});
-  servers = await readServersFile(ctx);
+  servers = readServersSection(ctx, merged);
 
   rebuildTransport();
 

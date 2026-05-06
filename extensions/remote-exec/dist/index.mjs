@@ -7002,10 +7002,6 @@ var require_dist = __commonJS((exports) => {
   exports.visitAsync = visit.visitAsync;
 });
 
-// src/index.ts
-import path3 from "node:path";
-import { promises as fs2, existsSync, writeFileSync } from "node:fs";
-
 // ../../packages/extension-sdk/src/logger.ts
 var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
@@ -7043,20 +7039,20 @@ var DEFAULT_REMOTE_EXEC_YAML = `# remote-exec 配置
 #
 # 让 AI 像在远端机器上原生运行本项目一样使用工具：
 # AI 调用 list_files / read_file / write_file / shell ... 时，
-# 后台自动翻译成等价的 ssh 命令在远端执行，并把结果整理回工具原有的 JSON 形态。
+# 后台自动翻译成等价的远端操作，并把结果整理回工具原有的 JSON 形态。
 # AI 全程无感。
 #
-# 目标服务器写在同目录下的 \`remote_exec_servers\` 文件中（VSCode SSH 风格）。
+# 目标服务器写在同目录下的 remote_exec_servers.yaml 中。
 
 # 是否启用本扩展（false 时所有工具静默走本地）
 enabled: false
 
 # 默认活动环境（启动时使用）：
 #   local        本机执行（不走 SSH）
-#   <Host 别名>  对应 remote_exec_servers 中的 Host
+#   <服务器别名> 对应 remote_exec_servers.yaml 中 servers.<别名>
 defaultEnvironment: local
 
-# 是否向 AI 暴露 \`switch_environment\` 工具，让 AI 自主切换环境
+# 是否向 AI 暴露 switch_environment 工具，让 AI 自主切换环境
 # 关闭后只能由配置文件指定
 exposeSwitchTool: true
 
@@ -7070,50 +7066,52 @@ ssh:
   keepAliveSec: 30
   commandTimeoutMs: 0
 `;
-var DEFAULT_REMOTE_EXEC_SERVERS = `# remote-exec 服务器清单 — VSCode SSH config 风格
+var DEFAULT_REMOTE_EXEC_SERVERS_YAML = `# remote-exec 服务器清单
 #
-# 每个 Host 块定义一个远端服务器。在 remote_exec.yaml 中通过 Host 别名引用，
-# AI 也通过该别名调用 switch_environment 切换。
+# 推荐 YAML 格式，走 Iris Extension SDK 配置接口：
+#   - 插件首次启动会通过 ctx.ensureConfigFile() 释放本文件
+#   - 插件读取时通过 ctx.readConfigSection('remote_exec_servers')
+#   - 修改后支持配置热重载
 #
-# 标准字段：
-#   Host         别名（必填，唯一）
-#   HostName     实际主机名 / IP（必填）
-#   Port         SSH 端口（默认 22）
-#   User         登录用户名
-#   IdentityFile 私钥文件绝对路径
+# servers 是一个 map：key 是环境名/别名，value 是 SSH 连接信息。
+# AI 会通过 switch_environment 工具看到这些环境名。
 #
-# remote-exec 扩展字段：
-#   Password     明文密码（与 IdentityFile 二选一；建议优先用密钥）
-#   Workdir      该服务器上的默认工作目录（覆盖 remote_exec.yaml 的 remoteWorkdir）
-#   Description  AI 可见的环境描述（switch_environment 工具会展示）
-#   Transport    传输策略：auto（默认）/ sftp / bash
-#                auto = 文件精确操作优先 SFTP，扫描/搜索/shell 走 bash
-#                sftp = 文件精确操作强制 SFTP（失败时报错）
-#                bash = 强制纯 bash，适配无 SFTP 的极简环境
-#
-# 示例：
+# 字段：
+#   hostName      实际主机名 / IP（必填）
+#   port          SSH 端口（默认 22）
+#   user          登录用户名
+#   identityFile  私钥文件绝对路径
+#   password      明文密码（与 identityFile 二选一；建议优先用密钥）
+#   workdir       该服务器上的默认工作目录（覆盖 remote_exec.yaml 的 remoteWorkdir）
+#   description   AI 可见的环境描述（switch_environment 工具会展示）
+#   transport     auto（默认）/ sftp / bash
+#                 auto = 文件精确操作优先 SFTP，扫描/搜索/shell 走 bash
+#                 sftp = 文件精确操作强制 SFTP（失败时报错）
+#                 bash = 强制纯 bash，适配无 SFTP 的极简环境
 
-# Host cqa1
-#   HostName connect.cqa1.seetacloud.com
-#   Port 32768
-#   User root
-#   IdentityFile C:\\Users\\Lianues\\.ssh\\id_rsa
-#   Workdir /root/projects/myapp
-#   Transport auto
-#   Description GPU 训练机（A100 x 2）
+servers:
+  # cqa1:
+  #   hostName: connect.cqa1.seetacloud.com
+  #   port: 32768
+  #   user: root
+  #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa
+  #   workdir: /root/projects/myapp
+  #   transport: auto
+  #   description: GPU 训练机（A100 x 2）
 
-# Host nginx-prod
-#   HostName 93.127.137.197
-#   User root
-#   IdentityFile C:\\Users\\Lianues\\.ssh\\id_rsa_nginx_server
-#   Workdir /etc/nginx
-#   Description 生产环境 Nginx 节点
+  # nginx-prod:
+  #   hostName: 93.127.137.197
+  #   user: root
+  #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa_nginx_server
+  #   workdir: /etc/nginx
+  #   description: 生产环境 Nginx 节点
 
-# Host quick-pwd
-#   HostName 93.127.137.197
-#   User lianuesss
-#   Password your_password_here
-#   Description 临时账号（密码登录）
+  # quick-pwd:
+  #   hostName: 93.127.137.197
+  #   user: lianuesss
+  #   password: your_password_here
+  #   transport: auto
+  #   description: 临时账号（密码登录）
 `;
 
 // src/config.ts
@@ -7154,91 +7152,68 @@ function toFiniteNumber(v, def) {
 }
 
 // src/ssh-config.ts
-function parseServersFile(text) {
-  const result = new Map;
-  let current = null;
-  const flush = () => {
-    if (!current || !current.host)
-      return;
-    if (!current.hostName) {
-      current.hostName = current.host;
-    }
-    result.set(current.host, {
-      host: current.host,
-      hostName: current.hostName,
-      port: current.port ?? 22,
-      user: current.user,
-      identityFile: current.identityFile,
-      password: current.password,
-      workdir: current.workdir,
-      description: current.description,
-      transport: current.transport
-    });
-    current = null;
-  };
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#"))
-      continue;
-    const m = line.match(/^(\S+)\s+(.+?)\s*$/);
-    if (!m)
-      continue;
-    const key = m[1].toLowerCase();
-    const value = m[2].trim();
-    if (key === "host") {
-      flush();
-      current = { host: value };
-      continue;
-    }
-    if (!current)
-      continue;
-    switch (key) {
-      case "hostname":
-        current.hostName = value;
-        break;
-      case "port": {
-        const n = Number.parseInt(value, 10);
-        if (Number.isFinite(n) && n > 0)
-          current.port = n;
-        break;
-      }
-      case "user":
-        current.user = value;
-        break;
-      case "identityfile":
-        current.identityFile = stripQuotes(value);
-        break;
-      case "password":
-        current.password = stripQuotes(value);
-        break;
-      case "workdir":
-        current.workdir = stripQuotes(value);
-        break;
-      case "description":
-        current.description = stripQuotes(value);
-        break;
-      case "transport": {
-        const v = stripQuotes(value).toLowerCase();
-        if (v === "auto" || v === "sftp" || v === "bash")
-          current.transport = v;
-        break;
-      }
-      default:
-        break;
-    }
+function parseServersSectionDetailed(raw) {
+  const out = new Map;
+  const warnings = [];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { servers: out, warnings };
   }
-  flush();
-  return result;
+  const root = raw;
+  const serversRaw = root.servers;
+  if (!serversRaw || typeof serversRaw !== "object" || Array.isArray(serversRaw)) {
+    warnings.push("缺少顶层 servers: map。");
+    return { servers: out, warnings };
+  }
+  for (const [alias, value] of Object.entries(serversRaw)) {
+    const parsed = parseServerEntry(alias, value);
+    if (parsed.entry)
+      out.set(parsed.entry.host, parsed.entry);
+    else
+      warnings.push(parsed.error ?? `服务器 ${alias} 配置无效。`);
+  }
+  return { servers: out, warnings };
 }
-function stripQuotes(v) {
-  if (v.length >= 2) {
-    const first = v[0];
-    const last = v[v.length - 1];
-    if (first === '"' && last === '"' || first === "'" && last === "'") {
-      return v.slice(1, -1);
-    }
+function parseServerEntry(alias, value) {
+  if (!alias)
+    return { error: "服务器别名不能为空。" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { error: `服务器 ${alias} 必须是对象。` };
   }
-  return v;
+  const obj = value;
+  const hostName = stringField(obj.hostName) ?? stringField(obj.hostname) ?? stringField(obj.host);
+  if (!hostName) {
+    const keys = Object.keys(obj).join(", ") || "(无字段)";
+    return { error: `服务器 ${alias} 缺少 hostName（也可写 hostname/host）。当前字段: ${keys}` };
+  }
+  const transportRaw = stringField(obj.transport)?.toLowerCase();
+  const transport = transportRaw === "sftp" || transportRaw === "bash" || transportRaw === "auto" ? transportRaw : undefined;
+  const port = numberField(obj.port) ?? 22;
+  return {
+    entry: {
+      host: alias,
+      hostName,
+      port,
+      user: stringField(obj.user),
+      identityFile: stringField(obj.identityFile),
+      password: stringField(obj.password),
+      workdir: stringField(obj.workdir),
+      description: stringField(obj.description),
+      transport
+    }
+  };
+}
+function stringField(v) {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+function numberField(v) {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0)
+    return Math.floor(v);
+  if (typeof v === "string" && v.trim()) {
+    const n = Number.parseInt(v.trim(), 10);
+    if (Number.isFinite(n) && n > 0)
+      return n;
+  }
+  return;
 }
 
 // src/transport.ts
@@ -7536,8 +7511,10 @@ class EnvironmentManager {
 // src/tools.ts
 function buildSwitchEnvironmentTool(envMgr) {
   const envs = envMgr.listEnvs();
+  const envNames = envs.map((e) => e.name);
   const lines = [];
   lines.push('切换"远程执行环境"。切换后，list_files / read_file / write_file / shell 等工具会自动在该环境上执行（远端 SSH / 本地）。');
+  lines.push('如果用户明确指定了环境名，必须把该环境名放入 name 参数；例如 switch_environment({"name":"server1"})。');
   lines.push("");
   lines.push("当前可用环境：");
   for (const e of envs) {
@@ -7560,7 +7537,8 @@ function buildSwitchEnvironmentTool(envMgr) {
         properties: {
           name: {
             type: "string",
-            description: `要切换到的环境名（local 表示本机）。可选值：${envs.map((e) => e.name).join(" | ")}`
+            description: `要切换到的环境名（local 表示本机）。可选值：${envNames.join(" | ")}`,
+            enum: envNames
           }
         },
         required: ["name"]
@@ -9070,7 +9048,6 @@ function installToolWrappers(p) {
 
 // src/index.ts
 var logger = createPluginLogger("remote-exec");
-var SERVERS_FILENAME = "remote_exec_servers";
 var cfg = parseRemoteExecConfig({});
 var servers = new Map;
 var transport;
@@ -9088,7 +9065,9 @@ var src_default = definePlugin({
     if (ctx.ensureConfigFile("remote_exec.yaml", DEFAULT_REMOTE_EXEC_YAML)) {
       logger.info("已生成默认配置 remote_exec.yaml");
     }
-    ensureServersFile(ctx);
+    if (ctx.ensureConfigFile("remote_exec_servers.yaml", DEFAULT_REMOTE_EXEC_SERVERS_YAML)) {
+      logger.info("已生成默认服务器配置 remote_exec_servers.yaml");
+    }
     ctx.onReady(async (api) => {
       cachedApi = api;
       await reloadAll(ctx, api);
@@ -9100,7 +9079,7 @@ var src_default = definePlugin({
           return;
         const raw = rawMergedConfig?.remote_exec;
         cfg = parseRemoteExecConfig(raw ?? {});
-        servers = await readServersFile(cachedCtx);
+        servers = readServersSection(cachedCtx, rawMergedConfig);
         rebuildTransport();
         reregisterSwitchTool(cachedApi);
         installer?.applyToExistingTools();
@@ -9122,33 +9101,22 @@ var src_default = definePlugin({
     cachedCtx = undefined;
   }
 });
-function ensureServersFile(ctx) {
-  const dir = ctx.getConfigDir();
-  const file = path3.join(dir, SERVERS_FILENAME);
-  if (existsSync(file))
-    return;
-  try {
-    writeFileSync(file, DEFAULT_REMOTE_EXEC_SERVERS, "utf8");
-    logger.info(`已生成默认服务器清单文件: ${file}`);
-  } catch (err) {
-    logger.warn(`生成 ${SERVERS_FILENAME} 失败: ${err.message}`);
+function readServersSection(ctx, rawMergedConfig) {
+  const raw = rawMergedConfig?.remote_exec_servers ?? ctx.readConfigSection("remote_exec_servers");
+  const parsed = parseServersSectionDetailed(raw);
+  for (const warning of parsed.warnings) {
+    logger.warn(`remote_exec_servers.yaml: ${warning}`);
   }
-}
-async function readServersFile(ctx) {
-  const file = path3.join(ctx.getConfigDir(), SERVERS_FILENAME);
-  try {
-    const text = await fs2.readFile(file, "utf8");
-    return parseServersFile(text);
-  } catch (err) {
-    logger.warn(`读取 ${SERVERS_FILENAME} 失败: ${err.message}`);
-    return new Map;
+  if (raw && parsed.servers.size === 0) {
+    logger.warn("remote_exec_servers.yaml 中未解析到有效 servers。请检查格式：servers.<name>.hostName / user / password|identityFile");
   }
+  return parsed.servers;
 }
 async function reloadAll(ctx, api) {
   const merged = api.configManager?.readEditableConfig?.();
   const rawSection = merged?.remote_exec ?? ctx.readConfigSection("remote_exec");
   cfg = parseRemoteExecConfig(rawSection ?? {});
-  servers = await readServersFile(ctx);
+  servers = readServersSection(ctx, merged);
   rebuildTransport();
   envMgr = new EnvironmentManager(api, () => servers, () => cfg);
   reregisterSwitchTool(api);

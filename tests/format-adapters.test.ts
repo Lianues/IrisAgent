@@ -1342,6 +1342,44 @@ describe('OpenAICompatibleFormat: stream decode — reasoning_content', () => {
     }, state);
     expect(cEnd.functionCalls).toBeUndefined();
   });
+
+  it('tool_calls 首帧 arguments 为空字符串时，不应提前解析为空参数', () => {
+    const state = fmt.createStreamState();
+
+    const first = fmt.decodeStreamChunk({
+      choices: [{
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call_empty_first',
+            type: 'function',
+            function: { name: 'switch_environment', arguments: '' },
+          }],
+        },
+      }],
+    }, state);
+    expect(first.functionCalls).toBeUndefined();
+
+    for (const piece of ['{', '"', 'name', '"', ': ', '"', 'server', '1', '"']) {
+      const chunk = fmt.decodeStreamChunk({
+        choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }],
+      }, state);
+      expect(chunk.functionCalls).toBeUndefined();
+    }
+
+    const ready = fmt.decodeStreamChunk({
+      choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '}' } }] } }],
+    }, state);
+    expect(ready.functionCalls).toHaveLength(1);
+    expect(ready.functionCalls![0].functionCall.name).toBe('switch_environment');
+    expect(ready.functionCalls![0].functionCall.callId).toBe('call_empty_first');
+    expect(ready.functionCalls![0].functionCall.args).toEqual({ name: 'server1' });
+
+    const end = fmt.decodeStreamChunk({
+      choices: [{ finish_reason: 'tool_calls', delta: {} }],
+    }, state);
+    expect(end.functionCalls).toBeUndefined();
+  });
 });
 
 // ============================================================

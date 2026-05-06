@@ -1,18 +1,11 @@
 /**
- * ssh-config.ts
+ * servers-config.ts
  *
- * 解析 VSCode SSH config 风格的服务器清单文件。
- * 在标准 ssh_config 字段基础上额外支持 `Password` 字段（remote-exec 扩展）。
- *
- * 语法：
- *   - 以 `Host <alias>` 开始一个块；遇到下一个 Host 或文件结束时该块结束
- *   - 块内字段为 `Key Value`，可缩进可不缩进
- *   - `#` 开头为注释（整行）
- *   - 字段名大小写不敏感
+ * 解析 remote_exec_servers.yaml（通过 Extension SDK 配置接口读取）。
  */
 
 export interface ServerEntry {
-  /** Host 别名（remote_exec.yaml 中通过此名引用） */
+  /** 环境名 / 别名（remote_exec.yaml defaultEnvironment 与 switch_environment 使用） */
   host: string;
   hostName: string;
   port: number;
@@ -28,92 +21,82 @@ export interface ServerEntry {
   transport?: 'auto' | 'sftp' | 'bash';
 }
 
-export function parseServersFile(text: string): Map<string, ServerEntry> {
-  const result = new Map<string, ServerEntry>();
-  let current: Partial<ServerEntry> | null = null;
-
-  const flush = () => {
-    if (!current || !current.host) return;
-    if (!current.hostName) {
-      // 没有 HostName 的块视为无效（默认行为：fallback 到 host 字面量本身）
-      current.hostName = current.host;
-    }
-    result.set(current.host, {
-      host: current.host,
-      hostName: current.hostName!,
-      port: current.port ?? 22,
-      user: current.user,
-      identityFile: current.identityFile,
-      password: current.password,
-      workdir: current.workdir,
-      description: current.description,
-      transport: current.transport,
-    });
-    current = null;
-  };
-
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-
-    // 形如 `Key Value`，按第一个空白拆分
-    const m = line.match(/^(\S+)\s+(.+?)\s*$/);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    const value = m[2].trim();
-
-    if (key === 'host') {
-      flush();
-      current = { host: value };
-      continue;
-    }
-    if (!current) continue;
-
-    switch (key) {
-      case 'hostname':
-        current.hostName = value;
-        break;
-      case 'port': {
-        const n = Number.parseInt(value, 10);
-        if (Number.isFinite(n) && n > 0) current.port = n;
-        break;
-      }
-      case 'user':
-        current.user = value;
-        break;
-      case 'identityfile':
-        current.identityFile = stripQuotes(value);
-        break;
-      case 'password':
-        current.password = stripQuotes(value);
-        break;
-      case 'workdir':
-        current.workdir = stripQuotes(value);
-        break;
-      case 'description':
-        current.description = stripQuotes(value);
-        break;
-      case 'transport': {
-        const v = stripQuotes(value).toLowerCase();
-        if (v === 'auto' || v === 'sftp' || v === 'bash') current.transport = v;
-        break;
-      }
-      default:
-        // 未识别字段忽略，保持向前兼容
-        break;
-    }
-  }
-  flush();
-  return result;
+export function parseServersSection(raw: unknown): Map<string, ServerEntry> {
+  return parseServersSectionDetailed(raw).servers;
 }
 
-function stripQuotes(v: string): string {
-  if (v.length >= 2) {
-    const first = v[0];
-    const last = v[v.length - 1];
-    if ((first === '"' && last === '"') || (first === '\'' && last === '\'')) {
-      return v.slice(1, -1);
-    }
+export interface ParseServersSectionResult {
+  servers: Map<string, ServerEntry>;
+  warnings: string[];
+}
+
+export function parseServersSectionDetailed(raw: unknown): ParseServersSectionResult {
+  const out = new Map<string, ServerEntry>();
+  const warnings: string[] = [];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { servers: out, warnings };
   }
-  return v;
+
+  const root = raw as Record<string, unknown>;
+  const serversRaw = root.servers;
+  if (!serversRaw || typeof serversRaw !== 'object' || Array.isArray(serversRaw)) {
+    warnings.push('缺少顶层 servers: map。');
+    return { servers: out, warnings };
+  }
+
+  for (const [alias, value] of Object.entries(serversRaw as Record<string, unknown>)) {
+    const parsed = parseServerEntry(alias, value);
+    if (parsed.entry) out.set(parsed.entry.host, parsed.entry);
+    else warnings.push(parsed.error ?? `服务器 ${alias} 配置无效。`);
+  }
+  return { servers: out, warnings };
+}
+
+function parseServerEntry(alias: string, value: unknown): { entry?: ServerEntry; error?: string } {
+  if (!alias) return { error: '服务器别名不能为空。' };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: `服务器 ${alias} 必须是对象。` };
+  }
+  const obj = value as Record<string, unknown>;
+
+  const hostName = stringField(obj.hostName) ?? stringField(obj.hostname) ?? stringField(obj.host);
+  if (!hostName) {
+    const keys = Object.keys(obj).join(', ') || '(无字段)';
+    return { error: `服务器 ${alias} 缺少 hostName（也可写 hostname/host）。当前字段: ${keys}` };
+  }
+
+  const transportRaw = stringField(obj.transport)?.toLowerCase();
+  const transport =
+    transportRaw === 'sftp' || transportRaw === 'bash' || transportRaw === 'auto'
+      ? transportRaw
+      : undefined;
+
+  const port = numberField(obj.port) ?? 22;
+
+  return {
+    entry: {
+      host: alias,
+      hostName,
+      port,
+      user: stringField(obj.user),
+      identityFile: stringField(obj.identityFile),
+      password: stringField(obj.password),
+      workdir: stringField(obj.workdir),
+      description: stringField(obj.description),
+      transport,
+    },
+  };
+}
+
+function stringField(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+function numberField(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return Math.floor(v);
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number.parseInt(v.trim(), 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return undefined;
 }
