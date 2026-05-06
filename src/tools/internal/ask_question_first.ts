@@ -174,6 +174,50 @@ export function createAskQuestionFirstTool(): ToolDefinition {
           questions: {
             type: 'array',
             description: '要询问用户的问题数组，1-4 个。每个问题包含 question/header/options/multiSelect。options 为 2-4 个选项，每个选项包含 label/description/preview。',
+            minItems: 1,
+            maxItems: 4,
+            items: {
+              type: 'object',
+              properties: {
+                question: {
+                  type: 'string',
+                  description: '要询问用户的问题文本。',
+                },
+                header: {
+                  type: 'string',
+                  description: '可选的问题分组标题或提示标题。',
+                },
+                options: {
+                  type: 'array',
+                  description: '选项数组，2-4 个。',
+                  minItems: 2,
+                  maxItems: 4,
+                  items: {
+                    type: 'object',
+                    properties: {
+                      label: {
+                        type: 'string',
+                        description: '选项显示文本。',
+                      },
+                      description: {
+                        type: 'string',
+                        description: '可选的选项说明。',
+                      },
+                      preview: {
+                        type: 'string',
+                        description: '可选的选项预览内容。',
+                      },
+                    },
+                    required: ['label'],
+                  },
+                },
+                multiSelect: {
+                  type: 'boolean',
+                  description: '是否允许多选。默认 false。',
+                },
+              },
+              required: ['question', 'options'],
+            },
           },
         },
         required: ['questions'],
