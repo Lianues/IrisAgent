@@ -25,6 +25,7 @@ import { parseServersSectionDetailed, type ServerEntry } from './ssh-config.js';
 import { SshTransport } from './transport.js';
 import { EnvironmentManager } from './environment.js';
 import { buildSwitchEnvironmentTool } from './tools.js';
+import { buildTransferFilesTool, TRANSFER_FILES_TOOL_NAME } from './transfer-tool.js';
 import { installToolWrappers, type WrapInstaller } from './wrap.js';
 
 const logger = createPluginLogger('remote-exec');
@@ -39,6 +40,7 @@ let cachedApi: IrisAPI | undefined;
 let cachedCtx: PluginContext | undefined;
 /** 当前已注册的 switch_environment 工具名（用于 unregister 后重注册） */
 let switchToolRegistered = false;
+let transferToolRegistered = false;
 
 export default definePlugin({
   name: 'remote-exec',
@@ -68,8 +70,8 @@ export default definePlugin({
         cfg = parseRemoteExecConfig(raw ?? {});
         servers = readServersSection(cachedCtx, rawMergedConfig as Record<string, unknown>);
         rebuildTransport();
-        // 重注册 switch_environment（环境列表可能已变）
-        reregisterSwitchTool(cachedApi);
+        // 重注册 remote-exec 工具（环境列表可能已变）
+        reregisterRemoteExecTools(cachedApi);
         installer?.applyToExistingTools();
         logger.info(
           `remote-exec 配置已热重载 — enabled=${cfg.enabled} servers=[${[...servers.keys()].join(', ')}] active=${envMgr?.getActive() ?? 'n/a'}`,
@@ -86,6 +88,10 @@ export default definePlugin({
     if (cachedApi && switchToolRegistered) {
       cachedApi.tools.unregister?.('switch_environment');
       switchToolRegistered = false;
+    }
+    if (cachedApi && transferToolRegistered) {
+      cachedApi.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
+      transferToolRegistered = false;
     }
     envMgr = undefined;
     cachedApi = undefined;
@@ -117,8 +123,8 @@ async function reloadAll(ctx: PluginContext, api: IrisAPI): Promise<void> {
 
   envMgr = new EnvironmentManager(api, () => servers, () => cfg);
 
-  // 注册 switch_environment 工具
-  reregisterSwitchTool(api);
+  // 注册 remote-exec 工具
+  reregisterRemoteExecTools(api);
 
   // 安装统一 wrapper
   if (!installer) {
@@ -147,17 +153,29 @@ function rebuildTransport(): void {
   transport = new SshTransport(servers, cfg.ssh, logger);
 }
 
-function reregisterSwitchTool(api: IrisAPI): void {
+function reregisterRemoteExecTools(api: IrisAPI): void {
   if (!envMgr) return;
   // 总是先尝试注销旧的（描述里的环境列表可能已变）
   if (switchToolRegistered) {
     api.tools.unregister?.('switch_environment');
     switchToolRegistered = false;
   }
-  if (!cfg.enabled || !cfg.exposeSwitchTool) return;
-  const tool: ToolDefinition = buildSwitchEnvironmentTool(envMgr);
-  api.tools.register(tool);
-  switchToolRegistered = true;
+  if (transferToolRegistered) {
+    api.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
+    transferToolRegistered = false;
+  }
+  if (!cfg.enabled) return;
+  if (cfg.exposeSwitchTool) {
+    const tool: ToolDefinition = buildSwitchEnvironmentTool(envMgr);
+    api.tools.register(tool);
+    switchToolRegistered = true;
+  }
+  const transferTool: ToolDefinition = buildTransferFilesTool(envMgr, () => {
+    if (!transport) throw new Error('remote-exec: SSH transport 未就绪');
+    return transport;
+  });
+  api.tools.register(transferTool);
+  transferToolRegistered = true;
 }
 
 

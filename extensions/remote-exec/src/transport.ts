@@ -10,6 +10,7 @@
 
 import { Client, type ConnectConfig, type SFTPWrapper, type Stats } from 'ssh2';
 import { promises as fs } from 'node:fs';
+import type { Readable, Writable } from 'node:stream';
 import type { ServerEntry } from './ssh-config.js';
 import type { RemoteExecSshConfig } from './config.js';
 
@@ -20,6 +21,13 @@ export interface ExecResult {
   signal?: string;
   /** 是否因超时被强制终止 */
   timedOut?: boolean;
+}
+
+export interface ExecStreamHandle {
+  stdin: Writable;
+  stdout: Readable;
+  stderr: Readable;
+  done: Promise<ExecResult>;
 }
 
 interface PooledConnection {
@@ -123,6 +131,73 @@ export class SshTransport {
 
         if (input !== undefined) stream.end(input);
         else stream.end();
+      });
+    });
+  }
+
+  async execStream(alias: string, command: string, signal?: AbortSignal): Promise<ExecStreamHandle> {
+    const server = this.getServer(alias);
+    const client = await this.acquire(alias, server);
+
+    return new Promise<ExecStreamHandle>((resolve, reject) => {
+      let stderr = '';
+      let exitCode: number | null = null;
+      let exitSignal: string | undefined;
+      let timedOut = false;
+      let timer: NodeJS.Timeout | undefined;
+      let onAbort: (() => void) | undefined;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+      };
+
+      client.exec(command, { pty: false }, (err, stream) => {
+        if (err) {
+          cleanup();
+          this.closeOne(alias);
+          reject(err);
+          return;
+        }
+
+        if (this.sshCfg.commandTimeoutMs > 0) {
+          timer = setTimeout(() => {
+            timedOut = true;
+            try { stream.signal('KILL'); } catch { /* ignore */ }
+            try { stream.close(); } catch { /* ignore */ }
+          }, this.sshCfg.commandTimeoutMs);
+        }
+
+        if (signal) {
+          if (signal.aborted) {
+            try { stream.close(); } catch { /* ignore */ }
+          } else {
+            onAbort = () => {
+              try { stream.signal('INT'); } catch { /* ignore */ }
+              try { stream.close(); } catch { /* ignore */ }
+            };
+            signal.addEventListener('abort', onAbort, { once: true });
+          }
+        }
+
+        const done = new Promise<ExecResult>((resolveDone) => {
+          stream.on('close', (code: number | null, sig?: string) => {
+            cleanup();
+            exitCode = code;
+            exitSignal = sig;
+            resolveDone({ stdout: '', stderr, exitCode, signal: exitSignal, timedOut });
+          });
+          stream.stderr.on('data', (chunk: Buffer) => {
+            if (stderr.length < 64_000) stderr += chunk.toString('utf8');
+          });
+        });
+
+        resolve({
+          stdin: stream as unknown as Writable,
+          stdout: stream as unknown as Readable,
+          stderr: stream.stderr as unknown as Readable,
+          done,
+        });
       });
     });
   }

@@ -7327,6 +7327,78 @@ class SshTransport {
       });
     });
   }
+  async execStream(alias, command, signal) {
+    const server = this.getServer(alias);
+    const client = await this.acquire(alias, server);
+    return new Promise((resolve, reject) => {
+      let stderr = "";
+      let exitCode = null;
+      let exitSignal;
+      let timedOut = false;
+      let timer;
+      let onAbort;
+      const cleanup = () => {
+        if (timer)
+          clearTimeout(timer);
+        if (signal && onAbort)
+          signal.removeEventListener("abort", onAbort);
+      };
+      client.exec(command, { pty: false }, (err, stream) => {
+        if (err) {
+          cleanup();
+          this.closeOne(alias);
+          reject(err);
+          return;
+        }
+        if (this.sshCfg.commandTimeoutMs > 0) {
+          timer = setTimeout(() => {
+            timedOut = true;
+            try {
+              stream.signal("KILL");
+            } catch {}
+            try {
+              stream.close();
+            } catch {}
+          }, this.sshCfg.commandTimeoutMs);
+        }
+        if (signal) {
+          if (signal.aborted) {
+            try {
+              stream.close();
+            } catch {}
+          } else {
+            onAbort = () => {
+              try {
+                stream.signal("INT");
+              } catch {}
+              try {
+                stream.close();
+              } catch {}
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+          }
+        }
+        const done = new Promise((resolveDone) => {
+          stream.on("close", (code, sig) => {
+            cleanup();
+            exitCode = code;
+            exitSignal = sig;
+            resolveDone({ stdout: "", stderr, exitCode, signal: exitSignal, timedOut });
+          });
+          stream.stderr.on("data", (chunk) => {
+            if (stderr.length < 64000)
+              stderr += chunk.toString("utf8");
+          });
+        });
+        resolve({
+          stdin: stream,
+          stdout: stream,
+          stderr: stream.stderr,
+          done
+        });
+      });
+    });
+  }
   async getSftp(alias) {
     const server = this.getServer(alias);
     const conn = await this.acquireConnection(alias, server);
@@ -7561,11 +7633,566 @@ function buildSwitchEnvironmentTool(envMgr) {
   };
 }
 
+// src/transfer-tool.ts
+import * as fs2 from "node:fs";
+import { promises as fsp } from "node:fs";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
+// src/remote-shell.ts
+function shQuote(s) {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+function withCwd(command, cwd) {
+  if (!cwd)
+    return command;
+  return `cd ${shQuote(cwd)} && ${command}`;
+}
+
+// src/transfer-tool.ts
+var TRANSFER_FILES_TOOL_NAME = "transfer_files";
+function buildTransferFilesTool(envMgr, getTransport) {
+  const envs = envMgr.listEnvs();
+  const envNames = envs.map((e) => e.name);
+  return {
+    declaration: {
+      name: TRANSFER_FILES_TOOL_NAME,
+      description: [
+        "在本地与远端环境之间传输文件或目录。支持 local ↔ remote、remote ↔ remote、local ↔ local。",
+        "注意：remote ↔ remote 传输会通过当前本地 Iris 实例中转。",
+        "路径必须使用全路径/绝对路径：本地如 C:\\path\\file 或 /home/me/file，远端如 /root/file。",
+        "路径以 / 或 \\ 结尾表示目录；否则表示文件。type=auto 时也会 stat 源路径自动判断。",
+        "传目录时，toPath 表示目标目录本身，例如 fromPath=/data/app/ toPath=/backup/app/。",
+        "默认 overwrite=false，目标存在会失败；需要覆盖时显式设置 overwrite=true。",
+        "文件写入采用临时文件 + 校验 + rename 的原子提交方式；失败会尽力清理临时文件。"
+      ].join(`
+`),
+      parameters: {
+        type: "object",
+        properties: {
+          transfers: {
+            type: "array",
+            description: "批量传输任务数组。若提供 transfers，则忽略单条快捷字段。",
+            items: {
+              type: "object",
+              properties: transferProperties(envNames),
+              required: ["fromEnvironment", "fromPath", "toEnvironment", "toPath"]
+            }
+          },
+          ...transferProperties(envNames),
+          verify: {
+            type: "string",
+            enum: ["none", "size"],
+            description: "校验模式。none=不校验；size=比较源/目标文件大小（默认）。目录逐文件校验。"
+          }
+        }
+      }
+    },
+    handler: async (args, context) => {
+      const items = normalizeTransfers(args);
+      if (items.length === 0) {
+        throw new Error("transfer_files: 请提供 transfers 数组，或提供 fromEnvironment/fromPath/toEnvironment/toPath 单条参数。");
+      }
+      const verify = args.verify === "none" ? "none" : "size";
+      const results = [];
+      let successCount = 0;
+      let failCount = 0;
+      for (let i = 0;i < items.length; i++) {
+        const started = Date.now();
+        const item = items[i];
+        try {
+          const result = await runTransfer(item, verify, envMgr, getTransport(), context, i);
+          results.push({ ...result, durationMs: Date.now() - started });
+          successCount++;
+        } catch (err) {
+          results.push({
+            success: false,
+            index: i,
+            type: item.type,
+            from: { environment: item.fromEnvironment, path: item.fromPath },
+            to: { environment: item.toEnvironment, path: item.toPath },
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Date.now() - started
+          });
+          failCount++;
+        }
+      }
+      return { results, successCount, failCount, totalCount: items.length };
+    }
+  };
+}
+function transferProperties(envNames) {
+  return {
+    fromEnvironment: {
+      type: "string",
+      enum: envNames,
+      description: `源环境。可选值：${envNames.join(" | ")}`
+    },
+    fromPath: {
+      type: "string",
+      description: "源路径，必须是全路径/绝对路径。目录建议以 / 或 \\ 结尾。"
+    },
+    toEnvironment: {
+      type: "string",
+      enum: envNames,
+      description: `目标环境。可选值：${envNames.join(" | ")}`
+    },
+    toPath: {
+      type: "string",
+      description: "目标路径，必须是全路径/绝路径。传目录时表示目标目录本身。"
+    },
+    type: {
+      type: "string",
+      enum: ["auto", "file", "directory"],
+      description: "传输类型。auto 会根据 fromPath 尾部斜杠和源路径 stat 自动判断。默认 auto。"
+    },
+    overwrite: {
+      type: "boolean",
+      description: "目标存在时是否覆盖。默认 false。"
+    },
+    createDirs: {
+      type: "boolean",
+      description: "是否自动创建目标父目录/目标目录。默认 true。"
+    }
+  };
+}
+function normalizeTransfers(args) {
+  const rawList = Array.isArray(args.transfers) && args.transfers.length > 0 ? args.transfers : [args];
+  const out = [];
+  for (const raw of rawList) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      continue;
+    const obj = raw;
+    const fromEnvironment = str(obj.fromEnvironment);
+    const fromPath = str(obj.fromPath);
+    const toEnvironment = str(obj.toEnvironment);
+    const toPath = str(obj.toPath);
+    if (!fromEnvironment || !fromPath || !toEnvironment || !toPath)
+      continue;
+    const typeRaw = str(obj.type);
+    out.push({
+      fromEnvironment,
+      fromPath,
+      toEnvironment,
+      toPath,
+      type: typeRaw === "file" || typeRaw === "directory" ? typeRaw : "auto",
+      overwrite: obj.overwrite === true,
+      createDirs: obj.createDirs !== false
+    });
+  }
+  return out;
+}
+function str(v) {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+async function runTransfer(item, verify, envMgr, transport, context, index) {
+  const from = await createEndpoint(item.fromEnvironment, envMgr, transport);
+  const to = await createEndpoint(item.toEnvironment, envMgr, transport);
+  from.assertAbsolute(item.fromPath);
+  to.assertAbsolute(item.toPath);
+  const sourcePath = from.normalize(item.fromPath);
+  let targetPath = to.normalize(item.toPath);
+  const sourceStat = await from.stat(sourcePath);
+  const kind = item.type === "auto" ? hasTrailingSlash(item.fromPath) ? "directory" : sourceStat.type : item.type;
+  if (kind === "file" && hasTrailingSlash(item.toPath)) {
+    targetPath = to.join(targetPath, from.basename(sourcePath));
+  }
+  if (kind === "file") {
+    const copied2 = await copyFile({ from, to, sourcePath, targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+    return {
+      success: true,
+      index,
+      type: "file",
+      from: { environment: item.fromEnvironment, path: item.fromPath },
+      to: { environment: item.toEnvironment, path: item.toPath },
+      files: 1,
+      dirs: 0,
+      bytes: copied2.bytes,
+      verify: { mode: verify, ok: copied2.verifyOk }
+    };
+  }
+  const copied = await copyDirectory({ from, to, sourceDir: sourcePath, targetDir: targetPath, overwrite: item.overwrite, createDirs: item.createDirs, verify, context });
+  return {
+    success: true,
+    index,
+    type: "directory",
+    from: { environment: item.fromEnvironment, path: item.fromPath },
+    to: { environment: item.toEnvironment, path: item.toPath },
+    files: copied.files,
+    dirs: copied.dirs,
+    bytes: copied.bytes,
+    verify: { mode: verify, ok: copied.verifyOk }
+  };
+}
+async function createEndpoint(environment, envMgr, transport) {
+  if (environment === LOCAL_ENV)
+    return new LocalEndpoint;
+  const env = envMgr.listEnvs().find((e) => e.name === environment && !e.isLocal);
+  if (!env)
+    throw new Error(`未知传输环境: ${environment}`);
+  const mode = transport.getTransportMode(environment);
+  if (mode === "bash")
+    return new RemoteBashEndpoint(environment, transport);
+  try {
+    const sftp = await transport.getSftp(environment);
+    return new RemoteSftpEndpoint(environment, sftp);
+  } catch (err) {
+    if (mode === "sftp")
+      throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("SFTP 子系统不可用"))
+      return new RemoteBashEndpoint(environment, transport);
+    throw err;
+  }
+}
+async function copyDirectory(input) {
+  const { from, to, sourceDir, targetDir, overwrite, createDirs, verify, context } = input;
+  const st = await from.stat(sourceDir);
+  if (st.type !== "directory")
+    throw new Error(`源路径不是目录: ${sourceDir}`);
+  if (createDirs)
+    await to.mkdirp(targetDir);
+  let files = 0;
+  let dirs = 1;
+  let bytes = 0;
+  let verifyOk = true;
+  const entries = await from.readdir(sourceDir);
+  for (const entry of entries) {
+    const src = from.join(sourceDir, entry.name);
+    const dst = to.join(targetDir, entry.name);
+    if (entry.type === "directory") {
+      const nested = await copyDirectory({ from, to, sourceDir: src, targetDir: dst, overwrite, createDirs, verify, context });
+      files += nested.files;
+      dirs += nested.dirs;
+      bytes += nested.bytes;
+      verifyOk = verifyOk && nested.verifyOk;
+    } else {
+      const one = await copyFile({ from, to, sourcePath: src, targetPath: dst, overwrite, createDirs, verify, context });
+      files += 1;
+      bytes += one.bytes;
+      verifyOk = verifyOk && one.verifyOk;
+    }
+  }
+  return { files, dirs, bytes, verifyOk };
+}
+async function copyFile(input) {
+  const { from, to, sourcePath, targetPath, overwrite, createDirs, verify, context } = input;
+  const st = await from.stat(sourcePath);
+  if (st.type !== "file")
+    throw new Error(`源路径不是文件: ${sourcePath}`);
+  if (!overwrite && await to.exists(targetPath)) {
+    throw new Error(`目标已存在: ${targetPath}`);
+  }
+  if (createDirs)
+    await to.mkdirp(to.dirname(targetPath));
+  const tempPath = makeTempPath(to, targetPath);
+  let transferred = 0;
+  const progress = new Transform({
+    transform(chunk, _encoding, callback) {
+      const n = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+      transferred += n;
+      context?.reportProgress?.({
+        kind: "transfer_files",
+        bytesTransferred: transferred,
+        totalBytes: st.size,
+        percent: st.size > 0 ? Math.min(100, Math.round(transferred / st.size * 100)) : 100
+      });
+      callback(null, chunk);
+    }
+  });
+  const reader = await from.openRead(sourcePath);
+  const writer = await to.openWrite(tempPath, false);
+  try {
+    await pipeline(reader.stream, progress, writer.stream);
+    if (reader.done)
+      await reader.done();
+    if (writer.done)
+      await writer.done();
+    let verifyOk = true;
+    if (verify === "size") {
+      const tempStat = await to.stat(tempPath);
+      verifyOk = tempStat.type === "file" && tempStat.size === st.size;
+      if (!verifyOk)
+        throw new Error(`size 校验失败: source=${st.size}, temp=${tempStat.size}`);
+    }
+    await to.rename(tempPath, targetPath, overwrite);
+    return { bytes: st.size, verifyOk };
+  } catch (err) {
+    await safeUnlink(to, tempPath);
+    throw err;
+  }
+}
+function makeTempPath(endpoint, targetPath) {
+  const dir = endpoint.dirname(targetPath);
+  const base = endpoint.basename(targetPath) || "target";
+  const suffix = `${Date.now()}-${process.pid}-${randomBytes(4).toString("hex")}`;
+  return endpoint.join(dir, `.${base}.remote-exec-tmp-${suffix}`);
+}
+async function safeUnlink(endpoint, p) {
+  try {
+    await endpoint.unlink(p);
+  } catch {}
+}
+function hasTrailingSlash(p) {
+  return /[\\/]$/.test(p);
+}
+function trimTrailingSeparators(p, isRemote) {
+  const root = isRemote ? "/" : path.parse(p).root;
+  let out = p;
+  while (out.length > root.length && /[\\/]$/.test(out))
+    out = out.slice(0, -1);
+  return out;
+}
+
+class LocalEndpoint {
+  environment = LOCAL_ENV;
+  isLocal = true;
+  assertAbsolute(p) {
+    if (!path.isAbsolute(p) && !path.win32.isAbsolute(p) && !path.posix.isAbsolute(p)) {
+      throw new Error(`本地路径必须是全路径/绝对路径: ${p}`);
+    }
+  }
+  normalize(p) {
+    return path.normalize(trimTrailingSeparators(p, false));
+  }
+  dirname(p) {
+    return path.dirname(p);
+  }
+  basename(p) {
+    return path.basename(p);
+  }
+  join(dir, child) {
+    return path.join(dir, child);
+  }
+  async stat(p) {
+    const st = await fsp.stat(p);
+    if (st.isDirectory())
+      return { type: "directory", size: 0 };
+    if (st.isFile())
+      return { type: "file", size: st.size };
+    throw new Error(`不支持的本地路径类型: ${p}`);
+  }
+  async exists(p) {
+    try {
+      await fsp.stat(p);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async mkdirp(p) {
+    await fsp.mkdir(p, { recursive: true });
+  }
+  async readdir(p) {
+    const entries = await fsp.readdir(p, { withFileTypes: true });
+    return entries.filter((e) => e.isFile() || e.isDirectory()).map((e) => ({ name: e.name, type: e.isDirectory() ? "directory" : "file" }));
+  }
+  async unlink(p) {
+    await fsp.rm(p, { force: true });
+  }
+  async rename(src, dst, overwrite) {
+    try {
+      await fsp.rename(src, dst);
+    } catch (err) {
+      if (!overwrite)
+        throw err;
+      await fsp.rm(dst, { force: true });
+      await fsp.rename(src, dst);
+    }
+  }
+  async openRead(p) {
+    return { stream: fs2.createReadStream(p) };
+  }
+  async openWrite(p, overwrite) {
+    return { stream: fs2.createWriteStream(p, { flags: overwrite ? "w" : "wx" }) };
+  }
+}
+
+class RemoteSftpEndpoint {
+  environment;
+  sftp;
+  isLocal = false;
+  constructor(environment, sftp) {
+    this.environment = environment;
+    this.sftp = sftp;
+  }
+  assertAbsolute(p) {
+    if (!p.startsWith("/"))
+      throw new Error(`远端路径必须是 / 开头的绝对路径: ${p}`);
+  }
+  normalize(p) {
+    return path.posix.normalize(trimTrailingSeparators(p.replace(/\\/g, "/"), true));
+  }
+  dirname(p) {
+    return path.posix.dirname(p);
+  }
+  basename(p) {
+    return path.posix.basename(p);
+  }
+  join(dir, child) {
+    return path.posix.join(dir, child);
+  }
+  async stat(p) {
+    const st = await new Promise((resolve, reject) => this.sftp.stat(p, (err, stats) => err ? reject(err) : resolve(stats)));
+    if (st.isDirectory())
+      return { type: "directory", size: 0 };
+    if (st.isFile())
+      return { type: "file", size: st.size };
+    throw new Error(`不支持的远端路径类型: ${p}`);
+  }
+  async exists(p) {
+    try {
+      await this.stat(p);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async mkdirp(p) {
+    const normalized = this.normalize(p);
+    if (!normalized || normalized === "/")
+      return;
+    const parts = normalized.split("/").filter(Boolean);
+    let cur = "/";
+    for (const part of parts) {
+      cur = cur === "/" ? `/${part}` : path.posix.join(cur, part);
+      try {
+        const st = await this.stat(cur);
+        if (st.type !== "directory")
+          throw new Error(`${cur} 已存在但不是目录`);
+      } catch {
+        await new Promise((resolve, reject) => this.sftp.mkdir(cur, (err) => err ? reject(err) : resolve()));
+      }
+    }
+  }
+  async readdir(p) {
+    const list = await new Promise((resolve, reject) => this.sftp.readdir(p, (err, entries) => err ? reject(err) : resolve(entries)));
+    return list.filter((e) => e.attrs?.isFile?.() || e.attrs?.isDirectory?.()).map((e) => ({ name: e.filename, type: e.attrs.isDirectory() ? "directory" : "file" }));
+  }
+  async unlink(p) {
+    await new Promise((resolve, reject) => this.sftp.unlink(p, (err) => err ? reject(err) : resolve()));
+  }
+  async rename(src, dst, overwrite) {
+    try {
+      await new Promise((resolve, reject) => this.sftp.rename(src, dst, (err) => err ? reject(err) : resolve()));
+    } catch (err) {
+      if (!overwrite)
+        throw err;
+      try {
+        await this.unlink(dst);
+      } catch {}
+      await new Promise((resolve, reject) => this.sftp.rename(src, dst, (err2) => err2 ? reject(err2) : resolve()));
+    }
+  }
+  async openRead(p) {
+    return { stream: this.sftp.createReadStream(p) };
+  }
+  async openWrite(p, overwrite) {
+    return { stream: this.sftp.createWriteStream(p, { flags: overwrite ? "w" : "wx" }) };
+  }
+}
+function decodeNulListFromBase64(stdout) {
+  return Buffer.from(stdout.replace(/\s+/g, ""), "base64").toString("utf8").split("\x00").filter(Boolean);
+}
+function assertExecOk(result, op) {
+  if ((result.exitCode ?? 0) !== 0 || result.timedOut) {
+    throw new Error(`${op} 失败: exitCode=${result.exitCode} stderr=${result.stderr}`);
+  }
+}
+
+class RemoteBashEndpoint {
+  environment;
+  transport;
+  isLocal = false;
+  constructor(environment, transport) {
+    this.environment = environment;
+    this.transport = transport;
+  }
+  assertAbsolute(p) {
+    if (!p.startsWith("/"))
+      throw new Error(`远端路径必须是 / 开头的绝对路径: ${p}`);
+  }
+  normalize(p) {
+    return path.posix.normalize(trimTrailingSeparators(p.replace(/\\/g, "/"), true));
+  }
+  dirname(p) {
+    return path.posix.dirname(p);
+  }
+  basename(p) {
+    return path.posix.basename(p);
+  }
+  join(dir, child) {
+    return path.posix.join(dir, child);
+  }
+  async run(script) {
+    return this.transport.execCommand(this.environment, `bash -lc ${shQuote(script)}`);
+  }
+  async stat(p) {
+    const script = `if [ -d ${shQuote(p)} ]; then printf 'directory\\t0'; elif [ -f ${shQuote(p)} ]; then printf 'file\\t%s' "$(wc -c < ${shQuote(p)})"; else echo 'path not found' >&2; exit 44; fi`;
+    const result = await this.run(script);
+    assertExecOk(result, `stat ${p}`);
+    const [type, size] = result.stdout.trim().split("\t");
+    if (type === "directory")
+      return { type: "directory", size: 0 };
+    if (type === "file")
+      return { type: "file", size: Number.parseInt(size, 10) || 0 };
+    throw new Error(`无法识别远端路径类型: ${p}`);
+  }
+  async exists(p) {
+    const result = await this.run(`[ -e ${shQuote(p)} ]`);
+    return (result.exitCode ?? 1) === 0;
+  }
+  async mkdirp(p) {
+    const result = await this.run(`mkdir -p -- ${shQuote(p)}`);
+    assertExecOk(result, `mkdir -p ${p}`);
+  }
+  async readdir(p) {
+    const script = `cd -- ${shQuote(p)} && find . -mindepth 1 -maxdepth 1 \\( -type d -print0 -o -type f -print0 \\) 2>/dev/null | while IFS= read -r -d '' x; do rel="\${x#./}"; if [ -d "$x" ]; then printf 'd\\t%s\\0' "$rel"; elif [ -f "$x" ]; then printf 'f\\t%s\\0' "$rel"; fi; done | base64 | tr -d '\\n\\r'`;
+    const result = await this.run(script);
+    assertExecOk(result, `readdir ${p}`);
+    return decodeNulListFromBase64(result.stdout).map((rec) => {
+      const tab = rec.indexOf("\t");
+      if (tab < 0)
+        return;
+      const t = rec.slice(0, tab);
+      const name = rec.slice(tab + 1);
+      if (!name)
+        return;
+      return { name, type: t === "d" ? "directory" : "file" };
+    }).filter((x) => !!x);
+  }
+  async unlink(p) {
+    const result = await this.run(`rm -f -- ${shQuote(p)}`);
+    assertExecOk(result, `rm -f ${p}`);
+  }
+  async rename(src, dst, overwrite) {
+    const script = overwrite ? `mv -f -- ${shQuote(src)} ${shQuote(dst)}` : `if [ -e ${shQuote(dst)} ]; then echo 'target exists' >&2; exit 17; fi; mv -- ${shQuote(src)} ${shQuote(dst)}`;
+    const result = await this.run(script);
+    assertExecOk(result, `rename ${src} -> ${dst}`);
+  }
+  async openRead(p) {
+    const handle = await this.transport.execStream(this.environment, `cat -- ${shQuote(p)}`);
+    return {
+      stream: handle.stdout,
+      done: async () => assertExecOk(await handle.done, `cat ${p}`)
+    };
+  }
+  async openWrite(p, _overwrite) {
+    const handle = await this.transport.execStream(this.environment, `cat > ${shQuote(p)}`);
+    return {
+      stream: handle.stdin,
+      done: async () => assertExecOk(await handle.done, `write ${p}`)
+    };
+  }
+}
+
 // src/translators.ts
-import path2 from "node:path";
+import path3 from "node:path";
 
 // ../../packages/extension-sdk/src/tool-utils.ts
-import * as path from "node:path";
+import * as path2 from "node:path";
 function normalizeLineEndings(text) {
   return text.replace(/\r\n/g, `
 `).replace(/\r/g, `
@@ -7934,10 +8561,10 @@ var DEFAULT_IGNORED_DIRS = new Set([
 ]);
 var BINARY_DETECT_BYTES = 8 * 1024;
 function toPosix(p) {
-  return p.split(path.sep).join("/");
+  return p.split(path2.sep).join("/");
 }
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str2) {
+  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function globToRegExp(glob) {
   const g = toPosix(glob.trim());
@@ -8092,16 +8719,6 @@ function normalizeDeleteCodeArgs(args) {
   });
 }
 
-// src/remote-shell.ts
-function shQuote(s) {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-function withCwd(command, cwd) {
-  if (!cwd)
-    return command;
-  return `cd ${shQuote(cwd)} && ${command}`;
-}
-
 // src/translators.ts
 var LIMITS = {
   read_file: { maxFiles: 10, maxFileSizeBytes: 2 * 1024 * 1024, maxTotalOutputChars: 200000 },
@@ -8121,7 +8738,7 @@ function mode(ctx) {
   return ctx.transport.getTransportMode(ctx.serverAlias);
 }
 function posixNormalize(p) {
-  return path2.posix.normalize(p.replace(/\\/g, "/"));
+  return path3.posix.normalize(p.replace(/\\/g, "/"));
 }
 function hasParentTraversal(p) {
   return p.split("/").some((part) => part === "..");
@@ -8131,17 +8748,17 @@ function resolveRemotePath(input, cwd) {
     throw new Error(`非法路径: ${input}`);
   const normalizedInput = posixNormalize(input);
   const normalizedCwd = cwd ? posixNormalize(cwd) : undefined;
-  if (path2.posix.isAbsolute(normalizedInput)) {
+  if (path3.posix.isAbsolute(normalizedInput)) {
     if (!normalizedCwd)
       return normalizedInput;
-    const rel = path2.posix.relative(normalizedCwd, normalizedInput);
-    if (rel === "" || !rel.startsWith("..") && !path2.posix.isAbsolute(rel))
+    const rel = path3.posix.relative(normalizedCwd, normalizedInput);
+    if (rel === "" || !rel.startsWith("..") && !path3.posix.isAbsolute(rel))
       return normalizedInput;
     throw new Error(`路径超出远端工作目录: ${input}`);
   }
   if (hasParentTraversal(normalizedInput))
     throw new Error(`路径超出远端工作目录: ${input}`);
-  return normalizedCwd ? path2.posix.join(normalizedCwd, normalizedInput) : normalizedInput;
+  return normalizedCwd ? path3.posix.join(normalizedCwd, normalizedInput) : normalizedInput;
 }
 function resolveRemoteCwd(inputCwd, baseCwd) {
   if (!inputCwd)
@@ -8149,7 +8766,7 @@ function resolveRemoteCwd(inputCwd, baseCwd) {
   return resolveRemotePath(inputCwd, baseCwd);
 }
 function dirnameRemote(p) {
-  const d = path2.posix.dirname(p);
+  const d = path3.posix.dirname(p);
   return d || ".";
 }
 async function execBash(ctx, script, input) {
@@ -8169,7 +8786,7 @@ function decodeBase64Stdout(stdout) {
   const clean = stdout.replace(/\s+/g, "");
   return Buffer.from(clean, "base64");
 }
-function decodeNulListFromBase64(stdout) {
+function decodeNulListFromBase642(stdout) {
   const text = decodeBase64Stdout(stdout).toString("utf8");
   return text.split("\x00").filter(Boolean);
 }
@@ -8250,10 +8867,10 @@ var TEXT_EXTENSIONS = new Set([
 ]);
 var TEXT_FILENAMES = new Set(["Makefile", "Dockerfile", "Vagrantfile", "Gemfile", "Rakefile", "LICENSE", "CHANGELOG", "README", ".gitignore", ".dockerignore", ".editorconfig", ".prettierrc", ".eslintrc"]);
 function isTextFile(filePath) {
-  const ext = path2.posix.extname(filePath).toLowerCase();
+  const ext = path3.posix.extname(filePath).toLowerCase();
   if (TEXT_EXTENSIONS.has(ext))
     return true;
-  const basename = path2.posix.basename(filePath);
+  const basename = path3.posix.basename(filePath);
   if (basename.startsWith(".env"))
     return true;
   return TEXT_FILENAMES.has(basename);
@@ -8348,11 +8965,11 @@ async function ensureDirSftp(ctx, remoteDir) {
   const normalized = posixNormalize(remoteDir);
   if (!normalized || normalized === "." || normalized === "/")
     return;
-  const absolute = path2.posix.isAbsolute(normalized);
+  const absolute = path3.posix.isAbsolute(normalized);
   const parts = normalized.split("/").filter(Boolean);
   let cur = absolute ? "/" : "";
   for (const part of parts) {
-    cur = cur === "/" ? `/${part}` : cur ? path2.posix.join(cur, part) : part;
+    cur = cur === "/" ? `/${part}` : cur ? path3.posix.join(cur, part) : part;
     try {
       const st = await ctx.transport.sftpStat(ctx.serverAlias, cur);
       if (!st.isDirectory())
@@ -8410,7 +9027,7 @@ find . ${depth} -mindepth 1 \\( -name .git -o -name node_modules \\) -prune -o \
     done   | base64 | tr -d '\\n\\r'`;
   const r = await execBash(ctx, script);
   assertExitOk(r, `列目录 ${dirPath}`);
-  const records = decodeNulListFromBase64(r.stdout);
+  const records = decodeNulListFromBase642(r.stdout);
   const entries = [];
   for (const rec of records) {
     const tab = rec.indexOf("\t");
@@ -8479,7 +9096,7 @@ var tReadFile = async (args, ctx) => {
   for (const req of cappedList) {
     try {
       if (!isTextFile(req.path))
-        throw new Error(`不支持的文件类型: ${path2.posix.extname(req.path) || "(无扩展名)"}`);
+        throw new Error(`不支持的文件类型: ${path3.posix.extname(req.path) || "(无扩展名)"}`);
       const size = await statRemoteSize(ctx, req.path);
       if (size !== undefined && size > LIMITS.read_file.maxFileSizeBytes)
         throw new Error(`文件过大 (${size} bytes > ${LIMITS.read_file.maxFileSizeBytes} bytes)，请使用 startLine/endLine 分段读取`);
@@ -8553,7 +9170,7 @@ for p in ${argsQuoted}; do
 done | base64 | tr -d '\\n\\r'`;
   const r = await execBash(ctx, script);
   assertExitOk(r, "创建目录");
-  const recs = decodeNulListFromBase64(r.stdout);
+  const recs = decodeNulListFromBase642(r.stdout);
   const byResolved = new Map;
   for (const rec of recs) {
     const [ok, p, err] = rec.split("\t");
@@ -8574,7 +9191,7 @@ for p in ${argsQuoted}; do
 done | base64 | tr -d '\\n\\r'`;
   const r = await execBash(ctx, script);
   assertExitOk(r, "删除文件");
-  const recs = decodeNulListFromBase64(r.stdout);
+  const recs = decodeNulListFromBase642(r.stdout);
   const byResolved = new Map;
   for (const rec of recs) {
     const [ok, p, err] = rec.split("\t");
@@ -8602,14 +9219,14 @@ async function listAllFiles(ctx, inputPath = ".", pattern = "**/*") {
   const prunes = DEFAULT_IGNORED_DIRS2.map((d) => `-name ${shQuote(d)}`).join(" -o ");
   const script = `set -euo pipefail
 if [ -f ${shQuote(remotePath)} ]; then
-  { printf 'F\\0'; printf '%s\\0' ${shQuote(path2.posix.basename(inputPath))}; } | base64 | tr -d '\\n\\r'
+  { printf 'F\\0'; printf '%s\\0' ${shQuote(path3.posix.basename(inputPath))}; } | base64 | tr -d '\\n\\r'
 else
   cd -- ${shQuote(remotePath)}
   { printf 'D\\0'; find . \\( ${prunes} \\) -prune -o -type f -print0 2>/dev/null; } | base64 | tr -d '\\n\\r'
 fi`;
   const r = await execBash(ctx, script);
   assertExitOk(r, `列出候选文件 ${inputPath}`);
-  const decoded = decodeNulListFromBase64(r.stdout);
+  const decoded = decodeNulListFromBase642(r.stdout);
   const marker = decoded.shift();
   const raw = decoded;
   const patternRe = globToRegExp(pattern);
@@ -8619,7 +9236,7 @@ fi`;
     const rel = rel0.replace(/^\.\//, "");
     if (!isSingle && !patternRe.test(rel))
       continue;
-    const display = isSingle ? inputPath : inputPath === "." ? rel : path2.posix.join(inputPath, rel);
+    const display = isSingle ? inputPath : inputPath === "." ? rel : path3.posix.join(inputPath, rel);
     out.push({ rel, display, toolPath: display });
   }
   return out;
@@ -8724,7 +9341,7 @@ fi`;
     return;
   if (!r.stdout.trim())
     return [];
-  const decoded = decodeNulListFromBase64(r.stdout);
+  const decoded = decodeNulListFromBase642(r.stdout);
   const marker = decoded.shift();
   const rels = decoded;
   const patternRe = globToRegExp(pattern);
@@ -8734,7 +9351,7 @@ fi`;
     const rel = rel0.replace(/^\.\//, "");
     if (!singleFile && !patternRe.test(rel))
       continue;
-    const display = singleFile ? inputPath : inputPath === "." ? rel : path2.posix.join(inputPath, rel);
+    const display = singleFile ? inputPath : inputPath === "." ? rel : path3.posix.join(inputPath, rel);
     out.push({ rel, display, toolPath: display });
   }
   return out;
@@ -9056,6 +9673,7 @@ var installer;
 var cachedApi;
 var cachedCtx;
 var switchToolRegistered = false;
+var transferToolRegistered = false;
 var src_default = definePlugin({
   name: "remote-exec",
   version: "0.1.0",
@@ -9081,7 +9699,7 @@ var src_default = definePlugin({
         cfg = parseRemoteExecConfig(raw ?? {});
         servers = readServersSection(cachedCtx, rawMergedConfig);
         rebuildTransport();
-        reregisterSwitchTool(cachedApi);
+        reregisterRemoteExecTools(cachedApi);
         installer?.applyToExistingTools();
         logger.info(`remote-exec 配置已热重载 — enabled=${cfg.enabled} servers=[${[...servers.keys()].join(", ")}] active=${envMgr?.getActive() ?? "n/a"}`);
       }
@@ -9095,6 +9713,10 @@ var src_default = definePlugin({
     if (cachedApi && switchToolRegistered) {
       cachedApi.tools.unregister?.("switch_environment");
       switchToolRegistered = false;
+    }
+    if (cachedApi && transferToolRegistered) {
+      cachedApi.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
+      transferToolRegistered = false;
     }
     envMgr = undefined;
     cachedApi = undefined;
@@ -9119,7 +9741,7 @@ async function reloadAll(ctx, api) {
   servers = readServersSection(ctx, merged);
   rebuildTransport();
   envMgr = new EnvironmentManager(api, () => servers, () => cfg);
-  reregisterSwitchTool(api);
+  reregisterRemoteExecTools(api);
   if (!installer) {
     installer = installToolWrappers({
       ctx,
@@ -9142,18 +9764,31 @@ function rebuildTransport() {
     transport.closeAll();
   transport = new SshTransport(servers, cfg.ssh, logger);
 }
-function reregisterSwitchTool(api) {
+function reregisterRemoteExecTools(api) {
   if (!envMgr)
     return;
   if (switchToolRegistered) {
     api.tools.unregister?.("switch_environment");
     switchToolRegistered = false;
   }
-  if (!cfg.enabled || !cfg.exposeSwitchTool)
+  if (transferToolRegistered) {
+    api.tools.unregister?.(TRANSFER_FILES_TOOL_NAME);
+    transferToolRegistered = false;
+  }
+  if (!cfg.enabled)
     return;
-  const tool = buildSwitchEnvironmentTool(envMgr);
-  api.tools.register(tool);
-  switchToolRegistered = true;
+  if (cfg.exposeSwitchTool) {
+    const tool = buildSwitchEnvironmentTool(envMgr);
+    api.tools.register(tool);
+    switchToolRegistered = true;
+  }
+  const transferTool = buildTransferFilesTool(envMgr, () => {
+    if (!transport)
+      throw new Error("remote-exec: SSH transport 未就绪");
+    return transport;
+  });
+  api.tools.register(transferTool);
+  transferToolRegistered = true;
 }
 export {
   src_default as default
