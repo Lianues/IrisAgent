@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "agentId": "default",
+  "promptFragments": [
+    "persona",
+    "style",
+    "rules"
+  ],
+  "memory": "managed-by-iris-memory-extension",
+  "createdAt": "2026-05-05T10:24:50.604Z"
+}
