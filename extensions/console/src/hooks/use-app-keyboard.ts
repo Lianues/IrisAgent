@@ -119,7 +119,7 @@ interface UseAppKeyboardOptions {
   extensionList: any[];
   setExtensionList: SetState<any[]>;
   onToggleExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
-  onInstallGitExtension?: (target: string) => Promise<{ ok: boolean; message: string }>;
+  onInstallGitExtension?: (target: string, scope?: 'global' | 'agent') => Promise<{ ok: boolean; message: string }>;
   onDeleteExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
   onPreviewUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
   onUpdateExtension?: (name: string) => Promise<{ ok: boolean; message: string }>;
@@ -132,6 +132,10 @@ interface UseAppKeyboardOptions {
   setExtensionGitInputMode: SetState<boolean>;
   extensionGitInputState: TextInputState;
   extensionGitInputActions: TextInputActions;
+  extensionScopePickMode: boolean;
+  setExtensionScopePickMode: SetState<boolean>;
+  extensionInstallScope: 'global' | 'agent';
+  setExtensionInstallScope: SetState<'global' | 'agent'>;
   extensionPendingDeleteName: string | null;
   setExtensionPendingDeleteName: SetState<string | null>;
   extensionPendingUpdateName: string | null;
@@ -251,6 +255,10 @@ export function useAppKeyboard({
   setExtensionGitInputMode,
   extensionGitInputState,
   extensionGitInputActions,
+  extensionScopePickMode,
+  setExtensionScopePickMode,
+  extensionInstallScope,
+  setExtensionInstallScope,
   extensionPendingDeleteName,
   setExtensionPendingDeleteName,
   extensionPendingUpdateName,
@@ -448,6 +456,35 @@ export function useAppKeyboard({
         return;
       }
 
+      // ── scope-pick 子模式：让用户在按 G 之后选 global / agent ──
+      if (extensionScopePickMode) {
+        if (key.name === 'escape') {
+          setExtensionScopePickMode(false);
+          setExtensionStatusMessage(null);
+          setExtensionStatusIsError(false);
+          return;
+        }
+        if (key.name === '1' || key.sequence === '1') {
+          setExtensionInstallScope('global');
+          setExtensionScopePickMode(false);
+          setExtensionGitInputMode(true);
+          extensionGitInputActions.setValue('');
+          setExtensionStatusMessage('安装范围：全局 (~/.iris/extensions/)。输入 Git 地址后按 Enter 拉取安装');
+          setExtensionStatusIsError(false);
+          return;
+        }
+        if (key.name === '2' || key.sequence === '2') {
+          setExtensionInstallScope('agent');
+          setExtensionScopePickMode(false);
+          setExtensionGitInputMode(true);
+          extensionGitInputActions.setValue('');
+          setExtensionStatusMessage('安装范围：此 agent (仅当前 agent 可见)。输入 Git 地址后按 Enter 拉取安装');
+          setExtensionStatusIsError(false);
+          return;
+        }
+        return;
+      }
+
       if (extensionGitInputMode) {
         if (key.ctrl && key.name === 'v') {
           const pasted = readClipboardText();
@@ -481,10 +518,11 @@ export function useAppKeyboard({
             setExtensionStatusIsError(true);
             return;
           }
-          setExtensionStatusMessage(`拉取 Git 扩展中：${target}`);
+          const scopeLabel = extensionInstallScope === 'global' ? '全局' : '此 agent';
+          setExtensionStatusMessage(`拉取 Git 扩展中（→ ${scopeLabel}）：${target}`);
           setExtensionStatusIsError(false);
           setExtensionBusy(true);
-          void onInstallGitExtension(target).then(async (result) => {
+          void onInstallGitExtension(target, extensionInstallScope).then(async (result) => {
             if (!result.ok) {
               setExtensionStatusMessage(result.message);
               setExtensionStatusIsError(true);
@@ -589,11 +627,11 @@ export function useAppKeyboard({
         });
       } else if (key.name === 'g') {
         if (blockIfDirty('Git 拉取')) return;
-        setExtensionGitInputMode(true);
-        extensionGitInputActions.setValue('');
+        // 先进 scope-pick，让用户决定装到全局还是当前 agent
+        setExtensionScopePickMode(true);
         setExtensionPendingDeleteName(null);
         setExtensionPendingUpdateName(null);
-        setExtensionStatusMessage('输入 Git 地址后按 Enter 拉取安装');
+        setExtensionStatusMessage('选择安装范围：[1] 全局  [2] 此 agent  Esc 取消');
         setExtensionStatusIsError(false);
       } else if (key.name === 'd') {
         if (blockIfDirty('删除')) return;

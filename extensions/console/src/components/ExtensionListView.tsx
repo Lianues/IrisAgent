@@ -158,6 +158,10 @@ interface ExtensionListViewProps {
   gitInputValue?: string;
   gitInputCursor?: number;
   gitInputCursorVisible?: boolean;
+  /** 在 git-input 之前的 scope 选择子模式 */
+  scopePickMode?: boolean;
+  /** 当前已选 scope（仅显示用） */
+  installScope?: 'global' | 'agent';
   pendingDeleteName?: string | null;
   pendingUpdateName?: string | null;
 }
@@ -173,6 +177,8 @@ export function ExtensionListView({
   gitInputValue = '',
   gitInputCursor = 0,
   gitInputCursorVisible = true,
+  scopePickMode = false,
+  installScope = 'agent',
   pendingDeleteName = null,
   pendingUpdateName = null,
 }: ExtensionListViewProps) {
@@ -191,9 +197,17 @@ export function ExtensionListView({
           : `  ${ICONS.arrowUp}${ICONS.arrowDown} 选择  Enter 标记  S 保存  G 拉取 Git  U 升级  D 删除  Esc 返回`}
         </text>
       </box>
+      {scopePickMode && (
+        <box flexDirection="column" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+          <text fg={C.primary}>{'选择安装范围：'}</text>
+          <text fg={C.text}>{'  [1] 全局      ~/.iris/extensions/         （所有 agent 共享）'}</text>
+          <text fg={C.text}>{'  [2] 此 agent  ~/.iris/agents/<id>/extensions/（仅当前 agent，优先级更高）'}</text>
+          <text fg={C.dim}>{'按数字选择，Esc 取消。选完会进入 Git 地址输入。'}</text>
+        </box>
+      )}
       {gitInputMode && (
         <box flexDirection="column" paddingLeft={2} paddingRight={2} paddingBottom={1}>
-          <text fg={C.primary}>{'Git 地址（支持 #ref:subdir）：'}</text>
+          <text fg={C.primary}>{`Git 地址（→ ${installScope === 'global' ? '全局' : '此 agent'}，支持 #ref:subdir）：`}</text>
           <GitInputFrame value={gitInputValue} cursor={gitInputCursor} cursorVisible={gitInputCursorVisible} />
           <text fg={C.dim}>{'Enter 拉取并安装，Esc 取消。不会执行第三方 install/build 脚本。'}</text>
         </box>

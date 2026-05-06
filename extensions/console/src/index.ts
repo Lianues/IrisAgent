@@ -881,7 +881,7 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
         onDeleteMemory: (id: number) => this.handleDeleteMemory(id),
         onListExtensions: () => this.handleListExtensions(),
         onToggleExtension: (name: string) => this.handleToggleExtension(name),
-        onInstallGitExtension: (target: string) => this.handleInstallGitExtension(target),
+        onInstallGitExtension: (target: string, scope?: 'global' | 'agent') => this.handleInstallGitExtension(target, scope),
         onDeleteExtension: (name: string) => this.handleDeleteExtension(name),
         onPreviewUpdateExtension: (name: string) => this.handlePreviewUpdateExtension(name),
         onUpdateExtension: (name: string) => this.handleUpdateExtension(name),
@@ -1875,31 +1875,42 @@ export class ConsolePlatform extends PlatformAdapter implements ForegroundPlatfo
   }
 
 
-  private async handleInstallGitExtension(target: string): Promise<{ ok: boolean; message: string }> {
+  /**
+   * 安装 Git 扩展。
+   *
+   * @param target Git URL（含可选 #ref:subdir 片段）
+   * @param scope  'global' = 装到 ~/.iris/extensions/；'agent' (默认) = 装到当前 agent
+   *               这里只暴露二选一，因为 console TUI 始终在某个 agent 上下文中运行；
+   *               跨 agent 的安装请用独立 iris extension 二进制。
+   */
+  private async handleInstallGitExtension(target: string, scope: 'global' | 'agent' = 'agent'): Promise<{ ok: boolean; message: string }> {
     const ext = (this.api as any)?.extensions;
     if (!ext?.installGit) {
       return { ok: false, message: 'Git 扩展安装 API 不可用' };
     }
 
     try {
-      const result = await ext.installGit(target);
+      // scope='global' → 显式传 {kind:'global'}；'agent' → 不传，让 iris-core 用 defaultScope (=当前 agent)
+      const installScope = scope === 'global' ? { scope: { kind: 'global' as const } } : undefined;
+      const result = await ext.installGit(target, installScope);
       const packages: Array<{ manifest: { name: string; entry?: string; plugin?: any; platforms?: any[] } }> = ext.discover?.() ?? [];
       const pkg = packages.find((item) => item.manifest.name === result.name);
       const hasPlugin = pkg ? this.hasPluginContribution(pkg.manifest) : true;
+      const scopeLabel = scope === 'global' ? '全局' : '此 agent';
       if (!hasPlugin) {
-        return { ok: true, message: `已拉取安装 "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
+        return { ok: true, message: `已拉取安装到${scopeLabel} "${result.name}@${result.version}"。平台扩展通常需要重启或配置 platform.yaml 后生效。` };
       }
 
       const active = (this.api as any)?.pluginManager?.listPlugins?.() ?? [];
       const alreadyActive = active.some((item: any) => item.name === result.name);
       if (alreadyActive) {
         this.setPluginConfigEnabled(result.name, true);
-        return { ok: true, message: `已覆盖安装 "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
+        return { ok: true, message: `已覆盖安装到${scopeLabel} "${result.name}@${result.version}"。当前运行实例已加载同名插件，重启后使用新代码。` };
       }
 
       await ext.activate(result.name);
       this.setPluginConfigEnabled(result.name, true);
-      return { ok: true, message: `已拉取安装并启用 "${result.name}@${result.version}"` };
+      return { ok: true, message: `已拉取安装到${scopeLabel}并启用 "${result.name}@${result.version}"` };
     } catch (err) {
       return { ok: false, message: `Git 拉取失败: ${err instanceof Error ? err.message : String(err)}` };
     }

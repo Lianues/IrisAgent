@@ -134,6 +134,10 @@ export function App({
   const [extensionStatusMessage, setExtensionStatusMessage] = useState<string | null>(null);
   const [extensionStatusIsError, setExtensionStatusIsError] = useState(false);
   const [extensionGitInputMode, setExtensionGitInputMode] = useState(false);
+  /** scope-pick 子模式：在按 G 之后、进入 git-input 之前，让用户先选 global / agent */
+  const [extensionScopePickMode, setExtensionScopePickMode] = useState(false);
+  /** 选定后用于本次安装的 scope */
+  const [extensionInstallScope, setExtensionInstallScope] = useState<'global' | 'agent'>('agent');
   const [extensionPendingDeleteName, setExtensionPendingDeleteName] = useState<string | null>(null);
   const [extensionPendingUpdateName, setExtensionPendingUpdateName] = useState<string | null>(null);
   const [extensionBusy, setExtensionBusy] = useState(false);
@@ -456,6 +460,10 @@ export function App({
     setExtensionStatusIsError,
     extensionGitInputMode,
     setExtensionGitInputMode,
+    extensionScopePickMode,
+    setExtensionScopePickMode,
+    extensionInstallScope,
+    setExtensionInstallScope,
     extensionGitInputState,
     extensionGitInputActions,
     extensionPendingDeleteName,
@@ -534,6 +542,8 @@ export function App({
         gitInputValue={extensionGitInputState.value}
         gitInputCursor={extensionGitInputState.cursor}
         gitInputCursorVisible={true}
+        scopePickMode={extensionScopePickMode}
+        installScope={extensionInstallScope}
         pendingDeleteName={extensionPendingDeleteName}
         pendingUpdateName={extensionPendingUpdateName}
       />
