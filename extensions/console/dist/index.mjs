@@ -16,39 +16,30 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
-// ../../packages/extension-sdk/dist/logger.js
+// ../../packages/extension-sdk/src/logger.ts
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= LogLevel.DEBUG)
+      if (_logLevel <= 0 /* DEBUG */)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= LogLevel.INFO)
+      if (_logLevel <= 1 /* INFO */)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= LogLevel.WARN)
+      if (_logLevel <= 2 /* WARN */)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= LogLevel.ERROR)
+      if (_logLevel <= 3 /* ERROR */)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
-var LogLevel, _logLevel;
-var init_logger = __esm(() => {
-  (function(LogLevel2) {
-    LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-    LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-    LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-    LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-    LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-  })(LogLevel || (LogLevel = {}));
-  _logLevel = LogLevel.INFO;
-});
+var _logLevel = 1 /* INFO */;
+var init_logger = () => {};
 
 // src/terminal-compat.ts
 import { execFileSync } from "child_process";
@@ -626,7 +617,7 @@ var init_remote_wizard = __esm(() => {
   };
 });
 
-// ../../packages/extension-sdk/dist/ipc/framing.js
+// ../../packages/extension-sdk/src/ipc/framing.ts
 import { Transform } from "node:stream";
 function encodeFrame(data) {
   const payload = Buffer.from(JSON.stringify(data), "utf-8");
@@ -677,7 +668,7 @@ var init_framing = __esm(() => {
   };
 });
 
-// ../../packages/extension-sdk/dist/ipc/protocol.js
+// ../../packages/extension-sdk/src/ipc/protocol.ts
 function isRequest(msg) {
   return "id" in msg && "method" in msg;
 }
@@ -800,7 +791,7 @@ var init_protocol = __esm(() => {
   IPC_TO_BACKEND_EVENT = Object.fromEntries(Object.entries(BACKEND_EVENT_TO_IPC).map(([k, v]) => [v, k]));
 });
 
-// ../../packages/extension-sdk/dist/ipc/remote-tool-handle.js
+// ../../packages/extension-sdk/src/ipc/remote-tool-handle.ts
 import { EventEmitter } from "node:events";
 var logger, RemoteToolHandle;
 var init_remote_tool_handle = __esm(() => {
@@ -904,7 +895,7 @@ var init_remote_tool_handle = __esm(() => {
   };
 });
 
-// ../../packages/extension-sdk/dist/ipc/remote-backend-handle.js
+// ../../packages/extension-sdk/src/ipc/remote-backend-handle.ts
 import { EventEmitter as EventEmitter2 } from "node:events";
 var logger2, RemoteBackendHandle;
 var init_remote_backend_handle = __esm(() => {
@@ -1128,7 +1119,7 @@ var init_remote_backend_handle = __esm(() => {
   };
 });
 
-// ../../packages/extension-sdk/dist/ipc/remote-api-proxy.js
+// ../../packages/extension-sdk/src/ipc/remote-api-proxy.ts
 function callApi(client, targetAgentName, method, params) {
   if (!targetAgentName) {
     return client.call(method, params);
@@ -1202,6 +1193,15 @@ var init_remote_api_proxy = __esm(() => {
   logger3 = createExtensionLogger("RemoteApiProxy");
 });
 
+// ../../packages/extension-sdk/src/ipc/index.ts
+var init_ipc = __esm(() => {
+  init_framing();
+  init_protocol();
+  init_remote_backend_handle();
+  init_remote_tool_handle();
+  init_remote_api_proxy();
+});
+
 // ../../packages/extension-sdk/dist/ipc/index.js
 var exports_ipc = {};
 __export(exports_ipc, {
@@ -1219,12 +1219,8 @@ __export(exports_ipc, {
   ErrorCodes: () => ErrorCodes,
   BACKEND_EVENT_TO_IPC: () => BACKEND_EVENT_TO_IPC
 });
-var init_ipc = __esm(() => {
-  init_framing();
-  init_protocol();
-  init_remote_backend_handle();
-  init_remote_tool_handle();
-  init_remote_api_proxy();
+var init_ipc2 = __esm(() => {
+  init_ipc();
 });
 
 // src/index.ts
@@ -1232,7 +1228,7 @@ import React12 from "react";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
-// ../../packages/extension-sdk/dist/platform.js
+// ../../packages/extension-sdk/src/platform.ts
 class BackendHandle {
   _backend;
   _listeners = new Map;
@@ -1358,14 +1354,7 @@ class PlatformAdapter {
     return this.constructor.name;
   }
 }
-
-// ../../packages/extension-sdk/dist/index.js
-init_logger();
-// ../../packages/extension-sdk/dist/utils/git.js
-import * as fs from "node:fs";
-import * as path from "node:path";
-
-// ../../packages/extension-sdk/dist/utils/paths.js
+// ../../packages/extension-sdk/src/utils/paths.ts
 function normalizeText(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -1381,7 +1370,9 @@ function normalizeRelativeFilePath(input, label = "文件路径") {
   return parts.join("/");
 }
 
-// ../../packages/extension-sdk/dist/utils/git.js
+// ../../packages/extension-sdk/src/utils/git.ts
+import * as fs from "node:fs";
+import * as path from "node:path";
 var GIT_INSTALL_METADATA_FILE = ".iris-extension-install.json";
 function stripGitPlusProtocol(url) {
   return url.startsWith("git+") ? url.slice("git+".length) : url;
@@ -4992,7 +4983,7 @@ import { useMemo as useMemo5 } from "react";
 import * as fs3 from "fs";
 import * as path3 from "path";
 
-// ../../packages/extension-sdk/dist/tool-utils.js
+// ../../packages/extension-sdk/src/tool-utils.ts
 import * as fs2 from "node:fs";
 import * as path2 from "node:path";
 function normalizeLineEndings(text) {
@@ -12240,7 +12231,7 @@ class ConsolePlatform extends PlatformAdapter {
     return next;
   }
   async start() {
-    this.api?.setLogLevel?.(LogLevel.SILENT);
+    this.api?.setLogLevel?.(4 /* SILENT */);
     configureBundledOpenTuiTreeSitter(this.isCompiledBinary);
     this.onBackend("assistant:content", (sid, content) => {
       if (sid === this.sessionId) {
@@ -12658,7 +12649,7 @@ ${summaryText}`;
       if (!WsIPCClient) {
         throw new Error("remote-connect 扩展服务不可用，请确认 remote-connect 扩展已安装并启用");
       }
-      const { RemoteBackendHandle: RemoteBackendHandle2, createRemoteApiProxy: createRemoteApiProxy2 } = await Promise.resolve().then(() => (init_ipc(), exports_ipc));
+      const { RemoteBackendHandle: RemoteBackendHandle2, createRemoteApiProxy: createRemoteApiProxy2 } = await Promise.resolve().then(() => (init_ipc2(), exports_ipc));
       const wsClient = new WsIPCClient;
       const handshake = await wsClient.connect(url, token);
       let remoteBackend;
@@ -13664,8 +13655,8 @@ ${summaryText}`;
         try {
           const fullPath = path5.join(dirPath, name);
           const stat = fs5.statSync(fullPath);
-          const isDirectory2 = stat.isDirectory();
-          if (isDirectory2) {
+          const isDirectory = stat.isDirectory();
+          if (isDirectory) {
             entries.push({ name, isDirectory: true });
           } else {
             const ext = path5.extname(name).toLowerCase();
