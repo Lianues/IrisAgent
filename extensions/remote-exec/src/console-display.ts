@@ -72,14 +72,24 @@ function registerEnvironmentSlashCommands(api: IrisAPI, envMgr: EnvironmentManag
   void api.services.waitFor<ConsoleSlashCommandServiceLike>(CONSOLE_SLASH_COMMAND_SERVICE_ID, 5000)
     .then((service) => {
       if (slashRegistrations.length > 0) return;
-      const switchTo = (name: string) => {
-        const { previous, current } = envMgr.setActive(name);
-        return {
-          message: previous === current
-            ? `当前已经在环境：${current}`
-            : `已切换环境：${previous} → ${current}`,
-          label: 'env',
-        };
+      const switchTo = async (name: string) => {
+        const sid = api.agentManager?.getActiveSessionId?.();
+        if (sid) {
+          // 有活跃对话 → 写入 session meta
+          const { previous, current } = await envMgr.setActive(name);
+          return {
+            message: previous === current
+              ? `当前已经在环境：${current}`
+              : `已切换环境：${previous} → ${current}`,
+            label: 'env',
+          };
+        }
+        // 无活跃对话 → 写入 agent 级作为新对话默认
+        const store = api.globalStore.agent(api.agentName ?? '__global__').namespace('remote-exec');
+        const prev = store.get<string>('activeEnvironment') ?? 'local';
+        store.set('activeEnvironment', name);
+        const msg = prev === name ? `已将默认环境设为：${name}（新对话生效）` : `已将默认环境从 ${prev} 改为：${name}（新对话生效）`;
+        return { message: msg, label: 'env' };
       };
 
       slashRegistrations.push(service.register({
@@ -97,7 +107,7 @@ function registerEnvironmentSlashCommands(api: IrisAPI, envMgr: EnvironmentManag
                 : [env.description, env.hostName ? `${env.user ?? '?'}@${env.hostName}` : undefined].filter(Boolean).join(' · '),
             }));
         },
-        handle({ arg }) {
+        async handle({ arg }) {
           const name = arg.trim();
           if (name) return switchTo(name);
           const current = envMgr.getActive();

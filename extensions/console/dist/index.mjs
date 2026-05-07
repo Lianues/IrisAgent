@@ -730,6 +730,7 @@ var init_protocol = __esm(() => {
     SET_CWD: "backend.setCwd",
     GET_CONFIG: "server.getConfig",
     GET_CONFIG_DIR: "server.getConfigDir",
+    SERVER_SHUTDOWN: "server.shutdown",
     HANDLE_APPROVE: "handle.approve",
     HANDLE_REJECT: "handle.reject",
     HANDLE_APPLY: "handle.apply",
@@ -1229,7 +1230,7 @@ var init_ipc = __esm(() => {
 
 // src/index.ts
 import React12 from "react";
-import { createCliRenderer } from "@opentui/core";
+import { createCliRenderer, capture as opentuiCapture } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 
 // ../../packages/extension-sdk/dist/platform.js
@@ -12550,8 +12551,7 @@ function cleanupWindowsRendererWithoutDestroy(renderer) {
   } catch {}
   try {
     if (r.captureCallback) {
-      const mod = __require("@opentui/core");
-      mod.capture?.removeListener?.("write", r.captureCallback);
+      opentuiCapture?.removeListener?.("write", r.captureCallback);
     }
   } catch {}
   try {

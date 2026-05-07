@@ -2,7 +2,7 @@
   "extensions": [
     {
       "name": "multimodal",
-      "external": ["sharp", "jszip", "mammoth", "xlsx", "pdf-parse", "libreoffice-convert"]
+      "external": ["sharp", "libreoffice-convert"]
     },
     {
       "name": "mcp",
@@ -25,8 +25,7 @@
       "name": "remote-connect"
     },
     {
-      "name": "remote-exec",
-      "external": ["ssh2"]
+      "name": "remote-exec"
     },
     {
       "name": "telegram"

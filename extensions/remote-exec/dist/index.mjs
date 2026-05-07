@@ -7002,7 +7002,7 @@ var require_dist = __commonJS((exports) => {
   exports.visitAsync = visit.visitAsync;
 });
 
-// ../../packages/extension-sdk/src/logger.ts
+// node_modules/irises-extension-sdk/src/logger.ts
 var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
@@ -7026,7 +7026,7 @@ function createExtensionLogger(extensionName, tag) {
   };
 }
 
-// ../../packages/extension-sdk/src/plugin/context.ts
+// node_modules/irises-extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -7083,6 +7083,7 @@ var DEFAULT_REMOTE_EXEC_SERVERS_YAML = `# remote-exec 服务器清单
 #   identityFile  私钥文件绝对路径
 #   password      明文密码（与 identityFile 二选一；建议优先用密钥）
 #   workdir       该服务器上的默认工作目录（覆盖 remote_exec.yaml 的 remoteWorkdir）
+#   os            服务器操作系统（AI 可见，用于选择正确命令语法）: linux / windows / macos
 #   description   AI 可见的环境描述（switch_environment 工具会展示）
 #   transport     auto（默认）/ sftp / bash
 #                 auto = 文件精确操作优先 SFTP，扫描/搜索/shell 走 bash
@@ -7096,21 +7097,24 @@ servers:
   #   user: root
   #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa
   #   workdir: /root/projects/myapp
+  #   os: linux
   #   transport: auto
   #   description: GPU 训练机（A100 x 2）
 
   # nginx-prod:
-  #   hostName: 93.127.137.197
+  #   hostName: 203.0.113.1
   #   user: root
   #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa_nginx_server
   #   workdir: /etc/nginx
+  #   os: linux
   #   description: 生产环境 Nginx 节点
 
   # quick-pwd:
-  #   hostName: 93.127.137.197
+  #   hostName: 203.0.113.1
   #   user: lianuesss
   #   password: your_password_here
   #   transport: auto
+  #   os: linux
   #   description: 临时账号（密码登录）
 `;
 
@@ -7197,6 +7201,7 @@ function parseServerEntry(alias, value) {
       identityFile: stringField(obj.identityFile),
       password: stringField(obj.password),
       workdir: stringField(obj.workdir),
+      os: stringField(obj.os),
       description: stringField(obj.description),
       transport
     }
@@ -7528,33 +7533,60 @@ async function buildConnectConfig(s, sshCfg) {
 }
 
 // src/environment.ts
-var KEY_ACTIVE_ENV = "activeEnvironment";
-
 class EnvironmentManager {
+  api;
   getServers;
   getConfig;
-  store;
+  sessionCache = new Map;
   constructor(api, getServers, getConfig) {
+    this.api = api;
     this.getServers = getServers;
     this.getConfig = getConfig;
-    const agentName = api.agentName ?? "__global__";
-    this.store = api.globalStore.agent(agentName).namespace("remote-exec");
   }
   getActive() {
-    const stored = this.store.get(KEY_ACTIVE_ENV);
-    if (stored && stored !== LOCAL_ENV && !this.getServers().has(stored)) {
-      this.store.set(KEY_ACTIVE_ENV, LOCAL_ENV);
+    const sid = this.api.agentManager?.getActiveSessionId?.();
+    if (!sid)
+      return this.getConfig().defaultEnvironment ?? LOCAL_ENV;
+    const cached = this.sessionCache.get(sid);
+    if (cached) {
+      if (cached === LOCAL_ENV || this.getServers().has(cached))
+        return cached;
+      this.sessionCache.set(sid, LOCAL_ENV);
       return LOCAL_ENV;
     }
-    return stored ?? this.getConfig().defaultEnvironment ?? LOCAL_ENV;
+    return this.getConfig().defaultEnvironment ?? LOCAL_ENV;
   }
-  setActive(name) {
+  async ensureLoaded(sessionId) {
+    if (this.sessionCache.has(sessionId))
+      return;
+    try {
+      const meta = await this.api.storage.getMeta?.(sessionId);
+      const stored = meta?.remoteExecEnvironment;
+      if (stored && (stored === LOCAL_ENV || this.getServers().has(stored))) {
+        this.sessionCache.set(sessionId, stored);
+      }
+    } catch {}
+  }
+  async setActive(name) {
     const previous = this.getActive();
     if (name !== LOCAL_ENV && !this.getServers().has(name)) {
       throw new Error(`未知环境 "${name}"。可用环境：${this.listEnvs().map((e) => e.name).join(", ")}`);
     }
-    this.store.set(KEY_ACTIVE_ENV, name);
+    const sid = this.api.agentManager?.getActiveSessionId?.();
+    if (sid) {
+      this.sessionCache.set(sid, name);
+      try {
+        const meta = await this.api.storage.getMeta?.(sid);
+        if (meta) {
+          meta.remoteExecEnvironment = name;
+          await this.api.storage.saveMeta?.(meta);
+        }
+      } catch {}
+    }
     return { previous, current: name };
+  }
+  clearSession(sessionId) {
+    this.sessionCache.delete(sessionId);
   }
   getActiveServer() {
     const name = this.getActive();
@@ -7620,7 +7652,7 @@ function buildSwitchEnvironmentTool(envMgr) {
       const name = args.name?.trim();
       if (!name)
         throw new Error("switch_environment: name 不能为空");
-      const { previous, current } = envMgr.setActive(name);
+      const { previous, current } = await envMgr.setActive(name);
       const after = envMgr.listEnvs().find((e) => e.name === current);
       return {
         success: true,
@@ -8296,12 +8328,20 @@ function registerEnvironmentSlashCommands(api, envMgr) {
   api.services.waitFor(CONSOLE_SLASH_COMMAND_SERVICE_ID, 5000).then((service) => {
     if (slashRegistrations.length > 0)
       return;
-    const switchTo = (name) => {
-      const { previous, current } = envMgr.setActive(name);
-      return {
-        message: previous === current ? `当前已经在环境：${current}` : `已切换环境：${previous} → ${current}`,
-        label: "env"
-      };
+    const switchTo = async (name) => {
+      const sid = api.agentManager?.getActiveSessionId?.();
+      if (sid) {
+        const { previous, current } = await envMgr.setActive(name);
+        return {
+          message: previous === current ? `当前已经在环境：${current}` : `已切换环境：${previous} → ${current}`,
+          label: "env"
+        };
+      }
+      const store = api.globalStore.agent(api.agentName ?? "__global__").namespace("remote-exec");
+      const prev = store.get("activeEnvironment") ?? "local";
+      store.set("activeEnvironment", name);
+      const msg = prev === name ? `已将默认环境设为：${name}（新对话生效）` : `已将默认环境从 ${prev} 改为：${name}（新对话生效）`;
+      return { message: msg, label: "env" };
     };
     slashRegistrations.push(service.register({
       name: "/env",
@@ -8314,7 +8354,7 @@ function registerEnvironmentSlashCommands(api, envMgr) {
           description: env.isLocal ? "本地执行环境" : [env.description, env.hostName ? `${env.user ?? "?"}@${env.hostName}` : undefined].filter(Boolean).join(" · ")
         }));
       },
-      handle({ arg }) {
+      async handle({ arg }) {
         const name = arg.trim();
         if (name)
           return switchTo(name);
@@ -8422,7 +8462,7 @@ function formatDuration(sec) {
 // src/translators.ts
 import path3 from "node:path";
 
-// ../../packages/extension-sdk/src/tool-utils.ts
+// node_modules/irises-extension-sdk/src/tool-utils.ts
 import * as path2 from "node:path";
 function normalizeLineEndings(text) {
   return text.replace(/\r\n/g, `
@@ -9920,6 +9960,17 @@ var src_default = definePlugin({
     ctx.onReady(async (api) => {
       cachedApi = api;
       await reloadAll(ctx, api);
+    });
+    ctx.addHook({
+      name: "remote-exec:env-preload",
+      priority: 50,
+      async onBeforeLLMCall() {
+        const sid = cachedApi?.agentManager?.getActiveSessionId?.();
+        if (sid && envMgr) {
+          await envMgr.ensureLoaded(sid);
+        }
+        return;
+      }
     });
     ctx.addHook({
       name: "remote-exec:config-reload",

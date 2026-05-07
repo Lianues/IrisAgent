@@ -55,6 +55,7 @@ export const DEFAULT_REMOTE_EXEC_SERVERS_YAML = `# remote-exec 服务器清单
 #   identityFile  私钥文件绝对路径
 #   password      明文密码（与 identityFile 二选一；建议优先用密钥）
 #   workdir       该服务器上的默认工作目录（覆盖 remote_exec.yaml 的 remoteWorkdir）
+#   os            服务器操作系统（AI 可见，用于选择正确命令语法）: linux / windows / macos
 #   description   AI 可见的环境描述（switch_environment 工具会展示）
 #   transport     auto（默认）/ sftp / bash
 #                 auto = 文件精确操作优先 SFTP，扫描/搜索/shell 走 bash
@@ -68,21 +69,24 @@ servers:
   #   user: root
   #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa
   #   workdir: /root/projects/myapp
+  #   os: linux
   #   transport: auto
   #   description: GPU 训练机（A100 x 2）
 
   # nginx-prod:
-  #   hostName: 93.127.137.197
+  #   hostName: 203.0.113.1
   #   user: root
   #   identityFile: C:\\Users\\Lianues\\.ssh\\id_rsa_nginx_server
   #   workdir: /etc/nginx
+  #   os: linux
   #   description: 生产环境 Nginx 节点
 
   # quick-pwd:
-  #   hostName: 93.127.137.197
+  #   hostName: 203.0.113.1
   #   user: lianuesss
   #   password: your_password_here
   #   transport: auto
+  #   os: linux
   #   description: 临时账号（密码登录）
 `;
 

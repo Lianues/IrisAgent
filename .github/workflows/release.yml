@@ -4,10 +4,12 @@
 #  触发条件：
 #  1. push 以 v* 开头的 tag（如 v1.0.0）→ 自动构建 + 发布 Release + 发布 npm + 发布 Docker
 #  2. 手动触发 workflow_dispatch → 可独立勾选构建、发布 Release、发布 npm、发布 Docker
+#  3. 手动触发 dry_run → 全量彩排：构建 + Release 准备 + npm publish --dry-run + Docker build(push=false)
 #
 #  手动触发用法：
 #  - 什么都不勾：仅构建，产物保留 30 天供后续发布复用
 #  - 勾选 publish_release / publish_npm：构建后发布到对应渠道
+#  - 勾选 dry_run：完整预发布检查，但不创建 Release、不上传 npm、不推送 Docker
 #  - 填写 build_run_id：跳过构建，直接复用指定 Run 的产物进行发布
 #
 #  构建方式：
@@ -42,17 +44,22 @@ on:
         default: false
         required: false
       version:
-        description: '版本号（发布 Release 时必填，如 v1.0.0）'
+        description: '版本号（发布 Release 时必填，如 v1.0.0；dry_run 留空则使用 package.json）'
         type: string
         default: ''
         required: false
       build_run_id:
-        description: '复用已有构建的 Run ID（留空则重新构建）'
+        description: '复用已有构建产物：可填 Actions 页面 #编号（如 51）或真实 Run ID（留空则重新构建）'
         type: string
         default: ''
         required: false
       publish_docker:
         description: '发布 Docker 镜像到 GHCR'
+        type: boolean
+        default: false
+        required: false
+      dry_run:
+        description: '彩排模式：构建全部产物，并执行 Release/npm/Docker 预发布检查，但不创建 Release、不上传 npm、不推送 Docker'
         type: boolean
         default: false
         required: false
@@ -67,7 +74,7 @@ jobs:
   # 当提供了 build_run_id 时跳过，后续 job 直接从指定 Run 下载产物
   build:
     name: Build (${{ matrix.platform }}-${{ matrix.arch }})
-    if: ${{ !inputs.build_run_id && !(inputs.publish_docker && !inputs.publish_release && !inputs.publish_npm) }}
+    if: ${{ !inputs.build_run_id && !(inputs.publish_docker && !inputs.publish_release && !inputs.publish_npm && !inputs.dry_run) }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -142,6 +149,7 @@ jobs:
             iris-*.tar.gz
             iris-*.zip
           retention-days: 30
+          if-no-files-found: error
 
       - name: Upload npm package artifact
         uses: actions/upload-artifact@v5
@@ -149,6 +157,7 @@ jobs:
           name: npm-iris-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/bin/iris-${{ matrix.platform }}-${{ matrix.arch }}/
           retention-days: 30
+          if-no-files-found: error
 
   # ── 发布 GitHub Release ──────────────────
   release:
@@ -157,7 +166,7 @@ jobs:
     if: >-
       always() && !cancelled() &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
-      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
+      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release || inputs.dry_run)
     runs-on: ubuntu-latest
 
     steps:
@@ -170,8 +179,13 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.version }}"
             if [[ -z "$TAG" ]]; then
-              echo "::error::发布 Release 时必须填写版本号（如 v1.0.0）"
-              exit 1
+              if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                TAG="v$(node -p "require('./package.json').version")"
+                echo "dry-run 未填写版本号，使用 package.json 版本: ${TAG}"
+              else
+                echo "::error::发布 Release 时必须填写版本号（如 v1.0.0）"
+                exit 1
+              fi
             fi
             # 补全 v 前缀
             if [[ "$TAG" != v* ]]; then
@@ -185,7 +199,7 @@ jobs:
           fi
 
       - name: Create tag (manual dispatch)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -200,6 +214,41 @@ jobs:
           pattern: iris-*
           merge-multiple: false
 
+      - name: Resolve build artifact run id
+        id: build_run
+        if: ${{ inputs.build_run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RUN: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          RUN_REF="$(echo "$INPUT_RUN" | sed 's/^#//' | xargs)"
+
+          # actions/download-artifact 的 run-id 需要真实 database id，
+          # 不是 Actions 页面显示的 #run_number。先尝试按真实 run id 解析。
+          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_REF}/artifacts" >/dev/null 2>&1; then
+            echo "id=${RUN_REF}" >> "$GITHUB_OUTPUT"
+            echo "Resolved as database run id: ${RUN_REF}"
+            exit 0
+          fi
+
+          if ! [[ "$RUN_REF" =~ ^[0-9]+$ ]]; then
+            echo "::error::build_run_id 必须是数字，或 Actions 页面显示的 #数字"
+            exit 1
+          fi
+
+          # 按当前 workflow 的 run_number 解析真实 run id。
+          RESOLVED_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.run_number == ${RUN_REF}) | .id" | head -n 1)"
+
+          if [[ -z "$RESOLVED_ID" ]]; then
+            echo "::error::找不到 workflow run #${RUN_REF}。请确认编号属于当前 Build & Release workflow，且 artifact 未过期。"
+            exit 1
+          fi
+
+          echo "id=${RESOLVED_ID}" >> "$GITHUB_OUTPUT"
+          echo "Resolved run #${RUN_REF} -> database run id ${RESOLVED_ID}"
+
       - name: Download all artifacts (from specified run)
         if: ${{ inputs.build_run_id }}
         uses: actions/download-artifact@v5
@@ -207,7 +256,7 @@ jobs:
           path: artifacts/
           pattern: iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ steps.build_run.outputs.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare release files
@@ -219,12 +268,19 @@ jobs:
           ls -lh release/
 
       - name: Create Release
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           body_path: RELEASE_NOTES.md
           generate_release_notes: true
           files: release/*
+
+      - name: Dry-run release summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "DRY RUN: would create GitHub Release ${{ steps.tag.outputs.tag }} with files:"
+          ls -lh release/
 
   # ── 发布 npm ─────────────────────────────
   publish-npm:
@@ -233,7 +289,7 @@ jobs:
     if: >-
       always() && !cancelled() &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
-      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_npm)
+      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_npm || inputs.dry_run)
     runs-on: ubuntu-latest
 
     steps:
@@ -259,6 +315,41 @@ jobs:
           pattern: npm-iris-*
           merge-multiple: false
 
+      - name: Resolve build artifact run id
+        id: build_run
+        if: ${{ inputs.build_run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RUN: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          RUN_REF="$(echo "$INPUT_RUN" | sed 's/^#//' | xargs)"
+
+          # actions/download-artifact 的 run-id 需要真实 database id，
+          # 不是 Actions 页面显示的 #run_number。先尝试按真实 run id 解析。
+          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_REF}/artifacts" >/dev/null 2>&1; then
+            echo "id=${RUN_REF}" >> "$GITHUB_OUTPUT"
+            echo "Resolved as database run id: ${RUN_REF}"
+            exit 0
+          fi
+
+          if ! [[ "$RUN_REF" =~ ^[0-9]+$ ]]; then
+            echo "::error::build_run_id 必须是数字，或 Actions 页面显示的 #数字"
+            exit 1
+          fi
+
+          # 按当前 workflow 的 run_number 解析真实 run id。
+          RESOLVED_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.run_number == ${RUN_REF}) | .id" | head -n 1)"
+
+          if [[ -z "$RESOLVED_ID" ]]; then
+            echo "::error::找不到 workflow run #${RUN_REF}。请确认编号属于当前 Build & Release workflow，且 artifact 未过期。"
+            exit 1
+          fi
+
+          echo "id=${RESOLVED_ID}" >> "$GITHUB_OUTPUT"
+          echo "Resolved run #${RUN_REF} -> database run id ${RESOLVED_ID}"
+
       - name: Download npm package artifacts (from specified run)
         if: ${{ inputs.build_run_id }}
         uses: actions/download-artifact@v5
@@ -266,7 +357,7 @@ jobs:
           path: dist/bin/
           pattern: npm-iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ steps.build_run.outputs.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Flatten artifact directories
@@ -282,7 +373,12 @@ jobs:
           ls -la
 
       - name: Publish
-        run: bun run script/publish.ts
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            bun run script/publish.ts --dry-run
+          else
+            bun run script/publish.ts
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -290,7 +386,7 @@ jobs:
   # Docker 从源码独立构建，不依赖 binary build job，可并行运行
   publish-docker:
     name: Publish Docker images
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_docker
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_docker || inputs.dry_run
     runs-on: ubuntu-latest
 
     steps:
@@ -301,6 +397,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ !inputs.dry_run }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -324,7 +421,7 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile
           target: production
-          push: true
+          push: ${{ !inputs.dry_run }}
           tags: |
             ghcr.io/lianues/iris:latest
             ghcr.io/lianues/iris:${{ steps.version.outputs.tag }}
@@ -338,9 +435,18 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile
           target: computer-use-base
-          push: true
+          push: ${{ !inputs.dry_run }}
           tags: |
             ghcr.io/lianues/iris:computer-use
             ghcr.io/lianues/iris:${{ steps.version.outputs.tag }}-computer-use
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Dry-run docker summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "DRY RUN: Docker images were built but not pushed:"
+          echo "- ghcr.io/lianues/iris:latest"
+          echo "- ghcr.io/lianues/iris:${{ steps.version.outputs.tag }}"
+          echo "- ghcr.io/lianues/iris:computer-use"
+          echo "- ghcr.io/lianues/iris:${{ steps.version.outputs.tag }}-computer-use"

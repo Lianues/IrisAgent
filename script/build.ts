@@ -227,50 +227,36 @@ async function buildBundledModule(options: {
   target?: "node" | "bun"
   format?: "esm" | "cjs"
   // 需要保持 external 的包列表（由主程序运行时提供的包），其余依赖全部打包进 bundle。
-  // 注意：Bun 1.x 的 external + outfile 存在 bug，会导致 outfile 被忽略、
-  // 文件写入丢失。因此有 external 时改用 outdir 模式，构建后将产物重命名到 outfile。
+  // 统一使用 outdir 模式，构建后将入口产物重命名到 outfile。
   external?: string[]
 }): Promise<void> {
-  const hasExternal = options.external && options.external.length > 0
-
-  if (hasExternal) {
-    // Bun 1.x bug 规避：external + outfile 会导致输出文件丢失。
-    // 改用 outdir 模式输出到 outfile 所在目录，再将产物 index.js 重命名为目标文件名。
-    const outDir = path.dirname(options.outfile)
-    const targetName = path.basename(options.outfile)
-    fs.rmSync(outDir, { recursive: true, force: true })
-    fs.mkdirSync(outDir, { recursive: true })
-
-    const result = await Bun.build({
-      entrypoints: [options.entrypoint],
-      outdir: outDir,
-      target: options.target ?? "node",
-      format: options.format ?? "esm",
-      external: options.external,
-    })
-
-    if (!result.success) {
-      const logs = formatBuildLogs(result)
-      throw new Error(logs || `构建失败: ${options.outfile}`)
-    }
-
-    // Bun outdir 模式输出的文件名是 index.js，需要重命名为目标文件名（如 index.mjs）
-    const outputJs = path.join(outDir, "index.js")
-    if (fs.existsSync(outputJs) && targetName !== "index.js") {
-      fs.renameSync(outputJs, path.join(outDir, targetName))
-    }
-    return
-  }
+  // 统一使用 outdir 模式：
+  // 1. 规避 Bun 1.x `external + outfile` 偶发不写 outfile 的问题；
+  // 2. 支持 remote-exec/ssh2 这类依赖在 bundle 时额外产出 .node 原生资产文件。
+  // 构建后再把 Bun 默认输出的 index.js 重命名为 manifest 期望的 index.mjs。
+  const outDir = path.dirname(options.outfile)
+  const targetName = path.basename(options.outfile)
+  fs.rmSync(outDir, { recursive: true, force: true })
+  fs.mkdirSync(outDir, { recursive: true })
 
   const result = await Bun.build({
     entrypoints: [options.entrypoint],
-    outfile: options.outfile,
+    outdir: outDir,
     target: options.target ?? "node",
     format: options.format ?? "esm",
+    external: options.external,
   })
   if (!result.success) {
     const logs = formatBuildLogs(result)
     throw new Error(logs || `构建失败: ${options.outfile}`)
+  }
+
+  const outputJs = path.join(outDir, "index.js")
+  if (!fs.existsSync(outputJs)) {
+    throw new Error(`构建失败: 未生成 ${formatRelativePath(outputJs)}`)
+  }
+  if (targetName !== "index.js") {
+    fs.renameSync(outputJs, path.join(outDir, targetName))
   }
 }
 
@@ -368,15 +354,18 @@ async function buildEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[
 function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targetRootDir: string): void {
   if (extensions.length === 0) return
   fs.mkdirSync(targetRootDir, { recursive: true })
+
+  // 运行时通过 extensions/embedded.json 判断发行包内置扩展。
+  // 如果这里只复制各扩展目录、不复制 embedded.json，构建后的二进制会把这些目录误判为
+  // workspace 扩展；默认 loadWorkspaceExtensions=false 时，console/web 等平台就不会被注册。
+  if (fs.existsSync(embeddedExtensionsConfigPath)) {
+    fs.copyFileSync(embeddedExtensionsConfigPath, path.join(targetRootDir, "embedded.json"))
+    console.log("  ✓ extensions/embedded.json copied")
+  }
+
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    // 复制 extension 目录，排除构建时产物：
-    // - src/：源码已编译进 dist/index.mjs
-    // - web-ui/：web-ui 构建产物已通过 webUiDistDir 单独复制到顶层
-    // - node_modules/：仅在 extension 无 external 依赖时排除；
-    //   有 external 的 extension（如 console）运行时需要从 node_modules 加载这些包
-    // dereference: true 修正 Windows 上 symlink/junction EPERM 问题
     const hasExternals = extension.external.length > 0
     fs.cpSync(extension.sourceDir, targetDir, {
       recursive: true,
@@ -388,6 +377,44 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
         return true
       },
     })
+    // 修剪目标目录中的 devDependencies，而不是源码目录。
+    // 扩展的 dist/index.mjs 已由 Bun 打包完成，非 external 的依赖全部内联；
+    // node_modules 只需保留 external 包及其传递依赖。
+    // npm prune --omit=dev 可清除 TypeScript、@types 等数百 MB 的开发依赖，
+    // 避免打爆 npm 包体积限制（128 MB）。
+    const targetNodeModules = path.join(targetDir, "node_modules")
+    if (fs.existsSync(targetNodeModules) && fs.existsSync(path.join(targetDir, "package.json"))) {
+      // 修复目标目录中 package.json 的 file: 依赖。
+      // 这些依赖已被 Bun 打包进 dist/index.mjs，运行时不需要。
+      // 但 npm prune 会尝试解析它们 —— 目标目录下的相对路径（如
+      // file:../../packages/extension-sdk）已经失效，导致 npm 误删包，
+      // Windows 上 Compress-Archive 随后因路径缺失而失败。
+      const targetPkgPath = path.join(targetDir, "package.json")
+      const targetPkg = JSON.parse(fs.readFileSync(targetPkgPath, "utf8"))
+      let pkgModified = false
+      for (const field of ["dependencies", "devDependencies", "optionalDependencies"] as const) {
+        const deps = targetPkg[field] as Record<string, string> | undefined
+        if (!deps) continue
+        for (const [name, version] of Object.entries(deps)) {
+          if (typeof version === "string" && version.startsWith("file:")) {
+            delete deps[name]
+            pkgModified = true
+          }
+        }
+        if (Object.keys(deps).length === 0) delete targetPkg[field]
+      }
+      if (pkgModified) {
+        fs.writeFileSync(targetPkgPath, JSON.stringify(targetPkg, null, 2) + "\n")
+      }
+      const pruneResult = Bun.spawnSync(
+        ["npm", "prune", "--omit=dev", "--no-audit", "--no-fund"],
+        { cwd: targetDir, stdio: ["ignore", "pipe", "pipe"] },
+      )
+      if (pruneResult.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(pruneResult.stderr).trim()
+        if (stderr) console.warn(`  ⚠ prune warning for ${extension.name}: ${stderr}`)
+      }
+    }
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
   }
 }
@@ -400,6 +427,7 @@ function copyDirectoryIfExists(sourceDir: string, targetDir: string, label: stri
 
 const embeddedExtensions = loadEmbeddedExtensionBuildTargets()
 const binaries: Record<string, string> = {}
+const failedTargets: { name: string; error: unknown }[] = []
 
 // 修补内嵌扩展 node_modules 中残缺的 irises-extension-sdk
 {
@@ -486,12 +514,32 @@ for (const target of targets) {
     console.log(`  ✓ ${dirName} built successfully`)
   } catch (err) {
     console.error(`  ✗ ${dirName} build failed:`, err)
+    failedTargets.push({ name: dirName, error: err })
   }
 }
 
 console.log("\n=== Build Summary ===")
 for (const [name, ver] of Object.entries(binaries)) {
   console.log(`  ${name}@${ver}`)
+}
+
+if (failedTargets.length > 0) {
+  console.error(`\n=== Build Failures (${failedTargets.length}) ===`)
+  for (const { name, error } of failedTargets) {
+    const msg = error instanceof Error ? (error.stack || error.message) : String(error)
+    console.error(`✗ ${name}:\n${msg}\n`)
+  }
+  // 必须以非零码退出，否则 CI 会误判为成功，
+  // 导致后续 Docker COPY / npm 上传出现"找不到文件"等连锁错误。
+  process.exit(1)
+}
+
+// 防御性兜底：即便没有抛错，但产物为空也算失败。
+// 例如 targets 数组为空、或者循环未真正执行某个分支等极端情况，
+// 避免再次出现"build 阶段全绿、上传阶段才发现没文件"的现象。
+if (Object.keys(binaries).length === 0) {
+  console.error("\n✗ 没有任何平台编译成功，dist/bin 为空。")
+  process.exit(1)
 }
 
 export { binaries }

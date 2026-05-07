@@ -16,7 +16,7 @@ declare const process: {
 };
 
 import React from 'react';
-import { createCliRenderer, type CliRenderer } from '@opentui/core';
+import { createCliRenderer, capture as opentuiCapture, type CliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import {
   PlatformAdapter,
@@ -333,8 +333,13 @@ function cleanupWindowsRendererWithoutDestroy(renderer: CliRenderer): void {
   } catch { /* ignore */ }
   try {
     if (r.captureCallback) {
-      const mod = require('@opentui/core') as any;
-      mod.capture?.removeListener?.('write', r.captureCallback);
+      // 用顶层 ESM 导入替代 require('@opentui/core')：
+      // Bun 编译时会静态跟随 src/attach.ts 中的 dynamic import 把本文件
+      // 打进 iris 主二进制；@opentui/core 含 top-level await，
+      // CJS require 同步求值会触发
+      // "This require call is not allowed because the transitive dependency
+      //  contains a top-level await" 编译错误。
+      (opentuiCapture as any)?.removeListener?.('write', r.captureCallback);
     }
   } catch { /* ignore */ }
   try { r.stdin?.removeListener?.('data', r.stdinListener); } catch { /* ignore */ }

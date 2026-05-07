@@ -80,7 +80,33 @@ RUN npx tsx script/install-extension-deps.ts --frozen-lockfile
 
 # Compile standalone binary for current platform (linux-x64)
 # build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
-RUN bun run script/build.ts --single
+# 末尾的 test 校验是关键：
+#   1) 一旦脚本静默退出 0 但没生成二进制，这一层会失败、不会被缓存，
+#      避免 GHA cache 污染导致后续 COPY 阶段报 "iris not found"。
+#   2) 同时这行内容的变化也会把任何已被污染的旧缓存层 hash 击穿。
+RUN bun run script/build.ts --single \
+ && test -x dist/bin/iris-linux-x64/bin/iris \
+ && test -x dist/bin/iris-linux-x64/bin/iris-onboard \
+ && echo "✓ iris binaries verified" \
+ && ls -lh dist/bin/iris-linux-x64/bin/
+
+# Prune devDependencies from embedded extension source directories.
+# copyEmbeddedExtensions() already prunes the dist/bin/ copy (used by npm),
+# but the source extensions/ are what get COPY'd into the Docker image.
+# This strips TypeScript, @types, etc. — keeping only runtime deps.
+RUN node -e " \
+  const fs = require('fs'); \
+  const { execSync } = require('child_process'); \
+  const config = JSON.parse(fs.readFileSync('extensions/embedded.json', 'utf8')); \
+  for (const ext of config.extensions) { \
+    const dir = 'extensions/' + ext.name; \
+    if (fs.existsSync(dir + '/node_modules') && fs.existsSync(dir + '/package.json')) { \
+      console.log('Pruning devDeps: ' + dir); \
+      try { execSync('npm prune --omit=dev --no-audit --no-fund', { cwd: dir, stdio: 'inherit' }); } \
+      catch(e) { console.warn('  prune failed for ' + dir + ': ' + e.message); } \
+    } \
+  } \
+  " && echo "✓ extension devDeps pruned"
 
 
 # ------ Stage 5: Production image (default target) ------
@@ -115,8 +141,18 @@ COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
 # Extension plugins (lark, telegram, web, weixin, etc.)
-# Use extensions from bun-compile stage which has node_modules installed via install-extension-deps
-COPY --from=bun-compile /app/extensions/ extensions/
+# Only embedded extensions (listed in extensions/embedded.json).
+# Additional extensions can be installed at runtime via: iris extension install
+COPY --from=bun-compile /app/extensions/embedded.json extensions/embedded.json
+COPY --from=bun-compile /app/extensions/multimodal/ extensions/multimodal/
+COPY --from=bun-compile /app/extensions/mcp/ extensions/mcp/
+COPY --from=bun-compile /app/extensions/cron/ extensions/cron/
+COPY --from=bun-compile /app/extensions/memory/ extensions/memory/
+COPY --from=bun-compile /app/extensions/web/ extensions/web/
+COPY --from=bun-compile /app/extensions/console/ extensions/console/
+COPY --from=bun-compile /app/extensions/remote-connect/ extensions/remote-connect/
+COPY --from=bun-compile /app/extensions/remote-exec/ extensions/remote-exec/
+COPY --from=bun-compile /app/extensions/telegram/ extensions/telegram/
 RUN mkdir -p /data && chown node:node /data
 
 ENV NODE_ENV=production \
@@ -157,7 +193,18 @@ COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 COPY deploy/docker/esm-fix.mjs /app/esm-fix.mjs
 RUN chmod +x /app/entrypoint.sh
 # Extensions with deps from bun-compile stage
-COPY --from=bun-compile /app/extensions/ extensions/
+# Only embedded extensions (listed in extensions/embedded.json).
+# Additional extensions can be installed at runtime via: iris extension install
+COPY --from=bun-compile /app/extensions/embedded.json extensions/embedded.json
+COPY --from=bun-compile /app/extensions/multimodal/ extensions/multimodal/
+COPY --from=bun-compile /app/extensions/mcp/ extensions/mcp/
+COPY --from=bun-compile /app/extensions/cron/ extensions/cron/
+COPY --from=bun-compile /app/extensions/memory/ extensions/memory/
+COPY --from=bun-compile /app/extensions/web/ extensions/web/
+COPY --from=bun-compile /app/extensions/console/ extensions/console/
+COPY --from=bun-compile /app/extensions/remote-connect/ extensions/remote-connect/
+COPY --from=bun-compile /app/extensions/remote-exec/ extensions/remote-exec/
+COPY --from=bun-compile /app/extensions/telegram/ extensions/telegram/
 # Same symlink fix as production stage
 RUN ln -s /app/data dist/data && rm -rf dist/extensions && ln -s /app/extensions dist/extensions
 

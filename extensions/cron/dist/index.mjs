@@ -1,38 +1,30 @@
-// ../../packages/extension-sdk/dist/scheduler.js
+// extensions/cron/node_modules/irises-extension-sdk/src/scheduler.ts
 var SCHEDULER_SERVICE_ID = "scheduler.tasks";
-// ../../packages/extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
+// extensions/cron/node_modules/irises-extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= LogLevel.DEBUG)
+      if (_logLevel <= 0 /* DEBUG */)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= LogLevel.INFO)
+      if (_logLevel <= 1 /* INFO */)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= LogLevel.WARN)
+      if (_logLevel <= 2 /* WARN */)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= LogLevel.ERROR)
+      if (_logLevel <= 3 /* ERROR */)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin/context.js
+// extensions/cron/node_modules/irises-extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -40,17 +32,17 @@ function createPluginLogger(pluginName, tag) {
 function definePlugin(plugin) {
   return plugin;
 }
-// ../../packages/extension-sdk/dist/runtime-paths.js
+// extensions/cron/node_modules/irises-extension-sdk/src/runtime-paths.ts
 import os from "node:os";
 import path from "node:path";
 function resolveDefaultDataDir(customDataDir) {
   return path.resolve(customDataDir || process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
 }
-// src/scheduler.ts
+// extensions/cron/src/scheduler.ts
 import * as fs from "fs";
 import * as path2 from "path";
 
-// node_modules/croner/dist/croner.js
+// extensions/cron/node_modules/croner/dist/croner.js
 function T(s) {
   return Date.UTC(s.y, s.m - 1, s.d, s.h, s.i, s.s);
 }
@@ -824,7 +816,7 @@ var E = class {
   }
 };
 
-// src/types.ts
+// extensions/cron/src/types.ts
 var DEFAULT_SCHEDULER_CONFIG = {
   enabled: true,
   quietHours: {
@@ -857,7 +849,7 @@ var DEFAULT_BACKGROUND_CONFIG = {
   retentionCount: 100
 };
 
-// src/delivery-gate.ts
+// extensions/cron/src/delivery-gate.ts
 var logger = createPluginLogger("cron", "condition");
 function parseTimeToMinutes(time) {
   const parts = time.split(":");
@@ -948,7 +940,7 @@ function shouldSkip(job, config, lastActivityMap, context, now) {
   return { skip: false };
 }
 
-// src/scheduler.ts
+// extensions/cron/src/scheduler.ts
 var logger2 = createPluginLogger("cron");
 function generateId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -1694,7 +1686,7 @@ class CronScheduler {
   }
 }
 
-// src/tool.ts
+// extensions/cron/src/tool.ts
 function parseOnceScheduleValue(value) {
   const trimmed = value.trim();
   const relativeMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days)$/i);
@@ -2040,7 +2032,7 @@ var manageScheduledTasksTool = {
   }
 };
 
-// src/config-template.ts
+// extensions/cron/src/config-template.ts
 function buildDefaultConfigTemplate() {
   const promptYaml = DEFAULT_CRON_SYSTEM_PROMPT.split(`
 `).map((line) => `    ${line}`).join(`
@@ -2125,7 +2117,7 @@ skipIfRecentActivity:
 `;
 }
 
-// src/service.ts
+// extensions/cron/src/service.ts
 function toSchedulerJob(job) {
   return {
     id: job.id,
@@ -2208,7 +2200,7 @@ function createCronSchedulerService(scheduler2, api) {
   };
 }
 
-// src/index.ts
+// extensions/cron/src/index.ts
 var logger4 = createPluginLogger("cron");
 var schedulerInstance = null;
 var schedulerServiceDisposable;

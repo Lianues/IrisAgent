@@ -7,8 +7,12 @@
   },
   "distribution": {
     "files": [
+      "dist/cpufeatures-2c04nnbs.node",
       "dist/index.mjs",
-      "package.json"
+      "dist/sshcrypto-qj2ah1zq.node",
+      "package.json",
+      "scripts/bench.mjs",
+      "scripts/probe.mjs"
     ]
   }
 }
