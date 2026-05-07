@@ -15,6 +15,8 @@ export interface ServerEntry {
   password?: string;
   /** 该服务器上的默认工作目录（覆盖 remote_exec.yaml 的 remoteWorkdir） */
   workdir?: string;
+  /** 服务器操作系统（AI 可见，用于选择正确的命令语法）。例如: linux / windows / macos */
+  os?: string;
   /** 该环境的人类可读描述（switch_environment 工具会展示给 AI） */
   description?: string;
   /** 传输策略：auto（默认）/ sftp / bash */
@@ -82,6 +84,7 @@ function parseServerEntry(alias: string, value: unknown): { entry?: ServerEntry;
       identityFile: stringField(obj.identityFile),
       password: stringField(obj.password),
       workdir: stringField(obj.workdir),
+      os: stringField(obj.os),
       description: stringField(obj.description),
       transport,
     },

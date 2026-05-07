@@ -20,6 +20,7 @@ export interface EnvSummary {
   isLocal: boolean;
   description?: string;
   hostName?: string;
+  os?: string;
   user?: string;
   workdir?: string;
 }
@@ -74,6 +75,7 @@ export class EnvironmentManager {
         name: s.host,
         isLocal: false,
         description: s.description ? `${s.description} (transport=${s.transport ?? 'auto'})` : `transport=${s.transport ?? 'auto'}`,
+        os: s.os,
         hostName: s.hostName,
         user: s.user,
         workdir: s.workdir,
