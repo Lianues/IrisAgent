@@ -21,6 +21,7 @@ export function buildSwitchEnvironmentTool(envMgr: EnvironmentManager): ToolDefi
   for (const e of envs) {
     const tags = [
       e.isLocal ? '本地' : `${e.user ?? '?'}@${e.hostName ?? '?'}`,
+      e.os ? `OS=${e.os}` : null,
       e.workdir ? `workdir=${e.workdir}` : null,
       e.description ?? null,
     ]
