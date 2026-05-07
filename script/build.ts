@@ -227,50 +227,36 @@ async function buildBundledModule(options: {
   target?: "node" | "bun"
   format?: "esm" | "cjs"
   // 需要保持 external 的包列表（由主程序运行时提供的包），其余依赖全部打包进 bundle。
-  // 注意：Bun 1.x 的 external + outfile 存在 bug，会导致 outfile 被忽略、
-  // 文件写入丢失。因此有 external 时改用 outdir 模式，构建后将产物重命名到 outfile。
+  // 统一使用 outdir 模式，构建后将入口产物重命名到 outfile。
   external?: string[]
 }): Promise<void> {
-  const hasExternal = options.external && options.external.length > 0
-
-  if (hasExternal) {
-    // Bun 1.x bug 规避：external + outfile 会导致输出文件丢失。
-    // 改用 outdir 模式输出到 outfile 所在目录，再将产物 index.js 重命名为目标文件名。
-    const outDir = path.dirname(options.outfile)
-    const targetName = path.basename(options.outfile)
-    fs.rmSync(outDir, { recursive: true, force: true })
-    fs.mkdirSync(outDir, { recursive: true })
-
-    const result = await Bun.build({
-      entrypoints: [options.entrypoint],
-      outdir: outDir,
-      target: options.target ?? "node",
-      format: options.format ?? "esm",
-      external: options.external,
-    })
-
-    if (!result.success) {
-      const logs = formatBuildLogs(result)
-      throw new Error(logs || `构建失败: ${options.outfile}`)
-    }
-
-    // Bun outdir 模式输出的文件名是 index.js，需要重命名为目标文件名（如 index.mjs）
-    const outputJs = path.join(outDir, "index.js")
-    if (fs.existsSync(outputJs) && targetName !== "index.js") {
-      fs.renameSync(outputJs, path.join(outDir, targetName))
-    }
-    return
-  }
+  // 统一使用 outdir 模式：
+  // 1. 规避 Bun 1.x `external + outfile` 偶发不写 outfile 的问题；
+  // 2. 支持 remote-exec/ssh2 这类依赖在 bundle 时额外产出 .node 原生资产文件。
+  // 构建后再把 Bun 默认输出的 index.js 重命名为 manifest 期望的 index.mjs。
+  const outDir = path.dirname(options.outfile)
+  const targetName = path.basename(options.outfile)
+  fs.rmSync(outDir, { recursive: true, force: true })
+  fs.mkdirSync(outDir, { recursive: true })
 
   const result = await Bun.build({
     entrypoints: [options.entrypoint],
-    outfile: options.outfile,
+    outdir: outDir,
     target: options.target ?? "node",
     format: options.format ?? "esm",
+    external: options.external,
   })
   if (!result.success) {
     const logs = formatBuildLogs(result)
     throw new Error(logs || `构建失败: ${options.outfile}`)
+  }
+
+  const outputJs = path.join(outDir, "index.js")
+  if (!fs.existsSync(outputJs)) {
+    throw new Error(`构建失败: 未生成 ${formatRelativePath(outputJs)}`)
+  }
+  if (targetName !== "index.js") {
+    fs.renameSync(outputJs, path.join(outDir, targetName))
   }
 }
 
@@ -368,6 +354,15 @@ async function buildEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[
 function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targetRootDir: string): void {
   if (extensions.length === 0) return
   fs.mkdirSync(targetRootDir, { recursive: true })
+
+  // 运行时通过 extensions/embedded.json 判断发行包内置扩展。
+  // 如果这里只复制各扩展目录、不复制 embedded.json，构建后的二进制会把这些目录误判为
+  // workspace 扩展；默认 loadWorkspaceExtensions=false 时，console/web 等平台就不会被注册。
+  if (fs.existsSync(embeddedExtensionsConfigPath)) {
+    fs.copyFileSync(embeddedExtensionsConfigPath, path.join(targetRootDir, "embedded.json"))
+    console.log("  ✓ extensions/embedded.json copied")
+  }
+
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })

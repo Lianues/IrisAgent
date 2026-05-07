@@ -143,6 +143,7 @@ RUN chmod +x /app/entrypoint.sh
 # Extension plugins (lark, telegram, web, weixin, etc.)
 # Only embedded extensions (listed in extensions/embedded.json).
 # Additional extensions can be installed at runtime via: iris extension install
+COPY --from=bun-compile /app/extensions/embedded.json extensions/embedded.json
 COPY --from=bun-compile /app/extensions/multimodal/ extensions/multimodal/
 COPY --from=bun-compile /app/extensions/mcp/ extensions/mcp/
 COPY --from=bun-compile /app/extensions/cron/ extensions/cron/
@@ -194,6 +195,7 @@ RUN chmod +x /app/entrypoint.sh
 # Extensions with deps from bun-compile stage
 # Only embedded extensions (listed in extensions/embedded.json).
 # Additional extensions can be installed at runtime via: iris extension install
+COPY --from=bun-compile /app/extensions/embedded.json extensions/embedded.json
 COPY --from=bun-compile /app/extensions/multimodal/ extensions/multimodal/
 COPY --from=bun-compile /app/extensions/mcp/ extensions/mcp/
 COPY --from=bun-compile /app/extensions/cron/ extensions/cron/

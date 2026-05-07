@@ -14,7 +14,7 @@ var __export = (target, all) => {
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 
-// src/utils/age.ts
+// extensions/memory/src/utils/age.ts
 function memoryAge(updatedAtSec) {
   const now = Date.now();
   const updatedMs = updatedAtSec * 1000;
@@ -54,7 +54,7 @@ function memoryFreshnessNote(updatedAtSec) {
 }
 var DAY_MS = 86400000;
 
-// src/types.ts
+// extensions/memory/src/types.ts
 function parseMemoryType(raw) {
   if (typeof raw !== "string")
     return;
@@ -65,7 +65,7 @@ var init_types = __esm(() => {
   MEMORY_TYPES = ["user", "feedback", "project", "reference"];
 });
 
-// src/utils/manifest.ts
+// extensions/memory/src/utils/manifest.ts
 function formatManifest(entries) {
   if (entries.length === 0)
     return "(no memories stored)";
@@ -86,7 +86,7 @@ function formatManifestCompact(entries) {
 `);
 }
 
-// src/prompts/session-notes.ts
+// extensions/memory/src/prompts/session-notes.ts
 function buildSessionNotesPrompt(conversationText, existingNotes) {
   const template = SESSION_NOTE_SECTIONS.map((s) => `## ${s}
 `).join(`
@@ -140,7 +140,7 @@ var init_session_notes = __esm(() => {
   ];
 });
 
-// src/session-memory.ts
+// extensions/memory/src/session-memory.ts
 var exports_session_memory = {};
 __export(exports_session_memory, {
   updateTokenTracking: () => updateTokenTracking,
@@ -221,7 +221,7 @@ var init_session_memory = __esm(() => {
   lastExtractTokens = new Map;
 });
 
-// src/prompts/consolidation.ts
+// extensions/memory/src/prompts/consolidation.ts
 function buildConsolidationPrompt(manifestText, memoryDetails) {
   return `You are the memory consolidation agent. Your job is to review all existing memories and improve their organization.
 
@@ -266,7 +266,7 @@ For each issue found:
 Now analyze and consolidate. If everything looks good and no changes are needed, respond with "No consolidation needed." without calling any tools.`;
 }
 
-// src/consolidation.ts
+// extensions/memory/src/consolidation.ts
 var exports_consolidation = {};
 __export(exports_consolidation, {
   maybeRunConsolidation: () => maybeRunConsolidation,
@@ -451,7 +451,7 @@ var init_consolidation = __esm(() => {
   init_types();
 });
 
-// src/prompts/extract.ts
+// extensions/memory/src/prompts/extract.ts
 function buildExtractionPrompt(recentMessages, existingManifest, messageCount) {
   return `You are the memory extraction agent. Analyze the conversation below and extract durable information worth remembering across future conversations.
 
@@ -491,7 +491,7 @@ ${recentMessages}
 Now extract any durable memories from this conversation. If nothing is worth saving, respond with "No new memories to extract." and do not call any tools.`;
 }
 
-// src/extract.ts
+// extensions/memory/src/extract.ts
 var exports_extract = {};
 __export(exports_extract, {
   runMemoryExtraction: () => runMemoryExtraction
@@ -618,41 +618,34 @@ var init_extract = __esm(() => {
   init_types();
 });
 
-// src/index.ts
+// extensions/memory/src/index.ts
 import * as path3 from "path";
-// ../../packages/extension-sdk/dist/logger.js
-var LogLevel;
-(function(LogLevel2) {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  LogLevel2[LogLevel2["SILENT"] = 4] = "SILENT";
-})(LogLevel || (LogLevel = {}));
-var _logLevel = LogLevel.INFO;
+
+// extensions/memory/node_modules/irises-extension-sdk/src/logger.ts
+var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
   return {
     debug: (...args) => {
-      if (_logLevel <= LogLevel.DEBUG)
+      if (_logLevel <= 0 /* DEBUG */)
         console.debug(`[${scope}]`, ...args);
     },
     info: (...args) => {
-      if (_logLevel <= LogLevel.INFO)
+      if (_logLevel <= 1 /* INFO */)
         console.log(`[${scope}]`, ...args);
     },
     warn: (...args) => {
-      if (_logLevel <= LogLevel.WARN)
+      if (_logLevel <= 2 /* WARN */)
         console.warn(`[${scope}]`, ...args);
     },
     error: (...args) => {
-      if (_logLevel <= LogLevel.ERROR)
+      if (_logLevel <= 3 /* ERROR */)
         console.error(`[${scope}]`, ...args);
     }
   };
 }
 
-// ../../packages/extension-sdk/dist/plugin/context.js
+// extensions/memory/node_modules/irises-extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -660,11 +653,11 @@ function createPluginLogger(pluginName, tag) {
 function definePlugin(plugin) {
   return plugin;
 }
-// src/sqlite/index.ts
+// extensions/memory/src/sqlite/index.ts
 import * as fs from "fs";
 import * as path from "path";
 
-// src/base.ts
+// extensions/memory/src/base.ts
 class MemoryProvider {
   async buildManifest(limit = 200) {
     const entries = await this.list(undefined, limit);
@@ -699,7 +692,7 @@ ${lines}`;
   }
 }
 
-// src/sqlite/index.ts
+// extensions/memory/src/sqlite/index.ts
 init_types();
 var CURRENT_VERSION = 2;
 function createEmptyStore() {
@@ -900,7 +893,7 @@ function mapCategoryToType(category) {
   }
 }
 
-// src/tools.ts
+// extensions/memory/src/tools.ts
 init_types();
 var MEMORY_TOOL_NAMES = new Set([
   "memory_search",
@@ -1039,7 +1032,7 @@ function createMemoryTools(provider) {
   return [memorySearch, memoryAdd, memoryUpdate, memoryDelete];
 }
 
-// src/config-template.ts
+// extensions/memory/src/config-template.ts
 var DEFAULT_CONFIG_TEMPLATE = `# 记忆插件配置
 #
 # 启用后，LLM 可通过 memory_search / memory_add / memory_update / memory_delete 工具
@@ -1096,7 +1089,7 @@ spaces:
       minSessions: 3
 `;
 
-// src/config.ts
+// extensions/memory/src/config.ts
 var DEFAULT_CONSOLIDATION_CONFIG = {
   enabled: true,
   minHours: 24,
@@ -1190,7 +1183,7 @@ function toOptionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-// src/prompts/system-rules.ts
+// extensions/memory/src/prompts/system-rules.ts
 function buildMemorySystemRules(memoryCount) {
   return `
 # Long-term Memory
@@ -1291,7 +1284,7 @@ Before adding, use memory_search to check for existing related memories. Use mem
 `.trim();
 }
 
-// src/retrieval.ts
+// extensions/memory/src/retrieval.ts
 var USER_BUDGET_RATIO = 0.25;
 var DEFAULT_SMALL_SET_THRESHOLD = 15;
 async function findAndFormatRelevantMemories(ctx) {
@@ -1461,10 +1454,10 @@ function formatRelevantMemories(memories, maxBytes) {
   return { text, bytes: totalBytes, ids };
 }
 
-// src/index.ts
+// extensions/memory/src/index.ts
 init_session_memory();
 
-// src/service.ts
+// extensions/memory/src/service.ts
 import * as path2 from "path";
 init_consolidation();
 init_extract();
@@ -1671,7 +1664,7 @@ function sanitizeSpaceId(id) {
   return normalized;
 }
 
-// src/index.ts
+// extensions/memory/src/index.ts
 var logger = createPluginLogger("memory");
 var agentStateMap = new Map;
 function getSessionState(state, sessionId) {
