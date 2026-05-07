@@ -142,6 +142,7 @@ jobs:
             iris-*.tar.gz
             iris-*.zip
           retention-days: 30
+          if-no-files-found: error
 
       - name: Upload npm package artifact
         uses: actions/upload-artifact@v5
@@ -149,6 +150,7 @@ jobs:
           name: npm-iris-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/bin/iris-${{ matrix.platform }}-${{ matrix.arch }}/
           retention-days: 30
+          if-no-files-found: error
 
   # ── 发布 GitHub Release ──────────────────
   release:

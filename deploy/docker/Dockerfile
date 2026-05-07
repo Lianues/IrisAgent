@@ -80,7 +80,15 @@ RUN npx tsx script/install-extension-deps.ts --frozen-lockfile
 
 # Compile standalone binary for current platform (linux-x64)
 # build.ts internally runs: bun install --os="*" --cpu="*" @opentui/core
-RUN bun run script/build.ts --single
+# 末尾的 test 校验是关键：
+#   1) 一旦脚本静默退出 0 但没生成二进制，这一层会失败、不会被缓存，
+#      避免 GHA cache 污染导致后续 COPY 阶段报 "iris not found"。
+#   2) 同时这行内容的变化也会把任何已被污染的旧缓存层 hash 击穿。
+RUN bun run script/build.ts --single \
+ && test -x dist/bin/iris-linux-x64/bin/iris \
+ && test -x dist/bin/iris-linux-x64/bin/iris-onboard \
+ && echo "✓ iris binaries verified" \
+ && ls -lh dist/bin/iris-linux-x64/bin/
 
 
 # ------ Stage 5: Production image (default target) ------

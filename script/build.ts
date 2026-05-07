@@ -400,6 +400,7 @@ function copyDirectoryIfExists(sourceDir: string, targetDir: string, label: stri
 
 const embeddedExtensions = loadEmbeddedExtensionBuildTargets()
 const binaries: Record<string, string> = {}
+const failedTargets: { name: string; error: unknown }[] = []
 
 // 修补内嵌扩展 node_modules 中残缺的 irises-extension-sdk
 {
@@ -486,12 +487,32 @@ for (const target of targets) {
     console.log(`  ✓ ${dirName} built successfully`)
   } catch (err) {
     console.error(`  ✗ ${dirName} build failed:`, err)
+    failedTargets.push({ name: dirName, error: err })
   }
 }
 
 console.log("\n=== Build Summary ===")
 for (const [name, ver] of Object.entries(binaries)) {
   console.log(`  ${name}@${ver}`)
+}
+
+if (failedTargets.length > 0) {
+  console.error(`\n=== Build Failures (${failedTargets.length}) ===`)
+  for (const { name, error } of failedTargets) {
+    const msg = error instanceof Error ? (error.stack || error.message) : String(error)
+    console.error(`✗ ${name}:\n${msg}\n`)
+  }
+  // 必须以非零码退出，否则 CI 会误判为成功，
+  // 导致后续 Docker COPY / npm 上传出现"找不到文件"等连锁错误。
+  process.exit(1)
+}
+
+// 防御性兜底：即便没有抛错，但产物为空也算失败。
+// 例如 targets 数组为空、或者循环未真正执行某个分支等极端情况，
+// 避免再次出现"build 阶段全绿、上传阶段才发现没文件"的现象。
+if (Object.keys(binaries).length === 0) {
+  console.error("\n✗ 没有任何平台编译成功，dist/bin 为空。")
+  process.exit(1)
 }
 
 export { binaries }
