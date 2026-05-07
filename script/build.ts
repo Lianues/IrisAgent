@@ -389,6 +389,28 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
     // 避免打爆 npm 包体积限制（128 MB）。
     const targetNodeModules = path.join(targetDir, "node_modules")
     if (fs.existsSync(targetNodeModules) && fs.existsSync(path.join(targetDir, "package.json"))) {
+      // 修复目标目录中 package.json 的 file: 依赖。
+      // 这些依赖已被 Bun 打包进 dist/index.mjs，运行时不需要。
+      // 但 npm prune 会尝试解析它们 —— 目标目录下的相对路径（如
+      // file:../../packages/extension-sdk）已经失效，导致 npm 误删包，
+      // Windows 上 Compress-Archive 随后因路径缺失而失败。
+      const targetPkgPath = path.join(targetDir, "package.json")
+      const targetPkg = JSON.parse(fs.readFileSync(targetPkgPath, "utf8"))
+      let pkgModified = false
+      for (const field of ["dependencies", "devDependencies", "optionalDependencies"] as const) {
+        const deps = targetPkg[field] as Record<string, string> | undefined
+        if (!deps) continue
+        for (const [name, version] of Object.entries(deps)) {
+          if (typeof version === "string" && version.startsWith("file:")) {
+            delete deps[name]
+            pkgModified = true
+          }
+        }
+        if (Object.keys(deps).length === 0) delete targetPkg[field]
+      }
+      if (pkgModified) {
+        fs.writeFileSync(targetPkgPath, JSON.stringify(targetPkg, null, 2) + "\n")
+      }
       const pruneResult = Bun.spawnSync(
         ["npm", "prune", "--omit=dev", "--no-audit", "--no-fund"],
         { cwd: targetDir, stdio: ["ignore", "pipe", "pipe"] },
