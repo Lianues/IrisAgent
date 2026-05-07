@@ -371,12 +371,6 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
   for (const extension of extensions) {
     const targetDir = path.join(targetRootDir, extension.name)
     fs.rmSync(targetDir, { recursive: true, force: true })
-    // 复制 extension 目录，排除构建时产物：
-    // - src/：源码已编译进 dist/index.mjs
-    // - web-ui/：web-ui 构建产物已通过 webUiDistDir 单独复制到顶层
-    // - node_modules/：仅在 extension 无 external 依赖时排除；
-    //   有 external 的 extension（如 console）运行时需要从 node_modules 加载这些包
-    // dereference: true 修正 Windows 上 symlink/junction EPERM 问题
     const hasExternals = extension.external.length > 0
     fs.cpSync(extension.sourceDir, targetDir, {
       recursive: true,
@@ -388,6 +382,22 @@ function copyEmbeddedExtensions(extensions: EmbeddedExtensionBuildTarget[], targ
         return true
       },
     })
+    // 修剪目标目录中的 devDependencies，而不是源码目录。
+    // 扩展的 dist/index.mjs 已由 Bun 打包完成，非 external 的依赖全部内联；
+    // node_modules 只需保留 external 包及其传递依赖。
+    // npm prune --omit=dev 可清除 TypeScript、@types 等数百 MB 的开发依赖，
+    // 避免打爆 npm 包体积限制（128 MB）。
+    const targetNodeModules = path.join(targetDir, "node_modules")
+    if (fs.existsSync(targetNodeModules) && fs.existsSync(path.join(targetDir, "package.json"))) {
+      const pruneResult = Bun.spawnSync(
+        ["npm", "prune", "--omit=dev", "--no-audit", "--no-fund"],
+        { cwd: targetDir, stdio: ["ignore", "pipe", "pipe"] },
+      )
+      if (pruneResult.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(pruneResult.stderr).trim()
+        if (stderr) console.warn(`  ⚠ prune warning for ${extension.name}: ${stderr}`)
+      }
+    }
     console.log(`  ✓ extension copied: extensions/${extension.name}`)
   }
 }
