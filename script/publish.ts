@@ -14,6 +14,7 @@
  * 用法：
  *   bun run script/publish.ts
  *   bun run script/publish.ts --tag preview
+ *   bun run script/publish.ts --dry-run
  */
 
 import { $ } from "bun"
@@ -31,6 +32,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"))
 // 解析 --tag 参数
 const tagIndex = process.argv.indexOf("--tag")
 const tag = tagIndex >= 0 && process.argv[tagIndex + 1] ? process.argv[tagIndex + 1] : "latest"
+const dryRun = process.argv.includes("--dry-run")
 const wrapperName = "irises"
 
 // 收集已构建的平台二进制（目录名为 iris-*，但 package.json 中的 npm 包名为 irises-*）
@@ -53,6 +55,9 @@ if (Object.keys(binaries).length === 0) {
 }
 
 console.log("待发布的平台包:", binaries)
+if (dryRun) {
+  console.log("\n⚠ npm dry-run 模式：将执行 npm publish --dry-run，不会真正上传/发布任何包。")
+}
 
 const version = Object.values(binaries)[0]
 
@@ -82,6 +87,24 @@ async function npmPackageVersionExists(name: string, packageVersion: string): Pr
     for (const item of existing) console.error(`- ${item}`)
     console.error("请提升 package.json 版本号并重新构建产物（不要复用旧 build_run_id）。")
     process.exit(1)
+  }
+}
+
+function runNpmPublish(pkgDir: string): void {
+  const args = [
+    "publish",
+    ...(dryRun ? ["--dry-run"] : []),
+    "--access",
+    "public",
+    "--tag",
+    tag,
+  ]
+  const result = Bun.spawnSync(["npm", ...args], {
+    cwd: pkgDir,
+    stdio: ["inherit", "inherit", "inherit"],
+  })
+  if (result.exitCode !== 0) {
+    throw new Error(`npm ${args.join(" ")} failed in ${pkgDir} (exit=${result.exitCode})`)
   }
 }
 
@@ -144,17 +167,17 @@ for (const entry of fs.readdirSync(distBinDir, { withFileTypes: true })) {
       if (process.platform !== "win32") {
         await $`chmod -R 755 .`.cwd(pkgDir)
       }
-      console.log(`\n发布 ${p.name}@${p.version}...`)
-      await $`npm publish --access public --tag ${tag}`.cwd(pkgDir)
-      console.log(`  ✓ ${p.name} 发布成功`)
+      console.log(`\n${dryRun ? "预发布检查" : "发布"} ${p.name}@${p.version}...`)
+      runNpmPublish(pkgDir)
+      console.log(`  ✓ ${p.name} ${dryRun ? "预发布检查通过" : "发布成功"}`)
     })(),
   )
 }
 await Promise.all(publishTasks)
 
 // 发布包装器
-console.log(`\n发布 ${wrapperName}@${version}...`)
-await $`npm publish --access public --tag ${tag}`.cwd(wrapperDir)
-console.log(`  ✓ ${wrapperName} 发布成功`)
+console.log(`\n${dryRun ? "预发布检查" : "发布"} ${wrapperName}@${version}...`)
+runNpmPublish(wrapperDir)
+console.log(`  ✓ ${wrapperName} ${dryRun ? "预发布检查通过" : "发布成功"}`)
 
-console.log("\n=== 全部发布完成 ===")
+console.log(dryRun ? "\n=== npm 预发布检查完成（未上传） ===" : "\n=== 全部发布完成 ===")
