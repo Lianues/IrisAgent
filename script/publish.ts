@@ -56,6 +56,35 @@ console.log("待发布的平台包:", binaries)
 
 const version = Object.values(binaries)[0]
 
+async function npmPackageVersionExists(name: string, packageVersion: string): Promise<boolean> {
+  const result = Bun.spawnSync(
+    ["npm", "view", `${name}@${packageVersion}`, "version", "--json"],
+    { stdout: "pipe", stderr: "pipe" },
+  )
+  return result.exitCode === 0
+}
+
+// npm 不允许覆盖已发布过的 package@version。
+// 先做完整 preflight，避免并发发布时出现部分平台包已发布、部分未发布的半失败状态。
+{
+  const existing: string[] = []
+  for (const [name, packageVersion] of Object.entries(binaries)) {
+    if (await npmPackageVersionExists(name, packageVersion)) {
+      existing.push(`${name}@${packageVersion}`)
+    }
+  }
+  if (await npmPackageVersionExists(wrapperName, version)) {
+    existing.push(`${wrapperName}@${version}`)
+  }
+
+  if (existing.length > 0) {
+    console.error("以下 npm 版本已存在，npm 不允许覆盖发布：")
+    for (const item of existing) console.error(`- ${item}`)
+    console.error("请提升 package.json 版本号并重新构建产物（不要复用旧 build_run_id）。")
+    process.exit(1)
+  }
+}
+
 // 生成 npm 包装器
 const wrapperDir = path.join(distBinDir, wrapperName)
 fs.mkdirSync(path.join(wrapperDir, "bin"), { recursive: true })
