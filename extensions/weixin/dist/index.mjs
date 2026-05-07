@@ -34,7 +34,7 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // node_modules/silk-wasm/lib/index.cjs
 var require_lib = __commonJS((exports, module) => {
-  var __filename = "C:\\Users\\Moeblack\\Repos\\Iris\\extensions\\weixin\\node_modules\\silk-wasm\\lib\\index.cjs";
+  var __filename = "F:\\111\\Iris\\extensions\\weixin\\node_modules\\silk-wasm\\lib\\index.cjs";
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames2 = Object.getOwnPropertyNames;
@@ -931,8 +931,8 @@ class BackendHandle {
     };
     return this.on(event, wrapper);
   }
-  chat(sessionId, text, images, documents, platform) {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+  chat(sessionId, text, images, documents, platform, audio, video) {
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
   isStreamEnabled() {
     return this._backend.isStreamEnabled();

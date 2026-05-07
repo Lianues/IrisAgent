@@ -18806,8 +18806,8 @@ class BackendHandle {
     };
     return this.on(event, wrapper);
   }
-  chat(sessionId, text, images, documents, platform) {
-    return this._backend.chat(sessionId, text, images, documents, platform);
+  chat(sessionId, text, images, documents, platform, audio, video) {
+    return this._backend.chat(sessionId, text, images, documents, platform, audio, video);
   }
   isStreamEnabled() {
     return this._backend.isStreamEnabled();

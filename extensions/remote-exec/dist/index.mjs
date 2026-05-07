@@ -7603,6 +7603,7 @@ class EnvironmentManager {
         name: s.host,
         isLocal: false,
         description: s.description ? `${s.description} (transport=${s.transport ?? "auto"})` : `transport=${s.transport ?? "auto"}`,
+        os: s.os,
         hostName: s.hostName,
         user: s.user,
         workdir: s.workdir
@@ -7624,6 +7625,7 @@ function buildSwitchEnvironmentTool(envMgr) {
   for (const e of envs) {
     const tags = [
       e.isLocal ? "本地" : `${e.user ?? "?"}@${e.hostName ?? "?"}`,
+      e.os ? `OS=${e.os}` : null,
       e.workdir ? `workdir=${e.workdir}` : null,
       e.description ?? null
     ].filter(Boolean).join(" · ");
