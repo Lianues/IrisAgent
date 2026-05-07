@@ -3161,6 +3161,10 @@ var src_default = definePlugin({
       logger.info("已安装 virtual_lover.yaml 默认配置模板");
     }
     const initialConfig = parseVirtualLoverConfig(ctx.readConfigSection("virtual_lover"));
+    if (!initialConfig.enabled) {
+      logger.info("virtual_lover.enabled=false，跳过激活（不注册任何 hook / tool / route）");
+      return;
+    }
     const dataDir = ctx.getDataDir();
     const extensionRootDir = ctx.getExtensionRootDir();
     ensureVirtualLoverData(dataDir, extensionRootDir, initialConfig.agent.defaultAgentId);

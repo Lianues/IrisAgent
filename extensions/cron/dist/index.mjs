@@ -1,6 +1,6 @@
-// extensions/cron/node_modules/irises-extension-sdk/src/scheduler.ts
+// node_modules/irises-extension-sdk/src/scheduler.ts
 var SCHEDULER_SERVICE_ID = "scheduler.tasks";
-// extensions/cron/node_modules/irises-extension-sdk/src/logger.ts
+// node_modules/irises-extension-sdk/src/logger.ts
 var _logLevel = 1 /* INFO */;
 function createExtensionLogger(extensionName, tag) {
   const scope = tag ? `${extensionName}:${tag}` : extensionName;
@@ -24,7 +24,7 @@ function createExtensionLogger(extensionName, tag) {
   };
 }
 
-// extensions/cron/node_modules/irises-extension-sdk/src/plugin/context.ts
+// node_modules/irises-extension-sdk/src/plugin/context.ts
 function createPluginLogger(pluginName, tag) {
   const scope = tag ? `Plugin:${pluginName}:${tag}` : `Plugin:${pluginName}`;
   return createExtensionLogger(scope);
@@ -32,17 +32,17 @@ function createPluginLogger(pluginName, tag) {
 function definePlugin(plugin) {
   return plugin;
 }
-// extensions/cron/node_modules/irises-extension-sdk/src/runtime-paths.ts
+// node_modules/irises-extension-sdk/src/runtime-paths.ts
 import os from "node:os";
 import path from "node:path";
 function resolveDefaultDataDir(customDataDir) {
   return path.resolve(customDataDir || process.env.IRIS_DATA_DIR || path.join(os.homedir(), ".iris"));
 }
-// extensions/cron/src/scheduler.ts
+// src/scheduler.ts
 import * as fs from "fs";
 import * as path2 from "path";
 
-// extensions/cron/node_modules/croner/dist/croner.js
+// node_modules/croner/dist/croner.js
 function T(s) {
   return Date.UTC(s.y, s.m - 1, s.d, s.h, s.i, s.s);
 }
@@ -816,7 +816,7 @@ var E = class {
   }
 };
 
-// extensions/cron/src/types.ts
+// src/types.ts
 var DEFAULT_SCHEDULER_CONFIG = {
   enabled: true,
   quietHours: {
@@ -849,7 +849,7 @@ var DEFAULT_BACKGROUND_CONFIG = {
   retentionCount: 100
 };
 
-// extensions/cron/src/delivery-gate.ts
+// src/delivery-gate.ts
 var logger = createPluginLogger("cron", "condition");
 function parseTimeToMinutes(time) {
   const parts = time.split(":");
@@ -940,7 +940,7 @@ function shouldSkip(job, config, lastActivityMap, context, now) {
   return { skip: false };
 }
 
-// extensions/cron/src/scheduler.ts
+// src/scheduler.ts
 var logger2 = createPluginLogger("cron");
 function generateId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -1686,7 +1686,7 @@ class CronScheduler {
   }
 }
 
-// extensions/cron/src/tool.ts
+// src/tool.ts
 function parseOnceScheduleValue(value) {
   const trimmed = value.trim();
   const relativeMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days)$/i);
@@ -2032,7 +2032,7 @@ var manageScheduledTasksTool = {
   }
 };
 
-// extensions/cron/src/config-template.ts
+// src/config-template.ts
 function buildDefaultConfigTemplate() {
   const promptYaml = DEFAULT_CRON_SYSTEM_PROMPT.split(`
 `).map((line) => `    ${line}`).join(`
@@ -2117,7 +2117,7 @@ skipIfRecentActivity:
 `;
 }
 
-// extensions/cron/src/service.ts
+// src/service.ts
 function toSchedulerJob(job) {
   return {
     id: job.id,
@@ -2200,7 +2200,7 @@ function createCronSchedulerService(scheduler2, api) {
   };
 }
 
-// extensions/cron/src/index.ts
+// src/index.ts
 var logger4 = createPluginLogger("cron");
 var schedulerInstance = null;
 var schedulerServiceDisposable;
