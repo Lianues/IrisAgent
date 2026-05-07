@@ -101,6 +101,8 @@ export const Methods = {
   // ---- 服务端全局信息（attach 模式使用）----
   GET_CONFIG: 'server.getConfig',
   GET_CONFIG_DIR: 'server.getConfigDir',
+  /** 请求当前 Iris 进程优雅关闭（iris stop 使用） */
+  SERVER_SHUTDOWN: 'server.shutdown',
 
   // ---- 工具 Handle 操作 ----
   HANDLE_APPROVE: 'handle.approve',

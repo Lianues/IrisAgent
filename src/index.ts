@@ -27,6 +27,7 @@ import {
 } from 'irises-extension-sdk';
 import type { MultiAgentCapable, ForegroundPlatform } from 'irises-extension-sdk';
 import { isCompiledBinary } from './paths';
+import { hostEvents } from './core/host-events';
 
 // ============ 平台创建 ============
 
@@ -309,9 +310,11 @@ async function waitForHeadlessConsoleCommand(
 
     let settled = false;
     let onSigTerm: () => void;
+    let onSigInt: () => void;
     const finish = (command: HeadlessConsoleCommand) => {
       if (settled) return;
       settled = true;
+      process.off('SIGINT', onSigInt);
       process.off('SIGTERM', onSigTerm);
       try { process.stdin.unpipe(inputFilter); } catch { /* ignore */ }
       inputFilter.destroy();
@@ -319,7 +322,9 @@ async function waitForHeadlessConsoleCommand(
       resolve(command);
     };
 
+    onSigInt = () => finish('shutdown');
     onSigTerm = () => finish('shutdown');
+    process.on('SIGINT', onSigInt);
     process.on('SIGTERM', onSigTerm);
 
     rl.on('SIGINT', () => finish('shutdown'));
@@ -411,6 +416,15 @@ async function main() {
     return shutdownPromise;
   };
 
+  const requestShutdownAndExit = () => {
+    void shutdown().finally(() => process.exit(0));
+  };
+  hostEvents.on('shutdown-requested', requestShutdownAndExit);
+
+  const foregroundSigIntGuard = () => {
+    // Console TUI 内部处理 Ctrl+C。此 guard 只防止默认 SIGINT 直接杀进程。
+  };
+
   // 4. 如果配置了平台但没有任何平台创建成功，仍视为配置错误；
   //    只有 platform.types 为空时才进入显式 Core-only / Headless 模式。
   if (allPlatforms.length === 0) {
@@ -444,9 +458,9 @@ async function main() {
   // 6. 前台平台处理
   if (foregroundPlatform) {
     // 前台平台（Console TUI）自己处理 Ctrl+C（exitOnCtrlC: false + useKeyboard）
-    // SIGINT 必须被吞掉，否则 Windows 下 Ctrl+C 同时触发 TUI 退出 + 进程信号退出，终端崩溃
-    process.on('SIGINT', () => { /* Console TUI 内部处理，此处忽略 */ });
-    process.on('SIGTERM', () => void shutdown());
+    // SIGINT 必须在 TUI 活跃时吞掉，否则 Windows 下 Ctrl+C 同时触发 TUI 退出 + 进程信号退出，终端崩溃
+    process.on('SIGINT', foregroundSigIntGuard);
+    process.on('SIGTERM', requestShutdownAndExit);
 
     for (;;) {
       stoppedPlatforms.delete(foregroundPlatform);
@@ -456,6 +470,9 @@ async function main() {
 
       // ConsolePlatform 在 resolve waitForExit 前已经 stop()；避免 shutdown 时重复 stop。
       stoppedPlatforms.add(foregroundPlatform);
+
+      // TUI 已停用；如果切到 headless，Ctrl+C 应该重新变成“关闭 Core”。
+      process.off('SIGINT', foregroundSigIntGuard);
 
       if (action === 'headless') {
         const consoleAlreadyPrintedHeadlessNotice = process.platform === 'win32';
@@ -477,6 +494,7 @@ async function main() {
         const command = await waitForHeadlessConsoleCommand(true);
         if (command === 'tui') {
           console.log('[Iris] 正在重新打开 Console TUI...');
+          process.on('SIGINT', foregroundSigIntGuard);
           continue;
         }
 
@@ -489,8 +507,8 @@ async function main() {
     }
   } else {
     // 无前台平台（纯后台服务模式）：信号直接触发关闭
-    process.on('SIGINT', () => void shutdown());
-    process.on('SIGTERM', () => void shutdown());
+    process.on('SIGINT', requestShutdownAndExit);
+    process.on('SIGTERM', requestShutdownAndExit);
   }
 }
 

@@ -9,6 +9,7 @@
  *   iris chat <prompt>                 → CLI 提示词模式
  *   iris onboard                       → 交互式配置引导
  *   iris daemon                        → 仅启动 Core / IPC 后台服务（不启动 TUI / GUI）
+ *   iris stop                          → 关闭已运行的 Iris 实例
  *   iris start --headless              → 等价于 iris daemon
  *   iris platforms                     → 平台配置界面
  *   iris models                        → 模型配置界面
@@ -43,6 +44,7 @@ Iris - AI Agent
   iris start              启动平台服务（Web / Telegram 等）
   iris attach             连接已运行的 Iris 实例（跨进程 / 跨设备）
   iris daemon             仅启动 Core / IPC 后台服务（无 TUI / GUI）
+  iris stop               关闭已运行的 Iris 实例
   iris start --headless   以 Core-only 后台模式启动
   iris chat <prompt>      执行 AI 提示词（CLI 模式）
   iris onboard            交互式配置引导
@@ -103,6 +105,10 @@ if (command && TERMINAL_COMMANDS.has(command)) {
   // 跨进程 / 跨设备连接已运行的 Iris 实例
   const { runAttach } = await import('./attach');
   await runAttach(args.slice(1));
+} else if (command === 'stop' || command === 'shutdown') {
+  // 关闭已运行的 Iris 实例
+  const { runStop } = await import('./stop');
+  await runStop(args.slice(1));
 } else if (command === 'daemon' || command === 'headless' || command === 'core') {
   // 仅启动 Core / IPC，不创建任何平台
   process.argv.splice(2, 1);

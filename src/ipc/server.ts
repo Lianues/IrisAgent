@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createLogger } from '../logger';
 import { encodeFrame, FrameDecoder } from './framing';
+import { hostEvents } from '../core/host-events';
 import {
   type IPCRequest, type IPCResponse, type IPCNotification, type IPCMessage,
   type LockFileContent, type SerializedToolHandle, type HandshakeResult,
@@ -22,6 +23,7 @@ import {
 } from './protocol';
 
 const logger = createLogger('IPCServer');
+const SERVER_SHUTDOWN_METHOD = 'server.shutdown';
 
 // ============ 客户端连接 ============
 
@@ -207,15 +209,34 @@ export class IPCServer extends EventEmitter {
     this.eventListeners = [];
     this.forwardedBackends.clear();
 
+    // 先清理 lock：即使后续 server.close 因运行时/平台问题卡住，也不留下“实例仍在运行”的假锁。
+    this.removeLockFile();
+
     // 关闭服务器
     if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server!.close(() => resolve());
-      });
+      const server = this.server;
       this.server = null;
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          logger.warn('IPC 服务关闭超时，继续执行 shutdown');
+          finish();
+        }, 2_000);
+        try {
+          server.close(() => finish());
+        } catch {
+          finish();
+        }
+      });
     }
 
-    // 清理 lock 文件
+    // 兜底再清一次 lock 文件
     this.removeLockFile();
     this.activeHandles.clear();
 
@@ -510,6 +531,15 @@ export class IPCServer extends EventEmitter {
           // 从 api 中获取 configDir
           const configDir = this.api?.configDir ?? this.dataDir ?? '';
           result = configDir;
+          break;
+        }
+        case SERVER_SHUTDOWN_METHOD: {
+          result = { accepted: true, pid: process.pid, agentName: this.agentName };
+          // 先让 JSON-RPC 响应发回客户端，再由 index.ts 统一停止平台和 Host。
+          // 不能在这里直接 await stop()，否则当前连接可能在响应 flush 前被关闭。
+          setTimeout(() => {
+            hostEvents.emit('shutdown-requested', { agentName: this.agentName, pid: process.pid });
+          }, 25);
           break;
         }
 

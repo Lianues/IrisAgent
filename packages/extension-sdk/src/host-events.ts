@@ -19,7 +19,7 @@ export interface AgentStoppingEvent {
   agentName: string;
 }
 
-export type HostEventName = 'ipc-ready' | 'agent-stopping' | 'host-shutdown';
+export type HostEventName = 'ipc-ready' | 'agent-stopping' | 'host-shutdown' | 'shutdown-requested';
 
 const HOST_EVENTS_SYMBOL = Symbol.for('irises.hostEvents');
 

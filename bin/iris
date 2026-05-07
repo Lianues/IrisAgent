@@ -25,61 +25,63 @@ const scriptDir = path.dirname(scriptPath)
 // 解决 PRoot/容器/L2S 等环境下 process.execPath 被虚拟化的问题
 const wrapperRoot = path.resolve(scriptDir, "..")
 
+const SIGNAL_EXIT_CODES = {
+  SIGHUP: 129,
+  SIGINT: 130,
+  SIGTERM: 143,
+}
+
 function run(target) {
-  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+  // 不使用 spawnSync：Windows/PowerShell 下 Ctrl+C 可能先中断 Node 包装器，
+  // 但子进程 Iris 为了保护 TUI 会吞掉 SIGINT，导致子进程孤儿化并留下 lock。
+  // 使用异步 spawn 后，包装器会转发信号并等待真正的 Iris 进程退出。
+  const child = childProcess.spawn(target, process.argv.slice(2), {
     stdio: "inherit",
     env: Object.assign({}, process.env, { __IRIS_PKG_DIR: wrapperRoot }),
+    windowsHide: false,
   })
-  if (result.error) {
-    console.error(result.error.message)
-    process.exit(1)
+
+  let childExited = false
+  const cleanupHandlers = []
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    const handler = () => {
+      if (childExited) return
+      try {
+        child.kill(signal)
+      } catch {
+        // ignore — 子进程可能已经退出
+      }
+    }
+    process.on(signal, handler)
+    cleanupHandlers.push(() => process.off(signal, handler))
   }
-  const code = typeof result.status === "number" ? result.status : 0
-  process.exit(code)
+
+  const cleanup = () => {
+    childExited = true
+    for (const cleanupHandler of cleanupHandlers) cleanupHandler()
+  }
+
+  child.on("error", (err) => {
+    cleanup()
+    console.error(err.message)
+    process.exit(1)
+  })
+
+  child.on("exit", (code, signal) => {
+    cleanup()
+    if (typeof code === "number") {
+      process.exit(code)
+    }
+    process.exit(SIGNAL_EXIT_CODES[signal] || 1)
+  })
 }
 
-// 1. 环境变量覆盖
-const envPath = process.env.IRIS_BIN_PATH
-if (envPath) {
-  run(envPath)
-}
-
-// 2. postinstall 缓存
-const cached = path.join(scriptDir, ".iris")
-if (fs.existsSync(cached)) {
-  run(cached)
-}
-
-// 3. 平台检测
-const platformMap = {
-  darwin: "darwin",
-  linux: "linux",
-  win32: "windows",
-}
-const archMap = {
-  x64: "x64",
-  arm64: "arm64",
-  arm: "arm",
-}
-
-let platform = platformMap[os.platform()]
-if (!platform) {
-  platform = os.platform()
-}
-let arch = archMap[os.arch()]
-if (!arch) {
-  arch = os.arch()
-}
-const base = "irises-" + platform + "-" + arch
-const binary = platform === "windows" ? "iris.exe" : "iris"
-
-// 4. 搜索 node_modules
-function findBinary(startDir) {
+function findBinary(startDir, packageName, binaryName) {
   let current = startDir
   for (;;) {
     const modules = path.join(current, "node_modules")
     if (fs.existsSync(modules)) {
-      const candidate = path.join(modules, base, "bin", binary)
+      const candidate = path.join(modules, packageName, "bin", binaryName)
       if (fs.existsSync(candidate)) return candidate
     }
     const parent = path.dirname(current)
@@ -90,13 +92,55 @@ function findBinary(startDir) {
   }
 }
 
-const resolved = findBinary(path.resolve(scriptDir, ".."))
-if (!resolved) {
-  console.error(
-    "未找到当前平台的 Iris 二进制。" +
-    " 可尝试手动安装 \"" + base + "\" 包。"
-  )
-  process.exit(1)
+function main() {
+  // 1. 环境变量覆盖
+  const envPath = process.env.IRIS_BIN_PATH
+  if (envPath) {
+    run(envPath)
+    return
+  }
+
+  // 2. postinstall 缓存
+  const cached = path.join(scriptDir, ".iris")
+  if (fs.existsSync(cached)) {
+    run(cached)
+    return
+  }
+
+  // 3. 平台检测
+  const platformMap = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "windows",
+  }
+  const archMap = {
+    x64: "x64",
+    arm64: "arm64",
+    arm: "arm",
+  }
+
+  let platform = platformMap[os.platform()]
+  if (!platform) {
+    platform = os.platform()
+  }
+  let arch = archMap[os.arch()]
+  if (!arch) {
+    arch = os.arch()
+  }
+  const base = "irises-" + platform + "-" + arch
+  const binary = platform === "windows" ? "iris.exe" : "iris"
+
+  // 4. 搜索 node_modules
+  const resolved = findBinary(path.resolve(scriptDir, ".."), base, binary)
+  if (!resolved) {
+    console.error(
+      "未找到当前平台的 Iris 二进制。" +
+      " 可尝试手动安装 \"" + base + "\" 包。"
+    )
+    process.exit(1)
+  }
+
+  run(resolved)
 }
 
-run(resolved)
+main()
