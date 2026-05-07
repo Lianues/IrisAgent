@@ -21,7 +21,6 @@ export function buildSwitchEnvironmentTool(envMgr: EnvironmentManager): ToolDefi
   for (const e of envs) {
     const tags = [
       e.isLocal ? '本地' : `${e.user ?? '?'}@${e.hostName ?? '?'}`,
-      e.os ? `OS=${e.os}` : null,
       e.workdir ? `workdir=${e.workdir}` : null,
       e.description ?? null,
     ]
@@ -51,7 +50,7 @@ export function buildSwitchEnvironmentTool(envMgr: EnvironmentManager): ToolDefi
     handler: async (args) => {
       const name = (args.name as string | undefined)?.trim();
       if (!name) throw new Error('switch_environment: name 不能为空');
-      const { previous, current } = envMgr.setActive(name);
+      const { previous, current } = await envMgr.setActive(name);
       const after = envMgr.listEnvs().find(e => e.name === current);
       return {
         success: true,

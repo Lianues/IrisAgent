@@ -25,6 +25,8 @@ export interface SessionMeta {
   updatedAt: string;
   /** 使用过该会话的平台列表（��� ['console', 'web', 'telegram']） */
   platforms?: string[];
+  /** remote-exec 扩展：该对话的当前执行环境名（local 或服务器别名） */
+  remoteExecEnvironment?: string;
 }
 
 export abstract class StorageProvider {

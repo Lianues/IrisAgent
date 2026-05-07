@@ -63,6 +63,19 @@ export default definePlugin({
       await reloadAll(ctx, api);
     });
 
+    // 注册 hook：每个 turn 开始前从 session meta 预加载当前环境
+    ctx.addHook({
+      name: 'remote-exec:env-preload',
+      priority: 50,
+      async onBeforeLLMCall() {
+        const sid = cachedApi?.agentManager?.getActiveSessionId?.();
+        if (sid && envMgr) {
+          await envMgr.ensureLoaded(sid);
+        }
+        return undefined;
+      },
+    });
+
     ctx.addHook({
       name: 'remote-exec:config-reload',
       async onConfigReload({ rawMergedConfig }) {
