@@ -47,7 +47,7 @@ on:
         default: ''
         required: false
       build_run_id:
-        description: '复用已有构建的 Run ID（留空则重新构建）'
+        description: '复用已有构建产物：可填 Actions 页面 #编号（如 51）或真实 Run ID（留空则重新构建）'
         type: string
         default: ''
         required: false
@@ -202,6 +202,41 @@ jobs:
           pattern: iris-*
           merge-multiple: false
 
+      - name: Resolve build artifact run id
+        id: build_run
+        if: ${{ inputs.build_run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RUN: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          RUN_REF="$(echo "$INPUT_RUN" | sed 's/^#//' | xargs)"
+
+          # actions/download-artifact 的 run-id 需要真实 database id，
+          # 不是 Actions 页面显示的 #run_number。先尝试按真实 run id 解析。
+          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_REF}/artifacts" >/dev/null 2>&1; then
+            echo "id=${RUN_REF}" >> "$GITHUB_OUTPUT"
+            echo "Resolved as database run id: ${RUN_REF}"
+            exit 0
+          fi
+
+          if ! [[ "$RUN_REF" =~ ^[0-9]+$ ]]; then
+            echo "::error::build_run_id 必须是数字，或 Actions 页面显示的 #数字"
+            exit 1
+          fi
+
+          # 按当前 workflow 的 run_number 解析真实 run id。
+          RESOLVED_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.run_number == ${RUN_REF}) | .id" | head -n 1)"
+
+          if [[ -z "$RESOLVED_ID" ]]; then
+            echo "::error::找不到 workflow run #${RUN_REF}。请确认编号属于当前 Build & Release workflow，且 artifact 未过期。"
+            exit 1
+          fi
+
+          echo "id=${RESOLVED_ID}" >> "$GITHUB_OUTPUT"
+          echo "Resolved run #${RUN_REF} -> database run id ${RESOLVED_ID}"
+
       - name: Download all artifacts (from specified run)
         if: ${{ inputs.build_run_id }}
         uses: actions/download-artifact@v5
@@ -209,7 +244,7 @@ jobs:
           path: artifacts/
           pattern: iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ steps.build_run.outputs.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare release files
@@ -261,6 +296,41 @@ jobs:
           pattern: npm-iris-*
           merge-multiple: false
 
+      - name: Resolve build artifact run id
+        id: build_run
+        if: ${{ inputs.build_run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RUN: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          RUN_REF="$(echo "$INPUT_RUN" | sed 's/^#//' | xargs)"
+
+          # actions/download-artifact 的 run-id 需要真实 database id，
+          # 不是 Actions 页面显示的 #run_number。先尝试按真实 run id 解析。
+          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_REF}/artifacts" >/dev/null 2>&1; then
+            echo "id=${RUN_REF}" >> "$GITHUB_OUTPUT"
+            echo "Resolved as database run id: ${RUN_REF}"
+            exit 0
+          fi
+
+          if ! [[ "$RUN_REF" =~ ^[0-9]+$ ]]; then
+            echo "::error::build_run_id 必须是数字，或 Actions 页面显示的 #数字"
+            exit 1
+          fi
+
+          # 按当前 workflow 的 run_number 解析真实 run id。
+          RESOLVED_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.run_number == ${RUN_REF}) | .id" | head -n 1)"
+
+          if [[ -z "$RESOLVED_ID" ]]; then
+            echo "::error::找不到 workflow run #${RUN_REF}。请确认编号属于当前 Build & Release workflow，且 artifact 未过期。"
+            exit 1
+          fi
+
+          echo "id=${RESOLVED_ID}" >> "$GITHUB_OUTPUT"
+          echo "Resolved run #${RUN_REF} -> database run id ${RESOLVED_ID}"
+
       - name: Download npm package artifacts (from specified run)
         if: ${{ inputs.build_run_id }}
         uses: actions/download-artifact@v5
@@ -268,7 +338,7 @@ jobs:
           path: dist/bin/
           pattern: npm-iris-*
           merge-multiple: false
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ steps.build_run.outputs.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Flatten artifact directories
